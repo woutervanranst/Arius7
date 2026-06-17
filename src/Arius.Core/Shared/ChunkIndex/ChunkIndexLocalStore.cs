@@ -426,56 +426,6 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Replaces local remote-backed rows for a prefix while preserving any pending flush rows for the same content hashes.
-    /// </summary>
-    public void UpdatePrefix(PathSegment prefix, string etag, string snapshotVersion, IEnumerable<ShardEntry> entries)
-    {
-        try
-        {
-            var materialized = entries.ToArray();
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            var deletedEntryRows = DeleteRemoteBackedRange(connection, transaction, prefix);
-
-            using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
-            var entryRowsAffected = 0;
-            foreach (var entry in materialized)
-            {
-                BindEntry(command, entry);
-                entryRowsAffected += command.ExecuteNonQuery();
-            }
-
-            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
-            transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] UpdatePrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} entries={Entries} entryRowsAffected={EntryRowsAffected} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", prefix, deletedEntryRows, materialized.Length, entryRowsAffected, loadedPrefixRowsAffected);
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
-    /// Deletes remote-backed cached rows for <paramref name="prefix"/> while preserving pending flush rows and marks the prefix validated as missing on remote.
-    /// </summary>
-    public void AddEmptyPrefix(PathSegment prefix, string snapshotVersion)
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            var deletedEntryRows = DeleteRemoteBackedRange(connection, transaction, prefix);
-            var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: false, ETag: null, snapshotVersion);
-            transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] ClearPrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", prefix, deletedEntryRows, loadedPrefixRowsAffected);
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
     /// Applies one coverage-resolution pass for a batch of prefixes in a single transaction: downloaded shards
     /// (replace remote-backed range + record etag), revalidated shards (advance snapshot version only), and
     /// empty ranges (clear remote-backed range + mark missing). The prefixes are pairwise non-nested — they come
@@ -524,25 +474,6 @@ internal sealed class ChunkIndexLocalStore
                 transaction.Commit();
                 _logger.LogDebug("[chunk-index-local] IngestCoverage: downloaded={Downloaded} revalidated={Revalidated} empty={Empty}", downloaded.Count, revalidated.Count, emptyPrefixes.Count);
             }
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
-    /// Marks the prefix validated for the specified snapshot without changing cached remote-backed entries.
-    /// </summary>
-    public void SetPrefixSnapshotVersion(PathSegment prefix, string etag, string snapshotVersion)
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            var rowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
-            transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] SetPrefixSnapshotVersion: prefix={Prefix} rowsAffected={RowsAffected}", prefix, rowsAffected);
         }
         catch (SqliteException ex)
         {
