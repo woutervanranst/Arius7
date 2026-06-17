@@ -435,13 +435,7 @@ internal sealed class ChunkIndexLocalStore
             var materialized = entries.ToArray();
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
-            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
-            using var deleteEntries = connection.CreateCommand();
-            deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
-            deleteEntries.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
-            deleteEntries.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
-            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
+            var deletedEntryRows = DeleteRemoteBackedRange(connection, transaction, prefix);
 
             using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
             var entryRowsAffected = 0;
@@ -470,18 +464,66 @@ internal sealed class ChunkIndexLocalStore
         {
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
-
-            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
-            using var deleteEntries = connection.CreateCommand();
-            deleteEntries.Transaction = transaction;
-            deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
-            deleteEntries.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
-            deleteEntries.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
-            var deletedEntryRows = deleteEntries.ExecuteNonQuery();
-
+            var deletedEntryRows = DeleteRemoteBackedRange(connection, transaction, prefix);
             var loadedPrefixRowsAffected = UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: false, ETag: null, snapshotVersion);
             transaction.Commit();
             _logger.LogDebug("[chunk-index-local] ClearPrefix: prefix={Prefix} deletedEntryRows={DeletedEntryRows} loadedPrefixRowsAffected={LoadedPrefixRowsAffected}", prefix, deletedEntryRows, loadedPrefixRowsAffected);
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Applies one coverage-resolution pass for a batch of prefixes in a single transaction: downloaded shards
+    /// (replace remote-backed range + record etag), revalidated shards (advance snapshot version only), and
+    /// empty ranges (clear remote-backed range + mark missing). The prefixes are pairwise non-nested — they come
+    /// from <see cref="ChunkIndexRouter.ResolveTarget"/>'s parent-wins walk, which returns the shallowest existing
+    /// shard per hash — so their coverage-overlap deletes cannot clobber one another. Batching keeps the parallel
+    /// shard-download fan-out from contending on the SQLite write lock (one transaction, one writer).
+    /// </summary>
+    public void IngestCoverage(
+        string                                                                          snapshotVersion,
+        IReadOnlyCollection<(PathSegment Prefix, string Etag, IReadOnlyList<ShardEntry> Entries)> downloaded,
+        IReadOnlyCollection<(PathSegment Prefix, string Etag)>                           revalidated,
+        IReadOnlyCollection<PathSegment>                                                 emptyPrefixes)
+    {
+        if (downloaded.Count == 0 && revalidated.Count == 0 && emptyPrefixes.Count == 0)
+            return;
+
+        try
+        {
+            lock (_localStateGate)
+            {
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var upsertEntries = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
+
+                foreach (var (prefix, etag, entries) in downloaded)
+                {
+                    DeleteRemoteBackedRange(connection, transaction, prefix);
+                    foreach (var entry in entries)
+                    {
+                        BindEntry(upsertEntries, entry);
+                        upsertEntries.ExecuteNonQuery();
+                    }
+
+                    UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
+                }
+
+                foreach (var (prefix, etag) in revalidated)
+                    UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: true, etag, snapshotVersion);
+
+                foreach (var prefix in emptyPrefixes)
+                {
+                    DeleteRemoteBackedRange(connection, transaction, prefix);
+                    UpsertLoadedPrefix(connection, transaction, prefix, remoteExists: false, ETag: null, snapshotVersion);
+                }
+
+                transaction.Commit();
+                _logger.LogDebug("[chunk-index-local] IngestCoverage: downloaded={Downloaded} revalidated={Revalidated} empty={Empty}", downloaded.Count, revalidated.Count, emptyPrefixes.Count);
+            }
         }
         catch (SqliteException ex)
         {
@@ -718,6 +760,17 @@ internal sealed class ChunkIndexLocalStore
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM chunk_index_entries WHERE pending_flush = 1 LIMIT 1);";
         return command.ExecuteScalar() is long count && count != 0;
+    }
+
+    private static int DeleteRemoteBackedRange(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix)
+    {
+        var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+        using var deleteEntries = connection.CreateCommand();
+        deleteEntries.Transaction = transaction;
+        deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
+        deleteEntries.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+        deleteEntries.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+        return deleteEntries.ExecuteNonQuery();
     }
 
     private static SqliteCommand CreateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, bool pendingFlush, bool preservePendingFlushRows)
