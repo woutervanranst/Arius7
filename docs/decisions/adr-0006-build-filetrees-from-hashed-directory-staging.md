@@ -143,6 +143,5 @@ Related decisions:
 
 The implementation design and task plan are recorded in:
 
-* `docs/superpowers/specs/2026-04-30-filetree-staging-and-build-design.md`
-* `docs/superpowers/plans/2026-04-30-decouple-filetree-build-and-upload.md`
-* `docs/filetrees.md`
+* [`design/core/shared/filetree.md`](../design/core/shared/filetree.md) — the current authoritative design.
+* `docs/history/superpowers/2026-04-30-filetree-staging-and-build-design.md` — the original superpowers design (frozen).

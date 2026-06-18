@@ -1,0 +1,24 @@
+# History — frozen, read-only
+
+This tree is **archaeology**. It preserves the reasoning path that produced Arius's current design, in the formats the project used before settling on ADRs + design docs. **Nothing here is maintained.** It is kept because the narratives hold *intent* (rejected alternatives, the "why") that the living docs summarise but do not reproduce in full.
+
+If you want the current truth, start at [`../README.md`](../README.md) (the doc map), [`../design/`](../design/), and [`../decisions/`](../decisions/). Come here only to understand *why* a decision was made the way it was.
+
+## How the documentation evolved
+
+Arius's docs grew through four overlapping eras (dates from git history):
+
+| Era | Window | System | Where its durable intent lives now |
+|---|---|---|---|
+| 1 | 2026-03-10 → 2026-06-08 | **OpenSpec** — capability specs + per-change proposal/design/tasks | Mechanical specs collapsed into [`../design/`](../design/); rationale lifted into ADRs [0013](../decisions/adr-0013-core-host-separation.md), [0014](../decisions/adr-0014-encryption-format-and-recoverability.md), [0015](../decisions/adr-0015-chunk-index-scalability.md), [0016](../decisions/adr-0016-multi-machine-cache-coherence.md), [0017](../decisions/adr-0017-idempotent-non-distributed-recovery.md). Change narratives frozen in [`openspec-archive/`](openspec-archive/). |
+| 2 | 2026-04-19 → 2026-05-11 | **Superpowers** — RFC-style design docs | Superseded by ADRs [0001](../decisions/adr-0001-structure-representative-e2e-coverage.md), [0006](../decisions/adr-0006-build-filetrees-from-hashed-directory-staging.md), [0008](../decisions/adr-0008-introduce-internal-filesystem-domain-types.md), [0009](../decisions/adr-0009-clarify-test-fixture-boundaries.md). Frozen in [`superpowers/`](superpowers/). |
+| 3 | 2026-04-24 → **today** | **ADRs (MADR)** | **Live** — this is the current decision home: [`../decisions/`](../decisions/). |
+| 4 | 2026-06-10 → **today** | **Full agentic** — saved plans + conversations | Implemented in code; intent folded into ADRs and [`../design/`](../design/). Plans frozen in [`agentic-plans/`](agentic-plans/). |
+
+The decisive moment was 2026-04-24 (`feat: replace superpower specs & plans with MADR`): the superpowers *plans* were deleted and ADRs became the decision record. OpenSpec persisted alongside ADRs until 2026-06-08, after which the project worked "full agentic" and saved its plans rather than maintaining a spec system.
+
+## What's here
+
+- [`openspec-archive/`](openspec-archive/) — the `proposal.md` + `design.md` of each completed OpenSpec change (the `tasks.md` checklists and Gherkin spec deltas were dropped as non-durable). The `design.md` files carry the richest rejected-alternatives reasoning — e.g. the foundational `2026-03-24-arius-core-foundation`, `2026-03-31-aes256gcm-encryption`, and the chunk-index scalability arc (`2026-05-29`, `2026-06-02`, `2026-06-08`).
+- [`superpowers/`](superpowers/) — the four superpowers design docs (shared test infrastructure, the representative E2E workflow, filetree staging/build, the core path-typing sweep).
+- [`agentic-plans/`](agentic-plans/) — `PLAN`/`CONVO`/report markdown saved during the agentic era (raw `.txt` conversation transcripts and UI mockup assets were dropped). Includes the dynamic-shard-length and chunk-index scalability plans that fed [ADR-0015](../decisions/adr-0015-chunk-index-scalability.md), and the zstd evaluation that fed [ADR-0012](../decisions/adr-0012-zstd-as-new-compression-algorithm.md).

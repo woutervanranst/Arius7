@@ -46,8 +46,8 @@ interface, a pattern reinvented inconsistently across slices.
    - the **whole slice** (Command/Query + Handler + Models + Events), not just the changed lines;
    - the **shared services and value objects** it touches (`Shared/*`);
    - the relevant **ADRs** in `docs/decisions/` — these are *deliberate decisions*. Never fault an ADR'd
-     choice; cite it. (Design specs live in `docs/superpowers/specs/`; architecture notes in
-     `docs/filetrees.md`, `docs/cache.md`, `docs/commands.md`.)
+     choice; cite it. (Subsystem design docs live in `docs/design/` — mirroring `src/` — with the
+     domain vocabulary in `docs/glossary.md`.)
 3. **Know what's already enforced** (the table above) so you don't add noise.
 4. **Apply the lenses** below at the chosen effort.
 5. **Verify each candidate finding** before reporting: is it already covered by an arch test / analyzer? is

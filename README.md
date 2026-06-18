@@ -28,9 +28,6 @@ Archive and restore at a glance:
 Download the binary for your platform from the
 [latest release](https://github.com/woutervanranst/Arius7/releases/latest).
 
-For OpenCode in this repository, `opencode.json` includes the `superpowers` plugin.
-Restart OpenCode after pulling the workspace if you want the plugin skills to load.
-
 ### Windows
 
 Download arius-win-x64.exe and add its directory to your PATH
@@ -264,7 +261,7 @@ Merkle tree nodes. Each blob is a UTF-8 text file named by its tree-hash (SHA-25
 canonical text, optionally passphrase-seeded). A tree blob lists the entries in one
 directory — one line per entry, sorted by name:
 
-See [`docs/filetrees.md`](docs/filetrees.md) for the archive-time staging, build, upload,
+See [`docs/design/core/shared/filetree.md`](docs/design/core/shared/filetree.md) for the archive-time staging, build, upload,
 and cache pipeline behind these nodes.
 
 ```
@@ -340,24 +337,10 @@ a truncated frame rather than emitting a partial prefix.
 python3 recover-chunk.py <encrypted-chunk-file> <passphrase> [output-file]
 ```
 
-## Toolchain
+## Documentation
 
-### Updating the toolchain
-
-* OpenSpec
-
-https://github.com/Fission-AI/OpenSpec#updating-openspec
-
-```
-npm install -g @fission-ai/openspec@latest
-openspec update
-```
-
-* Superpowers
-
-```
-what version of superpowers are you on? if it is not 5.1.0 , clear the package cache
-```
+- **Using Arius:** [CLI guide](docs/guide/cli.md) · [Web UI guide](docs/guide/web-ui.md) · [Explorer guide](docs/guide/explorer.md) · [Deployment](docs/guide/deployment.md)
+- **Understanding & contributing:** start at the [documentation map](docs/README.md) — architecture and per-subsystem design under [`docs/design/`](docs/design/), decision records in [`docs/decisions/`](docs/decisions/), the [glossary](docs/glossary.md), and frozen [history](docs/history/).
 
 ## License
 

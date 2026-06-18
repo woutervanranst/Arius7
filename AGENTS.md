@@ -1,5 +1,16 @@
 # AGENTS.md
 
+## Documentation map
+
+Product documentation lives under [`docs/`](docs/) — start at [`docs/README.md`](docs/README.md):
+- **[`docs/design/`](docs/design/)** — how each subsystem works and why; the tree **mirrors `src/`** (core/features, core/shared, hosts, cross-cutting). Start at [`docs/design/README.md`](docs/design/README.md).
+- **[`docs/decisions/`](docs/decisions/)** — ADRs: the durable "why" for one-time architectural decisions.
+- **[`docs/guide/`](docs/guide/)** — user/operator guides (CLI, Web UI, Explorer, deployment).
+- **[`docs/glossary.md`](docs/glossary.md)** — the grounded domain vocabulary (term → defining type/file).
+- **[`docs/history/`](docs/history/)** — frozen archaeology (OpenSpec / superpowers / agentic plans); read-only, never maintained.
+
+Keep docs in sync with changes: record a one-time architectural decision as an ADR; update the relevant `docs/design/` doc when a subsystem's shape or invariants change; do **not** restate mechanical code behaviour in prose (the code and its docstrings are the source for that). Each `src/Arius.*` project also has its own nested `AGENTS.md` for project-local conventions.
+
 ## General
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
@@ -103,7 +114,7 @@ Specialist agents
 
 - Update `README.md` with high signal & accessible for humans if applicable. Do not mention code concepts unless explicitly asked. Do not clutter it with implementation details.
 - Update `AGENTS.md` for AI coding agents to reflect the current state of the project if relevant. Do not clutter it with implementation details.
-- Project-level OpenCode configuration lives in `opencode.json`. This workspace installs the `superpowers@git+https://github.com/obra/superpowers.git` plugin; restart OpenCode after config changes so the plugin is reloaded.
+- Keep product docs in sync with the change (see the Documentation map above): ADRs for decisions, `docs/design/` for subsystem shape and invariants, the glossary for vocabulary.
 
 ## Scale And Durability
 - Arius is a backup tool for important files. Correctness, durability, and recoverability matter more than raw throughput.
@@ -161,107 +172,30 @@ When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
 
 ## Domain language
 
-- **binary file**: a file on disk that Arius archives and restores.
-- **pointer file**: a file on disk containing the content hash.
-- **FilePair**: the local archive-time view of one path, combining the binary file and its optional pointer file. A `FilePair` can be binary-only, pointer-only, or have both present.
-- **hash** Arius is a content addressed storage and deduplicates binary files based on content hash.
-  - **content hash**: the hash of the (original) binary file's content
-  - **chunk hash**: the name of the chunk in which the content is actually stored (identical for large chunks, different for tar chunks)
-- **chunk**: representing unique binary content:
-  - **large chunk**: a chunk whose blob body stores one file directly as gzip plus optional encryption.
-  - **tar chunk**: a chunk whose blob body stores a tar bundle of multiple small files, then gzip plus optional encryption. Why: small files are prohibitively expensive to rehydrate in Azure Blob Storage, so we tar them together into a ~large chunk.
-  - **thin chunk**: a small pointer-like chunk blob whose body is the hash of the tar chunk that actually contains the file bytes. Why: as deduplication existence check and metadata.
-- **chunk index**: the repository-wide mapping from content hash to chunk hash. Why: 1/ TAR lookups 2/ efficient existence checks for deduplicated content and 3/ metadata store.
-  - **shard**: one mutable chunk-index blob, partitioned by a dynamic-length hash prefix (2 hex chars to start; a shard splits 16-way by the next hex char when it grows past the entry threshold). The layout is self-describing from which shard blobs exist; reads use the shallowest existing shard on a hash's prefix path (parent wins).
-  - **chunk size**: each chunk-index entry records the stored chunk blob byte count. For large chunks this is the large chunk blob size; for tar-bundled files this is the full parent tar chunk blob size, not a proportional per-file share. Restore, download progress, and rehydration cost estimates operate on distinct chunks and must use this full chunk size.
-  - **storage tier hint**: each chunk-index entry records the chunk blob's storage tier at archive time (wire values: hot=1, cool=2, cold=3, archive=4; for tar-bundled files, the tar blob's tier). It is a *hint* — lifecycle policies or rehydration can change the actual tier — and lets `ls` report hydrated-vs-archived state from the index without per-blob calls. Live truth (including rehydration-pending) comes from `ChunkHydrationStatusQuery`.
-- **filetree**: an immutable Merkle-tree blob describing one directory's entries. Filetrees model repository structure, not chunk storage.
-- **snapshot**: an immutable point-in-time manifest that records the root filetree hash and repository totals.
-
-- Prefer these terms consistently in code, tests, docs, and reviews. Avoid using generic words like "blob" or "pointer" when the more precise domain term is known.
+Use the precise Arius domain vocabulary (binary file, pointer file, `FilePair`, chunk, large/tar/thin chunk, chunk index, shard, chunk size, storage tier hint, filetree, snapshot, content hash, chunk hash, …) consistently in code, tests, docs, and reviews; avoid generic words like "blob" or "pointer" when a precise term exists. Every term is defined and grounded to its code type in **[`docs/glossary.md`](docs/glossary.md)** — the single home for the vocabulary, which also disambiguates the easily-confused cache verbs (validated / revalidated / synchronized).
 
 ## Hash type guidance
 
-- Keep distinct hash value objects for distinct identities: `ContentHash`, `ChunkHash`, and `FileTreeHash`.
-- Do not collapse those types into one generic hash abstraction and do not use inheritance between them.
-- Keep persisted and wire formats as canonical lowercase hex strings.
-- Use typed hashes inside the domain and as dictionary/set keys when hash identity is the key.
-- Convert hashes to strings only at boundaries such as storage names, serialized payloads, logs, and UI output.
-- Do not add implicit conversions between hash types or between hash types and `string`.
-- Keep hash value objects fail-fast for `default(...)` / uninitialized instances; their internal `Value` accessors should throw instead of silently treating null as valid.
+- Keep distinct hash value objects for distinct identities: `ContentHash`, `ChunkHash`, `FileTreeHash`. Do not collapse them into one generic hash, use inheritance between them, or add implicit conversions (between hash types or to/from `string`).
+- Use typed hashes inside the domain and as dictionary/set keys; persisted/wire formats are canonical lowercase hex; convert to string only at boundaries (storage names, payloads, logs, UI).
+- Keep hash value objects fail-fast for `default`/uninitialized instances.
+- Rationale and the typed-identity model: [ADR-0003](docs/decisions/adr-0003-use-distinct-typed-hashes.md), [ADR-0004](docs/decisions/adr-0004-split-filetree-entry-hash-identities.md), and [`docs/design/core/shared/hashes.md`](docs/design/core/shared/hashes.md).
 
 ## Filesystem type guidance
 
-- Prefer strong domain types over raw primitives when a value has Arius-specific semantics.
-- Avoid primitive obsession: do not pass repository-relative paths, path segments, or similar Arius domain values as `string` just for convenience.
-- Avoid stringify/parse round-trips. Preserve strong types until a real foreign boundary such as console output, configuration, serialization, or external SDK calls.
-- Prefer `RelativePath` for repository-relative paths, subtree roots, and prefixes that may contain multiple segments.
-- Use `PathSegment` only when the value is semantically exactly one path segment.
-- Keep archive-time and local-filesystem operational types internal, including `BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, and `RelativeFileSystem`.
-- Do not encode directory semantics in canonical path values via trailing slash conventions when a typed contract can represent directory-ness directly.
+- Prefer strong domain types over raw primitives for Arius-specific values; avoid primitive obsession and stringify/parse round-trips (preserve types until a real foreign boundary: console, config, serialization, external SDK).
+- `RelativePath` for repository-relative paths, subtree roots, and multi-segment prefixes; `PathSegment` only when the value is exactly one segment. Don't encode directory-ness via trailing slashes when a typed contract can represent it.
+- Keep archive-time/local operational types internal (`BinaryFile`, `PointerFile`, `FilePair`, `LocalDirectory`, `RelativeFileSystem`); route local IO through `RelativeFileSystem`, not raw `System.IO`.
+- Rationale: [ADR-0008](docs/decisions/adr-0008-introduce-internal-filesystem-domain-types.md) and [`docs/design/core/shared/filesystem.md`](docs/design/core/shared/filesystem.md).
 
 ## Architecture
 
-### Arius.Core shape
+The full architecture — layering, the per-repository shared-service stack and its lifetimes, the archive/restore/list flows, and each subsystem — is documented under **[`docs/design/`](docs/design/)** (start at [`docs/design/README.md`](docs/design/README.md), which mirrors `src/`). The agent-actionable boundary rules:
 
-- `src/Arius.Core/Features/` contains vertical slices (`*Command`, `*Query`) that orchestrate user-facing workflows.
-- `src/Arius.Core/Shared/` contains reusable infrastructure and domain mechanisms that multiple features depend on.
-- Keep orchestration in `Features` and storage/caching/serialization mechanics in `Shared`.
-- Prefer injecting shared services into features instead of constructing them ad hoc inside handlers or helpers.
+- **Features vs Shared.** `src/Arius.Core/Features/` holds vertical slices (`*Command`/`*Query`) that decide **when** to resolve a snapshot, walk a tree, look up chunk metadata, upload chunks, or restore. `src/Arius.Core/Shared/` decides **how** (caching, serialization, blob interpretation). Repository-wide logic reused by more than one feature belongs in `Shared`; single-flow logic belongs in the feature handler. Inject shared services into features; don't construct them ad hoc.
+- **Hosts drive Core only through `IMediator`.** `Arius.Cli`, `Arius.Explorer`, and `Arius.Api` each build one provider per repository (`AddMediator()` + `AddArius(...)`) and never call handlers directly. Core depends on `IBlobContainerService`, never the Azure SDK ([ADR-0013](docs/decisions/adr-0013-core-host-separation.md), enforced by architecture tests).
+- **Feature handlers must not depend on `IBlobContainerService`/`IBlobService`/`IBlobServiceFactory` directly.** Current approved exceptions: `ArchiveCommandHandler` (container creation) and `ContainerNamesQueryHandler` (repository-external enumeration). `restore` and `ls` are read-only and must not create containers. Remove stale direct blob/encryption deps when a handler no longer uses them.
+- **Service lifetimes are per-repository-provider singletons.** Fine for the short-lived CLI, but long-lived hosts (Web/Explorer) must manage provider lifetime — `ChunkIndexService` is single-shot after flush. See [`docs/design/cross-cutting/service-lifetimes.md`](docs/design/cross-cutting/service-lifetimes.md).
+- **DI.** Register shared services once per repository; helpers (`FileTreeBuilder`) receive already-constructed services; avoid duplicate service graphs for one repository (they split cache/validation state).
 
-### Hosts
-
-- `Arius.Cli` (CLI) and `Arius.Explorer` (WPF, Windows-only) drive `Arius.Core` directly via `IMediator`, building one provider per repository.
-- `Arius.Api` (`src/Arius.Api`, ASP.NET minimal API) relays `Arius.Core` over REST + SignalR for the web UI. It builds a per-repository `IServiceProvider` (`AddMediator()` + `AddArius(...)`) via `RepositoryProviderRegistry`, and owns a small app SQLite (storage accounts, repositories, jobs, schedules) separate from Core's chunk-index cache. Account keys/passphrases are encrypted at rest with ASP.NET Data Protection.
-- `Arius.Web` (`src/Arius.Web`) is the Angular + Metronic v9 (Tailwind/KTUI) frontend. It is a Node project and is **not** part of `Arius.slnx`; its `dist/` is served by `Arius.Api` (or built into its `wwwroot`) for deployment.
-
-### Shared vs Features
-
-- `Features` should decide **when** to resolve a snapshot, walk a tree, look up chunk metadata, upload chunks, or restore files.
-- `Shared` should decide **how** snapshots are cached, how tree blobs are serialized/cached, how chunk-index shards are cached, and how blob names/content are interpreted.
-- If logic is repository-wide and reused by more than one feature, it usually belongs in `Shared`.
-- If logic is specific to one command/query flow, it usually belongs in that feature handler.
-
-### Shared: Storage
-
-- `src/Arius.Core/Shared/Storage/` contains the low-level storage boundary: `IBlobContainerService`, `IBlobService`, `IBlobServiceFactory`, blob metadata models, tier enums, and preflight/storage exceptions.
-- Those interfaces describe primitive storage capabilities such as upload, download, list, metadata, tier changes, and container lookup.
-- Higher-level shared services build repository semantics on top of that storage boundary:
-  - `ChunkIndexService` for deduplication index lookup, mutation, flushing, and cache invalidation
-  - `ChunkStorageService` for chunk blob upload/download, hydration, rehydration, and cleanup planning
-  - `FileTreeService` for filetree traversal, caching, and persistence
-  - `SnapshotService` for snapshot resolution, creation, listing, and local snapshot state
-- Prefer those higher-level shared services over direct `Shared/Storage` dependencies.
-
-### Shared: Cache
-
-- `ChunkIndexService` owns the chunk-index cache.
-- `ChunkStorageService` owns chunk blob upload/download and hydration/rehydration mechanics.
-- `FileTreeService` owns the filetree blob cache.
-- `SnapshotService` owns snapshot create/resolve/list behavior plus local snapshot disk state.
-
-- Chunk-index shards are **mutable**. Multiple runs/machines can extend or overwrite shard content for the same prefix.
-- Because chunk-index data is mutable, `ChunkIndexService` keeps the local cache in SQLite, validates touched prefixes lazily against the latest snapshot, and preserves dirty rows until flush succeeds.
-- On snapshot mismatch, only clean chunk-index cache state is invalidated; dirty rows must survive until they are flushed or the run is retried.
-
-- Filetree blobs are **immutable** and content-addressed.
-- Because filetree blobs are immutable, `FileTreeService` can trust any non-corrupt local cache file permanently.
-- Tree-cache validation is about remote existence knowledge and cross-machine coordination, not blob staleness.
-
-- Snapshots are the coordination point between local cache state and remote repository state.
-- Snapshot comparisons determine whether the current machine can trust its local tree/chunk cache view or must refresh remote knowledge.
-
-### Feature-specific exceptions and constraints
-
-- Feature handlers and queries should not depend directly on `IBlobContainerService`, `IBlobService`, or `IBlobServiceFactory`.
-- Current approved exceptions are `ArchiveCommandHandler` for container creation and `ContainerNamesQueryHandler` for repository-external container enumeration.
-- `restore` is a read-only repository operation and must not create blob containers.
-- `ls` is a read-only repository operation and must not create blob containers.
-- Remove stale direct blob/encryption dependencies from feature handlers when the handler no longer uses them.
-
-### DI expectations
-
-- Register shared services once per repository/session in DI.
-- Feature handlers should consume those shared instances through constructor injection.
-- Helper types such as `FileTreeBuilder` should accept already-constructed shared services rather than creating fresh `ChunkIndexService`, `FileTreeService`, or `SnapshotService` instances internally.
-- Avoid duplicate service graphs for the same repository because that can split cache state and validation state.
+For project-local conventions (CLI display, Web/Angular, Explorer/WPF, test fixtures), see the nested `AGENTS.md` in each `src/Arius.*` project.
