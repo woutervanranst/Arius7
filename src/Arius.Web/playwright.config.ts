@@ -11,6 +11,7 @@ const stateDir = path.resolve(__dirname, 'e2e/.state');
 export default defineConfig({
   testDir: './e2e/specs',
   globalSetup: './e2e/support/global-setup.ts',
+  globalTeardown: './e2e/support/global-teardown.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,

@@ -15,7 +15,7 @@ test('restore writes files to an empty destination, and skips them when already 
   fs.writeFileSync(path.join(src, 'notes.md'), '# notes\n'.repeat(50));
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer('roundtrip'), alias: 'E2E Round-trip', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
+    data: { accountId: repo.accountId, container: scratchContainer(`roundtrip-${Date.now()}`), alias: 'E2E Round-trip', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
   })).json();
 
   try {
