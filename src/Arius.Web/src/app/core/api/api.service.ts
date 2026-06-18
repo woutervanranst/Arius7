@@ -28,6 +28,11 @@ export class ApiService {
     return this.http.patch<RepositoryDto>(`/api/repos/${id}`, body);
   }
 
+  /** Removes the repository from Arius's registry. The Azure container and its blobs are left intact. */
+  deleteRepository(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/repos/${id}`);
+  }
+
   getSnapshots(id: number): Observable<SnapshotDto[]> {
     return this.http.get<SnapshotDto[]>(`/api/repos/${id}/snapshots`);
   }
