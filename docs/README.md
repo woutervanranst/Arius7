@@ -6,10 +6,10 @@ This tree is **MECE** (every concept has exactly one home) and **mirrors the cod
 
 | Type | Lives in | Answers | Lifecycle |
 |---|---|---|---|
-| **ADR** | [`decisions/`](decisions/) | "Why did we choose X over Y, once" — one decision, its alternatives, its consequences | Immutable once accepted; you *supersede* an ADR, you never edit it |
-| **Design doc** | [`design/`](design/) (mirrors `src/`) | "How does this slice/component work, and why is it shaped this way" — structure, invariants, open seams | **Living** — kept in sync with the code |
-| **Guide** | [`guide/`](guide/) | "How do I use or deploy it" — task-oriented user/operator instructions | Living |
-| **History** | [`history/`](history/) | The reasoning path that produced the above (openspec, superpowers, agentic plans) | **Frozen, read-only** — never maintained |
+| **ADR** | [`decisions/`](decisions/README.md) | "Why did we choose X over Y, once" — one decision, its alternatives, its consequences | Immutable once accepted; you *supersede* an ADR, you never edit it |
+| **Design doc** | [`design/`](design/README.md) (mirrors `src/`) | "How does this slice/component work, and why is it shaped this way" — structure, invariants, open seams | **Living** — kept in sync with the code |
+| **Guide** | [`guide/`](guide/cli.md) | "How do I use or deploy it" — task-oriented user/operator instructions | Living |
+| **History** | [`history/`](history/INDEX.md) | The reasoning path that produced the above (openspec, superpowers, agentic plans) | **Frozen, read-only** — never maintained |
 
 Plus one reference: [`glossary.md`](glossary.md) — the grounded domain vocabulary. Every term links to where it is defined in code. Design docs link terms here instead of redefining them.
 

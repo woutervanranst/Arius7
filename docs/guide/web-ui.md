@@ -8,7 +8,7 @@ jobs, watch them live, and search across every repository you've added.
 This guide is task-first: what you click and what happens. For *how* it's built (the Arius.Api +
 SignalR backend behind the SPA), see [the Web host design doc](../design/hosts/web.md). For *how to
 run* the server in Docker or in dev, see [the deployment guide](./deployment.md) and the
-[repository README](../../README.md). Unfamiliar terms (snapshot, chunk, tier, pointer, rehydration)
+[repository README](https://github.com/woutervanranst/Arius7). Unfamiliar terms (snapshot, chunk, tier, pointer, rehydration)
 are defined in the [glossary](../glossary.md).
 
 > **Heads-up about the passphrase.** Every chunk is encrypted with your repository passphrase. Arius
@@ -228,4 +228,4 @@ result to jump to that repository's Files view. **Esc** closes the overlay.
 - [Deployment guide](./deployment.md) — run the server (Docker single-container, Compose, dev).
 - [Web host design](../design/hosts/web.md) — the Arius.Api + SignalR architecture behind this UI.
 - [Glossary](../glossary.md) — snapshot, chunk, dedup, tier, pointer, rehydration.
-- [Repository README](../../README.md) — project overview and quick start.
+- [Repository README](https://github.com/woutervanranst/Arius7) — project overview and quick start.

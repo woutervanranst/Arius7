@@ -4,7 +4,7 @@
 restoring it later. This page is the complete reference: every command, every option, and a
 worked example for each.
 
-- **New here?** Install instructions live in the [root README](../../README.md#installation).
+- **New here?** Install instructions live in the [root README](https://github.com/woutervanranst/Arius7#installation).
 - **Want to know how it works inside?** See the maintainer docs at
   [design/hosts/cli.md](../design/hosts/cli.md) and the [glossary](../glossary.md).
 - Terms in *italics* (e.g. *snapshot*, *chunk*) are defined in the glossary.
@@ -336,7 +336,7 @@ The `--passphrase` / `-p` option is independent of authentication — it encrypt
 client-side before upload. Omit it for an unencrypted repository. It is never persisted; supply
 the same passphrase on every command that touches an encrypted repository. For emergency
 recovery of a single chunk without the Arius binary, see
-[Disaster recovery in the README](../../README.md#disaster-recovery).
+[Disaster recovery in the README](https://github.com/woutervanranst/Arius7#disaster-recovery).
 
 ---
 
@@ -363,6 +363,6 @@ Arius keeps a per-repository cache and audit logs on your machine under your hom
 
 ## See also
 
-- [Root README](../../README.md) — install, blob layout, disaster recovery.
+- [Root README](https://github.com/woutervanranst/Arius7) — install, blob layout, disaster recovery.
 - [design/hosts/cli.md](../design/hosts/cli.md) — how the CLI host drives Arius.Core and renders progress (internals).
 - [glossary](../glossary.md) — definitions for *snapshot*, *chunk*, *chunk index*, *storage tier hint*, and more.

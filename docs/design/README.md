@@ -45,7 +45,7 @@ flowchart TD
 ```
 
 The on-disk blob layout (`chunks/`, `chunks-rehydrated/`, `filetrees/`, `snapshots/`,
-`chunk-index/`) is documented in the root [`README.md`](../../README.md) under
+`chunk-index/`) is documented in the root [`README.md`](https://github.com/woutervanranst/Arius7) under
 "Blob Storage Structure".
 
 ---
@@ -79,13 +79,13 @@ flowchart TD
   intent into Core requests. They build one `IServiceProvider` per repository
   (`AddMediator()` + `AddArius(...)`, registered in
   `src/Arius.Core/ServiceCollectionExtensions.cs`) and drive Core through `IMediator`.
-  See [Hosts](hosts/).
+  See [Hosts](hosts/cli.md).
 - **`Features/`** decide *when* to resolve a snapshot, walk a tree, look up chunk
   metadata, upload chunks, or restore files. A handler is a long linear orchestration
-  of numbered stages (e.g. `ArchiveCommandHandler`). See [Core / Features](core/features/).
+  of numbered stages (e.g. `ArchiveCommandHandler`). See [Core / Features](core/features/archive-command.md).
 - **`Shared/`** decides *how*: how snapshots are cached, how tree blobs are
   serialized and cached, how chunk-index shards are routed and cached, how chunk blobs
-  are uploaded, downloaded, and rehydrated. See [Core / Shared](core/shared/).
+  are uploaded, downloaded, and rehydrated. See [Core / Shared](core/shared/chunk-index.md).
 - **`Shared/Storage`** is the primitive storage boundary: `IBlobContainerService`,
   `IBlobService`, `IBlobServiceFactory`, blob metadata models, and tier enums. These
   describe upload/download/list/metadata/tier-change/container-lookup and nothing more.
@@ -182,7 +182,7 @@ and [snapshot](core/shared/snapshot.md) (the epoch/coordination model).
 Because `FileTreeService.ReadAsync` always writes to the disk cache on a miss, caches
 warm organically across runs (an `archive` warms `ls` and `restore`; same-machine
 re-archive hits the fast-path epoch match with no remote listing). Per-service detail
-is under [Core / Shared](core/shared/).
+is under [Core / Shared](core/shared/chunk-index.md).
 
 ---
 
@@ -224,11 +224,11 @@ recoverability outrank raw throughput. Four principles constrain every design.
 
 | Path | What lives there |
 |---|---|
-| [`core/features/`](core/features/) | One doc per vertical slice — `archive`, `restore`, `ls`, `repair-index`, the `*Query` reads — covering stage structure and the *when* of each workflow. |
-| [`core/shared/`](core/shared/) | The shared services and supporting mechanics: `SnapshotService`, `FileTreeService`, `ChunkIndexService`, `ChunkStorageService`, plus `Compression`, `Encryption`, `Hashes`, `FileSystem`, `Streaming`, and the `Storage` boundary. |
-| [`hosts/`](hosts/) | How `Arius.Cli`, `Arius.Explorer`, and `Arius.Api`/`Arius.Web` build per-repository providers, drive Core via `IMediator`, and consume progress events. |
-| [`cross-cutting/`](cross-cutting/) | Concerns that span slices: [events and progress](cross-cutting/events-and-progress.md), [service lifetimes](cross-cutting/service-lifetimes.md), [memory boundedness](cross-cutting/memory-boundedness.md), [performance](cross-cutting/performance.md), [logging](cross-cutting/logging.md), [testing](cross-cutting/testing.md). |
-| [`../decisions/`](../decisions/) | Architecture Decision Records (ADRs) recording the rationale behind these designs. |
+| [`core/features/`](core/features/archive-command.md) | One doc per vertical slice — `archive`, `restore`, `ls`, `repair-index`, the `*Query` reads — covering stage structure and the *when* of each workflow. |
+| [`core/shared/`](core/shared/chunk-index.md) | The shared services and supporting mechanics: `SnapshotService`, `FileTreeService`, `ChunkIndexService`, `ChunkStorageService`, plus `Compression`, `Encryption`, `Hashes`, `FileSystem`, `Streaming`, and the `Storage` boundary. |
+| [`hosts/`](hosts/cli.md) | How `Arius.Cli`, `Arius.Explorer`, and `Arius.Api`/`Arius.Web` build per-repository providers, drive Core via `IMediator`, and consume progress events. |
+| [`cross-cutting/`](cross-cutting/events-and-progress.md) | Concerns that span slices: [events and progress](cross-cutting/events-and-progress.md), [service lifetimes](cross-cutting/service-lifetimes.md), [memory boundedness](cross-cutting/memory-boundedness.md), [performance](cross-cutting/performance.md), [logging](cross-cutting/logging.md), [testing](cross-cutting/testing.md). |
+| [`../decisions/`](../decisions/README.md) | Architecture Decision Records (ADRs) recording the rationale behind these designs. |
 | [`../glossary.md`](../glossary.md) | The grounded domain vocabulary. |
 
 ---

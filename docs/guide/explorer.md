@@ -6,12 +6,12 @@ list on the right — over a repository that lives in an Azure Blob Storage cont
 
 Explorer is a **read-only / restore-only** client. You can look through everything that has
 ever been archived and pull files back down to disk, but you **cannot archive (back up) new
-files from Explorer** — archiving stays on the [command-line tool](../../README.md). Think of
+files from Explorer** — archiving stays on the [command-line tool](https://github.com/woutervanranst/Arius7). Think of
 Explorer as the window into a repository, and the CLI as the thing that fills it.
 
 > **Platform:** Windows only. Explorer is built on WPF (`net10.0-windows`) and uses
 > Windows-only facilities (DPAPI credential protection, the Windows user-settings store). On
-> Linux/macOS, use the [CLI](../../README.md) or the [Web host](./web-ui.md) instead.
+> Linux/macOS, use the [CLI](https://github.com/woutervanranst/Arius7) or the [Web host](./web-ui.md) instead.
 
 For how the app is wired internally (the per-repository service graph, streaming, etc.), see
 the architecture note: [design/hosts/explorer.md](../design/hosts/explorer.md). This page is
@@ -21,7 +21,7 @@ just about *using* it.
 
 ## What Explorer can and cannot do
 
-| | Explorer (this app) | [CLI](../../README.md) | [Web](./web-ui.md) |
+| | Explorer (this app) | [CLI](https://github.com/woutervanranst/Arius7) | [Web](./web-ui.md) |
 |---|---|---|---|
 | Browse a repository (folders + files) | ✅ | `arius ls` | ✅ |
 | See per-file state (on disk / in cloud / archived) | ✅ (status dots) | partial | ✅ |
@@ -192,7 +192,7 @@ the current folder reloads so the status dots update to reflect what is now on d
 
 - **Latest version only.** Explorer always restores the file as it is in the latest state of
   the repository. To restore an older version of a file, use `arius restore` from the
-  [CLI](../../README.md).
+  [CLI](https://github.com/woutervanranst/Arius7).
 - **One file at a time, sequentially.** Explorer downloads selected files one after another.
   Restoring a large selection works but is not batched; for very large bulk restores the CLI
   may be faster.
@@ -227,7 +227,7 @@ repository fails to load, re-check your credentials via **File ▸ Open…**.
 
 ## See also
 
-- [Arius CLI](../../README.md) — archiving, restoring older versions, listing, repairing the index.
+- [Arius CLI](https://github.com/woutervanranst/Arius7) — archiving, restoring older versions, listing, repairing the index.
 - [Arius Web](./web-ui.md) — the browser-based host (cross-platform).
 - [Glossary](../glossary.md) — snapshot, pointer file, chunk, storage tier, and other terms.
 - [Explorer architecture](../design/hosts/explorer.md) — how the desktop app is wired (for maintainers).

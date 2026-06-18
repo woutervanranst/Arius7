@@ -29,7 +29,7 @@ deploy it.
 > **Security note:** the web app has **no authentication**. Every endpoint and the
 > SignalR hub are open. Run it only on a trusted LAN (e.g. behind your NAS firewall),
 > never directly exposed to the internet. See the *No authn/authz* seam in
-> [design/hosts/web.md](../design/hosts/web.md#open-seams--future).
+> [design/hosts/web.md](../design/hosts/web.md#open-seams-future).
 
 ---
 
@@ -58,7 +58,7 @@ mounts are the local folders you archive from / restore to.
 ## Running with Docker Compose (recommended)
 
 Docker Compose is the easiest way to run and upgrade the app. The repository ships a
-[`docker-compose.yml`](../../docker-compose.yml) at its root that **builds the image from
+[`docker-compose.yml`](https://github.com/woutervanranst/Arius7/blob/master/docker-compose.yml) at its root that **builds the image from
 source**. Most operators instead run the **prebuilt image** — see
 [Using the prebuilt image](#using-the-prebuilt-image) below.
 
@@ -300,7 +300,7 @@ repositories, jobs, and schedules are preserved.
 
 If you only want the command-line tool (no web UI), you don't need Docker at all. Download
 the binary for your platform and install it — the
-[README](../../README.md#installation) has copy-paste instructions for:
+[README](https://github.com/woutervanranst/Arius7#installation) has copy-paste instructions for:
 
 - **Windows** — download `arius-win-x64.exe`, add its folder to `PATH`.
 - **Linux & Synology NAS** — `curl` the `arius-linux-x64` binary into `/usr/local/bin`.
@@ -309,7 +309,7 @@ the binary for your platform and install it — the
 
 Once installed, `arius update` upgrades it in place. See the
 [CLI guide](../design/hosts/cli.md) for what the command-line host does and the
-[README Usage section](../../README.md#usage) for the `archive` / `restore` / `ls` /
+[README Usage section](https://github.com/woutervanranst/Arius7#usage) for the `archive` / `restore` / `ls` /
 `repair-index` commands.
 
 ---
@@ -318,6 +318,6 @@ Once installed, `arius update` upgrades it in place. See the
 
 - [design/hosts/web.md](../design/hosts/web.md) — what the container runs: the API host,
   the job model, per-repository service providers, secrets at rest.
-- [README](../../README.md) — installation, CLI usage, and the blob storage layout.
+- [README](https://github.com/woutervanranst/Arius7) — installation, CLI usage, and the blob storage layout.
 - [Glossary](../glossary.md) — [snapshot](../glossary.md#snapshot),
   [chunk index](../glossary.md#chunk-index), [filetree](../glossary.md#filetree).

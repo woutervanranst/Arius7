@@ -292,7 +292,7 @@
       339 +                                                              
       340 +### Emergency single-chunk recovery (without Arius)           
       341 +                                                              
-      342 +[`recover-chunk.py`](recover-chunk.py) decrypts and decompress
+      342 +[`recover-chunk.py`](https://github.com/woutervanranst/Arius7/blob/master/recover-chunk.py) decrypts and decompress
           +es one chunk file given only the passphrase.                  
       343 +It auto-detects both the encryption and the compression format
           +, validates the XXH64 checksum, and refuses                   
