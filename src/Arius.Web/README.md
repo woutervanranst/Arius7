@@ -185,8 +185,6 @@ servers are reused) and runs serially (`workers: 1`) since the specs share one b
 - The isolated test app-DB lives under `e2e/.state` (gitignored — the encrypted account key never
   gets committed).
 
-## Unit tests
+## Tests
 
-```bash
-ng test        # Karma/Jasmine
-```
+This project has no unit-test harness — all coverage is the Playwright e2e suite above (`npm run e2e`).
