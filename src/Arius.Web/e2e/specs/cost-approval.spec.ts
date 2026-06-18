@@ -15,7 +15,7 @@ test('restore of archive-tier data opens the cost-approval modal @write', async 
   fs.writeFileSync(path.join(src, 'archived.bin'), Buffer.alloc(2_000_000, 7)); // 2 MB → large chunk → Archive tier
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer('cost'), alias: 'E2E Cost Target', passphrase: 'e2etest', localPath: src, defaultTier: 'archive' },
+    data: { accountId: repo.accountId, container: scratchContainer(`cost-${Date.now()}`), alias: 'E2E Cost Target', passphrase: 'e2etest', localPath: src, defaultTier: 'archive' },
   })).json();
 
   try {
