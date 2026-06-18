@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import { Router } from '@angular/router';
 import { ApiService } from '../../../core/api/api.service';
 import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
 
@@ -57,6 +58,21 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
           <button class="ar-btn-primary" data-testid="schedule-add" [disabled]="!newCron" (click)="addSchedule()"><i class="ki-filled ki-plus"></i>Add</button>
         </div>
       </div>
+
+      <!-- Danger zone -->
+      <div class="ar-card" style="max-width:680px;padding:20px 24px;margin-top:18px;border-color:#fecaca">
+        <div style="font-size:15.5px;font-weight:600;color:#b91c1c">Delete repository</div>
+        <p style="font-size:12.5px;color:#a1a1aa;margin:2px 0 14px">Removes <b>{{ r.alias }}</b> from Arius. The Azure container and its blobs are <b>not</b> deleted.</p>
+        @if (confirmingDelete()) {
+          <div class="flex items-center gap-2.5">
+            <span style="font-size:13px;color:#b91c1c;margin-right:auto">Delete this repository from Arius?</span>
+            <button class="ar-btn-outline" (click)="confirmingDelete.set(false)">Cancel</button>
+            <button class="ar-btn-danger" data-testid="prop-delete-confirm" (click)="deleteRepository()"><i class="ki-filled ki-trash"></i>Confirm delete</button>
+          </div>
+        } @else {
+          <button class="ar-btn-danger" data-testid="prop-delete" (click)="confirmingDelete.set(true)"><i class="ki-filled ki-trash"></i>Delete repository</button>
+        }
+      </div>
     } @else {
       <div style="padding:24px;color:#a1a1aa;font-size:13px">Loading…</div>
     }
@@ -74,6 +90,7 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
 })
 export class PropertiesTabComponent {
   private readonly api = inject(ApiService);
+  private readonly router = inject(Router);
   readonly repoId = input.required<string>();
 
   protected readonly repo = signal<RepositoryDto | null>(null);
@@ -83,6 +100,7 @@ export class PropertiesTabComponent {
   protected readonly saved = signal(false);
   protected readonly schedules = signal<ScheduleDto[]>([]);
   protected newCron = '';
+  protected readonly confirmingDelete = signal(false);
 
   constructor() {
     // Reload when repoId changes — the router reuses this component across /repos/:id navigations.
@@ -105,6 +123,10 @@ export class PropertiesTabComponent {
 
   protected removeSchedule(id: number): void {
     this.api.deleteSchedule(+this.repoId(), id).subscribe(() => this.loadSchedules());
+  }
+
+  protected deleteRepository(): void {
+    this.api.deleteRepository(+this.repoId()).subscribe(() => this.router.navigate(['/overview']));
   }
 
   protected reset(r: RepositoryDto): void {
