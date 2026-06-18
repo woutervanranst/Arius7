@@ -1,6 +1,7 @@
 using Arius.AzureBlob;
 using Arius.Core;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -34,7 +35,7 @@ internal static class Program
             return 1;
         }
 
-        var key = options.Key ?? Environment.GetEnvironmentVariable("ARIUS_KEY");
+        var key = ResolveKey(options.Key, account);
 
         using var loggerFactory = LoggerFactory.Create(b => b
             .SetMinimumLevel(LogLevel.Information)
@@ -62,6 +63,27 @@ internal static class Program
             logger.LogError(ex, "Migration failed: {Message}", ex.Message);
             return 1;
         }
+    }
+
+    // Shared with Arius.Cli (same UserSecretsId) so `arius:<account>:key` / `arius:key`
+    // secrets resolve identically — convenient when stepping through in Visual Studio.
+    private const string AriusUserSecretsId = "1bfdbc8c-623a-4240-a1df-52ef154346b5";
+
+    /// <summary>Resolves the account key: CLI flag → ARIUS_KEY env var → user secrets. Mirrors Arius.Cli.</summary>
+    private static string? ResolveKey(string? cliKey, string accountName)
+    {
+        if (!string.IsNullOrWhiteSpace(cliKey))
+            return cliKey;
+
+        var env = Environment.GetEnvironmentVariable("ARIUS_KEY");
+        if (!string.IsNullOrWhiteSpace(env))
+            return env;
+
+        var config = new ConfigurationBuilder()
+            .AddUserSecrets(AriusUserSecretsId) // string-id overload treats a missing secrets file as optional
+            .Build();
+
+        return config[$"arius:{accountName}:key"] ?? config["arius:key"];
     }
 }
 
