@@ -33,10 +33,10 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
           <div class="ar-snap-menu">
             @for (s of snapshots(); track s.version; let i = $index) {
               <button class="ar-snap-item" data-testid="snapshot-item" (click)="pickSnapshot(s, i)">
-                <span style="font-weight:600">v{{ snapshots().length - i }}</span>
+                <span style="font-weight:600">v{{ i + 1 }}</span>
                 <span style="color:#71717a">{{ s.timestamp | date:'dd MMM yyyy · HH:mm' }}</span>
                 <span style="color:#a1a1aa">{{ s.fileCount }} files</span>
-                @if (i === 0) { <span class="ar-pill-green">LATEST</span> }
+                @if (i === snapshots().length - 1) { <span class="ar-pill-green">LATEST</span> }
               </button>
             } @empty {
               <div style="padding:12px;color:#a1a1aa;font-size:12.5px">No snapshots</div>
@@ -310,7 +310,8 @@ export class FilesTabComponent {
   // ── Snapshots / time-travel ─────────────────────────────────────────────
   protected readonly activeIndex = computed(() => {
     const v = this.viewSnap();
-    if (!v) return 0;
+    // No snapshot selected ⇒ live working state, which sits at the newest (last) snapshot.
+    if (!v) return Math.max(0, this.snapshots().length - 1);
     return Math.max(0, this.snapshots().findIndex(s => s.version === v));
   });
   protected isActiveIndex(i: number): boolean { return i === this.activeIndex(); }
@@ -322,11 +323,12 @@ export class FilesTabComponent {
     const list = this.snapshots();
     if (!list.length) return '—';
     const i = this.activeIndex();
-    return 'v' + (list.length - i);
+    return 'v' + (i + 1);
   });
   protected pickSnapshot(s: SnapshotDto, index: number): void {
     this.pickerOpen.set(false);
-    this.viewSnap.set(index === 0 ? null : s.version);
+    // Picking the newest (last) snapshot maps to the null "live working state" view.
+    this.viewSnap.set(index === this.snapshots().length - 1 ? null : s.version);
     this.resetToRoot();
   }
 
