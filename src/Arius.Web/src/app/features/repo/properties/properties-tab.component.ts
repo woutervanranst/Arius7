@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { ApiService } from '../../../core/api/api.service';
 import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
 
-/** Properties tab: friendly alias, read-only account/container, account key (rotate), local folder. Save in a later phase. */
+/** Properties tab: friendly alias, read-only account/container, account key, encryption passphrase (rotate), local folder, schedules, and repository delete. */
 @Component({
   selector: 'arius-properties-tab',
   standalone: true,
@@ -28,13 +28,25 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
           <small>Stored encrypted in the Arius.Api SQLite. Replace to rotate the key.</small>
         </label>
         <label class="ar-field">
+          <span>Encryption passphrase</span>
+          <input class="ar-input ar-mono" type="password" data-testid="prop-passphrase" placeholder="•••••••• (replace to rotate)" [(ngModel)]="passphrase" />
+          <small>Encrypts your data in the archive. Replace to rotate; existing snapshots stay readable with the old passphrase.</small>
+        </label>
+        @if (passphrase) {
+          <label class="ar-field">
+            <span>Confirm passphrase</span>
+            <input class="ar-input ar-mono" type="password" data-testid="prop-passphrase-confirm" placeholder="Re-enter the new passphrase" [(ngModel)]="passphraseConfirm" />
+            @if (passphraseMismatch()) { <small style="color:#dc2626">Passphrases don't match.</small> }
+          </label>
+        }
+        <label class="ar-field">
           <span>Local folder</span>
           <input class="ar-input ar-mono" [(ngModel)]="localPath" />
           <small>Folder the Files view overlays against the archive, and the default source for archive runs.</small>
         </label>
         <div class="flex items-center justify-end gap-2.5" style="margin-top:18px">
           <button class="ar-btn-outline" (click)="reset(r)">Discard</button>
-          <button class="ar-btn-primary" (click)="save()"><i class="ki-filled ki-check"></i>Save changes</button>
+          <button class="ar-btn-primary" [disabled]="passphraseMismatch()" (click)="save()"><i class="ki-filled ki-check"></i>Save changes</button>
         </div>
         @if (saved()) { <div style="text-align:right;color:#15803d;font-size:12.5px;margin-top:8px">Saved.</div> }
       </div>
@@ -96,6 +108,8 @@ export class PropertiesTabComponent {
   protected readonly repo = signal<RepositoryDto | null>(null);
   protected alias = '';
   protected accountKey = '';
+  protected passphrase = '';
+  protected passphraseConfirm = '';
   protected localPath = '';
   protected readonly saved = signal(false);
   protected readonly schedules = signal<ScheduleDto[]>([]);
@@ -129,18 +143,31 @@ export class PropertiesTabComponent {
     this.api.deleteRepository(+this.repoId()).subscribe(() => this.router.navigate(['/overview']));
   }
 
+  /** True once a new passphrase is typed but the confirmation doesn't match — blocks Save. */
+  protected passphraseMismatch(): boolean {
+    return this.passphrase !== '' && this.passphrase !== this.passphraseConfirm;
+  }
+
   protected reset(r: RepositoryDto): void {
     this.alias = r.alias;
     this.localPath = r.localPath ?? '';
     this.accountKey = '';
+    this.passphrase = '';
+    this.passphraseConfirm = '';
     this.saved.set(false);
   }
 
   protected save(): void {
-    // Phase 2 saves alias + local folder; account-key rotation is account-level (later phase).
+    // Send the passphrase only when a new one is entered; omitting it leaves the stored one unchanged.
     this.api.patchRepository(+this.repoId(), {
       alias: this.alias,
       localPath: this.localPath,
-    }).subscribe(r => { this.repo.set(r); this.saved.set(true); });
+      ...(this.passphrase ? { passphrase: this.passphrase } : {}),
+    }).subscribe(r => {
+      this.repo.set(r);
+      this.passphrase = '';
+      this.passphraseConfirm = '';
+      this.saved.set(true);
+    });
   }
 }
