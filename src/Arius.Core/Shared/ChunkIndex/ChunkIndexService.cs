@@ -670,17 +670,30 @@ internal sealed class ChunkIndexService : IChunkIndexService
                     Stage(CreateLargeRepairEntry(item));
                     break;
                 case BlobMetadataKeys.TypeThin:
-                    pendingThin.Add(ReadThinStub(item)); // parent tar tier/size not known yet — resolved after the listing
+                {
+                    // Parent tar tier/size aren't known yet (the tar may be listed later), so buffer the
+                    // parent-independent fields now and resolve after the listing.
+                    var contentHash = ContentHash.Parse(item.Name.Name.ToString());
+                    if (!metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
+                        throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+                    pendingThin.Add((contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize)));
                     break;
+                }
                 case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
                     tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item)); // no entry of its own; recovered via its thin chunks
                     break;
             }
         }
 
-        // Resolve the buffered thin chunks now that every parent tar is known, then flush the tail.
-        foreach (var stub in pendingThin)
-            Stage(ResolveThinEntry(stub, tarMetadata));
+        // Resolve the buffered thin chunks now that every parent tar is known, then flush the tail. The thin
+        // stub is always uploaded Cool; its data tier is the parent tar's. A parent tar absent from the listing
+        // means the repository is broken — fail the repair rather than persist a guessed (hydrated) tier.
+        foreach (var (contentHash, parent, originalSize) in pendingThin)
+        {
+            if (!tarMetadata.TryGetValue(parent, out var parentTar))
+                throw new ChunkIndexRepairException(BlobPaths.ThinChunkPath(contentHash), $"parent tar chunk {parent} not found in repository listing");
+            Stage(new(contentHash, parent, originalSize, parentTar.ChunkSize, parentTar.Tier));
+        }
         FlushStaged();
 
         // Compute a fresh balanced layout from the staged entries: recursively split any range
@@ -750,34 +763,6 @@ internal sealed class ChunkIndexService : IChunkIndexService
         var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
         var chunkSize    = ReadChunkSize(item);
         return new(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
-    }
-
-    /// <summary>
-    /// Reads the parent-independent fields of a thin chunk from its blob metadata. Tier and chunk size are
-    /// deferred to <see cref="ResolveThinEntry"/>: they come from the parent tar, which may be listed later.
-    /// </summary>
-    private static (ContentHash ContentHash, ChunkHash Parent, long OriginalSize) ReadThinStub(BlobListItem item)
-    {
-        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-        if (item.Metadata is null || !item.Metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-
-        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-        return (contentHash, parentChunkHash, originalSize);
-    }
-
-    /// <summary>
-    /// Resolves a buffered thin chunk into a shard entry, taking its tier and chunk size from the parent tar.
-    /// </summary>
-    private static ShardEntry ResolveThinEntry((ContentHash ContentHash, ChunkHash Parent, long OriginalSize) stub, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
-    {
-        // The thin stub itself is always uploaded Cool; its data tier is the parent tar's tier.
-        // A parent tar absent from the listing means the repository is broken — fail the repair
-        // rather than persisting a guessed (hydrated) tier.
-        if (!tarMetadata.TryGetValue(stub.Parent, out var parentTar))
-            throw new ChunkIndexRepairException(BlobPaths.ThinChunkPath(stub.ContentHash), $"parent tar chunk {stub.Parent} not found in repository listing");
-
-        return new(stub.ContentHash, stub.Parent, stub.OriginalSize, parentTar.ChunkSize, parentTar.Tier);
     }
 
     private static long ReadRequiredLongMetadata(BlobListItem item, string key)
