@@ -3,6 +3,9 @@
     <Project Path="Arius.Benchmarks/Arius.Benchmarks.csproj" />
     <Project Path="Arius.AzureBlob.Benchmarks/Arius.AzureBlob.Benchmarks.csproj" />
   </Folder>
+  <Folder Name="/Migration/">
+    <Project Path="Arius.Migration/Arius.Migration.csproj" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Arius.AzureBlob.Tests/Arius.AzureBlob.Tests.csproj" />
     <Project Path="Arius.Architecture.Tests/Arius.Architecture.Tests.csproj" />
@@ -18,5 +21,4 @@
   <Project Path="Arius.Cli/Arius.Cli.csproj" />
   <Project Path="Arius.Core/Arius.Core.csproj" />
   <Project Path="Arius.Explorer/Arius.Explorer.csproj" />
-  <Project Path="Arius.Migration/Arius.Migration.csproj" />
 </Solution>
