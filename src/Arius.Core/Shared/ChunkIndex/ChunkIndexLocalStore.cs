@@ -25,6 +25,7 @@ internal sealed class ChunkIndexLocalStore
     private readonly string                        _connectionString;
     private readonly Lock                          _localStateGate = new();
 
+
     // -- LIFECYCLE ------------------------------------------------------------
 
     /// <summary>
@@ -63,6 +64,7 @@ internal sealed class ChunkIndexLocalStore
             throw CreateLocalStoreException(ex);
         }
     }
+
 
     // -- FIND ---------------------------------------------------------------
 
@@ -338,6 +340,8 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
+    // -- STATISTICS -------------------------------------------------
+
     /// <summary>
     /// Aggregates distinct-chunk count and stored size per storage tier. Many content hashes can share
     /// one chunk (tar-bundled small files), so the inner query collapses to one row per chunk hash
@@ -372,6 +376,8 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
+    // -- PENDING FLUSH -------------------------------------------------
+
     /// <summary>
     /// Returns whether the local store currently contains entries pending local flush.
     /// </summary>
@@ -379,8 +385,8 @@ internal sealed class ChunkIndexLocalStore
     {
         try
         {
-            using var connection = OpenConnection();
-            var hasPendingFlushEntries = HasPendingFlushEntries(connection);
+            using var connection             = OpenConnection();
+            var       hasPendingFlushEntries = HasPendingFlushEntries(connection);
             _logger.LogDebug("[chunk-index-local] HasPendingFlushEntries: value={HasPendingFlushEntries}", hasPendingFlushEntries);
             return hasPendingFlushEntries;
         }
@@ -389,8 +395,6 @@ internal sealed class ChunkIndexLocalStore
             throw CreateLocalStoreException(ex);
         }
     }
-
-    // -- PENDING FLUSH WRITES -------------------------------------------------
 
     /// <summary>
     /// Records a newly discovered entry as pending local flush until it is uploaded to remote shard blobs.
@@ -611,7 +615,6 @@ internal sealed class ChunkIndexLocalStore
                 var deletedPrefixRows = deletePrefixes.ExecuteNonQuery();
                 transaction.Commit();
 
-                DeleteLegacyShardCacheFiles();
                 _logger.LogDebug("[chunk-index-local] ClearRemoteBackedCache: deletedEntryRows={DeletedEntryRows} deletedPrefixRows={DeletedPrefixRows}", deletedEntryRows, deletedPrefixRows);
             }
         }
@@ -845,19 +848,4 @@ internal sealed class ChunkIndexLocalStore
 
     private static byte[] ParseHashBytes(string value)
         => Convert.FromHexString(value);
-
-    private void DeleteLegacyShardCacheFiles()
-    {
-        foreach (var fileName in _fileSystem.EnumerateFileNames(RelativePath.Root))
-        {
-            if (IsLegacyShardCacheFile(fileName))
-                _fileSystem.DeleteFile(RelativePath.Root / fileName);
-        }
-    }
-
-    private static bool IsLegacyShardCacheFile(PathSegment fileName)
-    {
-        var value = fileName.ToString();
-        return value.Length == 2 && value.All(Uri.IsHexDigit);
-    }
 }
