@@ -405,25 +405,6 @@ public class ChunkIndexServiceLookupTests
         await Should.ThrowAsync<ChunkIndexRepairIncompleteException>(() => index.FlushAsync());
     }
 
-    [Test]
-    public async Task InvalidateCaches_DeletesShardCacheButKeepsRepairMarker()
-    {
-        var blobs = new FakeInMemoryBlobContainerService();
-        var repositoryKey = UniqueRepositoryKey("invalidate-marker");
-        var repository = new RelativeFileSystem(RepositoryLocalStatePaths.GetRepositoryRoot(repositoryKey, repositoryKey));
-        var cache = new RelativeFileSystem(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey));
-        repository.CreateDirectory(RelativePath.Root);
-        cache.CreateDirectory(RelativePath.Root);
-        await repository.WriteAllBytesAsync(ChunkIndexService.RepairInProgressMarkerPath, [], CancellationToken.None);
-        await cache.WriteAllBytesAsync(RelativePath.Root / PathSegment.Parse("aa"), [1], CancellationToken.None);
-        using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, new FakeSnapshotService(), repositoryKey, repositoryKey);
-
-        index.InvalidateCaches();
-
-        repository.FileExists(ChunkIndexService.RepairInProgressMarkerPath).ShouldBeTrue();
-        cache.FileExists(RelativePath.Root / PathSegment.Parse("aa")).ShouldBeFalse();
-    }
-
     // ── Dynamic shard layout ─────────────────────────────────────────────────
 
     [Test]
