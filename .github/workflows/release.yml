@@ -79,10 +79,22 @@ jobs:
       - name: 🛎️ Checkout
         uses: actions/checkout@v6
 
-      - name: 🏷️ Extract version from tag
+      - name: 🏷️ Extract version + image tags from tag
         id: version
         shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Pre-release tags (e.g. v1.2.3-beta) publish only the version tag, never :latest.
+          tags="woutervanranst/ariusweb:$version"
+          if [[ "$version" != *-* ]]; then
+            tags="$tags"$'\n'"woutervanranst/ariusweb:latest"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: 🛠️ Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -100,9 +112,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            woutervanranst/ariusweb:${{ steps.version.outputs.version }}
-            woutervanranst/ariusweb:latest
+          tags: ${{ steps.version.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -198,10 +208,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Mark pre-release tags (e.g. v1.2.3-beta) as GitHub pre-releases.
+          prerelease=""
+          if [[ "${{ steps.version.outputs.version }}" == *-* ]]; then prerelease="--prerelease"; fi
           gh release create ${{ github.ref_name }} \
             --repo ${{ github.repository }} \
             --title "Arius ${{ steps.version.outputs.version }}" \
             --notes-file CHANGELOG.md \
+            $prerelease \
             dist/*
 
       - name: 🔄 Trigger verify-self-update workflow
