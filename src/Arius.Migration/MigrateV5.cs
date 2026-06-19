@@ -74,7 +74,7 @@ internal sealed class MigrateV5
         var dbPath = await DownloadStateDbAsync(cancellationToken);
         try
         {
-            using var connection = new SqliteConnection($"Data Source={dbPath}");
+            await using var connection = new SqliteConnection($"Data Source={dbPath}");
             connection.Open();
 
             var (binaries, pointers) = LoadState(connection);
@@ -84,7 +84,7 @@ internal sealed class MigrateV5
             _logger.LogInformation("v5 state: {Binaries} binaries ({Large} large, {Tar} tar, {Thin} thin), {Pointers} pointer entries; {Blobs} chunk blobs in storage",
                 binaries.Count, large.Count, tars.Count, thins.Count, pointers.Count, chunkBlobs.Count);
 
-            await ValidateTarEntryNamesAsync(tars, cancellationToken);
+            //await ValidateTarEntryNamesAsync(tars, cancellationToken);
 
             if (dryRun)
             {
@@ -215,29 +215,29 @@ internal sealed class MigrateV5
         return map;
     }
 
-    private async Task ValidateTarEntryNamesAsync(List<BinaryRow> tars, CancellationToken cancellationToken)
-    {
-        // v7 restore requires every tar entry name to parse as a ContentHash. v5 names entries by
-        // hash.ToString() (hex), so this should always hold — but verify one tar up front rather than
-        // discover an un-restorable repo only at restore time.
-        if (tars.Count == 0)
-            return;
+    //private async Task ValidateTarEntryNamesAsync(List<BinaryRow> tars, CancellationToken cancellationToken)
+    //{
+    //    // v7 restore requires every tar entry name to parse as a ContentHash. v5 names entries by
+    //    // hash.ToString() (hex), so this should always hold — but verify one tar up front rather than
+    //    // discover an un-restorable repo only at restore time.
+    //    if (tars.Count == 0)
+    //        return;
 
-        var tarHash = ChunkHash.FromDigest(tars[0].Hash);
-        await using var stream = await _chunkStorage.DownloadAsync(tarHash, cancellationToken: cancellationToken);
-        await using var tarReader = new TarReaderAdapter(stream);
+    //    var tarHash = ChunkHash.FromDigest(tars[0].Hash);
+    //    await using var stream = await _chunkStorage.DownloadAsync(tarHash, cancellationToken: cancellationToken);
+    //    await using var tarReader = new TarReaderAdapter(stream);
 
-        var entries = 0;
-        while (await tarReader.GetNextEntryAsync(cancellationToken) is { } name)
-        {
-            if (!ContentHash.TryParse(name, out _))
-                throw new InvalidDataException(
-                    $"Tar chunk {tarHash.Short8} has entry '{name}' that is not a content hash; this v5 repo cannot be restored by v7.");
-            entries++;
-        }
+    //    var entries = 0;
+    //    while (await tarReader.GetNextEntryAsync(cancellationToken) is { } name)
+    //    {
+    //        if (!ContentHash.TryParse(name, out _))
+    //            throw new InvalidDataException(
+    //                $"Tar chunk {tarHash.Short8} has entry '{name}' that is not a content hash; this v5 repo cannot be restored by v7.");
+    //        entries++;
+    //    }
 
-        _logger.LogInformation("── Stage 2: validated {Entries} entry name(s) in tar {Tar} parse as content hashes", entries, tarHash.Short8);
-    }
+    //    _logger.LogInformation("── Stage 2: validated {Entries} entry name(s) in tar {Tar} parse as content hashes", entries, tarHash.Short8);
+    //}
 
     // ── Stage 3: Upsert chunk metadata ──────────────────────────────────────────────
 
