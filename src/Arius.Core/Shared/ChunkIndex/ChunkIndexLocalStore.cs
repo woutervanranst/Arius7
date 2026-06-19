@@ -457,20 +457,35 @@ internal sealed class ChunkIndexLocalStore
 
     // -- REMOTE-BACKED CACHE --------------------------------------------------
 
+    private const int UpsertBatchSize = 1024; // rows per transaction; amortizes the per-commit cost over a large repair
+
     /// <summary>
-    /// Records a known remote-backed entry, typically during explicit repair from authoritative chunk blobs.
+    /// Records known remote-backed entries, typically during explicit repair from authoritative chunk blobs.
+    /// Entries are written in fixed-size batched transactions so a multi-million-entry repair neither commits
+    /// per row nor holds a single unbounded transaction open.
     /// </summary>
-    public void UpsertRemoteBacked(ShardEntry entry)
+    public void UpsertRemoteBacked(IEnumerable<ShardEntry> entries)
     {
         try
         {
-            using var connection = OpenConnection();
-            using var transaction = connection.BeginTransaction();
-            using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: false);
-            BindEntry(command, entry);
-            var rowsAffected = command.ExecuteNonQuery();
-            transaction.Commit();
-            _logger.LogDebug("[chunk-index-local] UpsertRemoteBacked: contentHash={ContentHash} rowsAffected={RowsAffected}", entry.ContentHash.Short8, rowsAffected);
+            foreach (var batch in entries.Chunk(UpsertBatchSize))
+            {
+                lock (_localStateGate)
+                {
+                    using var connection = OpenConnection();
+                    using var transaction = connection.BeginTransaction();
+                    using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: false);
+                    var rowsAffected = 0;
+                    foreach (var entry in batch)
+                    {
+                        BindEntry(command, entry);
+                        rowsAffected += command.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                    _logger.LogDebug("[chunk-index-local] UpsertRemoteBackedBatch: entries={Entries} rowsAffected={RowsAffected}", batch.Length, rowsAffected);
+                }
+            }
         }
         catch (SqliteException ex)
         {
