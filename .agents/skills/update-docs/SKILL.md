@@ -53,11 +53,14 @@ file is the *law*. Do not restate those rules here or in the docs.
 - `src/Arius.Core/Shared/<X>/` → `docs/design/core/shared/<x>.md`.
 - a host project (`Arius.Cli` / `Arius.Api` / `Arius.Web` / `Arius.Explorer`) → `docs/design/hosts/<h>.md`,
   and if user-visible behavior changed, the matching `docs/guide/<h>.md`.
-- CLI options / API endpoints / UI features → the relevant `docs/guide/*`.
+- CLI options / API endpoints / UI features → the relevant `docs/guide/*`; how you build/run/test locally →
+  `docs/guide/development.md`.
 - a cross-cutting change (events/progress, logging, performance, memory-boundedness, service-lifetimes,
   testing) → `docs/design/cross-cutting/*`.
-- a **new** `src/` unit with intent above the code → a **new** design doc at the mirrored path (follow the
-  template in `docs/README.md`). A **deleted** unit → remove or repoint its doc and any links to it.
+- a **new** design doc or guide → create it at the mirrored path (follow the template in `docs/README.md`)
+  **and add a `nav:` entry in `mkdocs.yml`** — the site builds `--strict`, so a page missing from nav fails
+  it. A **deleted/renamed** unit → remove or repoint its doc, its `mkdocs.yml` nav entry, and any links to
+  it; if you're collapsing one doc into another, **verify the lift was faithful** (step 4).
 
 ### 3. Classify each update by doc type (and keep it MECE)
 - A genuine **one-time architectural decision** (a choice with alternatives, evident in the diff/intent) →
@@ -73,6 +76,13 @@ file is the *law*. Do not restate those rules here or in the docs.
 - Ground every claim in the **post-change** code: read the changed files; cite real type/method/constant
   names. Match the surrounding doc's voice and use mermaid where a picture beats prose.
 - Touch only what the change actually affects (surgical edits, like `simplify`/`design-review`).
+- **Links that leave `docs/`** — to the repo-root `README.md`, `docker-compose.yml`, or `src/**` — must be
+  **absolute GitHub URLs** (`https://github.com/woutervanranst/Arius7/...`), never relative: a relative link
+  that escapes `docs/` breaks the `--strict` site build. In-tree `.md` links stay relative.
+- **When deleting or collapsing existing doc content** (not just a planning artifact), verify the lift is
+  faithful: diff the old content against where it now lives — recover it with `git show <base>:<path>` if it
+  was already removed — and restore any dropped **durable** content (intent, invariants, scannable reference
+  tables). Do **not** restore mechanical detail the code owns — that re-creates the over-documentation MECE avoids.
 - For a large diff, spawn one subagent per affected doc to draft in parallel, then do a single consistency
   pass (voice, cross-links, no overlap between docs).
 
@@ -83,9 +93,13 @@ file is the *law*. Do not restate those rules here or in the docs.
   "why" without polluting the living docs. (Use the change/PR date for `<YYYY-MM-DD>`.)
 
 ### 6. Verify and report
-Run the same gates the consolidation used and fix anything they flag:
-- **Links:** every relative `.md` link under `docs/` resolves (exclude fenced code blocks; `docs/history/`
-  may keep its frozen absolute paths).
+Run the gates and fix anything they flag:
+- **Site build (the authoritative gate):** `pip install -r docs/requirements.txt && mkdocs build --strict`
+  exits 0 with **no warnings**. `--strict` validates every relative link, every `#anchor`, and that new
+  pages are in `mkdocs.yml` nav — it supersedes a manual link grep. It is the same gate CI runs
+  (`.github/workflows/docs.yml`). Common fix: a cross-doc heading link must match MkDocs' slug (e.g.
+  `## Open seams / future` → `#open-seams-future`). (`docs/history/` is `not_in_nav` and may keep frozen
+  absolute paths.)
 - **No stale references:** nothing in the living docs (or code comments) points at a path this change moved
   or deleted — `grep -rn '<moved-or-removed-path>' docs src --include='*.md' --include='*.cs'`.
 - **Isomorphism / coverage:** every new or changed `src/` unit maps to a doc, or is deliberately code-only
