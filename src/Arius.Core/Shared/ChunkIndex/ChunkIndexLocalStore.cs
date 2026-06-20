@@ -502,9 +502,9 @@ internal sealed class ChunkIndexLocalStore
     /// Fills each thin chunk's data tier and chunk size from its parent tar, identified by the parent chunk
     /// hash the repair listing stored in the entry's <c>chunk_hash</c> column. Repair stages thin entries with
     /// placeholder tier/size during the listing (a thin chunk's parent tar may be listed after it) and enriches
-    /// them here once every tar is known. One transaction, one <c>UPDATE</c> per tar; the
-    /// <c>content_hash &lt;&gt; chunk_hash</c> guard touches only thin chunks (a large chunk's chunk_hash equals
-    /// its content_hash).
+    /// them here once every tar is known. One transaction, one <c>UPDATE</c> per tar, each an index seek on
+    /// <c>ix_chunk_index_entries_chunk_hash</c> (not a full table scan); the <c>content_hash &lt;&gt; chunk_hash</c>
+    /// guard touches only thin chunks (a large chunk's chunk_hash equals its content_hash).
     /// </summary>
     public void EnrichThinChunks(IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
     {
@@ -774,6 +774,11 @@ internal sealed class ChunkIndexLocalStore
 
             CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_pending_flush
                 ON chunk_index_entries(pending_flush) WHERE pending_flush = 1;
+
+            -- Repair's EnrichThinChunks issues one UPDATE per tar keyed on chunk_hash, and GetStatistics
+            -- groups by chunk_hash; without this index both fall back to a full table scan per query.
+            CREATE INDEX IF NOT EXISTS ix_chunk_index_entries_chunk_hash
+                ON chunk_index_entries(chunk_hash);
 
             CREATE TABLE IF NOT EXISTS loaded_prefixes (
                 prefix                      TEXT NOT NULL PRIMARY KEY,
