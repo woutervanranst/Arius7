@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
-using System.Threading.Channels;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
@@ -565,78 +564,59 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Builds the balanced leaf shards for one base prefix from local store state: a single shard at the
-    /// base when its range fits the threshold, otherwise the non-empty leaves of an in-memory 16-way split.
+    /// Streams the balanced leaf shards for each base prefix, lazily — one shard is resident at a time.
     /// </summary>
-    private IEnumerable<(PathSegment Prefix, Shard Shard)> BuildLeafShards(PathSegment basePrefix)
+    private IEnumerable<(PathSegment Prefix, Shard Shard)> BuildShards(IReadOnlyList<PathSegment> basePrefixes)
+        => basePrefixes.SelectMany(BuildShards);
+
+    /// <summary>
+    /// Descends the local store's hash space for one prefix: a range that fits the threshold is a single
+    /// shard, read from the store; a range that overflows is split 16-way by the next hex character and each
+    /// child descended. The database drives the shape — there is no in-memory split, and only one shard is
+    /// ever resident regardless of repository size or hash distribution. Recursion terminates by full hash
+    /// length (a 64-char prefix is a single content hash); SHA-256 uniformity bottoms out one or two levels
+    /// below the 2-char root.
+    /// </summary>
+    private IEnumerable<(PathSegment Prefix, Shard Shard)> BuildShards(PathSegment prefix)
     {
-        var shard = BuildShard(basePrefix);
-        if (shard.Count == 0)
+        var count = _localStore.CountRangeEntries(prefix);
+        if (count == 0)
             yield break;
 
-        if (shard.Count <= _maxShardEntryCount)
+        if (count <= _maxShardEntryCount)
         {
-            yield return (basePrefix, shard);
+            yield return (prefix, BuildShard(prefix));
             yield break;
         }
 
-        foreach (var leaf in ChunkIndexRouter.PartitionIntoLeaves(basePrefix, shard.Entries.ToList(), _maxShardEntryCount))
-        {
-            var leafShard = new Shard();
-            leafShard.AddOrUpdateRange(leaf.Entries); // shares the same immutable ShardEntry instances — no entry copy
-            yield return (leaf.Prefix, leafShard);
-        }
+        foreach (var child in ChunkIndexRouter.ChildPrefixes(prefix))
+            foreach (var shard in BuildShards(child))
+                yield return shard;
     }
 
     /// <summary>
     /// Builds the balanced leaf shards for the given base prefixes and uploads them, recording each
-    /// prefix→etag in <paramref name="uploadedStates"/>. A single producer constructs shards (sequential
-    /// local-store reads) into a bounded channel; <see cref="FlushWorkers"/> consumers upload them (parallel
-    /// network I/O). The bound caps resident shards at ~<see cref="FlushWorkers"/> regardless of repository
-    /// size. Returns the uploaded leaf prefixes.
+    /// prefix→etag in <paramref name="uploadedStates"/>. <c>BuildShards</c> streams shards lazily as the
+    /// single producer (sequential local-store reads) while <see cref="FlushWorkers"/> consumers upload in
+    /// parallel; <c>Parallel.ForEachAsync</c> serializes the enumeration and bounds in-flight shards to
+    /// ~<see cref="FlushWorkers"/>, so peak memory is independent of repository size. Returns the uploaded
+    /// leaf prefixes.
     /// </summary>
     private async Task<IReadOnlyList<PathSegment>> BuildAndUploadShardsAsync(
         IReadOnlyList<PathSegment> basePrefixes,
         ConcurrentDictionary<PathSegment, string> uploadedStates,
         CancellationToken cancellationToken)
     {
-        var shards   = Channel.CreateBounded<(PathSegment Prefix, Shard Shard)>(
-            new BoundedChannelOptions(FlushWorkers) { SingleWriter = true, SingleReader = false });
         var uploaded = new ConcurrentBag<PathSegment>();
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        var producer = Task.Run(async () =>
-        {
-            try
+        await Parallel.ForEachAsync(
+            BuildShards(basePrefixes),
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (shard, ct) =>
             {
-                foreach (var basePrefix in basePrefixes)
-                    foreach (var leaf in BuildLeafShards(basePrefix))
-                        await shards.Writer.WriteAsync(leaf, cts.Token);
-                shards.Writer.Complete();
-            }
-            catch (Exception ex)
-            {
-                shards.Writer.Complete(ex);
-            }
-        }, CancellationToken.None);
-
-        try
-        {
-            await Parallel.ForEachAsync(
-                shards.Reader.ReadAllAsync(cts.Token),
-                new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cts.Token },
-                async (leaf, ct) =>
-                {
-                    var result = await UploadShardAsync(leaf.Prefix, leaf.Shard, ct);
-                    uploadedStates[leaf.Prefix] = result.ETag;
-                    uploaded.Add(leaf.Prefix);
-                });
-        }
-        finally
-        {
-            await cts.CancelAsync(); // unblock the producer if a consumer faulted or ended early
-            await producer;          // observe producer completion/fault (faults arrive via Writer.Complete(ex))
-        }
+                var result = await UploadShardAsync(shard.Prefix, shard.Shard, ct);
+                uploadedStates[shard.Prefix] = result.ETag;
+                uploaded.Add(shard.Prefix);
+            });
 
         return uploaded.ToList();
     }
@@ -684,16 +664,17 @@ internal sealed class ChunkIndexService : IChunkIndexService
         AddRepairMarker();
         _localStore.RecreateDatabase(backupExisting: true);
 
-        // Rebuild the entries from a single listing of the chunk blobs. A thin chunk's data lives in its
-        // parent tar (the thin stub itself is always uploaded Cool), so its tier hint and chunk size must
-        // come from the tar blob — which, ordered by hash, may be listed after the thin chunk. We therefore
-        // resolve large chunks inline, collect tar metadata as we go, and buffer the thin chunks, resolving
-        // them once the listing (and thus every parent tar) is known. Peak memory scales with the small-file
-        // count rather than the tar count, but a single listing halves the (metadata-heavy, paged) remote scan.
-        const int writeBatchSize = 1024; // entries staged per UpsertRemoteBacked call; large entries stream out so only thin stubs persist to the end
+        // Rebuild the entries from a single listing of the chunk blobs. Large chunks resolve inline. A thin
+        // chunk's data lives in its parent tar (the thin stub itself is always uploaded Cool), so its tier and
+        // chunk size come from the tar blob — which, ordered by hash, may be listed after the thin chunk.
+        // Rather than buffer every thin chunk, we write each thin row to the DB during the listing with its
+        // parent in chunk_hash and placeholder tier/size, remember only the distinct parent-tar hashes, and
+        // enrich them in one bulk pass once the listing (and thus every tar) is known. Peak memory scales with
+        // the tar count, not the small-file count, and a single listing keeps the paged remote scan minimal.
+        const int writeBatchSize = 1024; // entries staged per UpsertRemoteBacked call; the tail is flushed once the listing completes
 
-        var tarMetadata = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
-        var pendingThin = new List<(ContentHash ContentHash, ChunkHash Parent, long OriginalSize)>();
+        var tarMetadata       = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
+        var referencedParents = new HashSet<ChunkHash>(); // distinct parent tars referenced by thin chunks; O(#tars), not O(#small-files)
 
         var listedChunkCount  = 0;
         var rebuiltEntryCount = 0;
@@ -730,12 +711,13 @@ internal sealed class ChunkIndexService : IChunkIndexService
                     break;
                 case BlobMetadataKeys.TypeThin:
                 {
-                    // Parent tar tier/size aren't known yet (the tar may be listed later), so buffer the
-                    // parent-independent fields now and resolve after the listing.
+                    // The parent tar's tier/size aren't known yet (it may be listed later), so write the row now
+                    // with the parent in chunk_hash and placeholder tier/size, then enrich it after the listing.
                     var contentHash = ContentHash.Parse(item.Name.Name.ToString());
                     if (!metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
                         throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-                    pendingThin.Add((contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize)));
+                    Stage(new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool));
+                    referencedParents.Add(parentChunkHash);
                     break;
                 }
                 case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
@@ -744,16 +726,15 @@ internal sealed class ChunkIndexService : IChunkIndexService
             }
         }
 
-        // Resolve the buffered thin chunks now that every parent tar is known, then flush the tail. The thin
-        // stub is always uploaded Cool; its data tier is the parent tar's. A parent tar absent from the listing
-        // means the repository is broken — fail the repair rather than persist a guessed (hydrated) tier.
-        foreach (var (contentHash, parent, originalSize) in pendingThin)
-        {
-            if (!tarMetadata.TryGetValue(parent, out var parentTar))
-                throw new ChunkIndexRepairException(BlobPaths.ThinChunkPath(contentHash), $"parent tar chunk {parent} not found in repository listing");
-            Stage(new(contentHash, parent, originalSize, parentTar.ChunkSize, parentTar.Tier));
-        }
         FlushStaged();
+
+        // Every thin row was written with its parent in chunk_hash and placeholder tier/size; fill those in from
+        // the now-complete tar metadata. A referenced parent tar absent from the listing means the repository is
+        // broken — fail the repair rather than persist a guessed (hydrated) tier.
+        var missingParents = referencedParents.Where(parent => !tarMetadata.ContainsKey(parent)).ToList();
+        if (missingParents.Count > 0)
+            throw new ChunkIndexRepairException(BlobPaths.ChunkPath(missingParents[0]), $"parent tar chunk {missingParents[0]} not found in repository listing");
+        _localStore.EnrichThinChunks(tarMetadata);
 
         // Build and upload a fresh balanced layout from the staged entries through the shared
         // producer/consumer pipeline. This also re-balances an over-split remote layout (the

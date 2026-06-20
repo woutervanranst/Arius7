@@ -73,30 +73,14 @@ internal static class ChunkIndexRouter
     }
 
     /// <summary>
-    /// Recursively partitions <paramref name="entries"/> (all within range of
-    /// <paramref name="basePrefix"/>) into non-empty leaf shards of at most
-    /// <paramref name="maxEntryCount"/> entries, splitting 16-way by the next hex character.
+    /// The 16 child prefixes of <paramref name="prefix"/>, one per next hex character
+    /// (e.g. <c>aa</c> → <c>aa0</c>..<c>aaf</c>). The shard-building descent uses these to split an
+    /// over-threshold range one level deeper.
     /// </summary>
-    public static IReadOnlyList<(PathSegment Prefix, IReadOnlyList<ShardEntry> Entries)> PartitionIntoLeaves(
-        PathSegment basePrefix, IReadOnlyCollection<ShardEntry> entries, int maxEntryCount)
+    public static IEnumerable<PathSegment> ChildPrefixes(PathSegment prefix)
     {
-        var leaves = new List<(PathSegment, IReadOnlyList<ShardEntry>)>();
-        Recurse(basePrefix.ToString(), entries);
-        return leaves;
-
-        void Recurse(string prefix, IReadOnlyCollection<ShardEntry> scope)
-        {
-            foreach (var group in scope
-                         .GroupBy(entry => entry.ContentHash.Prefix(prefix.Length + 1))
-                         .OrderBy(group => group.Key, StringComparer.Ordinal))
-            {
-                var partition = group.ToList();
-                if (partition.Count <= maxEntryCount)
-                    leaves.Add((PathSegment.Parse(group.Key), partition));
-                else
-                    Recurse(group.Key, partition);
-            }
-        }
+        foreach (var c in "0123456789abcdef")
+            yield return PathSegment.Parse(prefix.ToString() + c);
     }
 
     /// <summary>

@@ -317,6 +317,31 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
+    /// <summary>
+    /// Number of locally stored entries whose content hash falls in <paramref name="prefix"/>'s range.
+    /// A <c>COUNT(*)</c> over the <c>content_hash</c> primary-key autoindex — index-only and sequential —
+    /// so the shard-building descent can ask "does this prefix fit one shard?" without reading any rows.
+    /// </summary>
+    public int CountRangeEntries(PathSegment prefix)
+    {
+        try
+        {
+            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM chunk_index_entries WHERE content_hash BETWEEN $lower AND $upper;";
+            command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+            command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+            var count = Convert.ToInt32(command.ExecuteScalar());
+            _logger.LogDebug("[chunk-index-local] CountRangeEntries: prefix={Prefix} count={Count}", prefix, count);
+            return count;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
     // -- STATISTICS -------------------------------------------------
 
     /// <summary>
@@ -462,6 +487,51 @@ internal sealed class ChunkIndexLocalStore
                     transaction.Commit();
                     _logger.LogDebug("[chunk-index-local] UpsertRemoteBackedBatch: entries={Entries} rowsAffected={RowsAffected}", batch.Length, rowsAffected);
                 }
+            }
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Fills each thin chunk's data tier and chunk size from its parent tar, identified by the parent chunk
+    /// hash the repair listing stored in the entry's <c>chunk_hash</c> column. Repair stages thin entries with
+    /// placeholder tier/size during the listing (a thin chunk's parent tar may be listed after it) and enriches
+    /// them here once every tar is known. One transaction, one <c>UPDATE</c> per tar; the
+    /// <c>content_hash &lt;&gt; chunk_hash</c> guard touches only thin chunks (a large chunk's chunk_hash equals
+    /// its content_hash).
+    /// </summary>
+    public void EnrichThinChunks(IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
+    {
+        if (tarMetadata.Count == 0)
+            return;
+
+        try
+        {
+            lock (_localStateGate)
+            {
+                using var connection = OpenConnection();
+                using var transaction = connection.BeginTransaction();
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE chunk_index_entries SET chunk_size = $chunkSize, storage_tier_hint = $storageTierHint WHERE chunk_hash = $parent AND content_hash <> chunk_hash;";
+                var parent          = command.Parameters.Add("$parent", SqliteType.Blob);
+                var chunkSize       = command.Parameters.Add("$chunkSize", SqliteType.Integer);
+                var storageTierHint = command.Parameters.Add("$storageTierHint", SqliteType.Integer);
+
+                var rowsAffected = 0;
+                foreach (var (parentHash, (tier, size)) in tarMetadata)
+                {
+                    parent.Value          = ParseHashBytes(parentHash.ToString());
+                    chunkSize.Value       = size;
+                    storageTierHint.Value = ShardEntry.SerializeTier(tier);
+                    rowsAffected         += command.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                _logger.LogDebug("[chunk-index-local] EnrichThinChunks: tars={Tars} rowsAffected={RowsAffected}", tarMetadata.Count, rowsAffected);
             }
         }
         catch (SqliteException ex)

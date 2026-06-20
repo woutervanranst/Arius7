@@ -314,6 +314,39 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
+    public void CountRangeEntries_CountsOnlyHashesInPrefixRange()
+    {
+        var store = CreateStore("range-count");
+        store.UpsertPendingFlush(new[] { Entry("aa2f"), Entry("aa30"), Entry("aa3f"), Entry("aa40") });
+
+        store.CountRangeEntries(PathSegment.Parse("aa3")).ShouldBe(2); // aa30, aa3f
+        store.CountRangeEntries(PathSegment.Parse("aa")).ShouldBe(4);
+        store.CountRangeEntries(PathSegment.Parse("bb")).ShouldBe(0);
+    }
+
+    [Test]
+    public void EnrichThinChunks_FillsThinTierAndSizeFromParentTar_AndLeavesLargeChunksUntouched()
+    {
+        var store     = CreateStore("enrich-thin");
+        var thin      = ContentHash.Parse("aa".PadRight(64, '1'));
+        var parentTar = ChunkHash.Parse("bb".PadRight(64, '2'));
+        var large     = ContentHash.Parse("cc".PadRight(64, '3'));
+
+        // Repair stages a thin row with its parent in chunk_hash and placeholder tier/size; a large chunk's
+        // chunk_hash equals its content_hash and already carries its own final tier/size.
+        store.UpsertRemoteBacked(new[]
+        {
+            new ShardEntry(thin, parentTar, 10, 0, BlobTier.Cool),
+            new ShardEntry(large, ChunkHash.Parse(large), 100, 3, BlobTier.Cool),
+        });
+
+        store.EnrichThinChunks(new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> { [parentTar] = (BlobTier.Archive, 2) });
+
+        store.FindEntry(thin).ShouldBe(new ShardEntry(thin, parentTar, 10, 2, BlobTier.Archive));
+        store.FindEntry(large).ShouldBe(new ShardEntry(large, ChunkHash.Parse(large), 100, 3, BlobTier.Cool));
+    }
+
+    [Test]
     public void GetRootsWithPendingFlushes_AndGetPendingFlushHashes_FilterByRootRange()
     {
         var store = CreateStore("pending-roots");
