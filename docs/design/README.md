@@ -180,9 +180,15 @@ and [snapshot](core/shared/snapshot.md) (the epoch/coordination model).
 `restore` and `ls` are read-only consumers: they never call `ValidateAsync`,
 `FlushAsync`, `CreateAsync`, or `AddEntry`, and neither creates a blob container.
 Because `FileTreeService.ReadAsync` always writes to the disk cache on a miss, caches
-warm organically across runs (an `archive` warms `ls` and `restore`; same-machine
-re-archive hits the fast-path epoch match with no remote listing). Per-service detail
-is under [Core / Shared](core/shared/chunk-index.md).
+warm organically across runs. Per-service detail is under [Core / Shared](core/shared/chunk-index.md).
+
+| Sequence | Effect |
+|---|---|
+| archive → ls | `ls` finds all tree blobs already cached |
+| archive → restore | restore finds all tree blobs already cached |
+| ls → restore | restore benefits from `ls`'s cache population |
+| archive → archive (same machine) | fast-path epoch match; no remote listing |
+| archive (machine A) → archive (machine B) | one `ListAsync(filetrees/)` prefetch on mismatch, then full cache rebuild |
 
 ---
 

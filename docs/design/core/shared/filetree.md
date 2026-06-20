@@ -34,6 +34,31 @@ A node's identity is the SHA-256 of its canonical serialized plaintext (`FileTre
 
 The file-entry grammar is byte-identical between staged and persisted nodes; the directory line differs only in *what the first field means* — a final child `FileTreeHash` (persisted) vs. a staging directory id (staged). That shared grammar is why one serializer parses both formats, via two named entry points: `ParsePersistedNodeEntryLine` and `ParseStagedNodeEntryLine`.
 
+### Layout and key types
+
+Repository-local roots come from `RepositoryLocalStatePaths`; filetree-specific path helpers from `FileTreePaths`.
+
+| Location | Owner | Purpose |
+|---|---|---|
+| `~/.arius/{account}-{container}/filetrees/.staging/` | `FileTreeStagingSession` + `FileTreeStagingWriter` | Per-run staging graph; one file per staged directory id. |
+| `~/.arius/{account}-{container}/filetrees/.staging.lock` | `FileTreeStagingSession` | Local mutual exclusion — prevents two local archive runs sharing one staging area. |
+| `~/.arius/{account}-{container}/filetrees/{fileTreeHash}` | `FileTreeService` | Final plaintext disk cache of one immutable node. Zero-byte files are remote-existence markers. |
+| `filetrees/{fileTreeHash}` (blob storage) | `FileTreeService` | Persisted filetree blob: canonical plaintext, zstd-compressed, then optionally encrypted. |
+| `~/.arius/{account}-{container}/snapshots/{timestamp}` | `SnapshotService` | Latest local snapshot cache, read by `ValidateAsync` to decide whether local filetree knowledge is trustworthy. |
+
+| Type | Responsibility |
+|---|---|
+| `FileTreeStagingSession` | Owns `.staging/` lifetime and `.staging.lock`; clears stale staging; one local staging session per repository cache. |
+| `FileTreeStagingWriter` | Converts canonical relative file paths into append-only staged node files (ancestor directory lines + leaf file lines). |
+| `FileTreeEntry` | Base type for entries inside a filetree node. |
+| `FileEntry` | Final file leaf: `Name`, `ContentHash`, `Created`, `Modified`. |
+| `DirectoryEntry` | Final persisted child-directory edge: `Name` + child `FileTreeHash`. |
+| `StagedDirectoryEntry` | Staging-only child edge: `Name` + child staging directory id (used before child hashes are known). |
+| `FileTreeSerializer` | Canonical text (de)serialization for filetree nodes; parses persisted and staged lines into the right subtype. |
+| `FileTreeBuilder` | Reads staged nodes, validates duplicates, recursively builds child subtrees, serializes, computes `FileTreeHash`, publishes finished nodes to the upload channel. |
+| `FileTreeService` | Validates local knowledge of remote filetrees, answers `ExistsInRemote`, uploads nodes, writes the disk cache, reads persisted nodes back. |
+| `SnapshotService` | Publishes the commit point — records the root `FileTreeHash` after all referenced filetrees are stored. |
+
 ### Staging → build → upload pipeline
 
 A filetree is **not** built incrementally as files are hashed. During archive, file entries are appended to flat per-directory staging files; only at the end of the run does `FileTreeBuilder` fold those into immutable Merkle nodes and upload them. This decouples build cost from total file count and keeps the durable commit (the snapshot) last. See [ADR-0006](../../../decisions/adr-0006-build-filetrees-from-hashed-directory-staging.md).

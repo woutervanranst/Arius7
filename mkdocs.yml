@@ -73,6 +73,7 @@ nav:
       - guide/web-ui.md
       - guide/explorer.md
       - guide/deployment.md
+      - guide/development.md
   - Design:
       - design/README.md
       - Core — Features:
