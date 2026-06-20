@@ -78,12 +78,4 @@ This is the chosen design.
 
 ## More Information
 
-This ADR supersedes the Stryker-related superpowers documents as implementation artifacts, specifically:
-
-* `docs/superpowers/specs/2026-04-29-stryker-core-design.md`
-* `docs/superpowers/plans/2026-04-29-stryker-core.md`
-* `docs/superpowers/specs/2026-04-29-stryker-coverage-improvement-design.md`
-* `docs/superpowers/plans/2026-04-29-stryker-coverage-improvement.md`
-* `docs/superpowers/specs/2026-04-29-stryker-adr-design.md`
-
-Those documents were useful for planning and execution, but this ADR is now the durable source of truth for why Arius uses the current Stryker setup and how it should be interpreted.
+This ADR supersedes the Stryker-related superpowers planning documents (since removed) and is now the durable source of truth for why Arius uses the current Stryker setup and how it should be interpreted. The configuration lives in `stryker-config.json` (repo root).

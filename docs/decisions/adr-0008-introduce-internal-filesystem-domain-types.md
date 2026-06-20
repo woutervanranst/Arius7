@@ -230,4 +230,4 @@ This is the chosen option.
 
 ## More Information
 
-This ADR is reflected in the OpenSpec change `introduce-core-filesystem-domain-types` under `openspec/changes/archive/2026-05-11-introduce-core-filesystem-domain-types/`. The OpenSpec proposal, design, specs, and tasks describe the implementation sequence and final scope decisions, while this ADR stands on its own as the architectural decision.
+This ADR is reflected in the OpenSpec change `introduce-core-filesystem-domain-types`, frozen under `docs/history/openspec-archive/2026-05-11-introduce-core-filesystem-domain-types/`. The frozen OpenSpec proposal and design describe the implementation sequence and final scope decisions, while this ADR stands on its own as the architectural decision.

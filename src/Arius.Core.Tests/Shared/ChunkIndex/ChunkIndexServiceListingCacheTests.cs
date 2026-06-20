@@ -221,14 +221,14 @@ public class ChunkIndexServiceListingCacheTests
         (await index.LookupAsync(hash)).ShouldBe(entry);
     }
 
-    // ── CHANGE C: the split-threshold design point is deliberate (see docs/cache.md) ────────────────────────
+    // ── CHANGE C: the split-threshold design point is deliberate (see docs/design/core/shared/chunk-index.md) ────────────────────────
 
     [Test]
     public void MaxShardEntryCount_DesignPoint_IsPinnedTo1024()
     {
         // 1024 keeps incremental flush re-uploads cheap (~11 KB/touched shard) and keeps ~1.3 M chunks within a
         // single 5000-blob list page (~4096 leaf shards). Changing it is a deliberate trade-off — update the
-        // rationale in docs/cache.md when you flip this.
+        // rationale in docs/design/core/shared/chunk-index.md when you flip this.
         ChunkIndexService.MaxShardEntryCount.ShouldBe(1024);
     }
 
