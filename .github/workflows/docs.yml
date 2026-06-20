@@ -51,5 +51,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Enable Pages (build_type=workflow) on first run, so deploy-pages stops
+      # 404ing when Pages was never turned on in repo settings. Idempotent.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - id: deployment
         uses: actions/deploy-pages@v4
