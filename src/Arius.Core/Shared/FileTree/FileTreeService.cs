@@ -273,7 +273,7 @@ internal sealed class FileTreeService : IFileTreeService
 
         // Latest remote snapshot (sort explicitly rather than relying on backend enumeration order)
         var remoteSnapshots = new List<PathSegment>();
-        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false, cancellationToken: cancellationToken))
+        await foreach (var item in _blobs.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false, cancellationToken: cancellationToken)) // TODO this check should be owned by the SnapshotService?
         {
             var name = item.Name;
             if (name != RelativePath.Root)
