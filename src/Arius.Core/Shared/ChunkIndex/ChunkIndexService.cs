@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
@@ -675,7 +676,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // parent in chunk_hash and placeholder tier/size, remember only the distinct parent-tar hashes, and
         // enrich them in one bulk pass once the listing (and thus every tar) is known. Peak memory scales with
         // the tar count, not the small-file count, and a single listing keeps the paged remote scan minimal.
-        const int writeBatchSize = 1024; // entries staged per UpsertRemoteBacked call; the tail is flushed once the listing completes
+        const int writeBatchSize = 1024; // entries per UpsertRemoteBacked call; Chunk yields the partial tail automatically
 
         var tarMetadata       = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
         var referencedParents = new HashSet<ChunkHash>(); // distinct parent tars referenced by thin chunks; O(#tars), not O(#small-files)
@@ -683,54 +684,47 @@ internal sealed class ChunkIndexService : IChunkIndexService
         var listedChunkCount  = 0;
         var rebuiltEntryCount = 0;
 
-        var writeBatch = new List<ShardEntry>(writeBatchSize);
-        void Stage(ShardEntry entry)
+        // Project the single blob listing into rebuilt entries, populating tarMetadata/referencedParents as a side
+        // effect of enumeration. Large chunks resolve inline; a thin chunk is yielded with its parent in chunk_hash
+        // and placeholder tier/size (the parent tar may be listed later) and enriched after the listing. A tar
+        // contributes no entry of its own — it is recovered via its thin chunks.
+        async IAsyncEnumerable<ShardEntry> ProjectRepairEntries([EnumeratorCancellation] CancellationToken ct = default)
         {
-            writeBatch.Add(entry);
-            if (writeBatch.Count >= writeBatchSize)
-                FlushStaged();
-        }
-        void FlushStaged()
-        {
-            if (writeBatch.Count == 0)
-                return;
-            _localStore.UpsertRemoteBacked(writeBatch);
-            rebuiltEntryCount += writeBatch.Count;
-            writeBatch.Clear();
-        }
-
-        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            listedChunkCount++;
-
-            var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
-            if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
-                continue;
-
-            switch (ariusType)
+            await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: ct))
             {
-                case BlobMetadataKeys.TypeLarge:
-                    Stage(CreateLargeRepairEntry(item));
-                    break;
-                case BlobMetadataKeys.TypeThin:
+                ct.ThrowIfCancellationRequested();
+                listedChunkCount++;
+
+                var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
+                if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+                    continue;
+
+                switch (ariusType)
                 {
-                    // The parent tar's tier/size aren't known yet (it may be listed later), so write the row now
-                    // with the parent in chunk_hash and placeholder tier/size, then enrich it after the listing.
-                    var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-                    if (!metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-                        throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-                    Stage(new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool));
-                    referencedParents.Add(parentChunkHash);
-                    break;
+                    case BlobMetadataKeys.TypeLarge:
+                        yield return CreateLargeRepairEntry(item);
+                        break;
+                    case BlobMetadataKeys.TypeThin:
+                    {
+                        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
+                        if (!metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
+                            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+                        referencedParents.Add(parentChunkHash);
+                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
+                        break;
+                    }
+                    case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
+                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
+                        break;
                 }
-                case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
-                    tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item)); // no entry of its own; recovered via its thin chunks
-                    break;
             }
         }
 
-        FlushStaged();
+        await foreach (var batch in ProjectRepairEntries(cancellationToken).Chunk(writeBatchSize).WithCancellation(cancellationToken))
+        {
+            _localStore.UpsertRemoteBacked(batch);
+            rebuiltEntryCount += batch.Length;
+        }
 
         // Every thin row was written with its parent in chunk_hash and placeholder tier/size; fill those in from
         // the now-complete tar metadata. A referenced parent tar absent from the listing means the repository is
