@@ -95,7 +95,7 @@ internal sealed class MigrateV5
 
             await UpsertChunkMetadataAsync(large, tars, thins, chunkBlobs, cancellationToken);
             await RebuildChunkIndexAsync(cancellationToken);
-            await BuildAndSnapshotAsync(pointers, cancellationToken);
+            await BuildAndSnapshotAsync(pointers, binaries, cancellationToken);
         }
         finally
         {
@@ -336,25 +336,17 @@ internal sealed class MigrateV5
 
     // ── Stages 5 & 6: Build filetrees, snapshot, promote ────────────────────────────
 
-    private async Task BuildAndSnapshotAsync(List<PointerRow> pointers, CancellationToken cancellationToken)
+    private async Task BuildAndSnapshotAsync(List<PointerRow> pointers, List<BinaryRow> binaries, CancellationToken cancellationToken)
     {
         _logger.LogInformation("── Stage 5: building filetrees from {Count} pointer entries", pointers.Count);
+
+        var sizeByHash = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var b in binaries)
+            sizeByHash[ToHex(b.Hash)] = b.OriginalSize;
 
         var             cacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(_account, _container);
         await using var session   = await FileTreeStagingSession.OpenAsync(cacheRoot, cancellationToken);
         using var       writer    = new FileTreeStagingWriter(session.StagingRoot);
-
-        // Stage 4 (repair) rebuilt every original size into the chunk-index local store. Read them back per
-        // pointer with a one-off direct query rather than holding the whole v5 BinaryProperties table in
-        // memory. content_hash is stored as the raw digest bytes, which is exactly PointerRow.Hash. The DB
-        // path mirrors ChunkIndexLocalStore's own layout (<chunk-index-cache>/cache.sqlite); we reconstruct
-        // it here rather than cluttering the Core service surface with a migration-only accessor.
-        var chunkIndexDbPath = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(_account, _container).Resolve(PathSegment.Parse("cache.sqlite"));
-        await using var sizeDb = new SqliteConnection($"Data Source={chunkIndexDbPath}");
-        sizeDb.Open();
-        using var sizeCmd = sizeDb.CreateCommand();
-        sizeCmd.CommandText = "SELECT original_size FROM chunk_index_entries WHERE content_hash = $hash;";
-        var hashParam = sizeCmd.Parameters.Add("$hash", SqliteType.Blob);
 
         long fileCount = 0, totalSize = 0, skipped = 0;
         foreach (var p in pointers)
@@ -368,9 +360,7 @@ internal sealed class MigrateV5
 
             await writer.AppendFileEntryAsync(relPath, ContentHash.FromDigest(p.Hash), p.Created, p.Modified, cancellationToken);
             fileCount++;
-
-            hashParam.Value = p.Hash;
-            totalSize += sizeCmd.ExecuteScalar() is long size ? size : 0L;
+            totalSize += sizeByHash.GetValueOrDefault(ToHex(p.Hash), 0);
         }
 
         if (skipped > 0)
