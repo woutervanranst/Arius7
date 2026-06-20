@@ -548,7 +548,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     {
         var uploaded = new ConcurrentBag<PathSegment>();
         await Parallel.ForEachAsync(
-            BuildShards(basePrefixes),
+            basePrefixes.SelectMany(BuildShards),
             new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
             async (shard, ct) =>
             {
@@ -559,13 +559,6 @@ internal sealed class ChunkIndexService : IChunkIndexService
 
         return uploaded.ToList();
     }
-
-    /// <summary>
-    /// Fan-out wrapper: lazily concatenates <see cref="BuildShards(PathSegment)"/> over every base prefix, so the
-    /// producer in <see cref="BuildAndUploadShardsAsync"/> walks one base prefix's descent after another.
-    /// </summary>
-    private IEnumerable<(PathSegment Prefix, Shard Shard)> BuildShards(IReadOnlyList<PathSegment> basePrefixes)
-        => basePrefixes.SelectMany(BuildShards);
 
     /// <summary>
     /// Descends the local store's hash space for one prefix: a range that fits the threshold is a single
