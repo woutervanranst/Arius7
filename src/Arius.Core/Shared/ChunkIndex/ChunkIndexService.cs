@@ -533,38 +533,31 @@ internal sealed class ChunkIndexService : IChunkIndexService
             });
     }
 
-    // -- Shard build & upload (shared by Flush and Repair) -------------------
+
+    // -- SHARD BUILD & UPLOAD -------------------
 
     /// <summary>
-    /// Builds the current shard payload for one prefix range from local store state.
+    /// Builds the balanced leaf shards for the given base prefixes and uploads them, recording each
+    /// prefix→etag in <paramref name="uploadedStates"/>. <c>BuildShards</c> streams shards lazily as the
+    /// single producer (sequential local-store reads) while <see cref="FlushWorkers"/> consumers upload in
+    /// parallel; <c>Parallel.ForEachAsync</c> serializes the enumeration and bounds in-flight shards to
+    /// ~<see cref="FlushWorkers"/>, so peak memory is independent of repository size. Returns the uploaded
+    /// leaf prefixes.
     /// </summary>
-    /// <param name="prefix">The shard prefix range to materialize.</param>
-    /// <returns>A shard containing all currently stored entries within the prefix range.</returns>
-    private Shard BuildShard(PathSegment prefix)
+    private async Task<IReadOnlyList<PathSegment>> BuildAndUploadShardsAsync(IReadOnlyList<PathSegment> basePrefixes, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
     {
-        var shard = new Shard();
-        _localStore.ReadRangeEntries(prefix, shard.AddOrUpdate);
-        return shard;
-    }
+        var uploaded = new ConcurrentBag<PathSegment>();
+        await Parallel.ForEachAsync(
+            BuildShards(basePrefixes),
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (shard, ct) =>
+            {
+                var result = await UploadShardAsync(shard.Prefix, shard.Shard, ct);
+                uploadedStates[shard.Prefix] = result.ETag;
+                uploaded.Add(shard.Prefix);
+            });
 
-    /// <summary>
-    /// Serializes and uploads a shard to its remote chunk-index blob.
-    /// </summary>
-    /// <param name="prefix">The shard prefix being uploaded.</param>
-    /// <param name="shard">The shard payload to upload.</param>
-    /// <param name="cancellationToken">Cancellation token for the upload.</param>
-    /// <returns>The upload result returned by blob storage.</returns>
-    private async Task<UploadResult> UploadShardAsync(PathSegment prefix, Shard shard, CancellationToken cancellationToken)
-    {
-        var bytes = await ShardSerializer.SerializeAsync(shard, _encryption, _compression, cancellationToken);
-        return await _blobs.UploadAsync(
-            BlobPaths.ChunkIndexShardPath(prefix),
-            new MemoryStream(bytes),
-            new Dictionary<string, string>(),
-            BlobTier.Cool,
-            _encryption.IsEncrypted ? ContentTypes.ChunkIndexGcmEncrypted : ContentTypes.ChunkIndexPlaintext,
-            overwrite: true,
-            cancellationToken: cancellationToken);
+        return uploaded.ToList();
     }
 
     /// <summary>
@@ -600,30 +593,35 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Builds the balanced leaf shards for the given base prefixes and uploads them, recording each
-    /// prefix→etag in <paramref name="uploadedStates"/>. <c>BuildShards</c> streams shards lazily as the
-    /// single producer (sequential local-store reads) while <see cref="FlushWorkers"/> consumers upload in
-    /// parallel; <c>Parallel.ForEachAsync</c> serializes the enumeration and bounds in-flight shards to
-    /// ~<see cref="FlushWorkers"/>, so peak memory is independent of repository size. Returns the uploaded
-    /// leaf prefixes.
+    /// Serializes and uploads a shard to its remote chunk-index blob.
     /// </summary>
-    private async Task<IReadOnlyList<PathSegment>> BuildAndUploadShardsAsync(
-        IReadOnlyList<PathSegment> basePrefixes,
-        ConcurrentDictionary<PathSegment, string> uploadedStates,
-        CancellationToken cancellationToken)
+    /// <param name="prefix">The shard prefix being uploaded.</param>
+    /// <param name="shard">The shard payload to upload.</param>
+    /// <param name="cancellationToken">Cancellation token for the upload.</param>
+    /// <returns>The upload result returned by blob storage.</returns>
+    private async Task<UploadResult> UploadShardAsync(PathSegment prefix, Shard shard, CancellationToken cancellationToken)
     {
-        var uploaded = new ConcurrentBag<PathSegment>();
-        await Parallel.ForEachAsync(
-            BuildShards(basePrefixes),
-            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (shard, ct) =>
-            {
-                var result = await UploadShardAsync(shard.Prefix, shard.Shard, ct);
-                uploadedStates[shard.Prefix] = result.ETag;
-                uploaded.Add(shard.Prefix);
-            });
+        var bytes = await ShardSerializer.SerializeAsync(shard, _encryption, _compression, cancellationToken);
+        return await _blobs.UploadAsync(
+            blobName: BlobPaths.ChunkIndexShardPath(prefix),
+            content: new MemoryStream(bytes),
+            metadata: new Dictionary<string, string>(),
+            tier: BlobTier.Cool,
+            contentType: _encryption.IsEncrypted ? ContentTypes.ChunkIndexGcmEncrypted : ContentTypes.ChunkIndexPlaintext,
+            overwrite: true,
+            cancellationToken: cancellationToken);
+    }
 
-        return uploaded.ToList();
+    /// <summary>
+    /// Builds the current shard payload for one prefix range from local store state.
+    /// </summary>
+    /// <param name="prefix">The shard prefix range to materialize.</param>
+    /// <returns>A shard containing all currently stored entries within the prefix range.</returns>
+    private Shard BuildShard(PathSegment prefix)
+    {
+        var shard = new Shard();
+        _localStore.ReadRangeEntries(prefix, shard.AddOrUpdate);
+        return shard;
     }
 
     // -- Stats ---------------------------------------------------------------
@@ -701,8 +699,9 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // Build and upload a fresh balanced layout from the staged entries through the shared
         // producer/consumer pipeline. This also re-balances an over-split remote layout (the
         // stale-shard pass below deletes everything not in the rebuilt set).
-        var uploadedStates  = new ConcurrentDictionary<PathSegment, string>();
-        var rebuiltPrefixes = (await BuildAndUploadShardsAsync(_localStore.GetStoredRootPrefixes().ToList(), uploadedStates, cancellationToken)).ToHashSet();
+        var uploadedStates     = new ConcurrentDictionary<PathSegment, string>();
+        var basePrefixes       = _localStore.GetStoredRootPrefixes().ToList();
+        var rebuiltPrefixes    = (await BuildAndUploadShardsAsync(basePrefixes, uploadedStates, cancellationToken)).ToHashSet();
         var uploadedShardCount = rebuiltPrefixes.Count;
 
         // Delete stale shards
@@ -752,8 +751,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
                     case BlobMetadataKeys.TypeThin:
                     {
                         var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-                        if (!metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-                            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+                        var parentChunkHash = ReadRequiredChunkHashMetadata(item, BlobMetadataKeys.ParentChunkHash);
                         referencedParents.Add(parentChunkHash);
                         yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
                         break;
@@ -765,18 +763,20 @@ internal sealed class ChunkIndexService : IChunkIndexService
                     }
                 }
             }
+
+            static long ReadRequiredLongMetadata(BlobListItem item, string key)
+                => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
+                    ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
+
+            static ChunkHash ReadRequiredChunkHashMetadata(BlobListItem item, string key)
+                => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && ChunkHash.TryParse(value, out var parsed)
+                    ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
+
+            static long ReadChunkSize(BlobListItem item)
+                => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+                    ? size : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
         }
     }
-
-    private static long ReadRequiredLongMetadata(BlobListItem item, string key)
-        => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
-            ? parsed
-            : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
-
-    private static long ReadChunkSize(BlobListItem item)
-        => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
-            ? size
-            : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
 
     // -- Local Repair Marker -------------------------------------------------
 
