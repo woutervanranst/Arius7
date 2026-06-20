@@ -32,7 +32,7 @@ test.describe('archive drawer', () => {
     fs.writeFileSync(path.join(src, 'notes.md'), '# notes\n'.repeat(50));
 
     const created = await (await request.post('/api/repos', {
-      data: { accountId: repo.accountId, container: scratchContainer('write'), alias: 'E2E Write Target', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
+      data: { accountId: repo.accountId, container: scratchContainer('write'), alias: 'E2E Write Target', passphrase: 'e2etest', localPath: src, defaultTier: 'hot' },
     })).json();
 
     try {
