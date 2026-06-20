@@ -103,25 +103,12 @@ internal sealed class Shard
 
     public IEnumerable<ShardEntry> Entries => _entries.Values;
 
-    // ── Lookup ─────────────────────────────────────────────────────────────────
-
-    public bool TryLookup(ContentHash contentHash, out ShardEntry? entry) => _entries.TryGetValue(contentHash, out entry);
-
     // ── Mutation ───────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Adds or replaces an entry in this shard.
     /// </summary>
     public void AddOrUpdate(ShardEntry entry) => _entries[entry.ContentHash] = entry;
-
-    /// <summary>
-    /// Adds or replaces entries in this shard. Duplicate content hashes use last-writer-wins order.
-    /// </summary>
-    public void AddOrUpdateRange(IEnumerable<ShardEntry> entries)
-    {
-        foreach (var entry in entries)
-            AddOrUpdate(entry);
-    }
 
     // ── Serialize ──────────────────────────────────────────────────────────────
 

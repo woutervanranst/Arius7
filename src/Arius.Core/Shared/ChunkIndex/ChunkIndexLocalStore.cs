@@ -170,28 +170,6 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Returns whether the prefix has already been validated for the specified snapshot version.
-    /// </summary>
-    public bool IsPrefixAtSnapshotVersion(PathSegment prefix, string snapshotVersion)
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT EXISTS(SELECT 1 FROM loaded_prefixes WHERE prefix = $prefix AND snapshot_version = $snapshotVersion LIMIT 1);";
-            command.Parameters.AddWithValue("$prefix", prefix.ToString());
-            command.Parameters.AddWithValue("$snapshotVersion", snapshotVersion);
-            var isValidated = command.ExecuteScalar() is long value && value != 0;
-            _logger.LogDebug("[chunk-index-local] IsPrefixAtSnapshotVersion: prefix={Prefix} snapshotVersion={SnapshotVersion} value={IsValidated}", prefix, snapshotVersion, isValidated);
-            return isValidated;
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
     /// Returns whether the prefix already has a locally cached remote-backed copy for the specified remote shard identity.
     /// </summary>
     public bool IsPrefixAtETag(PathSegment prefix, string etag)
@@ -331,24 +309,6 @@ internal sealed class ChunkIndexLocalStore
     }
 
     // -- PENDING FLUSH -------------------------------------------------
-
-    /// <summary>
-    /// Returns whether the local store currently contains entries pending local flush.
-    /// </summary>
-    public bool HasPendingFlushEntries()
-    {
-        try
-        {
-            using var connection             = OpenConnection();
-            var       hasPendingFlushEntries = HasPendingFlushEntries(connection);
-            _logger.LogDebug("[chunk-index-local] HasPendingFlushEntries: value={HasPendingFlushEntries}", hasPendingFlushEntries);
-            return hasPendingFlushEntries;
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
 
     /// <summary>
     /// Returns prefixes that contain entries still pending local flush to remote shard blobs.
@@ -807,17 +767,13 @@ internal sealed class ChunkIndexLocalStore
         return connection;
     }
 
+    /// <summary>Test-only seam: the SQLite connection string, so tests can probe persisted state directly.</summary>
+    internal string ConnectionString => _connectionString;
+
     private void ClearConnectionPool()
     {
         using var connection = new SqliteConnection(_connectionString);
         SqliteConnection.ClearPool(connection);
-    }
-
-    private static bool HasPendingFlushEntries(SqliteConnection connection)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT EXISTS(SELECT 1 FROM chunk_index_entries WHERE pending_flush = 1 LIMIT 1);";
-        return command.ExecuteScalar() is long count && count != 0;
     }
 
     private static int DeleteRemoteBackedRange(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix)

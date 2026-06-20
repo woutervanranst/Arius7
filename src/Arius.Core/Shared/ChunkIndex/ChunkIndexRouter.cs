@@ -35,13 +35,6 @@ internal static class ChunkIndexRouter
     }
 
     /// <summary>
-    /// Convenience overload that derives the descendant-prefix set on the fly; prefer the overload
-    /// taking a precomputed set when resolving many hashes against the same subtree.
-    /// </summary>
-    public static ShardTarget ResolveTarget(IReadOnlySet<string> existingShardNames, ContentHash contentHash)
-        => ResolveTarget(existingShardNames, BuildDescendantPrefixes(existingShardNames), contentHash);
-
-    /// <summary>
     /// Resolves the shard for <paramref name="contentHash"/> against the set of existing shard
     /// names in its root subtree, using the parent-wins walk: the shallowest existing shard on the
     /// hash's prefix path is authoritative (an interrupted split leaves the parent intact, and the

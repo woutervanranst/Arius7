@@ -35,7 +35,6 @@ public class ChunkIndexLocalStoreTests
 
         store.FindEntry(entry.ContentHash).ShouldBe(entry);
         store.FindPendingFlushEntry(entry.ContentHash).ShouldBe(entry);
-        store.HasPendingFlushEntries().ShouldBeTrue();
         store.GetRootsWithPendingFlushes().ShouldBe([ChunkIndexRouter.GetRootPrefix(entry.ContentHash)]);
 
         using var connection = OpenConnection(root);
@@ -208,7 +207,7 @@ public class ChunkIndexLocalStoreTests
         store.FindEntry(secondEntry.ContentHash).ShouldBe(secondEntry);
         store.FindPendingFlushEntry(firstEntry.ContentHash).ShouldBeNull();
         store.FindPendingFlushEntry(secondEntry.ContentHash).ShouldBeNull();
-        store.HasPendingFlushEntries().ShouldBeFalse();
+        store.GetRootsWithPendingFlushes().ShouldBeEmpty();
         store.IsPrefixAtSnapshotVersion(firstPrefix, snapshotVersion).ShouldBeTrue();
         store.IsPrefixAtSnapshotVersion(secondPrefix, snapshotVersion).ShouldBeTrue();
         store.IsPrefixAtETag(firstPrefix, "remote-1").ShouldBeTrue();
@@ -257,7 +256,7 @@ public class ChunkIndexLocalStoreTests
         fileSystem.FileExists(RelativePath.Parse("cache.sqlite-wal.bak")).ShouldBeTrue();
         fileSystem.FileExists(RelativePath.Parse("cache.sqlite-shm.bak")).ShouldBeTrue();
         fileSystem.FileExists(databasePath).ShouldBeTrue();
-        store.HasPendingFlushEntries().ShouldBeFalse();
+        store.GetRootsWithPendingFlushes().ShouldBeEmpty();
 
         using var connection = OpenConnection(root);
         using var version = connection.CreateCommand();

@@ -30,21 +30,6 @@ internal static class ShardSerializer
     }
 
     /// <summary>
-    /// Deserializes a <see cref="Shard"/> from a compressed (and optionally encrypted) byte array.
-    /// </summary>
-    public static Shard Deserialize(
-        byte[]              data,
-        IEncryptionService  encryption,
-        ICompressionService compression)
-    {
-        var ms         = new MemoryStream(data);
-        var decStream  = encryption.WrapForDecryption(ms);
-        var decompress = compression.WrapForDecompression(decStream);
-        using var reader = new StreamReader(decompress);
-        return Shard.ReadFrom(reader);
-    }
-
-    /// <summary>
     /// Deserializes a <see cref="Shard"/> from a readable stream (compression + optional encryption).
     /// </summary>
     public static Shard Deserialize(

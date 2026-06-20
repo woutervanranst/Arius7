@@ -20,7 +20,7 @@ public class ShardSerializerTests
         );
 
         var bytes  = await ShardSerializer.SerializeAsync(shard, svc, ICompressionService.ZtdInstance);
-        var loaded = ShardSerializer.Deserialize(bytes, svc, ICompressionService.ZtdInstance);
+        var loaded = ShardSerializer.Deserialize(new MemoryStream(bytes), svc, ICompressionService.ZtdInstance);
 
         loaded.TryLookup(FakeContentHash('a'), out var e).ShouldBeTrue();
         e!.OriginalSize.ShouldBe(512);
@@ -61,7 +61,7 @@ public class ShardSerializerTests
         );
 
         var bytes  = await ShardSerializer.SerializeAsync(shard, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
-        var loaded = ShardSerializer.Deserialize(bytes, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
+        var loaded = ShardSerializer.Deserialize(new MemoryStream(bytes), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
 
         loaded.TryLookup(FakeContentHash('c'), out var e).ShouldBeTrue();
         e!.ChunkSize.ShouldBe(40);
