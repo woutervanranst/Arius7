@@ -302,6 +302,29 @@ internal sealed class MigrateV5
         }
     }
 
+    private static Dictionary<string, string> Merge(IReadOnlyDictionary<string, string> existing, Dictionary<string, string> updates)
+    {
+        var merged = new Dictionary<string, string>(existing);
+        foreach (var (k, v) in updates)
+            merged[k] = v;
+        return merged;
+    }
+
+    private static DateTimeOffset ReadTimestamp(SqliteDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+            return DateTimeOffset.UnixEpoch; // deterministic sentinel for missing v5 timestamps
+
+        return reader.GetValue(ordinal) switch
+        {
+            string s when DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto) => dto,
+            long ticks  => new DateTimeOffset(ticks, TimeSpan.Zero),
+            DateTime dt => new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc)),
+            _           => DateTimeOffset.UnixEpoch,
+        };
+    }
+
     // ── Stage 4: Rebuild chunk index ────────────────────────────────────────────────
 
     private async Task RebuildChunkIndexAsync(CancellationToken cancellationToken)
@@ -321,9 +344,9 @@ internal sealed class MigrateV5
         foreach (var b in binaries)
             sizeByHash[ToHex(b.Hash)] = b.OriginalSize;
 
-        var cacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(_account, _container);
-        await using var session = await FileTreeStagingSession.OpenAsync(cacheRoot, cancellationToken);
-        using var writer = new FileTreeStagingWriter(session.StagingRoot);
+        var             cacheRoot = RepositoryLocalStatePaths.GetFileTreeCacheRoot(_account, _container);
+        await using var session   = await FileTreeStagingSession.OpenAsync(cacheRoot, cancellationToken);
+        using var       writer    = new FileTreeStagingWriter(session.StagingRoot);
 
         long fileCount = 0, totalSize = 0, skipped = 0;
         foreach (var p in pointers)
@@ -361,8 +384,6 @@ internal sealed class MigrateV5
         _logger.LogInformation("Migration complete. Snapshot {Timestamp} created with {Files} files.", snapshot.Timestamp, fileCount);
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────────────────────
-
     private static bool TryToBinaryPath(string relativeName, out RelativePath path)
     {
         // v5 stores forward-slash paths, but be defensive about Windows-origin backslashes
@@ -377,28 +398,7 @@ internal sealed class MigrateV5
         return path != RelativePath.Root;
     }
 
-    private static Dictionary<string, string> Merge(IReadOnlyDictionary<string, string> existing, Dictionary<string, string> updates)
-    {
-        var merged = new Dictionary<string, string>(existing);
-        foreach (var (k, v) in updates)
-            merged[k] = v;
-        return merged;
-    }
-
-    private static DateTimeOffset ReadTimestamp(SqliteDataReader reader, int ordinal)
-    {
-        if (reader.IsDBNull(ordinal))
-            return DateTimeOffset.UnixEpoch; // deterministic sentinel for missing v5 timestamps
-
-        return reader.GetValue(ordinal) switch
-        {
-            string s when DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto) => dto,
-            long ticks   => new DateTimeOffset(ticks, TimeSpan.Zero),
-            DateTime dt  => new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc)),
-            _            => DateTimeOffset.UnixEpoch,
-        };
-    }
+    // ── Helpers ─────────────────────────────────────────────────────────────────────
 
     private static string ToHex(byte[] bytes) => Convert.ToHexString(bytes).ToLowerInvariant();
 
@@ -423,19 +423,4 @@ internal sealed class MigrateV5
     private sealed record BinaryRow(byte[] Hash, long OriginalSize, byte[]? ParentHash);
     private sealed record PointerRow(string RelativeName, byte[] Hash, DateTimeOffset Created, DateTimeOffset Modified);
     private sealed record ChunkBlob(long Length, BlobTier Tier, IReadOnlyDictionary<string, string> Metadata);
-
-    /// <summary>Tiny adapter that yields each tar entry's name, so the validation loop stays readable.</summary>
-    private sealed class TarReaderAdapter(Stream stream) : IAsyncDisposable
-    {
-        private readonly TarReader _reader = new(stream, leaveOpen: true);
-
-        public async ValueTask<string?> GetNextEntryAsync(CancellationToken cancellationToken) =>
-            await _reader.GetNextEntryAsync(copyData: false, cancellationToken) is { } entry ? entry.Name : null;
-
-        public async ValueTask DisposeAsync()
-        {
-            _reader.Dispose();
-            await stream.DisposeAsync();
-        }
-    }
 }
