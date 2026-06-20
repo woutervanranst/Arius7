@@ -25,7 +25,6 @@ internal sealed class ChunkIndexLocalStore
     private readonly string                        _connectionString;
     private readonly Lock                          _localStateGate = new();
 
-
     // -- LIFECYCLE ------------------------------------------------------------
 
     /// <summary>
@@ -65,8 +64,7 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
-
-    // -- FIND ---------------------------------------------------------------
+    // -- ENTRY READS --------------------------------------------------------
 
     /// <summary>
     /// Returns the locally stored entry for <paramref name="contentHash"/> regardless of whether that entry is remote-backed or pending flush.
@@ -102,6 +100,8 @@ internal sealed class ChunkIndexLocalStore
             throw CreateLocalStoreException(ex);
         }
     }
+
+    // -- COVERAGE & PREFIX STATE --------------------------------------------
 
     /// <summary>
     /// Returns the validated coverage claim covering each of the specified hashes at the specified snapshot
@@ -213,59 +213,11 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
-    /// <summary>
-    /// Returns prefixes that contain entries still pending local flush to remote shard blobs.
-    /// </summary>
-    public IReadOnlyList<PathSegment> GetRootsWithPendingFlushes()
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT DISTINCT lower(substr(hex(content_hash), 1, {ChunkIndexService.MinShardPrefixLength})) FROM chunk_index_entries WHERE pending_flush = 1 ORDER BY 1;";
-            using var reader = command.ExecuteReader();
-            var prefixes = new List<PathSegment>();
-            while (reader.Read())
-                prefixes.Add(PathSegment.Parse(reader.GetString(0)));
-
-            _logger.LogDebug("[chunk-index-local] GetRootsWithPendingFlushes: count={Count}", prefixes.Count);
-            return prefixes;
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
+    // -- RANGE & LAYOUT READS -----------------------------------------------
 
     /// <summary>
-    /// Returns the content hashes of entries pending local flush within range of <paramref name="prefix"/>.
-    /// </summary>
-    public IReadOnlyList<ContentHash> GetPendingFlushHashes(PathSegment prefix)
-    {
-        try
-        {
-            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
-            using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT content_hash FROM chunk_index_entries WHERE pending_flush = 1 AND content_hash BETWEEN $lower AND $upper ORDER BY content_hash;";
-            command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
-            command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
-            using var reader = command.ExecuteReader();
-            var hashes = new List<ContentHash>();
-            while (reader.Read())
-                hashes.Add(ContentHash.FromDigest((byte[])reader.GetValue(0)));
-
-            _logger.LogDebug("[chunk-index-local] GetPendingFlushHashes: prefix={Prefix} count={Count}", prefix, hashes.Count);
-            return hashes;
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
-    /// Returns prefixes represented by any local chunk-index entry.
+    /// Returns the distinct fixed-depth root prefixes (length <see cref="ChunkIndexService.MinShardPrefixLength"/>)
+    /// covered by any local chunk-index entry — the base prefixes from which a balanced shard layout is built.
     /// </summary>
     public IEnumerable<PathSegment> GetStoredRootPrefixes()
     {
@@ -391,6 +343,57 @@ internal sealed class ChunkIndexLocalStore
             var       hasPendingFlushEntries = HasPendingFlushEntries(connection);
             _logger.LogDebug("[chunk-index-local] HasPendingFlushEntries: value={HasPendingFlushEntries}", hasPendingFlushEntries);
             return hasPendingFlushEntries;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns prefixes that contain entries still pending local flush to remote shard blobs.
+    /// </summary>
+    public IReadOnlyList<PathSegment> GetRootsWithPendingFlushes()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT DISTINCT lower(substr(hex(content_hash), 1, {ChunkIndexService.MinShardPrefixLength})) FROM chunk_index_entries WHERE pending_flush = 1 ORDER BY 1;";
+            using var reader = command.ExecuteReader();
+            var prefixes = new List<PathSegment>();
+            while (reader.Read())
+                prefixes.Add(PathSegment.Parse(reader.GetString(0)));
+
+            _logger.LogDebug("[chunk-index-local] GetRootsWithPendingFlushes: count={Count}", prefixes.Count);
+            return prefixes;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Returns the content hashes of entries pending local flush within range of <paramref name="prefix"/>.
+    /// </summary>
+    public IReadOnlyList<ContentHash> GetPendingFlushHashes(PathSegment prefix)
+    {
+        try
+        {
+            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT content_hash FROM chunk_index_entries WHERE pending_flush = 1 AND content_hash BETWEEN $lower AND $upper ORDER BY content_hash;";
+            command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
+            command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
+            using var reader = command.ExecuteReader();
+            var hashes = new List<ContentHash>();
+            while (reader.Read())
+                hashes.Add(ContentHash.FromDigest((byte[])reader.GetValue(0)));
+
+            _logger.LogDebug("[chunk-index-local] GetPendingFlushHashes: prefix={Prefix} count={Count}", prefix, hashes.Count);
+            return hashes;
         }
         catch (SqliteException ex)
         {

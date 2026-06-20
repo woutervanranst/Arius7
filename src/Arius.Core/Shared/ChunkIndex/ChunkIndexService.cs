@@ -406,7 +406,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _localStore.UpsertPendingFlush(entries);
     }
 
-    // -- Flush & Upload ---------------------------------------------------------------
+    // -- Flush ---------------------------------------------------------------
 
     /// <summary>
     /// Uploads pending local entries into remote shard blobs and marks flushed prefixes as synchronized remote-backed cache.
@@ -448,9 +448,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Flushes all pending entries in one root subtree, holding the root gate: resolves the
-    /// authoritative target shard per pending hash, merges, and uploads — splitting any shard
-    /// that exceeds the entry-count threshold.
+    /// Flushes all pending entries in one root subtree, holding the root gate: resolves the authoritative
+    /// target shard per pending hash, then builds and uploads the balanced leaf shards for those targets via
+    /// <see cref="BuildAndUploadShardsAsync"/>. A target whose range overflowed is split into deeper leaves by
+    /// the DB-driven descent; its now-stale parent is deleted afterward via <see cref="DeleteStaleShardsAfterSplitAsync"/>.
     /// </summary>
     private async Task FlushRootAsync(PathSegment root, string latestSnapshotVersion, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
     {
@@ -531,6 +532,8 @@ internal sealed class ChunkIndexService : IChunkIndexService
             });
     }
 
+    // -- Shard build & upload (shared by Flush and Repair) -------------------
+
     /// <summary>
     /// Builds the current shard payload for one prefix range from local store state.
     /// </summary>
@@ -564,7 +567,8 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Streams the balanced leaf shards for each base prefix, lazily — one shard is resident at a time.
+    /// Fan-out wrapper: lazily concatenates <see cref="BuildShards(PathSegment)"/> over every base prefix, so the
+    /// producer in <see cref="BuildAndUploadShardsAsync"/> walks one base prefix's descent after another.
     /// </summary>
     private IEnumerable<(PathSegment Prefix, Shard Shard)> BuildShards(IReadOnlyList<PathSegment> basePrefixes)
         => basePrefixes.SelectMany(BuildShards);
@@ -809,7 +813,9 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Lifetime ------------------------------------------------------------
 
     /// <summary>
-    /// Disposes the local chunk-index store.
+    /// No-op. The local SQLite store opens and closes a pooled connection per operation and holds no resources
+    /// that outlive a call, so there is nothing to release here; this exists only to satisfy
+    /// <see cref="IDisposable"/> on <see cref="IChunkIndexService"/>.
     /// </summary>
     public void Dispose()
     {
