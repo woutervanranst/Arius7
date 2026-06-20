@@ -30,7 +30,7 @@ Arguments:
 Example:
 
 ```powershell
-dotnet run --project src\Arius.AzureBlob.Benchmarks\Arius.AzureBlob.Benchmarks.csproj -- --account-name ariusci --account-key "<key>" --container-name test --blob-name chunk-index/8c
+dotnet run --project src\Arius.AzureBlob.Benchmarks\Arius.AzureBlob.Benchmarks.csproj -- --account-name ariusciuse --account-key "<key>" --container-name test --blob-name chunk-index/8c
 ```
 
 ## Debug Builds

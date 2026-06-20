@@ -2,19 +2,19 @@
   "profiles": {
     "10 archive": {
       "commandName": "Project",
-      "commandLineArgs": "archive \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source2\" -a ariusci -c test -t Cool --no-pointers"
+      "commandLineArgs": "archive \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source2\" -a ariusciuse -c test -t Hot --no-pointers"
     },
     "20 list": {
       "commandName": "Project",
-      "commandLineArgs": "ls \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source\" -a ariusci -c test"
+      "commandLineArgs": "ls \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source\" -a ariusciuse -c test"
     },
     "30 restore": {
       "commandName": "Project",
-      "commandLineArgs": "restore \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source-Restore\" -a ariusci -c test"
+      "commandLineArgs": "restore \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source-Restore\" -a ariusciuse -c test"
     },
     "11 repair chunk-index": {
       "commandName": "Project",
-      "commandLineArgs": "repair-index -a ariusci -c test"
+      "commandLineArgs": "repair-index -a ariusciuse -c test"
     }
   }
 }

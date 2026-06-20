@@ -95,5 +95,5 @@ Azurite provides shared representative backend coverage that can run locally and
 
 This ADR captures the implemented outcome of the PR after several iterations recorded in:
 
-* `docs/superpowers/specs/2026-04-20-shared-test-infrastructure-design.md`
-* `docs/superpowers/specs/2026-04-23-representative-workflow-design.md`
+* `docs/history/superpowers/2026-04-20-shared-test-infrastructure-design.md`
+* `docs/history/superpowers/2026-04-23-representative-workflow-design.md`

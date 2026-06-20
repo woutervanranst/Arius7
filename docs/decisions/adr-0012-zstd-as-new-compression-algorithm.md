@@ -186,8 +186,8 @@ This would bind Arius more directly to the reference native implementation.
 
 ## More Information
 
-* Zstd context and risk evaluation: `openspec/changes/2026-06-15-ztd/CONVO.md`.
-* Zstd implementation plan: `openspec/changes/2026-06-15-ztd/PLAN.md`.
-* Zstd hardening audit: `openspec/changes/2026-06-15-ztd/ZstdSharp Hardening Report - Audit vs Codebase.md`.
+* Zstd context and risk evaluation: `docs/history/agentic-plans/2026-06-15-ztd/CONVO.md`.
+* Zstd implementation plan: `docs/history/agentic-plans/2026-06-15-ztd/PLAN.md`.
+* Zstd hardening audit: `docs/history/agentic-plans/2026-06-15-ztd/ZstdSharp Hardening Report - Audit vs Codebase.md`.
 * Benchmark log, gzip: `ariusci-testgzip/logs/2026-06-15_17-51-08_archive.txt`.
 * Benchmark log, zstd verifier on: `ariusci-testzstd3/logs/2026-06-15_20-55-09_archive.txt`.

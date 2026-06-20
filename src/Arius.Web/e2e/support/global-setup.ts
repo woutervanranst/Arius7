@@ -57,7 +57,7 @@ export default async function globalSetup() {
         alias: process.env.ARIUS_E2E_ALIAS ?? container,
         passphrase: process.env.ARIUS_E2E_PASSPHRASE ?? null,
         localPath: '',
-        defaultTier: process.env.ARIUS_E2E_TIER ?? 'cold',
+        defaultTier: process.env.ARIUS_E2E_TIER ?? 'hot',
       },
     });
 
