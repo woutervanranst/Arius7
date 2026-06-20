@@ -66,7 +66,7 @@ flowchart TD
     C -->|other| F["throw InvalidDataException"]
 ```
 
-`AesGcmDecryptingStream` reads the 38-byte header, re-derives the key from the header's salt + iteration count, then decrypts blocks on demand, serving bytes out of a decrypted 64 KiB buffer. `AesCbcDecryptingStream` strips the `Salted__`(8) ‖ salt(8) header, derives a 48-byte key+IV via `DeriveCbcKeyIv` (PBKDF2-SHA256, `CbcPbkdf2Iter = 100_000`), and decrypts through a BCL `CryptoStream` (CBC, PKCS7). New writes are *never* CBC — `WrapForCbcEncryption` exists only as a test helper to manufacture legacy blobs.
+`AesGcmDecryptingStream` reads the 38-byte header, re-derives the key from the header's salt + iteration count, then decrypts blocks on demand, serving bytes out of a decrypted 64 KiB buffer. `AesCbcDecryptingStream` strips the `Salted__`(8) ‖ salt(8) header, derives a 48-byte key+IV via `DeriveCbcKeyIv` (PBKDF2-SHA256, `CbcPbkdf2Iter = 10_000` — the OpenSSL `enc` default that real v5 archives were written with, so it cannot be changed without orphaning every legacy blob), and decrypts through a BCL `CryptoStream` (CBC, PKCS7). New writes are *never* CBC — `WrapForCbcEncryption` exists only as a test helper to manufacture legacy blobs.
 
 ### External recoverability — `recover-chunk.py`
 
@@ -79,6 +79,7 @@ The repo-root `recover-chunk.py` is the canonical worst-case recovery tool and m
 - **Nonce is a counter, never random per block.** `nonceᵢ = nonce₀ XOR LE(i,12)` must stay exactly this — it is what prevents nonce reuse, detects reordering, and gives the sentinel a unique nonce. Random per-block nonces would have to be stored and would not bind position.
 - **The sentinel is mandatory and authenticated.** EOF is only legitimate after the zero-length block's tag verifies; absence of the sentinel *is* truncation and must throw.
 - **`ArGCM1` block size (64 KiB) is fixed in the format, not the header.** Only `Salt`, `Iterations`, and `Nonce₀` are header-encoded. Changing the block size or scheme requires a new magic (`ArGCM2`), not a header flag.
+- **Legacy CBC PBKDF2 iterations are frozen at `10_000`.** Unlike GCM's header-encoded, raisable iteration count, the CBC reader has no per-blob count — it must use the same value v5 (OpenSSL `enc` default, 10,000) used to derive the key, so `CbcPbkdf2Iter` is decrypt-only and can never be raised. It is `S5344`-suppressed precisely because it is reading legacy material, not protecting new writes (those are GCM at 100,000).
 - **Reads are content-driven, not metadata-driven.** Scheme (GCM vs CBC) is chosen from the blob's own magic bytes via `PeekStream`, so blob content-type is informational and a mixed CBC/GCM repository reads transparently with no caller change.
 - **`recover-chunk.py` is byte-compatible with the C# format and stays CI-verified.** The Python nonce derivation, sentinel handling, and bounds checks must track any format change in lockstep — the recoverability guarantee depends on it.
 - **Same passphrase + same data ⇒ identical hash; different passphrase ⇒ different hash and different blob names** (opaqueness: encrypted blob names leak no file names or paths).
