@@ -45,7 +45,7 @@ CBC Format (Salted__, legacy):
   [0..7]   Magic: "Salted__" (8 bytes)
   [8..15]  Salt (8 bytes)
   [16..]   Ciphertext (AES-256-CBC, PKCS7 padding)
-  Key derivation: PBKDF2-SHA256, 100,000 iterations, 48-byte output
+  Key derivation: PBKDF2-SHA256, 10,000 iterations, 48-byte output
     bytes  0–31 = AES-256 key
     bytes 32–47 = IV
 
@@ -82,7 +82,7 @@ CBC_MAGIC      = b"Salted__"
 CBC_SALT_SIZE  = 8
 CBC_KEY_SIZE   = 32   # AES-256
 CBC_IV_SIZE    = 16   # AES block size
-CBC_PBKDF2_ITER = 100_000
+CBC_PBKDF2_ITER = 10_000
 
 # Compression frame magic bytes (little-endian on disk), matching ZstdCompressionService.
 ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"   # RFC 8878 frame; XXH64 content checksum enabled
