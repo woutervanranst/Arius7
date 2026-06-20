@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Arius.Migration</AssemblyName>
     <RootNamespace>Arius.Migration</RootNamespace>
+	  <UserSecretsId>1bfdbc8c-623a-4240-a1df-52ef154346b5</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
