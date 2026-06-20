@@ -684,43 +684,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         var listedChunkCount  = 0;
         var rebuiltEntryCount = 0;
 
-        // Project the single blob listing into rebuilt entries, populating tarMetadata/referencedParents as a side
-        // effect of enumeration. Large chunks resolve inline; a thin chunk is yielded with its parent in chunk_hash
-        // and placeholder tier/size (the parent tar may be listed later) and enriched after the listing. A tar
-        // contributes no entry of its own — it is recovered via its thin chunks.
-        async IAsyncEnumerable<ShardEntry> ProjectRepairEntries([EnumeratorCancellation] CancellationToken ct = default)
-        {
-            await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: ct))
-            {
-                ct.ThrowIfCancellationRequested();
-                listedChunkCount++;
-
-                var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
-                if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
-                    continue;
-
-                switch (ariusType)
-                {
-                    case BlobMetadataKeys.TypeLarge:
-                        yield return CreateLargeRepairEntry(item);
-                        break;
-                    case BlobMetadataKeys.TypeThin:
-                    {
-                        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-                        if (!metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-                            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-                        referencedParents.Add(parentChunkHash);
-                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
-                        break;
-                    }
-                    case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
-                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
-                        break;
-                }
-            }
-        }
-
-        await foreach (var batch in ProjectRepairEntries(cancellationToken).Chunk(writeBatchSize).WithCancellation(cancellationToken))
+        await foreach (var batch in GetRepairEntriesAsync(cancellationToken).Chunk(writeBatchSize).WithCancellation(cancellationToken))
         {
             _localStore.UpsertRemoteBacked(batch);
             rebuiltEntryCount += batch.Length;
@@ -760,17 +724,48 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _shardListing.Reset(); // repair rewrote the whole layout — drop any cached listing
 
         return new(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
-    }
 
-    /// <summary>
-    /// Builds the shard entry for a large chunk directly from its own blob metadata.
-    /// </summary>
-    private static ShardEntry CreateLargeRepairEntry(BlobListItem item)
-    {
-        var contentHash  = ContentHash.Parse(item.Name.Name.ToString());
-        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-        var chunkSize    = ReadChunkSize(item);
-        return new(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
+
+        // Get the repair entries. Large chunks resolve inline; a thin chunk is yielded with its parent in chunk_hash and placeholder tier/size and enriched after the listing.
+        // A tar contributes no entry of its own — it is recovered via its thin chunks.
+        async IAsyncEnumerable<ShardEntry> GetRepairEntriesAsync([EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: ct))
+            {
+                ct.ThrowIfCancellationRequested();
+                listedChunkCount++;
+
+                var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
+                if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+                    continue;
+
+                switch (ariusType)
+                {
+                    case BlobMetadataKeys.TypeLarge:
+                    {
+                        var contentHash  = ContentHash.Parse(item.Name.Name.ToString());
+                        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+                        var chunkSize    = ReadChunkSize(item);
+                        yield return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
+                        break;
+                    }
+                    case BlobMetadataKeys.TypeThin:
+                    {
+                        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
+                        if (!metadata.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
+                            throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
+                        referencedParents.Add(parentChunkHash);
+                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
+                        break;
+                    }
+                    case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
+                    {
+                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     private static long ReadRequiredLongMetadata(BlobListItem item, string key)
