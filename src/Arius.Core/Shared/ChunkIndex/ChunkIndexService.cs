@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
+using System.Threading.Channels;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
@@ -471,23 +472,24 @@ internal sealed class ChunkIndexService : IChunkIndexService
             var distinctTargets = targets.Values.Distinct().ToList();
             var flushTargets = distinctTargets
                 .Where(prefix => !distinctTargets.Any(other => other != prefix && prefix.ToString().StartsWith(other.ToString(), StringComparison.Ordinal)))
-                .OrderBy(prefix => prefix.ToString(), StringComparer.Ordinal);
+                .OrderBy(prefix => prefix.ToString(), StringComparer.Ordinal)
+                .ToList();
 
-            foreach (var prefix in flushTargets)
+            // Build and upload every target's leaf shards through the shared producer/consumer pipeline.
+            var leafPrefixes = await BuildAndUploadShardsAsync(flushTargets, uploadedStates, cancellationToken);
+
+            // A target whose range overflowed was split into deeper leaves, leaving a now-stale parent
+            // (and any interrupted-split leftovers) behind; delete them only after the leaves have landed,
+            // so a crash mid-split keeps parent-wins lookup correct. A target that fit needs no cleanup.
+            foreach (var target in flushTargets)
             {
-                var shard = BuildShard(prefix);
-                if (shard.Count == 0)
+                // Targets are pairwise non-nested, so each uploaded leaf maps to exactly one target.
+                var written = leafPrefixes.Where(prefix => prefix.ToString().StartsWith(target.ToString(), StringComparison.Ordinal)).ToList();
+                if (written.Count == 0 || (written.Count == 1 && written[0] == target))
                     continue;
 
-                if (shard.Count <= _maxShardEntryCount)
-                {
-                    var result = await UploadShardAsync(prefix, shard, cancellationToken);
-                    uploadedStates[prefix] = result.ETag;
-                    _logger.LogDebug("Uploaded shard {Prefix} ({EntryCount} entries)", prefix, shard.Count);
-                    continue;
-                }
-
-                await SplitShardAsync(root, prefix, shard, uploadedStates, cancellationToken);
+                _logger.LogInformation("Split shard {Prefix} into {LeafCount} leaves", target, written.Count);
+                await DeleteStaleShardsAfterSplitAsync(root, target, written, cancellationToken);
             }
         }
         finally
@@ -497,39 +499,19 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Splits an over-threshold shard: uploads all non-empty leaf shards FIRST, and only then
-    /// deletes the parent and any other stale shard in its range. A crash mid-split leaves the
-    /// parent intact; since the snapshot for this run is not yet published, the parent still
-    /// contains everything any published snapshot references, and parent-wins lookup stays
-    /// correct. The pending rows stay pending, so a retry re-resolves the parent and re-splits.
+    /// After a split's leaf shards have all landed, deletes the now-stale parent and any other blob in
+    /// range(prefix) that was not just written — including leftovers of a previously interrupted split.
+    /// Uploading the leaves before this delete keeps parent-wins lookup correct if a crash interrupts the
+    /// split: the parent stays intact, and since this run's snapshot is not yet published it still contains
+    /// everything any published snapshot references. The pending rows stay pending, so a retry re-splits.
     /// </summary>
-    private async Task SplitShardAsync(PathSegment root, PathSegment prefix, Shard shard, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
+    private async Task DeleteStaleShardsAfterSplitAsync(PathSegment root, PathSegment prefix, IReadOnlyList<PathSegment> writtenLeaves, CancellationToken cancellationToken)
     {
         // Whether range(prefix) held any remote shard before this run's flush. Under the single-writer
-        // assumption the run-scoped listing is that pre-flush state (our own leaf uploads below never
-        // appear in the immutable snapshot), so an empty range means there is nothing stale to clean.
+        // assumption the run-scoped listing is that pre-flush state (our own leaf uploads never appear in
+        // the immutable snapshot), so an empty range means there is nothing stale to clean.
         var rangeWasEmpty = !((await _shardListing.GetAsync(cancellationToken)).GetValueOrDefault(root.ToString()) ?? FrozenDictionary<string, string?>.Empty)
             .Keys.Any(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal));
-
-        var leaves = ChunkIndexRouter.PartitionIntoLeaves(prefix, shard.Entries.ToList(), _maxShardEntryCount);
-
-        // Upload the (independent) leaf shards concurrently. ALL must land before any delete: a crash
-        // mid-split must leave the parent intact so parent-wins lookup stays correct.
-        await Parallel.ForEachAsync(
-            leaves,
-            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (leaf, ct) =>
-            {
-                var leafShard = new Shard();
-                leafShard.AddOrUpdateRange(leaf.Entries);
-                var result = await UploadShardAsync(leaf.Prefix, leafShard, ct);
-                uploadedStates[leaf.Prefix] = result.ETag;
-            });
-
-        _logger.LogInformation("Split shard {Prefix} ({EntryCount} entries) into {LeafCount} leaves", prefix, shard.Count, leaves.Count);
-
-        // A brand-new (empty) range had no parent or interrupted-split leftovers, so the post-split
-        // subtree listing and deletes are pure waste — skip them.
         if (rangeWasEmpty)
             return;
 
@@ -537,7 +519,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // including leftovers of a previously interrupted split (their extra entries were never
         // published; the machine that wrote them still has them as pending rows and will re-flush).
         // The destructive scan reads fresh remote state; deletes run concurrently.
-        var written = leaves.Select(leaf => leaf.Prefix.ToString()).ToHashSet(StringComparer.Ordinal);
+        var written = writtenLeaves.Select(leaf => leaf.ToString()).ToHashSet(StringComparer.Ordinal);
         var listing = await ListShardSubtreeAsync(root, cancellationToken);
         var stale = listing.Where(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal) && !written.Contains(name)).ToList();
         await Parallel.ForEachAsync(
@@ -580,6 +562,83 @@ internal sealed class ChunkIndexService : IChunkIndexService
             _encryption.IsEncrypted ? ContentTypes.ChunkIndexGcmEncrypted : ContentTypes.ChunkIndexPlaintext,
             overwrite: true,
             cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds the balanced leaf shards for one base prefix from local store state: a single shard at the
+    /// base when its range fits the threshold, otherwise the non-empty leaves of an in-memory 16-way split.
+    /// </summary>
+    private IEnumerable<(PathSegment Prefix, Shard Shard)> BuildLeafShards(PathSegment basePrefix)
+    {
+        var shard = BuildShard(basePrefix);
+        if (shard.Count == 0)
+            yield break;
+
+        if (shard.Count <= _maxShardEntryCount)
+        {
+            yield return (basePrefix, shard);
+            yield break;
+        }
+
+        foreach (var leaf in ChunkIndexRouter.PartitionIntoLeaves(basePrefix, shard.Entries.ToList(), _maxShardEntryCount))
+        {
+            var leafShard = new Shard();
+            leafShard.AddOrUpdateRange(leaf.Entries); // shares the same immutable ShardEntry instances — no entry copy
+            yield return (leaf.Prefix, leafShard);
+        }
+    }
+
+    /// <summary>
+    /// Builds the balanced leaf shards for the given base prefixes and uploads them, recording each
+    /// prefix→etag in <paramref name="uploadedStates"/>. A single producer constructs shards (sequential
+    /// local-store reads) into a bounded channel; <see cref="FlushWorkers"/> consumers upload them (parallel
+    /// network I/O). The bound caps resident shards at ~<see cref="FlushWorkers"/> regardless of repository
+    /// size. Returns the uploaded leaf prefixes.
+    /// </summary>
+    private async Task<IReadOnlyList<PathSegment>> BuildAndUploadShardsAsync(
+        IReadOnlyList<PathSegment> basePrefixes,
+        ConcurrentDictionary<PathSegment, string> uploadedStates,
+        CancellationToken cancellationToken)
+    {
+        var shards   = Channel.CreateBounded<(PathSegment Prefix, Shard Shard)>(
+            new BoundedChannelOptions(FlushWorkers) { SingleWriter = true, SingleReader = false });
+        var uploaded = new ConcurrentBag<PathSegment>();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var producer = Task.Run(async () =>
+        {
+            try
+            {
+                foreach (var basePrefix in basePrefixes)
+                    foreach (var leaf in BuildLeafShards(basePrefix))
+                        await shards.Writer.WriteAsync(leaf, cts.Token);
+                shards.Writer.Complete();
+            }
+            catch (Exception ex)
+            {
+                shards.Writer.Complete(ex);
+            }
+        }, CancellationToken.None);
+
+        try
+        {
+            await Parallel.ForEachAsync(
+                shards.Reader.ReadAllAsync(cts.Token),
+                new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cts.Token },
+                async (leaf, ct) =>
+                {
+                    var result = await UploadShardAsync(leaf.Prefix, leaf.Shard, ct);
+                    uploadedStates[leaf.Prefix] = result.ETag;
+                    uploaded.Add(leaf.Prefix);
+                });
+        }
+        finally
+        {
+            await cts.CancelAsync(); // unblock the producer if a consumer faulted or ended early
+            await producer;          // observe producer completion/fault (faults arrive via Writer.Complete(ex))
+        }
+
+        return uploaded.ToList();
     }
 
     // -- Stats ---------------------------------------------------------------
@@ -696,42 +755,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
         }
         FlushStaged();
 
-        // Compute a fresh balanced layout from the staged entries: recursively split any range
-        // whose entry count exceeds the threshold. This also re-balances an over-split remote
-        // layout (the stale-shard pass below deletes everything not in the rebuilt set).
-        var rebuiltPrefixes = new HashSet<PathSegment>();
-        foreach (var root in _localStore.GetStoredRootPrefixes())
-            CollectLeaves(root);
-
-        void CollectLeaves(PathSegment prefix)
-        {
-            var count = _localStore.CountRangeEntries(prefix);
-            if (count == 0)
-                return;
-
-            if (count <= _maxShardEntryCount)
-            {
-                rebuiltPrefixes.Add(prefix);
-                return;
-            }
-
-            foreach (var child in ChunkIndexRouter.GetChildPrefixes(prefix))
-                CollectLeaves(child);
-        }
-
-        var uploadedShardCount = 0;
-        await Parallel.ForEachAsync(
-            rebuiltPrefixes,
-            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (prefix, ct) =>
-            {
-                var shard = BuildShard(prefix);
-                if (shard.Count == 0)
-                    return;
-
-                await UploadShardAsync(prefix, shard, ct);
-                Interlocked.Increment(ref uploadedShardCount);
-            });
+        // Build and upload a fresh balanced layout from the staged entries through the shared
+        // producer/consumer pipeline. This also re-balances an over-split remote layout (the
+        // stale-shard pass below deletes everything not in the rebuilt set).
+        var uploadedStates  = new ConcurrentDictionary<PathSegment, string>();
+        var rebuiltPrefixes = (await BuildAndUploadShardsAsync(_localStore.GetStoredRootPrefixes().ToList(), uploadedStates, cancellationToken)).ToHashSet();
+        var uploadedShardCount = rebuiltPrefixes.Count;
 
         // Delete stale shards
         var deletedStaleShardCount = 0;

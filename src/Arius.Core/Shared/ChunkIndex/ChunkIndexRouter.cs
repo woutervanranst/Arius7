@@ -15,8 +15,6 @@ internal readonly record struct ShardTarget(PathSegment Prefix, bool Exists);
 /// </summary>
 internal static class ChunkIndexRouter
 {
-    private const string HexChars = "0123456789abcdef";
-
     /// <summary>The fixed-depth root prefix every hash maps to (e.g. <c>aa</c>) — the listing and gating granularity.</summary>
     public static PathSegment GetRootPrefix(ContentHash contentHash)
         => PathSegment.Parse(contentHash.Prefix(ChunkIndexService.MinShardPrefixLength));
@@ -110,13 +108,5 @@ internal static class ChunkIndexRouter
     {
         var hex = prefix.ToString();
         return (Convert.FromHexString(hex.PadRight(64, '0')), Convert.FromHexString(hex.PadRight(64, 'f')));
-    }
-
-    /// <summary>The 16 direct child prefixes of <paramref name="prefix"/> (<c>aa</c> → <c>aa0</c>..<c>aaf</c>).</summary>
-    public static IEnumerable<PathSegment> GetChildPrefixes(PathSegment prefix)
-    {
-        var hex = prefix.ToString();
-        foreach (var c in HexChars)
-            yield return PathSegment.Parse(hex + c);
     }
 }

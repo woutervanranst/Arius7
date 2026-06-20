@@ -317,29 +317,6 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
-    /// <summary>
-    /// Returns the number of entries currently stored within range of <paramref name="prefix"/>.
-    /// </summary>
-    public int CountRangeEntries(PathSegment prefix)
-    {
-        try
-        {
-            var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
-            using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM chunk_index_entries WHERE content_hash BETWEEN $lower AND $upper;";
-            command.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
-            command.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
-            var count = Convert.ToInt32(command.ExecuteScalar());
-            _logger.LogDebug("[chunk-index-local] CountRangeEntries: prefix={Prefix} count={Count}", prefix, count);
-            return count;
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
     // -- STATISTICS -------------------------------------------------
 
     /// <summary>

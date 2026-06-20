@@ -311,9 +311,6 @@ public class ChunkIndexLocalStoreTests
         store.ReadRangeEntries(PathSegment.Parse("aa3"), inRange.Add);
 
         inRange.Select(e => e.ContentHash).ShouldBe([entries[1].ContentHash, entries[2].ContentHash]);
-        store.CountRangeEntries(PathSegment.Parse("aa3")).ShouldBe(2);
-        store.CountRangeEntries(PathSegment.Parse("aa")).ShouldBe(4);
-        store.CountRangeEntries(PathSegment.Parse("bb")).ShouldBe(0);
     }
 
     [Test]
