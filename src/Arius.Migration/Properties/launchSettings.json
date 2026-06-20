@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Arius.Migration": {
+      "commandName": "Project",
+      "commandLineArgs": "-a ariuscibec -c v5migrationtest -p ariustestpassphrase"
+    }
+  }
+}

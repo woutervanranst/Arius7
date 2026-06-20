@@ -15,8 +15,6 @@ internal readonly record struct ShardTarget(PathSegment Prefix, bool Exists);
 /// </summary>
 internal static class ChunkIndexRouter
 {
-    private const string HexChars = "0123456789abcdef";
-
     /// <summary>The fixed-depth root prefix every hash maps to (e.g. <c>aa</c>) — the listing and gating granularity.</summary>
     public static PathSegment GetRootPrefix(ContentHash contentHash)
         => PathSegment.Parse(contentHash.Prefix(ChunkIndexService.MinShardPrefixLength));
@@ -35,13 +33,6 @@ internal static class ChunkIndexRouter
                 descendants.Add(name[..length]);
         return descendants;
     }
-
-    /// <summary>
-    /// Convenience overload that derives the descendant-prefix set on the fly; prefer the overload
-    /// taking a precomputed set when resolving many hashes against the same subtree.
-    /// </summary>
-    public static ShardTarget ResolveTarget(IReadOnlySet<string> existingShardNames, ContentHash contentHash)
-        => ResolveTarget(existingShardNames, BuildDescendantPrefixes(existingShardNames), contentHash);
 
     /// <summary>
     /// Resolves the shard for <paramref name="contentHash"/> against the set of existing shard
@@ -75,30 +66,14 @@ internal static class ChunkIndexRouter
     }
 
     /// <summary>
-    /// Recursively partitions <paramref name="entries"/> (all within range of
-    /// <paramref name="basePrefix"/>) into non-empty leaf shards of at most
-    /// <paramref name="maxEntryCount"/> entries, splitting 16-way by the next hex character.
+    /// The 16 child prefixes of <paramref name="prefix"/>, one per next hex character
+    /// (e.g. <c>aa</c> → <c>aa0</c>..<c>aaf</c>). The shard-building descent uses these to split an
+    /// over-threshold range one level deeper.
     /// </summary>
-    public static IReadOnlyList<(PathSegment Prefix, IReadOnlyList<ShardEntry> Entries)> PartitionIntoLeaves(
-        PathSegment basePrefix, IReadOnlyCollection<ShardEntry> entries, int maxEntryCount)
+    public static IEnumerable<PathSegment> ChildPrefixes(PathSegment prefix)
     {
-        var leaves = new List<(PathSegment, IReadOnlyList<ShardEntry>)>();
-        Recurse(basePrefix.ToString(), entries);
-        return leaves;
-
-        void Recurse(string prefix, IReadOnlyCollection<ShardEntry> scope)
-        {
-            foreach (var group in scope
-                         .GroupBy(entry => entry.ContentHash.Prefix(prefix.Length + 1))
-                         .OrderBy(group => group.Key, StringComparer.Ordinal))
-            {
-                var partition = group.ToList();
-                if (partition.Count <= maxEntryCount)
-                    leaves.Add((PathSegment.Parse(group.Key), partition));
-                else
-                    Recurse(group.Key, partition);
-            }
-        }
+        foreach (var c in "0123456789abcdef")
+            yield return PathSegment.Parse(prefix.ToString() + c);
     }
 
     /// <summary>
@@ -110,13 +85,5 @@ internal static class ChunkIndexRouter
     {
         var hex = prefix.ToString();
         return (Convert.FromHexString(hex.PadRight(64, '0')), Convert.FromHexString(hex.PadRight(64, 'f')));
-    }
-
-    /// <summary>The 16 direct child prefixes of <paramref name="prefix"/> (<c>aa</c> → <c>aa0</c>..<c>aaf</c>).</summary>
-    public static IEnumerable<PathSegment> GetChildPrefixes(PathSegment prefix)
-    {
-        var hex = prefix.ToString();
-        foreach (var c in HexChars)
-            yield return PathSegment.Parse(hex + c);
     }
 }

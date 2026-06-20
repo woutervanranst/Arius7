@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Arius.E2E.Tests")]
 [assembly: InternalsVisibleTo("Arius.Tests.Shared")]
 [assembly: InternalsVisibleTo("Arius.Benchmarks")]
+[assembly: InternalsVisibleTo("Arius.Migration")]
 
 namespace Arius.Core;
 

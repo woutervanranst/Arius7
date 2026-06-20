@@ -30,7 +30,11 @@ internal sealed class PassphraseEncryptionService : IEncryptionService
     private const int CbcSaltSize   = 8;
     private const int CbcKeySize    = 32; // AES-256
     private const int CbcIvSize     = 16; // AES block size
-    private const int CbcPbkdf2Iter = 100_000; //SonarQube S5344: at least 100k iterations
+    // NOSONAR S5344: legacy v5 (and OpenSSL `enc`) archives were written with 10_000 PBKDF2
+    // iterations. This count is used ONLY to DECRYPT those existing CBC blobs — never to derive a
+    // key for anything written today (production writes AES-GCM, see GcmPbkdf2Iter = 100_000). It
+    // must match the blobs on disk, so it cannot be raised.
+    private const int CbcPbkdf2Iter = 10_000;
     private static readonly byte[] SaltedMagic = "Salted__"u8.ToArray();
 
     // ── GCM constants ────────────────────────────────────────────────────────────

@@ -346,7 +346,7 @@ Arius keeps a per-repository cache and audit logs on your machine under your hom
 
 ```
 ~/.arius/<account>-<container>/
-├── chunk-index/   Local SQLite cache + shard cache for deduplication
+├── chunk-index/   Local SQLite dedup cache (cache.sqlite)
 ├── filetrees/     Cached Merkle tree node blobs
 ├── snapshots/     Cached snapshot manifests
 └── logs/          One timestamped audit log per command invocation

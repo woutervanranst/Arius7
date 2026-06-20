@@ -14,9 +14,11 @@ public interface IChunkIndexService : IDisposable
     internal Task<IReadOnlyDictionary<ContentHash, ShardEntry>> LookupAsync(IEnumerable<ContentHash> contentHashes, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resolves the chunk-index entry for a single content hash.
+    /// Resolves the chunk-index entry for a single content hash. Convenience overload of
+    /// <see cref="LookupAsync(IEnumerable{ContentHash}, CancellationToken)"/>; prefer the batch overload
+    /// when resolving multiple hashes.
     /// </summary>
-    internal Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default); // TODO this can be deprecated?
+    internal Task<ShardEntry?> LookupAsync(ContentHash contentHash, CancellationToken cancellationToken = default); // TODO no production callers — candidate for removal
 
     /// <summary>
     /// Marks loaded prefixes already validated against the current snapshot as valid for the newly published snapshot.
@@ -49,10 +51,10 @@ public interface IChunkIndexService : IDisposable
     internal Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Aggregates distinct-chunk count and stored size per storage tier straight from the local
-    /// chunk-index cache — no blob reads. Figures therefore reflect the cache's current coverage
-    /// (entries loaded by browsing/lookups plus any not-yet-flushed pending entries) and finalise
-    /// once the cache has fully synchronised.
+    /// Aggregates distinct-chunk count and stored size per storage tier from the local chunk-index cache
+    /// only — no blob reads. Figures reflect the cache's current coverage (entries loaded by browsing/lookups
+    /// plus not-yet-flushed pending entries). Deduping is by chunk hash, since tar-bundled content hashes
+    /// share one chunk.
     /// </summary>
     internal IReadOnlyList<ChunkTierStatistic> GetStatistics();
 }

@@ -11,7 +11,7 @@ public class ChunkIndexRouterTests
     public void ResolveTarget_ParentAndChildExist_ParentWins()
     {
         // An interrupted split leaves parent + children coexisting; the parent is authoritative.
-        var target = ChunkIndexRouter.ResolveTarget(Names("aa", "aa3"), Hash("aa3f"));
+        var target = ResolveTarget(Names("aa", "aa3"), Hash("aa3f"));
 
         target.ShouldBe(new ShardTarget(PathSegment.Parse("aa"), Exists: true));
     }
@@ -19,7 +19,7 @@ public class ChunkIndexRouterTests
     [Test]
     public void ResolveTarget_OnlyChildExists_DescendsToChild()
     {
-        var target = ChunkIndexRouter.ResolveTarget(Names("aa3"), Hash("aa3f"));
+        var target = ResolveTarget(Names("aa3"), Hash("aa3f"));
 
         target.ShouldBe(new ShardTarget(PathSegment.Parse("aa3"), Exists: true));
     }
@@ -27,7 +27,7 @@ public class ChunkIndexRouterTests
     [Test]
     public void ResolveTarget_EmptySubtree_EmptyAtRootDepth()
     {
-        var target = ChunkIndexRouter.ResolveTarget(Names(), Hash("aa3f"));
+        var target = ResolveTarget(Names(), Hash("aa3f"));
 
         target.ShouldBe(new ShardTarget(PathSegment.Parse("aa"), Exists: false));
     }
@@ -36,7 +36,7 @@ public class ChunkIndexRouterTests
     public void ResolveTarget_SplitRootWithoutMatchingChild_EmptyAtChildDepth()
     {
         // Siblings exist, so "aa" was split; the hash's own slot has no blob → empty at depth 3.
-        var target = ChunkIndexRouter.ResolveTarget(Names("aa0", "aa1"), Hash("aa5f"));
+        var target = ResolveTarget(Names("aa0", "aa1"), Hash("aa5f"));
 
         target.ShouldBe(new ShardTarget(PathSegment.Parse("aa5"), Exists: false));
     }
@@ -48,33 +48,18 @@ public class ChunkIndexRouterTests
         // intermediate level and resolves the grandchild, or the terminal empty depth.
         var names = Names("aa3f");
 
-        ChunkIndexRouter.ResolveTarget(names, Hash("aa3f")).ShouldBe(new ShardTarget(PathSegment.Parse("aa3f"), Exists: true));
-        ChunkIndexRouter.ResolveTarget(names, Hash("aa31")).ShouldBe(new ShardTarget(PathSegment.Parse("aa31"), Exists: false));
-        ChunkIndexRouter.ResolveTarget(names, Hash("aa7f")).ShouldBe(new ShardTarget(PathSegment.Parse("aa7"), Exists: false));
+        ResolveTarget(names, Hash("aa3f")).ShouldBe(new ShardTarget(PathSegment.Parse("aa3f"), Exists: true));
+        ResolveTarget(names, Hash("aa31")).ShouldBe(new ShardTarget(PathSegment.Parse("aa31"), Exists: false));
+        ResolveTarget(names, Hash("aa7f")).ShouldBe(new ShardTarget(PathSegment.Parse("aa7"), Exists: false));
     }
 
-    // ── PartitionIntoLeaves ──────────────────────────────────────────────────
+    // ── ChildPrefixes ─────────────────────────────────────────────────────────
 
     [Test]
-    public void PartitionIntoLeaves_SingleLevel_ProducesOnlyNonEmptyChildren()
+    public void ChildPrefixes_AppendsEachHexCharacter()
     {
-        var entries = new[] { Entry("aa01"), Entry("aa02"), Entry("aa5f") };
-
-        var leaves = ChunkIndexRouter.PartitionIntoLeaves(PathSegment.Parse("aa"), entries, maxEntryCount: 2);
-
-        leaves.Select(l => l.Prefix.ToString()).ShouldBe(["aa0", "aa5"]);
-        leaves.Single(l => l.Prefix.ToString() == "aa0").Entries.Select(e => e.ContentHash).ShouldBe([entries[0].ContentHash, entries[1].ContentHash], ignoreOrder: true);
-        leaves.Single(l => l.Prefix.ToString() == "aa5").Entries.Single().ContentHash.ShouldBe(entries[2].ContentHash);
-    }
-
-    [Test]
-    public void PartitionIntoLeaves_ChildStillOverThreshold_RecursesDeeper()
-    {
-        var entries = new[] { Entry("aa30"), Entry("aa31"), Entry("aa3f"), Entry("aa70") };
-
-        var leaves = ChunkIndexRouter.PartitionIntoLeaves(PathSegment.Parse("aa"), entries, maxEntryCount: 2);
-
-        leaves.Select(l => l.Prefix.ToString()).ShouldBe(["aa30", "aa31", "aa3f", "aa7"]);
+        ChunkIndexRouter.ChildPrefixes(PathSegment.Parse("aa")).Select(p => p.ToString())
+            .ShouldBe(["aa0", "aa1", "aa2", "aa3", "aa4", "aa5", "aa6", "aa7", "aa8", "aa9", "aaa", "aab", "aac", "aad", "aae", "aaf"]);
     }
 
     // ── GetHashRangeBounds ───────────────────────────────────────────────────
@@ -103,5 +88,7 @@ public class ChunkIndexRouterTests
 
     private static ContentHash Hash(string prefix) => ContentHash.Parse(prefix.PadRight(64, '9'));
 
-    private static ShardEntry Entry(string prefix) => new(Hash(prefix), FakeChunkHash('e'), 10, 5, BlobTier.Cool);
+    // Derives the descendant-prefix set on the fly; production always precomputes it once per root.
+    private static ShardTarget ResolveTarget(IReadOnlySet<string> existingShardNames, ContentHash contentHash)
+        => ChunkIndexRouter.ResolveTarget(existingShardNames, ChunkIndexRouter.BuildDescendantPrefixes(existingShardNames), contentHash);
 }

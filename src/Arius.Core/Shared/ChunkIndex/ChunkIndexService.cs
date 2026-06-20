@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
@@ -406,7 +407,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _localStore.UpsertPendingFlush(entries);
     }
 
-    // -- Flush & Upload ---------------------------------------------------------------
+    // -- Flush ---------------------------------------------------------------
 
     /// <summary>
     /// Uploads pending local entries into remote shard blobs and marks flushed prefixes as synchronized remote-backed cache.
@@ -448,9 +449,10 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Flushes all pending entries in one root subtree, holding the root gate: resolves the
-    /// authoritative target shard per pending hash, merges, and uploads — splitting any shard
-    /// that exceeds the entry-count threshold.
+    /// Flushes all pending entries in one root subtree, holding the root gate: resolves the authoritative
+    /// target shard per pending hash, then builds and uploads the balanced leaf shards for those targets via
+    /// <see cref="BuildAndUploadShardsAsync"/>. A target whose range overflowed is split into deeper leaves by
+    /// the DB-driven descent; its now-stale parent is deleted afterward via <see cref="DeleteStaleShardsAfterSplitAsync"/>.
     /// </summary>
     private async Task FlushRootAsync(PathSegment root, string latestSnapshotVersion, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
     {
@@ -471,23 +473,24 @@ internal sealed class ChunkIndexService : IChunkIndexService
             var distinctTargets = targets.Values.Distinct().ToList();
             var flushTargets = distinctTargets
                 .Where(prefix => !distinctTargets.Any(other => other != prefix && prefix.ToString().StartsWith(other.ToString(), StringComparison.Ordinal)))
-                .OrderBy(prefix => prefix.ToString(), StringComparer.Ordinal);
+                .OrderBy(prefix => prefix.ToString(), StringComparer.Ordinal)
+                .ToList();
 
-            foreach (var prefix in flushTargets)
+            // Build and upload every target's leaf shards through the shared producer/consumer pipeline.
+            var leafPrefixes = await BuildAndUploadShardsAsync(flushTargets, uploadedStates, cancellationToken);
+
+            // A target whose range overflowed was split into deeper leaves, leaving a now-stale parent
+            // (and any interrupted-split leftovers) behind; delete them only after the leaves have landed,
+            // so a crash mid-split keeps parent-wins lookup correct. A target that fit needs no cleanup.
+            foreach (var target in flushTargets)
             {
-                var shard = BuildShard(prefix);
-                if (shard.Count == 0)
+                // Targets are pairwise non-nested, so each uploaded leaf maps to exactly one target.
+                var written = leafPrefixes.Where(prefix => prefix.ToString().StartsWith(target.ToString(), StringComparison.Ordinal)).ToList();
+                if (written.Count == 0 || (written.Count == 1 && written[0] == target))
                     continue;
 
-                if (shard.Count <= _maxShardEntryCount)
-                {
-                    var result = await UploadShardAsync(prefix, shard, cancellationToken);
-                    uploadedStates[prefix] = result.ETag;
-                    _logger.LogDebug("Uploaded shard {Prefix} ({EntryCount} entries)", prefix, shard.Count);
-                    continue;
-                }
-
-                await SplitShardAsync(root, prefix, shard, uploadedStates, cancellationToken);
+                _logger.LogInformation("Split shard {Prefix} into {LeafCount} leaves", target, written.Count);
+                await DeleteStaleShardsAfterSplitAsync(root, target, written, cancellationToken);
             }
         }
         finally
@@ -497,39 +500,19 @@ internal sealed class ChunkIndexService : IChunkIndexService
     }
 
     /// <summary>
-    /// Splits an over-threshold shard: uploads all non-empty leaf shards FIRST, and only then
-    /// deletes the parent and any other stale shard in its range. A crash mid-split leaves the
-    /// parent intact; since the snapshot for this run is not yet published, the parent still
-    /// contains everything any published snapshot references, and parent-wins lookup stays
-    /// correct. The pending rows stay pending, so a retry re-resolves the parent and re-splits.
+    /// After a split's leaf shards have all landed, deletes the now-stale parent and any other blob in
+    /// range(prefix) that was not just written — including leftovers of a previously interrupted split.
+    /// Uploading the leaves before this delete keeps parent-wins lookup correct if a crash interrupts the
+    /// split: the parent stays intact, and since this run's snapshot is not yet published it still contains
+    /// everything any published snapshot references. The pending rows stay pending, so a retry re-splits.
     /// </summary>
-    private async Task SplitShardAsync(PathSegment root, PathSegment prefix, Shard shard, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
+    private async Task DeleteStaleShardsAfterSplitAsync(PathSegment root, PathSegment prefix, IReadOnlyList<PathSegment> writtenLeaves, CancellationToken cancellationToken)
     {
         // Whether range(prefix) held any remote shard before this run's flush. Under the single-writer
-        // assumption the run-scoped listing is that pre-flush state (our own leaf uploads below never
-        // appear in the immutable snapshot), so an empty range means there is nothing stale to clean.
+        // assumption the run-scoped listing is that pre-flush state (our own leaf uploads never appear in
+        // the immutable snapshot), so an empty range means there is nothing stale to clean.
         var rangeWasEmpty = !((await _shardListing.GetAsync(cancellationToken)).GetValueOrDefault(root.ToString()) ?? FrozenDictionary<string, string?>.Empty)
             .Keys.Any(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal));
-
-        var leaves = ChunkIndexRouter.PartitionIntoLeaves(prefix, shard.Entries.ToList(), _maxShardEntryCount);
-
-        // Upload the (independent) leaf shards concurrently. ALL must land before any delete: a crash
-        // mid-split must leave the parent intact so parent-wins lookup stays correct.
-        await Parallel.ForEachAsync(
-            leaves,
-            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (leaf, ct) =>
-            {
-                var leafShard = new Shard();
-                leafShard.AddOrUpdateRange(leaf.Entries);
-                var result = await UploadShardAsync(leaf.Prefix, leafShard, ct);
-                uploadedStates[leaf.Prefix] = result.ETag;
-            });
-
-        _logger.LogInformation("Split shard {Prefix} ({EntryCount} entries) into {LeafCount} leaves", prefix, shard.Count, leaves.Count);
-
-        // A brand-new (empty) range had no parent or interrupted-split leftovers, so the post-split
-        // subtree listing and deletes are pure waste — skip them.
         if (rangeWasEmpty)
             return;
 
@@ -537,7 +520,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // including leftovers of a previously interrupted split (their extra entries were never
         // published; the machine that wrote them still has them as pending rows and will re-flush).
         // The destructive scan reads fresh remote state; deletes run concurrently.
-        var written = leaves.Select(leaf => leaf.Prefix.ToString()).ToHashSet(StringComparer.Ordinal);
+        var written = writtenLeaves.Select(leaf => leaf.ToString()).ToHashSet(StringComparer.Ordinal);
         var listing = await ListShardSubtreeAsync(root, cancellationToken);
         var stale = listing.Where(name => name.StartsWith(prefix.ToString(), StringComparison.Ordinal) && !written.Contains(name)).ToList();
         await Parallel.ForEachAsync(
@@ -550,16 +533,56 @@ internal sealed class ChunkIndexService : IChunkIndexService
             });
     }
 
+
+    // -- SHARD BUILD & UPLOAD -------------------
+
     /// <summary>
-    /// Builds the current shard payload for one prefix range from local store state.
+    /// Builds the balanced leaf shards for the given base prefixes and uploads them, recording each
+    /// prefix→etag in <paramref name="uploadedStates"/>. <c>BuildShards</c> streams shards lazily as the
+    /// single producer (sequential local-store reads) while <see cref="FlushWorkers"/> consumers upload in
+    /// parallel; <c>Parallel.ForEachAsync</c> serializes the enumeration and bounds in-flight shards to
+    /// ~<see cref="FlushWorkers"/>, so peak memory is independent of repository size. Returns the uploaded
+    /// leaf prefixes.
     /// </summary>
-    /// <param name="prefix">The shard prefix range to materialize.</param>
-    /// <returns>A shard containing all currently stored entries within the prefix range.</returns>
-    private Shard BuildShard(PathSegment prefix)
+    private async Task<IReadOnlyList<PathSegment>> BuildAndUploadShardsAsync(IReadOnlyList<PathSegment> basePrefixes, ConcurrentDictionary<PathSegment, string> uploadedStates, CancellationToken cancellationToken)
     {
-        var shard = new Shard();
-        _localStore.ReadRangeEntries(prefix, shard.AddOrUpdate);
-        return shard;
+        var uploaded = new ConcurrentBag<PathSegment>();
+        await Parallel.ForEachAsync(
+            basePrefixes.SelectMany(BuildShards),
+            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
+            async (shard, ct) =>
+            {
+                var result = await UploadShardAsync(shard.Prefix, shard.Shard, ct);
+                uploadedStates[shard.Prefix] = result.ETag;
+                uploaded.Add(shard.Prefix);
+            });
+
+        return uploaded.ToList();
+    }
+
+    /// <summary>
+    /// Descends the local store's hash space for one prefix: a range that fits the threshold is a single
+    /// shard, read from the store; a range that overflows is split 16-way by the next hex character and each
+    /// child descended. The database drives the shape — there is no in-memory split, and only one shard is
+    /// ever resident regardless of repository size or hash distribution. Recursion terminates by full hash
+    /// length (a 64-char prefix is a single content hash); SHA-256 uniformity bottoms out one or two levels
+    /// below the 2-char root.
+    /// </summary>
+    private IEnumerable<(PathSegment Prefix, Shard Shard)> BuildShards(PathSegment prefix)
+    {
+        var count = _localStore.CountRangeEntries(prefix);
+        if (count == 0)
+            yield break;
+
+        if (count <= _maxShardEntryCount)
+        {
+            yield return (prefix, BuildShard(prefix));
+            yield break;
+        }
+
+        foreach (var child in ChunkIndexRouter.ChildPrefixes(prefix))
+            foreach (var shard in BuildShards(child))
+                yield return shard;
     }
 
     /// <summary>
@@ -573,13 +596,25 @@ internal sealed class ChunkIndexService : IChunkIndexService
     {
         var bytes = await ShardSerializer.SerializeAsync(shard, _encryption, _compression, cancellationToken);
         return await _blobs.UploadAsync(
-            BlobPaths.ChunkIndexShardPath(prefix),
-            new MemoryStream(bytes),
-            new Dictionary<string, string>(),
-            BlobTier.Cool,
-            _encryption.IsEncrypted ? ContentTypes.ChunkIndexGcmEncrypted : ContentTypes.ChunkIndexPlaintext,
+            blobName: BlobPaths.ChunkIndexShardPath(prefix),
+            content: new MemoryStream(bytes),
+            metadata: new Dictionary<string, string>(),
+            tier: BlobTier.Cool,
+            contentType: _encryption.IsEncrypted ? ContentTypes.ChunkIndexGcmEncrypted : ContentTypes.ChunkIndexPlaintext,
             overwrite: true,
             cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds the current shard payload for one prefix range from local store state.
+    /// </summary>
+    /// <param name="prefix">The shard prefix range to materialize.</param>
+    /// <returns>A shard containing all currently stored entries within the prefix range.</returns>
+    private Shard BuildShard(PathSegment prefix)
+    {
+        var shard = new Shard();
+        _localStore.ReadRangeEntries(prefix, shard.AddOrUpdate);
+        return shard;
     }
 
     // -- Stats ---------------------------------------------------------------
@@ -625,77 +660,42 @@ internal sealed class ChunkIndexService : IChunkIndexService
         AddRepairMarker();
         _localStore.RecreateDatabase(backupExisting: true);
 
-        // Pass 1: collect tar blob metadata. A thin chunk's data lives in its parent tar (the thin
-        // stub itself is always uploaded Cool), so its tier hint and chunk size must come from the
-        // tar blob. Keeping this as a separate listing avoids buffering unresolved thin chunks or
-        // doing per-thin remote lookups; memory stays bounded by the tar count, not the file count.
-        var tarMetadata = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
-        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+        // Rebuild the entries from a single listing of the chunk blobs. Large chunks resolve inline. A thin
+        // chunk's data lives in its parent tar (the thin stub itself is always uploaded Cool), so its tier and
+        // chunk size come from the tar blob — which, ordered by hash, may be listed after the thin chunk.
+        // Rather than buffer every thin chunk, we write each thin row to the DB during the listing with its
+        // parent in chunk_hash and placeholder tier/size, remember only the distinct parent-tar hashes, and
+        // enrich them in one bulk pass once the listing (and thus every tar) is known. Peak memory scales with
+        // the tar count, not the small-file count, and a single listing keeps the paged remote scan minimal.
+        const int writeBatchSize = 1024; // entries per UpsertRemoteBacked call; Chunk yields the partial tail automatically
 
-            if (item.Metadata is { } metadata
-                && metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType)
-                && ariusType == BlobMetadataKeys.TypeTar
-                && ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash))
-            {
-                tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
-            }
-        }
+        var tarMetadata       = new Dictionary<ChunkHash, (BlobTier Tier, long ChunkSize)>();
+        var referencedParents = new HashSet<ChunkHash>(); // distinct parent tars referenced by thin chunks; O(#tars), not O(#small-files)
 
-        // Pass 2: rebuild the entries once all parent tar metadata is known.
-        var listedChunkCount = 0;
+        var listedChunkCount  = 0;
         var rebuiltEntryCount = 0;
 
-        await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: cancellationToken))
+        await foreach (var batch in GetRepairEntriesAsync(cancellationToken).Chunk(writeBatchSize).WithCancellation(cancellationToken))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            listedChunkCount++;
-
-            var entry = CreateRepairEntry(item, tarMetadata);
-            if (entry is null)
-                continue;
-
-            _localStore.UpsertRemoteBacked(entry);
-            rebuiltEntryCount++;
+            _localStore.UpsertRemoteBacked(batch);
+            rebuiltEntryCount += batch.Length;
         }
 
-        // Compute a fresh balanced layout from the staged entries: recursively split any range
-        // whose entry count exceeds the threshold. This also re-balances an over-split remote
-        // layout (the stale-shard pass below deletes everything not in the rebuilt set).
-        var rebuiltPrefixes = new HashSet<PathSegment>();
-        foreach (var root in _localStore.GetStoredRootPrefixes())
-            CollectLeaves(root);
+        // Every thin row was written with its parent in chunk_hash and placeholder tier/size; fill those in from
+        // the now-complete tar metadata. A referenced parent tar absent from the listing means the repository is
+        // broken — fail the repair rather than persist a guessed (hydrated) tier.
+        var missingParents = referencedParents.Where(parent => !tarMetadata.ContainsKey(parent)).ToList();
+        if (missingParents.Count > 0)
+            throw new ChunkIndexRepairException(BlobPaths.ChunkPath(missingParents[0]), $"parent tar chunk {missingParents[0]} not found in repository listing");
+        _localStore.EnrichThinChunks(tarMetadata);
 
-        void CollectLeaves(PathSegment prefix)
-        {
-            var count = _localStore.CountRangeEntries(prefix);
-            if (count == 0)
-                return;
-
-            if (count <= _maxShardEntryCount)
-            {
-                rebuiltPrefixes.Add(prefix);
-                return;
-            }
-
-            foreach (var child in ChunkIndexRouter.GetChildPrefixes(prefix))
-                CollectLeaves(child);
-        }
-
-        var uploadedShardCount = 0;
-        await Parallel.ForEachAsync(
-            rebuiltPrefixes,
-            new ParallelOptions { MaxDegreeOfParallelism = FlushWorkers, CancellationToken = cancellationToken },
-            async (prefix, ct) =>
-            {
-                var shard = BuildShard(prefix);
-                if (shard.Count == 0)
-                    return;
-
-                await UploadShardAsync(prefix, shard, ct);
-                Interlocked.Increment(ref uploadedShardCount);
-            });
+        // Build and upload a fresh balanced layout from the staged entries through the shared
+        // producer/consumer pipeline. This also re-balances an over-split remote layout (the
+        // stale-shard pass below deletes everything not in the rebuilt set).
+        var uploadedStates     = new ConcurrentDictionary<PathSegment, string>();
+        var basePrefixes       = _localStore.GetStoredRootPrefixes().ToList();
+        var rebuiltPrefixes    = (await BuildAndUploadShardsAsync(basePrefixes, uploadedStates, cancellationToken)).ToHashSet();
+        var uploadedShardCount = rebuiltPrefixes.Count;
 
         // Delete stale shards
         var deletedStaleShardCount = 0;
@@ -716,62 +716,60 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _shardListing.Reset(); // repair rewrote the whole layout — drop any cached listing
 
         return new(listedChunkCount, rebuiltEntryCount, rebuiltPrefixes.Count, uploadedShardCount, deletedStaleShardCount);
-    }
 
-    /// <summary>
-    /// Converts a chunk blob listing item into a rebuildable shard entry when that blob contributes to the chunk index.
-    /// </summary>
-    /// <param name="item">The listed chunk blob.</param>
-    /// <param name="tarMetadata">Parent tar chunk tier and size metadata keyed by tar chunk hash.</param>
-    /// <returns>The rebuilt shard entry, or <see langword="null"/> when the blob should not appear in the chunk index.</returns>
-    private static ShardEntry? CreateRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
-    {
-        var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
-        if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
-            return null;
 
-        return ariusType switch
+        // Get the repair entries. Large chunks resolve inline; a thin chunk is yielded with its parent in chunk_hash and placeholder tier/size and enriched after the listing.
+        // A tar contributes no entry of its own — it is recovered via its thin chunks.
+        async IAsyncEnumerable<ShardEntry> GetRepairEntriesAsync([EnumeratorCancellation] CancellationToken ct = default)
         {
-            BlobMetadataKeys.TypeLarge => CreateLargeRepairEntry(item),
-            BlobMetadataKeys.TypeThin  => CreateThinRepairEntry(item, tarMetadata),
-            BlobMetadataKeys.TypeTar   => null, // TAR entries will be recovered by the thin chunks
-            _                          => null,
-        };
+            await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: ct))
+            {
+                ct.ThrowIfCancellationRequested();
+                listedChunkCount++;
 
-        static ShardEntry CreateLargeRepairEntry(BlobListItem item)
-        {
-            var contentHash    = ContentHash.Parse(item.Name.Name.ToString());
-            var originalSize   = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-            var chunkSize      = ReadChunkSize(item);
-            return new(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
+                var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
+                if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+                    continue;
+
+                switch (ariusType)
+                {
+                    case BlobMetadataKeys.TypeLarge:
+                    {
+                        var contentHash  = ContentHash.Parse(item.Name.Name.ToString());
+                        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
+                        var chunkSize    = ReadChunkSize(item);
+                        yield return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
+                        break;
+                    }
+                    case BlobMetadataKeys.TypeThin:
+                    {
+                        var contentHash = ContentHash.Parse(item.Name.Name.ToString());
+                        var parentChunkHash = ReadRequiredChunkHashMetadata(item, BlobMetadataKeys.ParentChunkHash);
+                        referencedParents.Add(parentChunkHash);
+                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
+                        break;
+                    }
+                    case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
+                    {
+                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
+                        break;
+                    }
+                }
+            }
+
+            static long ReadRequiredLongMetadata(BlobListItem item, string key)
+                => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
+                    ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
+
+            static ChunkHash ReadRequiredChunkHashMetadata(BlobListItem item, string key)
+                => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && ChunkHash.TryParse(value, out var parsed)
+                    ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
+
+            static long ReadChunkSize(BlobListItem item)
+                => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+                    ? size : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
         }
-
-        static ShardEntry CreateThinRepairEntry(BlobListItem item, IReadOnlyDictionary<ChunkHash, (BlobTier Tier, long ChunkSize)> tarMetadata)
-        {
-            var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-            if (!item.Metadata!.TryGetValue(BlobMetadataKeys.ParentChunkHash, out var parentChunkHashValue) || !ChunkHash.TryParse(parentChunkHashValue, out var parentChunkHash))
-                throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ParentChunkHash} metadata");
-
-            // The thin stub itself is always uploaded Cool; its data tier is the parent tar's tier.
-            // A parent tar absent from the listing means the repository is broken — fail the repair
-            // rather than persisting a guessed (hydrated) tier.
-            if (!tarMetadata.TryGetValue(parentChunkHash, out var parentTar))
-                throw new ChunkIndexRepairException(item.Name, $"parent tar chunk {parentChunkHash} not found in repository listing");
-
-            var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-            return new(contentHash, parentChunkHash, originalSize, parentTar.ChunkSize, parentTar.Tier);
-        }
-
-        static long ReadRequiredLongMetadata(BlobListItem item, string key)
-            => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
-                ? parsed
-                : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
     }
-
-    private static long ReadChunkSize(BlobListItem item)
-        => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
-            ? size
-            : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
 
     // -- Local Repair Marker -------------------------------------------------
 
@@ -797,7 +795,9 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Lifetime ------------------------------------------------------------
 
     /// <summary>
-    /// Disposes the local chunk-index store.
+    /// No-op. The local SQLite store opens and closes a pooled connection per operation and holds no resources
+    /// that outlive a call, so there is nothing to release here; this exists only to satisfy
+    /// <see cref="IDisposable"/> on <see cref="IChunkIndexService"/>.
     /// </summary>
     public void Dispose()
     {

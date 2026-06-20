@@ -39,7 +39,7 @@ Parent-wins is what makes a split crash-safe (see invariants). It also makes an 
 
 A second table, `loaded_prefixes`, holds **non-overlapping coverage claims**: per validated prefix it records remote existence, the remote blob ETag, and the snapshot version it was validated under. This is the lazy per-prefix validation state — it lets routine snapshot changes avoid a repository-wide purge: a touched prefix is trusted if its claim was validated at the current latest-snapshot [epoch](../../../glossary.md#epoch); otherwise only that prefix is revalidated against its current remote ETag. The `UpsertLoadedPrefix` write deletes any strict ancestor/descendant claim so claims stay pairwise non-nested.
 
-> **Why SQLite, not a tiered shard cache:** this replaced an earlier in-memory LRU of whole shard pages plus plaintext per-prefix disk-shard files plus a `--dedup-cache-mb` budget. There is no L1/L2 shard cache anymore; SQLite is the single local working store. `InvalidateCaches` also deletes leftover 2-hex plaintext files (`DeleteLegacyShardCacheFiles`) as stale state.
+> **Why SQLite, not a tiered shard cache:** this replaced an earlier in-memory LRU of whole shard pages plus plaintext per-prefix disk-shard files plus a `--dedup-cache-mb` budget. There is no L1/L2 shard cache anymore; SQLite is the single local working store, so `InvalidateCaches` just clears the remote-backed rows and coverage claims (`ClearRemoteBackedCache`) and resets the run-scoped listing.
 
 ### Lookup flow
 
@@ -82,21 +82,28 @@ flowchart TD
     U --> V[GetRootsWithPendingFlushes from SQLite]
     V --> W[Per root, behind its gate, bounded by FlushWorkers=32:<br/>FlushRootAsync]
     W --> X[EnsureCoverageCoreAsync: load authoritative shards<br/>an interrupted split resolves to the still-present parent]
-    X --> Y[Keep only shallowest targets, build shard from SQLite range]
-    Y --> Z{shard.Count over MaxShardEntryCount?}
-    Z -->|no| Z1[UploadShardAsync: complete replacement shard]
-    Z -->|yes| Z2[SplitShardAsync]
-    Z2 --> Z3[Upload ALL non-empty leaves FIRST]
-    Z3 --> Z4{range was empty?}
-    Z4 -->|yes| Z5[Skip delete scan — nothing stale]
-    Z4 -->|no| Z6[Fresh subtree listing, delete parent + stale blobs concurrently]
-    Z1 --> AA
-    Z5 --> AA
-    Z6 --> AA[After EVERY root uploaded:<br/>MarkPendingFlushesSynchronized]
-    AA --> AB[Dirty rows → clean; uploaded shard set → validated coverage]
+    X --> Y[Keep only the shallowest targets]
+    Y --> BU[BuildAndUploadShardsAsync:<br/>BuildShards descends each target from SQLite,<br/>FlushWorkers consumers UploadShardAsync in parallel]
+    BU --> SP{target descended into &gt;1 leaf?}
+    SP -->|no, fit one shard| AA
+    SP -->|yes, split| DS[DeleteStaleShardsAfterSplitAsync]
+    DS --> Z4{range empty pre-flush?}
+    Z4 -->|yes| AA
+    Z4 -->|no| Z6[Fresh subtree listing,<br/>delete parent + stale blobs concurrently]
+    Z6 --> AA
+    AA[After EVERY root uploaded:<br/>MarkPendingFlushesSynchronized] --> AB[Dirty rows → clean; uploaded shard set → validated coverage]
 ```
 
 After flush, `ArchiveCommandHandler` publishes the new snapshot and calls `PromoteToSnapshotVersionAsync`, which rewrites `loaded_prefixes.snapshot_version` from the run-start snapshot to the newly published one — so prefixes validated during the run stay trusted under the new epoch without re-probing remote (a no-op when the names are equal).
+
+### Building shards: one DB-driven descent for flush and repair
+
+Both flush and repair turn a set of base prefixes into balanced leaf shards through the **same** two methods, so there is no second split algorithm to keep in sync:
+
+- `BuildShards(prefix)` is a recursive generator over the local store. `CountRangeEntries(prefix)` — an index-only `COUNT(*)` on the `content_hash` primary-key autoindex — decides whether the range fits `MaxShardEntryCount`: if it fits, it yields one shard built from `ReadRangeEntries` (`BuildShard`); if it overflows, it descends 16-way via `ChunkIndexRouter.ChildPrefixes` and yields each child's shards. The database drives the shape — there is no in-memory whole-shard split (the former `PartitionIntoLeaves` is gone), and only one shard is ever resident regardless of repository size or hash distribution.
+- `BuildAndUploadShardsAsync(basePrefixes)` runs that lazy producer against `FlushWorkers` parallel `UploadShardAsync` consumers via `Parallel.ForEachAsync` — which serializes the enumerator (the producer's sequential SQLite reads) and bounds in-flight shards to ~`FlushWorkers`, so peak memory is independent of repository size and there is no hand-rolled bounded channel.
+
+`FlushRootAsync` invokes it with the run's shallowest pending targets — and for any target that descended into more than one leaf (a *split*) removes the now-stale parent afterward via `DeleteStaleShardsAfterSplitAsync`. `RepairAsync` invokes it with every stored root and instead sweeps all non-rebuilt `chunk-index/` blobs wholesale.
 
 ### Run-scoped shard listing
 
@@ -104,7 +111,7 @@ Layout discovery (which shards exist, with their ETags) needs a blob listing. Be
 
 ### Repair
 
-`RepairAsync` is the explicit, idempotent rebuild from authoritative chunk blobs (see [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md)). It writes a repair-in-progress marker (a file outside the purgeable cache), recreates the local SQLite database (moving the `cache.sqlite{,-wal,-shm}` family aside to `.bak`), then: pass 1 lists `chunks/` with metadata to collect tar tier/size; pass 2 lists `chunks/` again and reconstructs entries (`large` → content-hash == chunk-hash; `thin` → maps to its `parent_chunk_hash`'s tar, inheriting the tar's tier/size; `tar`/unknown → ignored, since `arius_type` is the completion sentinel). It then recomputes a fresh balanced layout from the rebuilt entry counts (`CollectLeaves` splits any over-threshold range), uploads every non-empty rebuilt shard, deletes every other `chunk-index/` blob, and only then clears the marker. Repair never publishes a snapshot.
+`RepairAsync` is the explicit, idempotent rebuild from authoritative chunk blobs (see [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md)). It writes a repair-in-progress marker (a file outside the purgeable cache), recreates the local SQLite database (moving the `cache.sqlite{,-wal,-shm}` family aside to `.bak`), then rebuilds the entries from a **single** metadata listing of `chunks/`: a `large` chunk yields an entry inline (content-hash == chunk-hash); a `thin` chunk is written through with its parent tar in `chunk_hash` and a placeholder tier/size; a `tar` contributes no entry of its own but its `(tier, chunk size)` is remembered (`arius_type` is the completion sentinel, so a body without it is skipped). Entries stream into SQLite in 1024-row batches (`UpsertRemoteBacked`). Because a thin chunk's real tier/size live on its parent tar — which, ordered by hash, may be listed *after* the thin chunk — `EnrichThinChunks` fills them in once the listing is complete with one `UPDATE` per tar (an index seek on `ix_chunk_index_entries_chunk_hash`, not a table scan); a referenced parent tar missing from the listing fails the repair rather than persisting a guessed tier. It then rebuilds a fresh balanced layout from the staged counts through the same `BuildAndUploadShardsAsync` descent that flush uses, deletes every `chunk-index/` blob not in the rebuilt set, and only then clears the marker. Peak memory scales with the tar count, not the small-file count. Repair never publishes a snapshot — the full recovery slice is documented in [repair-chunk-index](../features/repair-chunk-index.md).
 
 ### Wire format
 
@@ -114,7 +121,7 @@ A shard is newline-delimited plaintext, sorted by content hash, then zstd-compre
 
 - **Dirty rows are sacrosanct.** `pending_flush = 1` rows are durable archive operational state, never silently discarded. `ClearRemoteBackedCache`/`InvalidateCaches` delete only `pending_flush = 0` rows and all coverage claims; the remote-ingest upsert (`preservePendingFlushRows: true`) refuses to overwrite a dirty row; `IngestCoverage`'s range deletes are `WHERE pending_flush = 0`. A dirty row may be flushed by a *later* run even if the run that recorded it never published a snapshot.
 - **Dirty rows are recorded only after a durable upload.** `AddEntry` must run after the referenced large/thin chunk blob is committed — that is what makes a dirty row a valid retry target across process restarts.
-- **Split: upload all leaves before any delete.** `SplitShardAsync` uploads every non-empty leaf *before* deleting the parent or any stale blob in range. A crash mid-split leaves the parent intact; because the run's snapshot was never published, the parent still contains everything any published snapshot references, so parent-wins reads stay correct with no sentinel. The crashed run's rows stay dirty and a retry re-resolves the parent and re-splits. (See [ADR-0015](../../../decisions/adr-0015-chunk-index-scalability.md).)
+- **Split: upload all leaves before any delete.** A split uploads every non-empty leaf (`BuildAndUploadShardsAsync`) *before* `DeleteStaleShardsAfterSplitAsync` deletes the parent or any stale blob in range. A crash mid-split leaves the parent intact; because the run's snapshot was never published, the parent still contains everything any published snapshot references, so parent-wins reads stay correct with no sentinel. The crashed run's rows stay dirty and a retry re-resolves the parent and re-splits. (See [ADR-0015](../../../decisions/adr-0015-chunk-index-scalability.md).)
 - **Coverage claims never overlap.** `loaded_prefixes` is kept pairwise non-nested (`UpsertLoadedPrefix` deletes strict ancestors/descendants). This is why a whole validation run's claims can be applied in one transaction, and why leaf claims correctly replace a split parent's claim.
 - **Flush marks rows clean only after *every* root uploaded.** `MarkPendingFlushesSynchronized` runs after the full `Parallel.ForEachAsync` over roots completes; a partial flush failure leaves dirty rows dirty and publishes no snapshot.
 - **Nothing mutates remote `chunk-index/` blobs between dedup and flush except `FlushAsync` itself.** This sole-writer-per-window assumption is what makes reusing the run-start listing at flush correct. Any future mutation in that window must `Reset()` the listing. (See [ADR-0016](../../../decisions/adr-0016-multi-machine-cache-coherence.md).)
