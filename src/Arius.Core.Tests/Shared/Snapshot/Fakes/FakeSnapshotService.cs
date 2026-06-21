@@ -16,6 +16,7 @@ internal sealed class FakeSnapshotService : ISnapshotService
         long              fileCount,
         long              totalSize,
         DateTimeOffset?   timestamp         = null,
+        bool              overwrite         = false,
         CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     public Task<IReadOnlyList<RelativePath>> ListBlobNamesAsync(CancellationToken cancellationToken = default)

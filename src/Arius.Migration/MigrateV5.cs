@@ -38,6 +38,10 @@ internal sealed class MigrateV5
     // Stage 3 issues one small blob op per chunk; fan them out (matches the codebase's blob-fanout degree).
     private const int UpsertWorkers = 32;
 
+    // v5 names its state-DB blob "states/<yyyy-MM-ddTHH-mm-ss.fff>" (UTC). The migration reuses that instant
+    // as the v7 snapshot timestamp, so the snapshot is named after the v5 state it was built from.
+    private static readonly string[] V5StateTimestampFormats = ["yyyy-MM-ddTHH-mm-ss.fff", "yyyy-MM-ddTHH-mm-ss"];
+
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
     private readonly ICompressionService   _compression;
@@ -74,7 +78,7 @@ internal sealed class MigrateV5
         if (_passphrase is not null && !Ascii.IsValid(_passphrase))
             throw new NotSupportedException("Migration requires an ASCII passphrase (v5 keys/hashes are derived from ASCII bytes).");
 
-        var dbPath = await DownloadStateDbAsync(cancellationToken);
+        var (dbPath, snapshotTimestamp) = await DownloadStateDbAsync(cancellationToken);
         try
         {
             await using var connection = new SqliteConnection($"Data Source={dbPath}");
@@ -98,7 +102,7 @@ internal sealed class MigrateV5
 
             await UpsertChunkMetadataAsync(large, tars, thins, chunkBlobs, cancellationToken);
             await RebuildChunkIndexAsync(cancellationToken);
-            await BuildAndSnapshotAsync(pointers, binaries, cancellationToken);
+            await BuildAndSnapshotAsync(pointers, binaries, snapshotTimestamp, cancellationToken);
         }
         finally
         {
@@ -109,7 +113,7 @@ internal sealed class MigrateV5
 
     // ── Stage 1: Read the v5 state DB ───────────────────────────────────────────────
 
-    private async Task<string> DownloadStateDbAsync(CancellationToken cancellationToken)
+    private async Task<(string DbPath, DateTimeOffset SnapshotTimestamp)> DownloadStateDbAsync(CancellationToken cancellationToken)
     {
         // The v5 state DB lives at "states/<name>" (no v7 BlobPaths constant). "Latest" is the
         // lexicographically-greatest name (timestamps sort chronologically).
@@ -127,7 +131,8 @@ internal sealed class MigrateV5
         if (latest.Metadata is { } meta && meta.TryGetValue("DatabaseVersion", out var version) && version != "5")
             _logger.LogWarning("State blob DatabaseVersion is '{Version}', expected '5'. Proceeding anyway.", version);
 
-        _logger.LogInformation("── Stage 1: reading v5 state DB '{Name}'", latest.Name);
+        var snapshotTimestamp = ResolveSnapshotTimestamp(latest.Name);
+        _logger.LogInformation("── Stage 1: reading v5 state DB '{Name}' (snapshot will be timestamped {Timestamp:o})", latest.Name, snapshotTimestamp);
 
         var dbPath = Path.Combine(Path.GetTempPath(), $"arius-v5-{Guid.NewGuid():N}.sqlite");
         var download = await _blobs.DownloadAsync(latest.Name, cancellationToken);
@@ -140,7 +145,22 @@ internal sealed class MigrateV5
         await using (var file = File.Create(dbPath))
             await decompressed.CopyToAsync(file, cancellationToken);
 
-        return dbPath;
+        return (dbPath, snapshotTimestamp);
+    }
+
+    /// <summary>
+    /// Parses the v5 state-DB blob name (e.g. "2026-06-20T18-01-34.131", interpreted as UTC) into the instant
+    /// used to name the v7 snapshot, so the snapshot carries the v5 state's timestamp. Falls back to the current
+    /// time if the name isn't a recognizable v5 timestamp.
+    /// </summary>
+    private DateTimeOffset ResolveSnapshotTimestamp(RelativePath stateName)
+    {
+        if (DateTimeOffset.TryParseExact(stateName.Name.ToString(), V5StateTimestampFormats, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var ts))
+            return ts;
+
+        _logger.LogWarning("State DB name '{Name}' is not a parseable v5 timestamp; using the current time for the snapshot.", stateName.Name);
+        return DateTimeOffset.UtcNow;
     }
 
     // ── Stage 2: Load + classify ────────────────────────────────────────────────────
@@ -367,7 +387,7 @@ internal sealed class MigrateV5
 
     // ── Stages 5 & 6: Build filetrees, snapshot, promote ────────────────────────────
 
-    private async Task BuildAndSnapshotAsync(List<PointerRow> pointers, List<BinaryRow> binaries, CancellationToken cancellationToken)
+    private async Task BuildAndSnapshotAsync(List<PointerRow> pointers, List<BinaryRow> binaries, DateTimeOffset snapshotTimestamp, CancellationToken cancellationToken)
     {
         _logger.LogInformation("── Stage 5: building filetrees from {Count} pointer entries", pointers.Count);
 
@@ -408,8 +428,10 @@ internal sealed class MigrateV5
             return;
         }
 
-        _logger.LogInformation("── Stage 6: creating snapshot ({Files} files, {Bytes} bytes)", fileCount, totalSize);
-        var snapshot = await _snapshots.CreateAsync(rootHash.Value, fileCount, totalSize, cancellationToken: cancellationToken);
+        _logger.LogInformation("── Stage 6: creating snapshot {Timestamp:o} ({Files} files, {Bytes} bytes)", snapshotTimestamp, fileCount, totalSize);
+        // overwrite: true — the timestamp is deterministic (the v5 state name), so re-running the migration
+        // on the same state must idempotently rewrite the snapshot rather than fail on an existing blob.
+        var snapshot = await _snapshots.CreateAsync(rootHash.Value, fileCount, totalSize, timestamp: snapshotTimestamp, overwrite: true, cancellationToken: cancellationToken);
         await _chunkIndex.PromoteToSnapshotVersionAsync(BlobPaths.SnapshotPath(snapshot.Timestamp).Name.ToString());
 
         _logger.LogInformation("Migration complete. Snapshot {Timestamp} created with {Files} files.", snapshot.Timestamp, fileCount);
