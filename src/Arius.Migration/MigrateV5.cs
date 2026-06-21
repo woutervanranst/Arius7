@@ -35,6 +35,9 @@ internal sealed class MigrateV5
 {
     private const string PointerSuffix = ".pointer.arius";
 
+    // Stage 3 issues one small blob op per chunk; fan them out (matches the codebase's blob-fanout degree).
+    private const int UpsertWorkers = 32;
+
     private readonly IBlobContainerService _blobs;
     private readonly IEncryptionService    _encryption;
     private readonly ICompressionService   _compression;
@@ -247,13 +250,18 @@ internal sealed class MigrateV5
     {
         _logger.LogInformation("── Stage 3: upserting chunk metadata ({Large} large, {Tar} tar, {Thin} thin)", large.Count, tars.Count, thins.Count);
 
-        foreach (var b in large)
+        // The three groups are independent and run concurrently: each writes a disjoint set of blob names
+        // (large/tar by their own hash, thins by their content hash), the parent-tar size a thin needs is read
+        // from the in-memory chunkBlobs map (not from storage), and chunkBlobs is read-only here.
+        var options = new ParallelOptions { MaxDegreeOfParallelism = UpsertWorkers, CancellationToken = cancellationToken };
+
+        var largeTask = Parallel.ForEachAsync(large, options, async (b, ct) =>
         {
             var hex = ToHex(b.Hash);
             if (!chunkBlobs.TryGetValue(hex, out var blob))
             {
                 _logger.LogWarning("Large chunk blob missing for {Hash}; skipping.", hex[..8]);
-                continue;
+                return;
             }
 
             var metadata = new Dictionary<string, string>
@@ -262,34 +270,34 @@ internal sealed class MigrateV5
                 [BlobMetadataKeys.OriginalSize] = b.OriginalSize.ToString(CultureInfo.InvariantCulture),
                 [BlobMetadataKeys.ChunkSize]    = blob.Length.ToString(CultureInfo.InvariantCulture),
             };
-            await WriteMetadataAsync(b.Hash, blob, metadata, cancellationToken);
-        }
+            await WriteMetadataAsync(b.Hash, blob, metadata, ct);
+        });
 
-        foreach (var b in tars)
+        var tarTask = Parallel.ForEachAsync(tars, options, async (b, ct) =>
         {
             var hex = ToHex(b.Hash);
             if (!chunkBlobs.TryGetValue(hex, out var blob))
             {
                 _logger.LogWarning("Tar chunk blob missing for {Hash}; skipping.", hex[..8]);
-                continue;
+                return;
             }
 
             // No original_size on tar blobs — the per-file sizes live on the thin chunks.
-            var descriptor = new Dictionary<string, string>
+            var metadata = new Dictionary<string, string>
             {
                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
                 [BlobMetadataKeys.ChunkSize] = blob.Length.ToString(CultureInfo.InvariantCulture),
             };
-            await WriteMetadataAsync(b.Hash, blob, descriptor, cancellationToken);
-        }
+            await WriteMetadataAsync(b.Hash, blob, metadata, ct);
+        });
 
-        foreach (var b in thins)
+        var thinTask = Parallel.ForEachAsync(thins, options, async (b, ct) =>
         {
             var parentHex = ToHex(b.ParentHash!);
             if (!chunkBlobs.TryGetValue(parentHex, out var parent))
             {
                 _logger.LogWarning("Parent tar {Tar} missing for thin chunk {Hash}; skipping.", parentHex[..8], ToHex(b.Hash)[..8]);
-                continue;
+                return;
             }
 
             await _chunkStorage.UploadThinAsync(
@@ -297,10 +305,12 @@ internal sealed class MigrateV5
                 ChunkHash.FromDigest(b.ParentHash!),
                 b.OriginalSize,
                 parent.Length,
-                cancellationToken);
-        }
+                ct);
+        });
 
+        await Task.WhenAll(largeTask, tarTask, thinTask);
 
+        return;
 
         // Write the metadata
         // For v5 chunks in archive tier we write the metadata to the sidecar (409 BlobArchived otherwise)
