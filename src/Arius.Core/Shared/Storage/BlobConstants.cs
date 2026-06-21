@@ -80,13 +80,10 @@ public static class BlobPaths
     public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / PathSegment.Parse("chunks-rehydrated");
 
     /// <summary>
-    /// Descriptor sidecars for chunks whose own metadata cannot be written — Archive-tier blobs migrated
-    /// from v5, where Azure forbids Set Blob Metadata. Each is a zero-byte Cool blob carrying the chunk
-    /// descriptor (arius_type / sizes) in its metadata; chunk-index repair reads it as a fallback when the
-    /// chunk's own metadata is absent. Empty for repositories that were never migrated from v5.
+    /// Descriptor sidecars for chunks whose own metadata cannot be written — Archive-tier blobs migrated from v5, where Azure forbids Set Blob Metadata.
     /// NOTE: if chunk pruning/GC is ever added, deleting a chunk must also delete its descriptor sidecar.
     /// </summary>
-    public static RelativePath ChunkDescriptorsPrefix => RelativePath.Root / PathSegment.Parse("chunk-descriptors");
+    public static RelativePath V5LegacySideCarPrefix => RelativePath.Root / PathSegment.Parse("chunks-v5legacy-metadata");
 
     /// <summary>Merkle tree blobs (one per directory).</summary>
     public static RelativePath FileTreesPrefix => RelativePath.Root / PathSegment.Parse("filetrees");
@@ -99,7 +96,7 @@ public static class BlobPaths
 
     public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / PathSegment.Parse(hash.ToString());
     public static RelativePath ThinChunkPath(ContentHash hash)         => ChunksPrefix / PathSegment.Parse(hash.ToString());
-    public static RelativePath ChunkDescriptorPath(ChunkHash hash)     => ChunkDescriptorsPrefix / PathSegment.Parse(hash.ToString());
+    public static RelativePath V5LegacySideCarPath(ChunkHash hash)     => V5LegacySideCarPrefix / PathSegment.Parse(hash.ToString());
     public static RelativePath ChunkRehydratedPath(ChunkHash hash)     => ChunksRehydratedPrefix / PathSegment.Parse(hash.ToString());
     public static RelativePath FileTreePath(FileTreeHash hash)         => FileTreesPrefix / PathSegment.Parse(hash.ToString());
     public static RelativePath SnapshotPath(string name)               => SnapshotsPrefix / PathSegment.Parse(name);

@@ -722,16 +722,13 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // A tar contributes no entry of its own — it is recovered via its thin chunks.
         async IAsyncEnumerable<ShardEntry> GetRepairEntriesAsync([EnumeratorCancellation] CancellationToken ct = default)
         {
-            // Chunks migrated from v5 while already in the Archive tier could not have their own metadata
-            // written (Set Blob Metadata is forbidden on archived blobs), so the migration parked their
-            // descriptor in a zero-byte sidecar at chunk-descriptors/<hash>. Load those up front; a chunk whose
-            // own metadata lacks arius_type falls back to its sidecar. This dictionary is empty for repositories
-            // that were never migrated from v5, so native v7 repos are unaffected beyond one empty listing.
-            var sidecarDescriptors = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
-            await foreach (var sidecar in _blobs.ListAsync(BlobPaths.ChunkDescriptorsPrefix, includeMetadata: true, cancellationToken: ct))
+            // v5 > v7 migration cannot set metadata on chunks in archive tier, so the migration puts a sidecar at chunk-descriptors/{hash}.
+            // a chunk whose own metadata lacks arius_type falls back to its sidecar.
+            var sidecarMetadata = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+            await foreach (var sidecar in _blobs.ListAsync(BlobPaths.V5LegacySideCarPrefix, includeMetadata: true, cancellationToken: ct))
             {
                 if (sidecar.Metadata is { Count: > 0 })
-                    sidecarDescriptors[sidecar.Name.Name.ToString()] = sidecar.Metadata;
+                    sidecarMetadata[sidecar.Name.Name.ToString()] = sidecar.Metadata;
             }
 
             await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: ct))
@@ -739,36 +736,38 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 ct.ThrowIfCancellationRequested();
                 listedChunkCount++;
 
-                // Resolve the descriptor: the chunk's own metadata when present, otherwise its sidecar. The
-                // chunk's tier always comes from the live listing below (a sidecar can't track tier changes).
+                // Resolve the correct meteadata: the chunk's own metadata when present, otherwise its sidecar.
                 var ownMetadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
-                var descriptor = ownMetadata.ContainsKey(BlobMetadataKeys.AriusType)
+                var resolvedMetadata = ownMetadata.ContainsKey(BlobMetadataKeys.AriusType)
                     ? ownMetadata
-                    : sidecarDescriptors.GetValueOrDefault(item.Name.Name.ToString());
-                if (descriptor is null || !descriptor.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+                    : sidecarMetadata.GetValueOrDefault(item.Name.Name.ToString());
+                if (resolvedMetadata is null || !resolvedMetadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+                {
+                    _logger.LogWarning("Skipping chunk {Chunk} with no arius_type in metadata or sidecar", item.Name);
                     continue;
+                }
 
                 switch (ariusType)
                 {
                     case BlobMetadataKeys.TypeLarge:
                     {
                         var contentHash  = ContentHash.Parse(item.Name.Name.ToString());
-                        var originalSize = ReadRequiredLong(descriptor, item, BlobMetadataKeys.OriginalSize);
-                        var chunkSize    = ReadChunkSize(descriptor, item);
+                        var originalSize = ReadRequiredLong(resolvedMetadata, item, BlobMetadataKeys.OriginalSize);
+                        var chunkSize    = ReadChunkSize(resolvedMetadata, item);
                         yield return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
                         break;
                     }
                     case BlobMetadataKeys.TypeThin:
                     {
                         var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-                        var parentChunkHash = ReadRequiredChunkHash(descriptor, item, BlobMetadataKeys.ParentChunkHash);
+                        var parentChunkHash = ReadRequiredChunkHash(resolvedMetadata, item, BlobMetadataKeys.ParentChunkHash);
                         referencedParents.Add(parentChunkHash);
-                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLong(descriptor, item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
+                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLong(resolvedMetadata, item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
                         break;
                     }
                     case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
                     {
-                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(descriptor, item));
+                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(resolvedMetadata, item));
                         break;
                     }
                 }

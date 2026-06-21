@@ -256,13 +256,13 @@ internal sealed class MigrateV5
                 continue;
             }
 
-            var descriptor = new Dictionary<string, string>
+            var metadata = new Dictionary<string, string>
             {
                 [BlobMetadataKeys.AriusType]    = BlobMetadataKeys.TypeLarge,
                 [BlobMetadataKeys.OriginalSize] = b.OriginalSize.ToString(CultureInfo.InvariantCulture),
                 [BlobMetadataKeys.ChunkSize]    = blob.Length.ToString(CultureInfo.InvariantCulture),
             };
-            await WriteDescriptorAsync(b.Hash, blob, descriptor, cancellationToken);
+            await WriteMetadataAsync(b.Hash, blob, metadata, cancellationToken);
         }
 
         foreach (var b in tars)
@@ -280,7 +280,7 @@ internal sealed class MigrateV5
                 [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
                 [BlobMetadataKeys.ChunkSize] = blob.Length.ToString(CultureInfo.InvariantCulture),
             };
-            await WriteDescriptorAsync(b.Hash, blob, descriptor, cancellationToken);
+            await WriteMetadataAsync(b.Hash, blob, descriptor, cancellationToken);
         }
 
         foreach (var b in thins)
@@ -292,9 +292,6 @@ internal sealed class MigrateV5
                 continue;
             }
 
-            // Creates an empty stub blob at chunks/<fileHash> carrying the thin metadata; idempotent.
-            // Thin stubs are always created fresh at Cool tier, so their own metadata is always writable —
-            // they never need a descriptor sidecar.
             await _chunkStorage.UploadThinAsync(
                 ContentHash.FromDigest(b.Hash),
                 ChunkHash.FromDigest(b.ParentHash!),
@@ -303,26 +300,25 @@ internal sealed class MigrateV5
                 cancellationToken);
         }
 
-        return;
 
-        // Writes the v7 chunk descriptor. Non-archived blobs take the merged metadata (so v5 keys such as
-        // SmallChunkCount survive and the repo stays v5-readable). Archived blobs forbid Set Blob Metadata
-        // (409 BlobArchived), so for those we write the same descriptor to a zero-byte Cool sidecar at
-        // chunk-descriptors/<hash>; chunk-index repair reads it as a fallback. overwrite:true keeps the
-        // migration idempotent across re-runs.
-        async Task WriteDescriptorAsync(byte[] hash, ChunkBlob blob, Dictionary<string, string> descriptor, CancellationToken ct)
+
+        // Write the metadata
+        // For v5 chunks in archive tier we write the metadata to the sidecar (409 BlobArchived otherwise)
+        // Otherwise we upsert the metadata on the chunk in-place
+        // chunk-index repair reads it as a fallback.
+        async Task WriteMetadataAsync(byte[] hash, ChunkBlob blob, Dictionary<string, string> metadata, CancellationToken ct)
         {
             var chunkHash = ChunkHash.FromDigest(hash);
             if (blob.Tier == BlobTier.Archive)
                 await _blobs.UploadAsync(
-                    blobName:          BlobPaths.ChunkDescriptorPath(chunkHash),
+                    blobName:          BlobPaths.V5LegacySideCarPath(chunkHash),
                     content:           new MemoryStream([], writable: false),
-                    metadata:          descriptor,
+                    metadata:          metadata,
                     tier:              BlobTier.Cool,
                     overwrite:         true,
                     cancellationToken: ct);
             else
-                await _blobs.SetMetadataAsync(BlobPaths.ChunkPath(chunkHash), Merge(blob.Metadata, descriptor), ct);
+                await _blobs.SetMetadataAsync(BlobPaths.ChunkPath(chunkHash), Merge(blob.Metadata, metadata), ct);
         }
     }
 

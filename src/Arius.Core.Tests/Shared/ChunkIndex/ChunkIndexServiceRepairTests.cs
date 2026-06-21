@@ -74,7 +74,7 @@ public class ChunkIndexServiceRepairTests
         // archived blobs), so the migration parked the descriptor in a Cool sidecar at chunk-descriptors/<hash>.
         blobs.SeedBlob(BlobPaths.ChunkPath(ChunkHash.Parse(largeContentHash)), [1, 2, 3], BlobTier.Archive);
         blobs.SeedBlob(
-            BlobPaths.ChunkDescriptorPath(ChunkHash.Parse(largeContentHash)),
+            BlobPaths.V5LegacySideCarPath(ChunkHash.Parse(largeContentHash)),
             [],
             BlobTier.Cool,
             new Dictionary<string, string>
@@ -104,7 +104,7 @@ public class ChunkIndexServiceRepairTests
         // Archived tar: descriptor lives in a Cool sidecar (its own metadata couldn't be written).
         blobs.SeedBlob(BlobPaths.ChunkPath(parentChunkHash), [4, 5], BlobTier.Archive);
         blobs.SeedBlob(
-            BlobPaths.ChunkDescriptorPath(parentChunkHash),
+            BlobPaths.V5LegacySideCarPath(parentChunkHash),
             [],
             BlobTier.Cool,
             new Dictionary<string, string>
