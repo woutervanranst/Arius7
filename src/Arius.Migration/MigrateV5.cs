@@ -315,6 +315,7 @@ internal sealed class MigrateV5
                     content:           new MemoryStream([], writable: false),
                     metadata:          metadata,
                     tier:              BlobTier.Cool,
+                    contentType:       ContentTypes.V5LegacyMetadataSideCar,
                     overwrite:         true,
                     cancellationToken: ct);
             else

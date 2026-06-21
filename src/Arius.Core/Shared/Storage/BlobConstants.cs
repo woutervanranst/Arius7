@@ -50,6 +50,9 @@ internal static class ContentTypes
     // ── Thin pointer ───────────────────────────────────────────────────────────
     public const string Thin           = "text/plain; charset=utf-8";
 
+    // ── v5-legacy metadata sidecar (empty body; chunk descriptor carried in metadata) ──
+    public const string V5LegacyMetadataSideCar = "text/plain; charset=utf-8";
+
     // ── File tree ──────────────────────────────────────────────────────────────
     public const string FileTreeGcmEncrypted = "application/aes256gcm+zstd";
     public const string FileTreeCbcEncrypted = "application/aes256cbc+gzip";
