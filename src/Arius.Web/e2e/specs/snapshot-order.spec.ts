@@ -5,13 +5,13 @@ import { test, expect } from '../support/fixtures';
 import { scratchContainer } from '../support/scratch';
 
 // Destructive: archives a fresh scratch container twice (a second file is added between runs so the
-// root hash changes), then verifies the time-travel picker numbers snapshots oldest-first — v1 =
-// the first/oldest, the newest carrying LATEST and selected by default. A single snapshot can't
-// catch the inversion this guards against, hence two real archives.
+// root hash changes), then verifies the time-travel picker lists snapshots newest-first — the newest
+// (v2) on top, carrying LATEST and selected by default; v1 = the first/oldest, at the bottom. A single
+// snapshot can't catch the inversion this guards against, hence two real archives.
 //
 // Uses a per-run-unique container: repo deletion leaves the Azure blobs behind, and re-archiving a
 // reused scratch container yields a nondeterministic snapshot count, so each run starts clean.
-test('snapshot picker numbers snapshots oldest-first with the newest as LATEST + default @write', async ({ page, request, repo }) => {
+test('snapshot picker numbers snapshots newest-first with the newest as LATEST + default @write', async ({ page, request, repo }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive two-snapshot archive');
   test.setTimeout(420_000);
 
@@ -48,17 +48,17 @@ test('snapshot picker numbers snapshots oldest-first with the newest as LATEST +
     await expect(picker).toContainText('LATEST');
     await expect(page.getByText('Live working state')).toBeVisible();
 
-    // Open the picker: oldest-first → v1 on top (not LATEST), v2 at the bottom carrying LATEST.
+    // Open the picker: newest-first → v2 on top carrying LATEST, v1 at the bottom (not LATEST).
     await picker.click();
     const items = page.getByTestId('snapshot-item');
     await expect(items).toHaveCount(2);
-    await expect(items.nth(0)).toContainText('v1');
-    await expect(items.nth(0)).not.toContainText('LATEST');
-    await expect(items.nth(1)).toContainText('v2');
-    await expect(items.nth(1)).toContainText('LATEST');
+    await expect(items.nth(0)).toContainText('v2');
+    await expect(items.nth(0)).toContainText('LATEST');
+    await expect(items.nth(1)).toContainText('v1');
+    await expect(items.nth(1)).not.toContainText('LATEST');
 
-    // Selecting the first (oldest, v1) drops into the historical view.
-    await items.nth(0).click();
+    // Selecting the last (oldest, v1) drops into the historical view.
+    await items.nth(1).click();
     await expect(page.getByText('Historical view')).toBeVisible();
   } finally {
     await request.delete(`/api/repos/${created.id}`);
