@@ -48,8 +48,10 @@ internal static class RepositoryEndpoints
                 request.DefaultTier is null ? null : NormalizeTier(request.DefaultTier),
                 secrets.Protect(request.Passphrase));
 
-            // Connection material may have changed — drop the cached read provider so it rebuilds.
+            // Connection material may have changed — drop the cached read provider so it rebuilds,
+            // and discard any memoized statistics (they may have been computed against a different target).
             registry.Evict(id);
+            db.ClearStatisticsCache(id);
             return Results.Ok(ToDto(db, db.GetRepository(id)!));
         });
 
