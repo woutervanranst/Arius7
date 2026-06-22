@@ -59,6 +59,7 @@ See the [Explorer guide](explorer.md).
 | `src/Arius.Core.Tests` | Fast unit and feature-level tests for archive, restore, list, snapshot, chunk, and tree behavior without a storage emulator. | N | N |
 | `src/Arius.AzureBlob.Tests` | The Azure Blob adapter and Azure-specific storage boundary, in isolation. | N | N |
 | `src/Arius.Cli.Tests` | Command-line parsing, option wiring, and CLI-facing behavior. | N | N |
+| `src/Arius.Api.Tests` | Web-host logic in isolation — e.g. the app-database statistics cache (hit/miss, fingerprint pruning). | N | N |
 | `src/Arius.Architecture.Tests` | Enforces repository structure and architectural boundaries. | N | N |
 | `src/Arius.Explorer.Tests` | Windows-only tests for the Explorer application. | N | N |
 | `src/Arius.Integration.Tests` | Pipelines and shared services against an emulator-backed repository (archive, restore, list, chunk-index, filetree, crash recovery). | N | Y |
@@ -74,7 +75,7 @@ dotnet test --project src/Arius.Core.Tests    # one project
 ```
 
 - These projects use **TUnit** on the Microsoft Testing Platform. Filter by class/test with `--treenode-filter "/*/*/<ClassName>/*"` — the standard `--filter` flag silently runs zero tests.
-- Web unit tests: `cd src/Arius.Web && ng test` (Karma/Jasmine). Web end-to-end (Playwright) tests are documented in [`src/Arius.Web/README.md`](https://github.com/woutervanranst/Arius7/blob/master/src/Arius.Web/README.md).
+- Web tests: the Angular SPA carries no unit-test harness — its behaviour is covered end-to-end by **Playwright** specs under `src/Arius.Web/e2e/`, documented in [`src/Arius.Web/README.md`](https://github.com/woutervanranst/Arius7/blob/master/src/Arius.Web/README.md).
 
 ### Setup (credentials for live tests)
 
