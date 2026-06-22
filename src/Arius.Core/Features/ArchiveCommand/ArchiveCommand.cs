@@ -77,7 +77,10 @@ public sealed record ArchiveResult
     public required long FilesScanned { get; init; }
     public required long FilesUploaded { get; init; }
     public required long FilesDeduped { get; init; }
+    /// <summary>Sum of original (uncompressed) sizes of all files in the snapshot, in bytes.</summary>
     public required long TotalSize { get; init; }
+    /// <summary>Original (uncompressed) bytes newly uploaded during this run, in bytes.</summary>
+    public required long IncrementalSize { get; init; }
     public required FileTreeHash? RootHash { get; init; }
     public required DateTimeOffset SnapshotTime { get; init; }
     public string? ErrorMessage { get; init; }

@@ -63,7 +63,7 @@ public sealed class JobRunner(
 
             if (result.Success)
             {
-                var summary = $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.TotalSize)}";
+                var summary = $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.IncrementalSize)} uploaded · {JobFormat.Bytes(result.TotalSize)} total";
                 database.CompleteJob(jobId, "completed", 100, summary);
                 sink.Done("completed", summary);
             }

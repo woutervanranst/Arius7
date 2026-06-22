@@ -168,6 +168,8 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
+        r1.IncrementalSize.ShouldBe(100); // file-a uploaded this run
+        r1.TotalSize.ShouldBe(100);       // snapshot contains file-a
         var snapshot1 = r1.SnapshotTime.ToString("yyyy-MM-ddTHHmmss");
 
         await Task.Delay(1100); // ensure distinct timestamp
@@ -178,6 +180,8 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue(r2.ErrorMessage);
+        r2.IncrementalSize.ShouldBe(200); // only file-b uploaded this run
+        r2.TotalSize.ShouldBe(300);       // snapshot contains file-a (deduped) + file-b
 
         // ── Restore snapshot 1 → only file-a ──────────────────────────────────
         var restoreResult1 = await fix.CreateRestoreHandler().Handle(
@@ -273,6 +277,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         archiveResult.FilesScanned.ShouldBe(2);
         archiveResult.FilesDeduped.ShouldBe(1); // second file is deduplicated
         archiveResult.FilesUploaded.ShouldBe(1); // only one chunk uploaded
+        archiveResult.IncrementalSize.ShouldBe(500);  // one 500-byte chunk uploaded
+        archiveResult.TotalSize.ShouldBe(1000);       // both identical files counted in the snapshot
 
         var restoreResult = await fix.RestoreAsync();
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
@@ -383,6 +389,8 @@ public class RoundtripTests(AzuriteFixture azurite)
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue(r2.ErrorMessage);
         r2.FilesDeduped.ShouldBe(1); // same content → deduplicated
+        r2.IncrementalSize.ShouldBe(0);   // nothing new uploaded
+        r2.TotalSize.ShouldBe(400);       // snapshot still contains the (renamed) file
 
         // Restore latest → renamed.bin present, original.bin absent
         var restoreResult = await fix.RestoreAsync();
@@ -409,6 +417,8 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var r1 = await fix.ArchiveAsync();
         r1.Success.ShouldBeTrue();
+        r1.IncrementalSize.ShouldBe(300); // both files uploaded this run
+        r1.TotalSize.ShouldBe(300);       // snapshot contains both files
         var snapshot1 = r1.SnapshotTime.ToString("yyyy-MM-ddTHHmmss");
 
         await Task.Delay(1100);
@@ -419,6 +429,8 @@ public class RoundtripTests(AzuriteFixture azurite)
 
         var r2 = await fix.ArchiveAsync();
         r2.Success.ShouldBeTrue();
+        r2.IncrementalSize.ShouldBe(0);   // nothing new uploaded
+        r2.TotalSize.ShouldBe(100);       // total drops — only keep.bin remains in the snapshot
 
         // Restore latest: keep.bin only
         var latestDirectory = fix.RestoreDirectory / RelativePath.Parse("latest");

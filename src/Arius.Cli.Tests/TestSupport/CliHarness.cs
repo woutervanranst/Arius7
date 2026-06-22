@@ -54,6 +54,7 @@ internal sealed class CliHarness
                 FilesUploaded = 0,
                 FilesDeduped = 0,
                 TotalSize = 0,
+                IncrementalSize = 0,
                 RootHash = null,
                 SnapshotTime = DateTimeOffset.UtcNow,
             });

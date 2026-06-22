@@ -207,7 +207,8 @@ internal static class ArchiveVerb
                                        $"Scanned: {result.FilesScanned}, " +
                                        $"Uploaded: {result.FilesUploaded}, " +
                                        $"Deduped: {result.FilesDeduped}, " +
-                                       $"Size: {result.TotalSize.Bytes().Humanize()}, " +
+                                       $"Uploaded size: {result.IncrementalSize.Bytes().Humanize()}, " +
+                                       $"Total size: {result.TotalSize.Bytes().Humanize()}, " +
                                        $"Snapshot: {result.SnapshotTime:yyyy-MM-ddTHHmmss.fffZ}");
                 return 0;
             }
