@@ -49,6 +49,7 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
           <button class="ar-btn-primary" [disabled]="passphraseMismatch()" (click)="save()"><i class="ki-filled ki-check"></i>Save changes</button>
         </div>
         @if (saved()) { <div style="text-align:right;color:#15803d;font-size:12.5px;margin-top:8px">Saved.</div> }
+        @if (saveError()) { <div data-testid="prop-save-error" style="text-align:right;color:#dc2626;font-size:12.5px;margin-top:8px">{{ saveError() }}</div> }
       </div>
 
       <!-- Scheduled archives -->
@@ -84,6 +85,7 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
         } @else {
           <button class="ar-btn-danger" data-testid="prop-delete" (click)="confirmingDelete.set(true)"><i class="ki-filled ki-trash"></i>Delete repository</button>
         }
+        @if (deleteError()) { <div data-testid="prop-delete-error" style="color:#dc2626;font-size:12.5px;margin-top:10px">{{ deleteError() }}</div> }
       </div>
     } @else {
       <div style="padding:24px;color:#a1a1aa;font-size:13px">Loading…</div>
@@ -112,6 +114,8 @@ export class PropertiesTabComponent {
   protected passphraseConfirm = '';
   protected localPath = '';
   protected readonly saved = signal(false);
+  protected readonly saveError = signal<string | null>(null);
+  protected readonly deleteError = signal<string | null>(null);
   protected readonly schedules = signal<ScheduleDto[]>([]);
   protected newCron = '';
   protected readonly confirmingDelete = signal(false);
@@ -140,7 +144,12 @@ export class PropertiesTabComponent {
   }
 
   protected deleteRepository(): void {
-    this.api.deleteRepository(+this.repoId()).subscribe(() => this.router.navigate(['/overview']));
+    this.deleteError.set(null);
+    this.api.deleteRepository(+this.repoId()).subscribe({
+      next: () => this.router.navigate(['/overview']),
+      // Stay on the page (confirm button still shown) so the user can retry.
+      error: () => this.deleteError.set('Could not delete the repository — please try again.'),
+    });
   }
 
   /** True once a new passphrase is typed but the confirmation doesn't match — blocks Save. */
@@ -155,19 +164,25 @@ export class PropertiesTabComponent {
     this.passphrase = '';
     this.passphraseConfirm = '';
     this.saved.set(false);
+    this.saveError.set(null);
   }
 
   protected save(): void {
+    this.saveError.set(null);
     // Send the passphrase only when a new one is entered; omitting it leaves the stored one unchanged.
     this.api.patchRepository(+this.repoId(), {
       alias: this.alias,
       localPath: this.localPath,
       ...(this.passphrase ? { passphrase: this.passphrase } : {}),
-    }).subscribe(r => {
-      this.repo.set(r);
-      this.passphrase = '';
-      this.passphraseConfirm = '';
-      this.saved.set(true);
+    }).subscribe({
+      next: r => {
+        this.repo.set(r);
+        this.passphrase = '';
+        this.passphraseConfirm = '';
+        this.saved.set(true);
+      },
+      // Keep the entered passphrase/fields intact so the user can retry.
+      error: () => this.saveError.set('Could not save changes — please try again.'),
     });
   }
 }
