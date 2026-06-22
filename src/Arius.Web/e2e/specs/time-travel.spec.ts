@@ -8,7 +8,7 @@ test('snapshot picker lists snapshots; selecting a non-latest one shows the hist
   await expect(items.first()).toBeVisible({ timeout: 30_000 });
 
   if (await items.count() > 1) {
-    await items.first().click(); // the oldest snapshot (v1) — never the latest, so the historical view shows
+    await items.last().click(); // newest-first list → last row is the oldest snapshot (v1), so the historical view shows
     await expect(page.getByText('Historical view')).toBeVisible();
   }
 });

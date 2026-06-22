@@ -16,9 +16,13 @@ test.describe('files tab', () => {
     await expect(page.getByTestId('tree-node').first()).toBeVisible({ timeout: 40_000 });
 
     const files = await revealFiles(page, repo.repoId);
-    // every file row renders the state-ring SVG
-    const rowCount = await files.count();
-    await expect(files.locator('arius-state-ring svg')).toHaveCount(rowCount);
+    // Every file row renders one state-ring SVG. Poll both counts together so the assertion can't race
+    // the list still settling (sampling rowCount, then the count growing before the SVG check).
+    await expect.poll(async () => {
+      const rows = await files.count();
+      const rings = await files.locator('arius-state-ring svg').count();
+      return rows > 0 && rows === rings;
+    }, { timeout: 20_000 }).toBe(true);
   });
 
   test('filter narrows the file list', async ({ page, repo }) => {

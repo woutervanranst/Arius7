@@ -22,12 +22,11 @@ import { SnapshotStore } from '../../core/state/snapshot.store';
         </button>
         @if (pickerOpen()) {
           <div class="ar-snap-menu">
-            @for (s of snap.snapshots(); track s.version; let i = $index) {
-              <button class="ar-snap-item" data-testid="snapshot-item" (click)="pick(i)">
-                <span style="font-weight:600">v{{ i + 1 }}</span>
-                <span style="color:#71717a">{{ s.timestamp | date:'dd MMM yyyy · HH:mm' }}</span>
-                <span style="color:#a1a1aa">{{ s.fileCount }} files</span>
-                @if (i === snap.snapshots().length - 1) { <span class="ar-pill-green">LATEST</span> }
+            @for (item of menuItems(); track item.version) {
+              <button class="ar-snap-item" data-testid="snapshot-item" (click)="pick(item.index)">
+                <span style="font-weight:600">v{{ item.version }}</span>
+                <span style="color:#71717a">{{ item.timestamp | date:'dd MMM yyyy · HH:mm' }}</span>
+                @if (item.isLatest) { <span class="ar-pill-green">LATEST</span> }
               </button>
             } @empty {
               <div style="padding:12px;color:#a1a1aa;font-size:12.5px">No snapshots</div>
@@ -56,8 +55,8 @@ import { SnapshotStore } from '../../core/state/snapshot.store';
   styles: [`
     .ar-pill-green { font-size:10px;font-weight:700;color:#15803d;background:#f0fdf4;border-radius:999px;padding:1px 7px;letter-spacing:.04em }
     .ar-pill-amber { font-size:11.5px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:3px 10px }
-    .ar-snap-menu { position:absolute;top:46px;left:0;z-index:30;min-width:300px;background:#fff;border:1px solid #e4e4e7;border-radius:11px;box-shadow:0 12px 32px rgba(9,9,11,.14);padding:6px;max-height:320px;overflow-y:auto }
-    .ar-snap-item { display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:8px;font-size:12.5px;text-align:left }
+    .ar-snap-menu { position:absolute;top:46px;left:0;z-index:30;width:max-content;min-width:240px;max-width:440px;background:#fff;border:1px solid #e4e4e7;border-radius:11px;box-shadow:0 12px 32px rgba(9,9,11,.14);padding:6px;max-height:320px;overflow-y:auto }
+    .ar-snap-item { display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:8px;font-size:12.5px;text-align:left;white-space:nowrap }
     .ar-snap-item:hover { background:#f7f9ff }
     .ar-scrub-dot { position:absolute;top:50%;width:11px;height:11px;border-radius:999px;background:#d8dce2;transform:translate(-50%,-50%);cursor:pointer;border:2px solid #fff }
     .ar-scrub-dot.past { background:#bcd3f5 }
@@ -77,6 +76,15 @@ export class SnapshotBarComponent {
     const list = this.snap.snapshots();
     if (!list.length) return '—';
     return 'v' + (this.snap.activeIndex() + 1);
+  });
+
+  // Dropdown rows newest-first (most recent at the top), carrying the original oldest-first store index
+  // so pick()/select() still map the last index to "latest". The version number stays 1-based oldest-first.
+  protected readonly menuItems = computed(() => {
+    const list = this.snap.snapshots();
+    return list
+      .map((s, i) => ({ version: i + 1, index: i, timestamp: s.timestamp, isLatest: i === list.length - 1 }))
+      .reverse();
   });
 
   protected dotLeft(i: number): number {
