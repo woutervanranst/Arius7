@@ -137,6 +137,18 @@ existence check and metadata for a tar-bundled file.
 *Code:* named via `BlobPaths.ThinChunkPath(ContentHash)` in
 `src/Arius.Core/Shared/Storage/BlobConstants.cs`.
 
+### chunk metadata sidecar
+
+**chunk metadata sidecar** — a zero-byte Cool-tier blob under `chunks-v5legacy-metadata/`
+that carries a chunk's v7 metadata (`arius_type` plus sizes/parent) in its own blob metadata,
+for a chunk whose own blob is in the Azure Archive tier and so cannot accept
+`Set Blob Metadata`. *Why:* lets the v5→v7 [migration](design/migration.md) describe
+already-archived chunks without rehydrating them; [chunk-index repair](design/core/features/repair-chunk-index.md)
+reads it as a fallback (the storage tier is still taken from the live chunk listing). See
+[ADR-0018](decisions/adr-0018-archive-tier-metadata-sidecar.md).
+*Code:* `BlobPaths.V5LegacySideCarPath(ChunkHash)` in
+`src/Arius.Core/Shared/Storage/BlobConstants.cs`.
+
 ---
 
 ## Index & storage

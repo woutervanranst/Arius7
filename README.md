@@ -127,11 +127,15 @@ virtual directories (prefixes):
 
 ```
 <container>
-├── chunks/              Content-addressable chunks (configurable tier)
-├── chunks-rehydrated/   Temporary hot-tier copies during restore (auto-cleaned)
-├── filetrees/           Merkle tree nodes — one text blob per directory (Cool tier)
-├── snapshots/           Point-in-time snapshot manifests (Cool tier)
-└── chunk-index/         Deduplication index shards (Cool tier)
+├── chunks/                   Content-addressable chunks (configurable tier)
+├── chunks-rehydrated/        Temporary hot-tier copies during restore (auto-cleaned)
+├── filetrees/                Merkle tree nodes — one text blob per directory (Cool tier)
+├── snapshots/                Point-in-time snapshot manifests (Cool tier)
+├── chunk-index/              Deduplication index shards (Cool tier)
+|
+|                             --- (v3/v5 legacy archives-only)
+├── chunks-v5legacy-metadata/ Metadata for legacy chunks in Archive-tier (see ADR-0018)
+└── states/                   v5/v3 state databases; deprecated once migrated
 ```
 
 ### How it fits together

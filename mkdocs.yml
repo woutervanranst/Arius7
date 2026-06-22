@@ -76,6 +76,7 @@ nav:
       - guide/development.md
   - Design:
       - design/README.md
+      - design/migration.md
       - Core — Features:
           - design/core/features/archive-command.md
           - design/core/features/restore-command.md
@@ -123,5 +124,6 @@ nav:
       - decisions/adr-0015-chunk-index-scalability.md
       - decisions/adr-0016-multi-machine-cache-coherence.md
       - decisions/adr-0017-idempotent-non-distributed-recovery.md
+      - decisions/adr-0018-archive-tier-metadata-sidecar.md
   - Glossary: glossary.md
   - History: history/INDEX.md

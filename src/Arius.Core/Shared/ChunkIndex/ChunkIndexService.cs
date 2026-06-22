@@ -722,51 +722,67 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // A tar contributes no entry of its own — it is recovered via its thin chunks.
         async IAsyncEnumerable<ShardEntry> GetRepairEntriesAsync([EnumeratorCancellation] CancellationToken ct = default)
         {
+            // v5 > v7 migration cannot set metadata on chunks in archive tier, so the migration puts a chunk metadata sidecar at chunks-v5legacy-metadata/{hash}.
+            // a chunk whose own metadata lacks arius_type falls back to its sidecar.
+            var sidecarMetadata = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+            await foreach (var sidecar in _blobs.ListAsync(BlobPaths.V5LegacySideCarPrefix, includeMetadata: true, cancellationToken: ct))
+            {
+                if (sidecar.Metadata is { Count: > 0 })
+                    sidecarMetadata[sidecar.Name.Name.ToString()] = sidecar.Metadata;
+            }
+
             await foreach (var item in _blobs.ListAsync(BlobPaths.ChunksPrefix, includeMetadata: true, cancellationToken: ct))
             {
                 ct.ThrowIfCancellationRequested();
                 listedChunkCount++;
 
-                var metadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
-                if (!metadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+                // Resolve the correct meteadata: the chunk's own metadata when present, otherwise its sidecar.
+                var ownMetadata = item.Metadata ?? throw new ChunkIndexRepairException(item.Name, "metadata was not loaded for repair listing");
+                var resolvedMetadata = ownMetadata.ContainsKey(BlobMetadataKeys.AriusType)
+                    ? ownMetadata
+                    : sidecarMetadata.GetValueOrDefault(item.Name.Name.ToString());
+                if (resolvedMetadata is null || !resolvedMetadata.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+                {
+                    _logger.LogWarning("Skipping chunk {Chunk} with no arius_type in metadata or sidecar", item.Name);
                     continue;
+                }
 
                 switch (ariusType)
                 {
                     case BlobMetadataKeys.TypeLarge:
                     {
                         var contentHash  = ContentHash.Parse(item.Name.Name.ToString());
-                        var originalSize = ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize);
-                        var chunkSize    = ReadChunkSize(item);
+                        var originalSize = ReadRequiredLong(resolvedMetadata, item, BlobMetadataKeys.OriginalSize);
+                        var chunkSize    = ReadChunkSize(resolvedMetadata, item);
                         yield return new ShardEntry(contentHash, ChunkHash.Parse(contentHash), originalSize, chunkSize, item.Tier ?? BlobTier.Hot);
                         break;
                     }
                     case BlobMetadataKeys.TypeThin:
                     {
                         var contentHash = ContentHash.Parse(item.Name.Name.ToString());
-                        var parentChunkHash = ReadRequiredChunkHashMetadata(item, BlobMetadataKeys.ParentChunkHash);
+                        var parentChunkHash = ReadRequiredChunkHash(resolvedMetadata, item, BlobMetadataKeys.ParentChunkHash);
                         referencedParents.Add(parentChunkHash);
-                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
+                        yield return new ShardEntry(contentHash, parentChunkHash, ReadRequiredLong(resolvedMetadata, item, BlobMetadataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.Cool);
                         break;
                     }
                     case BlobMetadataKeys.TypeTar when ChunkHash.TryParse(item.Name.Name.ToString(), out var tarHash):
                     {
-                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(item));
+                        tarMetadata[tarHash] = (item.Tier ?? BlobTier.Hot, ReadChunkSize(resolvedMetadata, item));
                         break;
                     }
                 }
             }
 
-            static long ReadRequiredLongMetadata(BlobListItem item, string key)
-                => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
+            static long ReadRequiredLong(IReadOnlyDictionary<string, string> metadata, BlobListItem item, string key)
+                => metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
                     ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
 
-            static ChunkHash ReadRequiredChunkHashMetadata(BlobListItem item, string key)
-                => item.Metadata is not null && item.Metadata.TryGetValue(key, out var value) && ChunkHash.TryParse(value, out var parsed)
+            static ChunkHash ReadRequiredChunkHash(IReadOnlyDictionary<string, string> metadata, BlobListItem item, string key)
+                => metadata.TryGetValue(key, out var value) && ChunkHash.TryParse(value, out var parsed)
                     ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
 
-            static long ReadChunkSize(BlobListItem item)
-                => item.Metadata is not null && item.Metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+            static long ReadChunkSize(IReadOnlyDictionary<string, string> metadata, BlobListItem item)
+                => metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
                     ? size : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
         }
     }

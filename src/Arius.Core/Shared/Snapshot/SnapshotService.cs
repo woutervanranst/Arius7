@@ -14,12 +14,18 @@ public interface ISnapshotService
     /// Creates a new snapshot: writes plain JSON to disk first (write-through),
     /// then uploads (gzip + optional encrypt) to Azure.
     /// Returns the created manifest.
+    /// <para>
+    /// <paramref name="overwrite"/> defaults to <c>false</c> (snapshots are append-only in normal operation,
+    /// where each run gets a fresh <c>now</c> timestamp). Pass <c>true</c> when re-creating a snapshot at a
+    /// deterministic <paramref name="timestamp"/> should be idempotent (e.g. re-running the v5 migration).
+    /// </para>
     /// </summary>
     Task<SnapshotManifest> CreateAsync(
         FileTreeHash      rootHash,
         long              fileCount,
         long              totalSize,
         DateTimeOffset?   timestamp         = null,
+        bool              overwrite         = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -112,6 +118,7 @@ internal sealed class SnapshotService : ISnapshotService
         long              fileCount,
         long              totalSize,
         DateTimeOffset?   timestamp         = null,
+        bool              overwrite         = false,
         CancellationToken cancellationToken = default)
     {
         var ts = timestamp ?? DateTimeOffset.UtcNow;
@@ -137,7 +144,7 @@ internal sealed class SnapshotService : ISnapshotService
             new Dictionary<string, string>(),
             BlobTier.Cool,
             _encryption.IsEncrypted ? ContentTypes.SnapshotGcmEncrypted : ContentTypes.SnapshotPlaintext,
-            overwrite: false,
+            overwrite: overwrite,
             cancellationToken: cancellationToken);
 
         return manifest;

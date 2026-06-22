@@ -65,6 +65,76 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
+    public async Task RepairAsync_ArchivedLargeChunk_ReadsMetadataFromSidecar()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var largeContentHash = FakeContentHash('a');
+
+        // Archived large chunk: its own metadata could not be written (Set Blob Metadata is forbidden on
+        // archived blobs), so the migration parked the metadata in a Cool sidecar at chunks-v5legacy-metadata/<hash>.
+        blobs.SeedBlob(BlobPaths.ChunkPath(ChunkHash.Parse(largeContentHash)), [1, 2, 3], BlobTier.Archive);
+        blobs.SeedBlob(
+            BlobPaths.V5LegacySideCarPath(ChunkHash.Parse(largeContentHash)),
+            [],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeLarge,
+                [BlobMetadataKeys.OriginalSize] = "100",
+                [BlobMetadataKeys.ChunkSize] = "3",
+            });
+        using var index = CreateIndex(blobs, "repair-archived-large-sidecar");
+
+        var result = await index.RepairAsync();
+
+        result.ListedChunkCount.ShouldBe(1);
+        result.RebuiltEntryCount.ShouldBe(1);
+
+        // Type/sizes come from the sidecar; the tier comes from the live chunk blob (Archive).
+        (await index.LookupAsync(largeContentHash)).ShouldBe(new ShardEntry(largeContentHash, ChunkHash.Parse(largeContentHash), 100, 3, BlobTier.Archive));
+    }
+
+    [Test]
+    public async Task RepairAsync_ArchivedTarWithSidecar_ThinInheritsArchiveTierAndSize()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var thinContentHash = FakeContentHash('b');
+        var parentChunkHash = FakeChunkHash('c');
+
+        // Archived tar: metadata lives in a Cool sidecar (its own metadata couldn't be written).
+        blobs.SeedBlob(BlobPaths.ChunkPath(parentChunkHash), [4, 5], BlobTier.Archive);
+        blobs.SeedBlob(
+            BlobPaths.V5LegacySideCarPath(parentChunkHash),
+            [],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeTar,
+                [BlobMetadataKeys.ChunkSize] = "2",
+            });
+        // The thin stub is created fresh at Cool tier during migration, so it keeps its own metadata (no sidecar).
+        blobs.SeedBlob(
+            BlobPaths.ThinChunkPath(thinContentHash),
+            [],
+            BlobTier.Cool,
+            new Dictionary<string, string>
+            {
+                [BlobMetadataKeys.AriusType] = BlobMetadataKeys.TypeThin,
+                [BlobMetadataKeys.ParentChunkHash] = parentChunkHash.ToString(),
+                [BlobMetadataKeys.OriginalSize] = "10",
+            });
+        using var index = CreateIndex(blobs, "repair-archived-tar-sidecar");
+
+        var result = await index.RepairAsync();
+
+        result.ListedChunkCount.ShouldBe(2);
+        result.RebuiltEntryCount.ShouldBe(1); // the thin entry; the tar contributes none of its own
+
+        // The thin entry's tier and chunk size are sourced from the archived tar, whose metadata came from the sidecar.
+        (await index.LookupAsync(thinContentHash)).ShouldBe(new ShardEntry(thinContentHash, parentChunkHash, 10, 2, BlobTier.Archive));
+    }
+
+    [Test]
     public async Task RepairAsync_WritesRepairMarker_RecreatesSqliteCache_AndStagesEntriesInSqlite()
     {
         var blobs = new FakeInMemoryBlobContainerService();

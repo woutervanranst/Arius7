@@ -50,8 +50,8 @@ public sealed class StatisticsQueryHandler(
     public async ValueTask<RepositoryStatistics> Handle(StatisticsQuery query, CancellationToken cancellationToken)
     {
         // ── Stage 1: manifest totals (files, original size) ─────────────────────
-        var manifest = await snapshots.ResolveAsync(query.Version, cancellationToken);
-        if (manifest is null)
+        var snapshot = await snapshots.ResolveAsync(query.Version, cancellationToken);
+        if (snapshot is null)
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
             return new RepositoryStatistics(0, 0, 0, 0, []);
@@ -61,8 +61,8 @@ public sealed class StatisticsQueryHandler(
         var byTier = chunkIndex.GetStatistics();
 
         return new RepositoryStatistics(
-            Files:        manifest.FileCount,
-            OriginalSize: manifest.TotalSize,
+            Files:        snapshot.FileCount,
+            OriginalSize: snapshot.TotalSize,
             StoredSize:   byTier.Sum(t => t.StoredSize),
             UniqueChunks: byTier.Sum(t => t.UniqueChunks),
             StoredByTier: byTier);

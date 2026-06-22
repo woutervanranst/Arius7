@@ -1,0 +1,2279 @@
+ ▐▛███▜▌   Claude Code v2.1.183
+▝▜█████▛▘  Opus 4.8 · Claude Team
+  ▘▘ ▝▝    ~/.superset/worktrees/Arius7/migrate-v5-v7-3
+
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; grep -rln -i
+      "rehydrat" src | head; echo "=== BlobTier enum ==="; grep -rn "enum
+      BlobTier\|Archive"…)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ /compact                                                                      
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Read src/Arius.Migration/Arius.Migration.csproj (25 lines)
+  ⎿  Read src/Directory.Packages.props (45 lines)
+  ⎿  Referenced file src/Arius.Migration/MigrateV5.cs
+  ⎿  Read src/Arius.Migration/Program.cs (135 lines)
+  ⎿  Read src/Arius.Cli/Arius.Cli.csproj (41 lines)
+
+❯ /effort                                                                       
+  ⎿  Set effort level to ultracode (this session only): xhigh + dynamic workflow
+     orchestration
+
+❯ crap, what are our options here? rehydrating will be prohibitively expensive  
+  and i cannot/do not want to rely                                              
+    on the chunkindex because that would break the repair capability (which     
+  relies on the metadata). what are our options?                                
+
+⏺ The user is asking a genuine architecture question. Let me explore the
+  codebase deeply to understand the metadata/repair/chunk-index coupling and
+  what archive-compatible options actually exist, before proposing anything.
+
+⏺ 3 Explore agents finished (ctrl+o to expand)
+   ├ Chunk blob metadata model & read path · 28 tool uses · 70.7k tokens
+   │ ⎿  Done
+   ├ Chunk index repair/rebuild logic · 25 tool uses · 61.4k tokens
+   │ ⎿  Done
+   └ Archive-tier handling & Azure tag capability · 24 tool uses · 56.3k tokens
+     ⎿  Done
+
+⏺ I have a clear picture now. The investigation surfaced the key fact that
+  dissolves the dilemma: Azure permits Set Blob Tags on archived blobs (only Set
+  Blob Metadata is forbidden), and tags are a per-blob, co-located, durable k/v
+  store — exactly the robustness property that makes metadata the repair source
+  of truth today. Let me pressure-test a tags-based design before finalizing.
+
+⏺ 2 Plan agents finished (ctrl+o to expand)
+   ├ Design tags-based migration solution · 29 tool uses · 110.5k tokens
+   │ ⎿  Done
+   └ Adversarial review of tags approach · 31 tool uses · 130.3k tokens
+     ⎿  Done
+
+⏺ Both designs converge, and the adversarial pass confirmed the approach is
+  sound while surfacing refinements I'll fold in. Here's where it landed.
+
+  The key finding that dissolves the dilemma
+
+  The failure is only a one-time write problem. Azure forbids Set Blob Metadata
+  on Archive-tier blobs (your 409 BlobArchived), but:
+
+  - Reading metadata on archived blobs is allowed — so repair could already read
+  archived blobs if the descriptor were on them.
+  - Azure explicitly allows Set Blob Tags on archived blobs (confirmed on MS
+  Learn). Blob index tags are a per-blob, co-located, durable k/v store — the
+  same robustness property that makes metadata your repair source-of-truth
+  today. They are not "the chunk index": losing the index doesn't lose them,
+  because they live on each blob.
+
+  Your two descriptor facts that matter:
+  - The hot path (restore/list/download) reads the chunk index, never blob
+  metadata — so it's unaffected.
+  - Only repair (ChunkIndexService.RepairAsync) reads per-blob descriptors, by
+  listing chunks and reading item.Metadata. That's the single place to teach
+  "read metadata, fall back to tags."
+
+  All your descriptor values (arius_type = large/tar/thin, decimal sizes,
+  lowercase-hex parent hash) fit the tag charset and the 10-tag limit. Only
+  large and tar chunks can be archived; thin stubs are created fresh at Cool
+  tier, so they're untouched.
+
+  So the tags approach satisfies both your constraints: no rehydration, and
+  repair stays per-blob durable (not index-dependent).
+
+  The one honest caveat: Azurite can't reproduce real Archive-tier behavior (the
+  test suite fakes it), so the "write succeeds on an archived blob" step is
+  verified against real Azure (re-running the ariusciuse migration); the repair
+  metadata-or-tags fallback gets a deterministic unit test.
+
+  There's one genuine fork worth your call before I finalize the plan:
+
+⏺ User declined to answer questions
+  ⎿  · Which durable carrier should hold the chunk descriptor for archived 
+     chunks? (Blob index tags (Recommended) / Side descriptor manifest blob)
+
+⏺ What would you like to clarify before we pick a direction? A few things I can
+  expand on if useful:
+
+  - Why I'm recommending tags over the manifest — and whether the manifest's
+  "separate durable artifact" really counts as the index-reliance you wanted to
+  avoid.
+  - The Azurite testing caveat — what exactly can and can't be verified
+  automatically, and how I'd verify the archived-write end-to-end against the
+  real ariusciuse repo.
+  - Scope/blast radius — that this touches the core repair path
+  (ChunkIndexService) and the blob abstraction (IBlobContainerService /
+  AzureBlobContainerService), not just the migration tool.
+  - A concern you have that neither option addresses — e.g. cost of the extra
+  SetTags calls, whether to also tag non-archived blobs, immutability/WORM, or
+  something about the repair semantics.
+
+  What's on your mind?
+
+✻ Baked for 11m 10s
+
+❯ hm that s interesting; what s the up/downside of tags? i m considering        
+  switching ALL v7 metadata to tags for simplicity (and because i have no real  
+  v7 archives yet so i can make a breaking change)                              
+
+⏺ Good instinct to interrogate this — "switch everything to tags" is appealing
+  for simplicity but has a couple of real catches (recurring cost, and whether
+  all your metadata even fits tag constraints). Let me get the facts rather than
+  guess: I'll audit every blob-metadata use in the codebase (not just chunk
+  descriptors) and pin down Azure's tag pricing/semantics.
+
+⏺ 2 Explore agents finished (ctrl+o to expand)
+   ├ Audit all v7 blob metadata usage · 31 tool uses · 78.9k tokens
+   │ ⎿  Done
+   └ Azure tags vs metadata cost & semantics · 16 tool uses · 82.5k tokens
+     ⎿  Done
+
+⏺ Here's the honest comparison, grounded in what I just verified about your
+  codebase and Azure's billing.
+
+  First, a scope correction
+
+  "Switch all v7 metadata to tags" sounds bigger than it is. The audit shows
+  almost nothing else uses metadata:
+
+  ┌──────────────────────────┬──────────────────────────────────────────────┐
+  │        Blob type         │                Metadata today                │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ Chunk blobs              │ arius_type, original_size, chunk_size,       │
+  │ (large/tar/thin)         │ parent_chunk_hash                            │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ Chunk-index shards       │ none (empty dict)                            │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ Snapshots                │ none                                         │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ Filetrees                │ none                                         │
+  ├──────────────────────────┼──────────────────────────────────────────────┤
+  │ State DB                 │ v5-legacy DatabaseVersion, read-only         │
+  └──────────────────────────┴──────────────────────────────────────────────┘
+
+  So "all metadata → tags" really means "the chunk descriptor → tags." That's
+  the only metadata v7 writes.
+
+  Tags vs metadata
+
+  ┌──────────────────┬──────────────┬──────────────────────────────────────┐
+  │                  │  Metadata    │              Index tags              │
+  │                  │   (today)    │                                      │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │ Writable on      │ ❌ (your     │ ✅                                   │
+  │ Archive tier     │ bug)         │                                      │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │                  │ $0 (part of  │                                      │
+  │ Recurring cost   │ blob         │ billed monthly per tag               │
+  │                  │ storage)     │                                      │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │ Readable on      │ ✅           │ ✅                                   │
+  │ Archive          │              │                                      │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │ Repair via List  │ ✅ strongly  │ ✅ strongly consistent (only         │
+  │ Blobs            │ consistent   │ FindBlobsByTags is eventual — we     │
+  │                  │              │ don't use it)                        │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │ Queryable        │ ❌           │ ✅ FindBlobsByTags (nice for         │
+  │ server-side      │              │ ops/audit)                           │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │                  │ 8 KB total,  │ 10 tags, ≤256-char values,           │
+  │ Charset/limits   │ permissive   │ restricted charset (fine for our     │
+  │                  │              │ values)                              │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │ Copied on        │ ✅ by        │ ❌ not unless explicit (irrelevant — │
+  │ server-side Copy │ default      │  rehydrated copies don't need the    │
+  │                  │              │ descriptor)                          │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │ Extra round-trip │              │ none (large/tar already do a         │
+  │  at upload       │ —            │ separate SetMetadata; thin can use   │
+  │                  │              │ inline BlobUploadOptions.Tags)       │
+  ├──────────────────┼──────────────┼──────────────────────────────────────┤
+  │ Azurite test     │              │ weaker (in-memory fake covers unit   │
+  │ fidelity         │ good         │ tests; archive-tier 409 isn't        │
+  │                  │              │ reproducible either way)             │
+  └──────────────────┴──────────────┴──────────────────────────────────────┘
+
+  The cost number, and why it matters for this tool specifically
+
+  Tags carry a recurring charge (≈ $0.10 per 10,000 tags/month, region-dependent
+  — confirm on the pricing page; the research had a 10× arithmetic slip, the
+  corrected figures are below). Metadata is free.
+
+  At ~3 tags/chunk: ~$3/mo per 100k chunks, ~$30/mo per 1M chunks, ~$300/mo per 
+  10M — forever.
+
+  Archive storage itself is ~$1/TB/month. So for a cheap-archival tool,
+  all-chunk tags can plausibly cost more than the archive storage they describe.
+  That's the catch.
+
+  The reframing that I think changes the decision
+
+  Native v7 never actually needs tags. Your upload path sets metadata while the 
+  blob is still Hot/Cool, then tiers to Archive
+  (ChunkStorageService.cs:133-134). Metadata persists through archival
+  (read-only, but readable), so repair reads it fine even on archived chunks.
+  You only physically can't write metadata when the blob is already archived 
+  before you write the descriptor — which is exactly and only the migration case
+  (a v5 repo that's been sitting in Archive).
+
+  So tags solve a migration-only problem. Going all-tags pays a perpetual,
+  per-chunk cost to simplify code for a situation that, in native v7, doesn't
+  arise.
+
+  My recommendation
+
+  Keep metadata as the descriptor (free, unchanged write path, already
+  battle-tested), and add tags purely as the archive-writable carrier the
+  migration uses for already-archived blobs — with repair reading "metadata,
+  else tags." Native v7 stays $0; only the subset of pre-archived migrated
+  chunks ever gets tagged.
+
+  The all-tags route is genuinely simpler code (single path, no tier branch) and
+  you can make the breaking change — but you'd pay for that simplicity monthly
+  on every chunk, on a tool whose whole point is cheap archival.
+
+⏺ User answered Claude's questions:
+  ⎿  · Given native v7 never needs tags (metadata is written before archiving) 
+     and tags carry a recurring per-chunk cost, which way do you want to go? → 
+     last comparison: how about a sidecar blob (like we now have with thin 
+     chunks)
+
+⏺ Good instinct — that's the option I undersold earlier (I called it a
+  "manifest," but a per-chunk sidecar modeled on thin stubs is a meaningfully
+  different and better shape, and it's free). Let me nail two things before I
+  compare it fairly: how exactly the thin-stub pattern works (so I model the
+  sidecar on it faithfully, including delete/orphan handling), and the precise
+  Azure billing for a zero-byte Cool sidecar vs. tags — because cost is the
+  deciding axis and my last cost figure had an error.
+
+⏺ 2 Explore agents finished (ctrl+o to expand)
+   ├ Thin-stub pattern & chunk delete paths · 37 tool uses · 52.6k tokens
+   │ ⎿  Done
+   └ Azure billing: Cool min size vs tag rate · 18 tool uses · 51.2k tokens
+     ⎿  Done
+⏺ The research confirms your instinct is the strongest option yet. Here's the
+  verdict.
+
+  The sidecar is essentially free and reuses a pattern you already have
+
+  - Storage cost ≈ $0. Zero-byte Cool blobs are billed for actual bytes (0), and
+  the 128 KiB "minimum object" figure only applies to Smart-tier monitoring,
+  not standard Cool storage. So N sidecars cost ~$0/month recurring, vs tags
+  which carry a small-but-perpetual per-tag charge (exact rate is
+  region-dependent and not cleanly published — order of ~$3–30/mo per 1–10M
+  chunks).
+  - It's literally the thin-stub shape. Thin stubs are already zero-byte Cool
+  blobs at chunks/{hash} carrying the descriptor in metadata
+  (ChunkStorageService.UploadThinAsync, :19-53). A descriptor sidecar is the
+  same move for an archived large/tar chunk whose own metadata you can't write.
+  - Fully Azurite-testable — it's just normal blobs + metadata, which Azurite
+  supports well (unlike tags, where archive-tier and tags-in-listing are shaky).
+  This was tags' biggest weakness; the sidecar erases it.
+  - No new blob abstraction — no SetTagsAsync, no tags trait on listing, no
+  BlobListItem.Tags. Just UploadAsync (exists) plus one extra ListAsync over a
+  new prefix (exists).
+
+  Honest downsides (operational, not monetary)
+
+  - +1 object per archived chunk. Storage is free, but it doubles the object
+  count for the migrated set, so repair does ~2× list transactions over it
+  (cheap: ~$0.055/10k).
+  - Repair needs a second listing pass. A sidecar under its own prefix (e.g.
+  chunk-descriptors/) is invisible to the chunks/ listing (DirectoryPrefix is
+  slash-scoped), so repair lists chunks/ and chunk-descriptors/ and joins by
+  hash. Modest — repair already builds correlation dicts (the thin→tar
+  referencedParents/tarMetadata enrich pass, ChunkIndexService.cs:687-690).
+  - A second blob that could orphan — but v7 has no chunk GC/delete path today
+  (confirmed: deletes only touch rehydrated temp copies and stale index shards,
+  never data chunks). So orphaning can't happen yet; I'd just leave a note that
+  if chunk-pruning is ever added it must delete sidecars too.
+
+  What doesn't change
+
+  Same containment as before: the native v7 write path stays on free metadata
+  (it writes the descriptor while the blob is still Hot/Cool, before tiering —
+  so it never needs a sidecar). Sidecars are created only for the migration's
+  already-archived chunks. The hot path (restore/list) reads the chunk index;
+  sidecars only feed repair.
+
+  Comparison of the two real finalists
+
+  ┌────────────────────┬─────────────────────────┬─────────────────────────┐
+  │                    │  Sidecar-for-archived   │    Tags-for-archived    │
+  ├────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ Recurring cost     │ ~$0 (zero-byte Cool)    │ small but perpetual     │
+  │                    │                         │ per-tag                 │
+  ├────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ Azurite-testable   │ ✅ fully                │ ⚠️ weak                 │
+  ├────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ Reuses existing    │ ✅ thin stubs           │ ❌ new                  │
+  │ pattern            │                         │                         │
+  ├────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ New blob           │ none                    │ SetTagsAsync +          │
+  │ abstraction        │                         │ tags-trait listing      │
+  ├────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ Repair code        │ 2nd list pass + hash    │ 1 list, read tag off    │
+  │                    │ join                    │ same item (simpler)     │
+  ├────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ Extra objects      │ +1 per archived chunk   │ none                    │
+  ├────────────────────┼─────────────────────────┼─────────────────────────┤
+  │ Orphan risk        │ yes if GC ever added    │ none (rides on the      │
+  │                    │ (none today)            │ blob)                   │
+  └────────────────────┴─────────────────────────┴─────────────────────────┘
+
+  (All-tags is off the table — it pays the recurring cost on every chunk to
+  solve a migration-only problem.)
+
+  My recommendation: the sidecar. For a cheap-archival tool, "free + testable +
+  reuses the thin-stub pattern you already trust" outweighs tags' slightly
+  simpler repair loop and the extra objects.
+
+⏺ User answered Claude's questions:
+  ⎿  · Confirm the archive-writable descriptor carrier for migrated archived 
+     chunks (native v7 keeps free metadata either way): → ok let s develop the 
+     sidecar; i was thinking to 'colocate' them in the /chunks/ folder but i m 
+     not averse to your /chunks-v5/ alternative; what are the pros/cons there?
+
+⏺ Great — sidecar it is. Let me give you the placement tradeoff directly, since
+  it's the last real design fork.
+
+  Colocate under chunks/ vs. a separate prefix
+
+  A. Colocate in chunks/ — sidecar can't be chunks/{hash} (the data blob owns
+  that), so it'd need an artificial name like chunks/{hash}.d or
+  chunks/.descriptors/{hash}.
+
+  - ✅ Repair's existing single chunks/ listing sweeps them up — no second list
+  call.
+  - ❌ Pollutes a namespace several paths iterate assuming "everything here is a
+  chunk." Repair's ContentHash.Parse(item.Name) + arius_type switch
+  (ChunkIndexService.cs:723-758), the archived-chunk enumeration for
+  rehydration/tier-stats (ChunkStorageService.cs:~236), and dedup/count logic
+  would each need a new "skip the sidecar" filter — new bug surface in working
+  code.
+  - ❌ The thin-stub analogy partly breaks here. Thin stubs get a naturally 
+  distinct key (the file's content hash ≠ the parent tar's hash), so they never
+  collide. A descriptor for a large/tar chunk describes the same hash, forcing a
+  naming hack. And a sidecar carrying arius_type=large looks just like a real
+  large chunk to the switch — repair would have to disambiguate by path, not
+  metadata.
+
+  B. Separate sibling prefix (chunk-descriptors/{hash} ↔ chunks/{hash}) — my
+  recommendation.
+
+  - ✅ chunks/ listing stays untouched — every existing chunk consumer keeps
+  seeing only real chunks + thin stubs. Correct-by-construction; no new filters,
+  no risk to working paths.
+  - ✅ Unambiguous by location — chunk-descriptors/{hash} is by definition the
+  descriptor for chunks/{hash}. Clean 1:1 on the identical hash, no naming
+  gymnastics, no arius_type confusion.
+  - ✅ Trivially inspectable and wholesale-deletable (e.g. if you ever
+  rehydrate-and-rewrite real metadata, just drop the prefix).
+  - ❌ Repair adds a second list pass + a dict join by hash — cheap (repair is
+  rare), and it's the same shape as the existing thin→tar enrich pass
+  (ChunkIndexService.cs:687-690).
+
+  On the name: chunks-v5/ is origin-based — it brands the prefix as migration
+  scaffolding and discourages native v7 from leaning on it, but bakes "v5" into
+  the durable layout (a misnomer if the mechanism is ever reused).
+  chunk-descriptors/ is function-based — self-documenting ("repair reads
+  descriptors from here") and future-proof. I lean chunk-descriptors/, but it's
+  a one-line change if you prefer to mark it as v5 scaffolding.
+
+  I'll write the plan around separate prefix chunk-descriptors/. Let me put it
+  together.
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Plan written. Here's the summary for approval:
+
+  Fix the migration's 409 BlobArchived with per-chunk descriptor sidecars —
+  modeled on the thin-stub pattern, placed under a separate
+  chunk-descriptors/{hash} prefix.
+
+  - The fix (MigrateV5.cs Stage 3): for chunks found in the Archive tier, write
+  the descriptor to a zero-byte Cool sidecar blob (chunk-descriptors/{hash})
+  instead of calling SetMetadataAsync on the archived blob. Non-archived chunks
+  keep the current merged-metadata path. Thin stubs are unchanged.
+  - The durability guarantee (ChunkIndexService repair): list the sidecar prefix
+  once, and resolve each chunk's descriptor as "own metadata, else sidecar" —
+  tier still read live from the chunks/ listing. So repair fully rebuilds the
+  index from per-blob descriptors, archived or not.
+  - Layout: separate chunk-descriptors/ prefix keeps the chunks/ namespace
+  untouched (no new filters in existing chunk-iterating code); repair pays a
+  cheap second list + hash join.
+  - Cost/scope: ~$0 recurring (zero-byte Cool blobs), native v7 write path
+  untouched, sidecars only for migrated archived chunks.
+  - Tests: deterministic unit tests for the repair sidecar-fallback via the
+  in-memory fake (Azurite can't reproduce real Archive). End-to-end verified by
+  re-running the ariusciuse/v5migrationtest migration.
+
+  One open knob you may want to weigh in on: the prefix name — I went with the
+  function-based chunk-descriptors/ over the origin-based chunks-v5/; trivial to
+  change.
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/mellow-tickling-puddle.md · /plan to edit
+     Plan: Archive-safe chunk descriptors via per-chunk sidecar blobs
+
+     Context
+
+     The v5→v7 migration (src/Arius.Migration/MigrateV5.cs) fails with
+     Azure.RequestFailedException: 409 BlobArchived in Stage 3 when it calls
+     SetMetadataAsync on chunk blobs that are already in the Azure Archive
+     access tier (e.g. ariusciuse/v5migrationtest). Azure forbids Set Blob 
+     Metadata on archived blobs.
+
+     That metadata (arius_type, original_size, chunk_size, parent_chunk_hash —
+     BlobMetadataKeys in src/Arius.Core/Shared/Storage/BlobConstants.cs) is the
+     durable, per-blob source of truth that ChunkIndexService.RepairAsync
+     re-reads to rebuild the chunk index. So we cannot just put it in the index
+     (that breaks repair), and we will not rehydrate (cost).
+
+     Why this approach. Native v7 never has this problem: it writes the
+     descriptor while the blob is still Hot/Cool, then tiers to Archive —
+     metadata persists (read-only) and repair reads it fine. The problem exists
+     only for the migration of blobs that are already archived. So we need an
+     archive-writable carrier used only by the migration.
+
+     We evaluated three carriers:
+     - Blob index tags — archive-writable, but carry a small perpetual per-tag
+     charge, are weakly supported in Azurite, and need a new SetTagsAsync +
+     tags-listing abstraction. Rejected.
+     - All-metadata→tags — pays the recurring cost on every chunk to solve a
+     migration-only problem. Rejected.
+     - Per-chunk descriptor sidecar blob (chosen) — a zero-byte Cool blob
+     carrying the descriptor in its metadata, modeled on the existing thin-stub
+     pattern (ChunkStorageService.UploadThinAsync). Zero-byte Cool blobs are
+     billed at 0 bytes (no minimum object size), so it's ~$0 recurring, fully 
+     Azurite-testable (normal blobs + metadata), and reuses a pattern already in
+     the codebase.
+
+     Layout decision. Sidecars live under a separate sibling prefix 
+     chunk-descriptors/{hash} (1:1 with chunks/{hash}), not colocated under
+     chunks/. This keeps the chunks/ namespace untouched — every existing
+     chunk-iterating path (ChunkIndexService repair switch, ChunkStorageService
+     archived-chunk enumeration, counts/dedup) stays correct-by-construction
+     with no new filters. Repair pays a cheap second list pass + hash join (same
+     shape as the existing thin→tar enrich pass).
+
+     Scope reminder. The native v7 upload path (ChunkStorageService) is
+     unchanged — it keeps writing free metadata. Sidecars are created only by
+     the migration, only for chunks found in the Archive tier. Thin stubs are
+     created fresh at Cool tier and are never archived, so they keep their own
+     metadata and need no sidecar. Only large and tar chunks can be archived.
+
+     Changes by file
+
+     1. src/Arius.Core/Shared/Storage/BlobConstants.cs — repo layout + reuse 
+     keys
+
+     - Add a prefix + path helper next to ChunksPrefix/ChunkPath/ThinChunkPath
+     (~lines 76-92):
+       - ChunkDescriptorsPrefix => "chunk-descriptors"
+       - ChunkDescriptorPath(ChunkHash hash) => ChunkDescriptorsPrefix / 
+     hash.ToString()
+     - Reuse the existing BlobMetadataKeys (arius_type, original_size,
+     chunk_size, parent_chunk_hash) verbatim — the sidecar carries the same
+     descriptor keys it would have written to the chunk. No new keys.
+     - Optionally reuse ContentTypes.Thin (text/plain; charset=utf-8) for the
+     empty sidecar body, or leave default.
+
+     2. src/Arius.Migration/MigrateV5.cs — Stage 3 write path (the fix)
+
+     ChunkBlob already carries BlobTier Tier (captured in
+     EnumerateChunkBlobsAsync, ~line 203-216; record at ~425). In
+     UpsertChunkMetadataAsync (~244-303), introduce one local helper and branch
+     on tier in the large (~250-266) and tar (~268-284) loops:
+
+     // Archived blobs forbid Set Blob Metadata (409 BlobArchived). For those, 
+     write the SAME descriptor
+     // to a zero-byte Cool sidecar at chunk-descriptors/{hash} (repair reads it
+     as a fallback). Non-archived
+     // chunks keep the UPSERT-merged metadata so v5 keys and v5-readability are
+     preserved.
+     async Task WriteDescriptorAsync(ChunkHash hash, ChunkBlob blob,
+     Dictionary<string,string> descriptor, CancellationToken ct)
+     {
+         if (blob.Tier == BlobTier.Archive)
+             await _blobs.UploadAsync(BlobPaths.ChunkDescriptorPath(hash),
+     Stream.Null /* empty */,
+                                      descriptor, BlobTier.Cool, contentType:
+     ContentTypes.Thin, overwrite: true, ct);
+         else
+             await _blobs.SetMetadataAsync(BlobPaths.ChunkPath(hash),
+     Merge(blob.Metadata, descriptor), ct);
+     }
+     - The two loops build the descriptor dict exactly as today (large:
+     arius_type=large, original_size, chunk_size; tar: arius_type=tar, 
+     chunk_size) and call WriteDescriptorAsync instead of SetMetadataAsync
+     directly.
+     - overwrite: true keeps the migration idempotent (re-running re-creates the
+     sidecar). Verify the exact IBlobContainerService.UploadAsync
+     overload/param order; Stream.Null or new MemoryStream([]) for the empty
+     body (match UploadThinAsync's new MemoryStream([], writable:false)).
+     - Thin loop (~286-302) is unchanged (UploadThinAsync, Cool, metadata).
+
+     3. src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs — repair read path
+     (the durability guarantee)
+
+     In RepairAsync/GetRepairEntriesAsync (~657-772):
+     - Before the chunks/ enumeration, list the sidecar prefix once into a dict:
+     descriptors[hash] = item.Metadata for each item in
+     ListAsync(BlobPaths.ChunkDescriptorsPrefix, includeMetadata: true, ct) (key
+     by item.Name.Name, the hash).
+     - In the per-chunk body, resolve the descriptor as chunk's own metadata, 
+     else the sidecar:
+     var descriptor = (item.Metadata is { Count: > 0 } m &&
+     m.ContainsKey(BlobMetadataKeys.AriusType))
+         ? item.Metadata
+         : descriptors.GetValueOrDefault(item.Name.Name.ToString());
+     if (descriptor is null ||
+     !descriptor.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+         continue; // not an arius chunk
+     - Route the existing reads (arius_type switch, ReadRequiredLongMetadata,
+     ReadChunkSize, ReadRequiredChunkHashMetadata) through descriptor instead of
+     item.Metadata. Keep tier from the live chunks/ listing (item.Tier) — the
+     sidecar does not carry live tier (lifecycle can change it). For an archived
+     tar, tarMetadata[tarHash] = (item.Tier, ReadChunkSize(descriptor)); the
+     thin-enrich pass is unchanged.
+     - A chunk with neither own-metadata nor a sidecar descriptor → existing
+     ChunkIndexRepairException (genuine corruption), consistent with the current
+     missing-parent-tar behavior (~687-689).
+
+     Edge cases / invariants
+
+     - Orphans: v7 has no chunk GC/delete path today (deletes touch only
+     chunks-rehydrated/ temp copies and stale chunk-index/ shards). So sidecars
+     cannot orphan now. Add a code comment at the delete sites and in BlobPaths
+     noting that if chunk pruning is ever added it must also delete
+     chunk-descriptors/{hash}.
+     - Restore/rehydration unaffected: the descriptor is not read on the hot
+     path; restore reads the chunk index, rehydration reads only tier. Sidecars
+     feed repair only.
+     - Cool early-deletion: Cool has a 30-day minimum retention; irrelevant
+     since we don't delete sidecars.
+
+     Tests
+
+     - Unit (primary): 
+     src/Arius.Core.Tests/Shared/ChunkIndex/ChunkIndexServiceRepairTests.cs +
+     src/Arius.Tests.Shared/Storage/FakeInMemoryBlobContainerService.cs (already
+     supports seeding blobs with metadata and prefix listing — confirm a second
+     prefix lists cleanly):
+       - RepairAsync_ArchivedLargeChunk_ReadsDescriptorFromSidecar: seed
+     chunks/{h} with no descriptor metadata, Tier=Archive; seed
+     chunk-descriptors/{h} (Cool) with {arius_type=large, original_size, 
+     chunk_size}. Assert LookupAsync returns ShardEntry(h, ChunkHash.Parse(h), 
+     original, chunk, BlobTier.Archive) (tier from the chunk listing, descriptor
+     from the sidecar).
+       - Archived tar + thin sibling: tar archived with sidecar-only descriptor,
+     thin stub Cool with own metadata; assert the thin entry inherits the tar's
+     Archive tier and chunk_size (mirrors the existing assertion at ~`:64`).
+       - Keep existing tests green (metadata-first path is unchanged for
+     non-archived chunks).
+     - No Azurite archive test — Azurite can't reproduce the 409 (the suite
+     fakes Archive via RehydrationSimulatingBlobService). The sidecar is plain
+     blobs+metadata, fully covered by the in-memory fake; the archived-write
+     end-to-end is proven by the real-Azure run below.
+
+     Run (TUnit, per AGENTS.md — --treenode-filter, not --filter):
+     dotnet test --project src/Arius.Core.Tests --treenode-filter
+     "/*/*/ChunkIndexServiceRepairTests/*"
+     dotnet build src/Arius.Migration
+
+     Verification (end-to-end against the real repo)
+
+     1. Dry run: dotnet run --project src/Arius.Migration -- -a ariusciuse -c 
+     v5migrationtest -p ariustestpassphrase --dry-run (key from user secrets;
+     confirms classification/connectivity).
+     2. Real run: same without --dry-run. Expect no 409 BlobArchived; Stage 3
+     completes; logs show ── Stage 4: rebuilding chunk index (repair) then Chunk
+     index repaired: ... with rebuilt-entry count = large+thin; Stage 6
+     Migration complete.
+     3. Storage Explorer spot-check: archived large/tar chunks are unchanged
+     (still Archive, body untouched); a chunk-descriptors/{hash} Cool blob
+     exists for each with the descriptor in its metadata.
+     4. Idempotency: re-run the migration — Stage 3 re-UPSERTs / re-uploads
+     sidecars (overwrite:true), Stage 4 rebuilds the same index, no errors.
+     Proves the index is fully reconstructible from per-blob descriptors (the
+     durability invariant).
+     5. Functional: arius ls against the migrated repo lists all files (..RH),
+     matching the earlier successful ariuscibec migration.
+
+     Critical files
+
+     - src/Arius.Core/Shared/Storage/BlobConstants.cs — new chunk-descriptors/
+     prefix + path helper; reuse BlobMetadataKeys.
+     - src/Arius.Migration/MigrateV5.cs — Stage 3 WriteDescriptorAsync tier
+     branch (sidecar for Archive, metadata otherwise).
+     - src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs — repair lists
+     sidecars + resolves descriptor (own-metadata else sidecar), tier from live
+     listing.
+     - src/Arius.Core.Tests/Shared/ChunkIndex/ChunkIndexServiceRepairTests.cs +
+     src/Arius.Tests.Shared/Storage/FakeInMemoryBlobContainerService.cs —
+     sidecar-fallback unit tests.
+
+⏺ Plan approved. Let me set up tracking and read the exact current code before
+  editing (the plan's line numbers came from agent reports — I need the precise
+  text to edit safely).
+
+⏺ I'll read the exact current code across the files I'm touching, then create
+  the task list.
+
+  Read 3 files (ctrl+o to expand)
+
+⏺ Now the repair code, the interface, and the test files:
+
+  Read 2 files (ctrl+o to expand)
+
+⏺ Now the test files I'll extend:
+
+  Read 2 files (ctrl+o to expand)
+
+⏺ I have everything I need. The fake lists by prefix (StartsWith) and includes
+  metadata, so a chunk-descriptors/ prefix lists independently from chunks/. Let
+  me track the work and implement.
+⏺ Now implementing. Task 1 — the prefix and path helper:
+
+⏺ Update(src/Arius.Core/Shared/Storage/BlobConstants.cs)
+  ⎿  Added 9 lines
+      79      /// <summary>Temporary Hot-tier copies for in-progress rehy
+          dration.</summary>
+      80      public static RelativePath ChunksRehydratedPrefix => Relati
+          vePath.Root / PathSegment.Parse("chunks-rehydrated");
+      81  
+      82 +    /// <summary>                                              
+      83 +    /// Descriptor sidecars for chunks whose own metadata canno
+         +t be written — Archive-tier blobs migrated                     
+      84 +    /// from v5, where Azure forbids Set Blob Metadata. Each is
+         + a zero-byte Cool blob carrying the chunk                      
+      85 +    /// descriptor (arius_type / sizes) in its metadata; chunk-
+         +index repair reads it as a fallback when the                   
+      86 +    /// chunk's own metadata is absent. Empty for repositories 
+         +that were never migrated from v5.                              
+      87 +    /// NOTE: if chunk pruning/GC is ever added, deleting a chu
+         +nk must also delete its descriptor sidecar.                    
+      88 +    /// </summary>                                             
+      89 +    public static RelativePath ChunkDescriptorsPrefix => Relati
+         +vePath.Root / PathSegment.Parse("chunk-descriptors");          
+      90 +                                                               
+      91      /// <summary>Merkle tree blobs (one per directory).</summar
+          y>
+      92      public static RelativePath FileTreesPrefix => RelativePath.
+          Root / PathSegment.Parse("filetrees");
+      93  
+
+⏺ Update(src/Arius.Core/Shared/Storage/BlobConstants.cs)
+  ⎿  Added 1 line
+       99  
+      100      public static RelativePath ChunkPath(ChunkHash hash)      
+                    => ChunksPrefix / PathSegment.Parse(hash.ToString());
+      101      public static RelativePath ThinChunkPath(ContentHash hash)
+                    => ChunksPrefix / PathSegment.Parse(hash.ToString());
+      102 +    public static RelativePath ChunkDescriptorPath(ChunkHash h
+          +ash)     => ChunkDescriptorsPrefix / PathSegment.Parse(hash.To
+          +String());                                                    
+      103      public static RelativePath ChunkRehydratedPath(ChunkHash h
+           ash)     => ChunksRehydratedPrefix / PathSegment.Parse(hash.To
+           String());
+      104      public static RelativePath FileTreePath(FileTreeHash hash)
+                    => FileTreesPrefix / PathSegment.Parse(hash.ToString(
+           ));
+      105      public static RelativePath SnapshotPath(string name)      
+                    => SnapshotsPrefix / PathSegment.Parse(name);
+
+⏺ Task 1 done. Task 2 — migration Stage 3:
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 3 lines, removed 3 lines
+      256                  continue;
+      257              }
+      258  
+      259 -            var metadata = Merge(blob.Metadata, new()         
+      259 +            var descriptor = new Dictionary<string, string>   
+      260              {
+      261                  [BlobMetadataKeys.AriusType]    = BlobMetadata
+           Keys.TypeLarge,
+      262                  [BlobMetadataKeys.OriginalSize] = b.OriginalSi
+           ze.ToString(CultureInfo.InvariantCulture),
+      263                  [BlobMetadataKeys.ChunkSize]    = blob.Length.
+           ToString(CultureInfo.InvariantCulture),
+      264 -            });                                               
+      265 -            await _blobs.SetMetadataAsync(BlobPaths.ChunkPath(
+          -ChunkHash.FromDigest(b.Hash)), metadata, cancellationToken);  
+      264 +            };                                                
+      265 +            await WriteDescriptorAsync(b.Hash, blob, descripto
+          +r, cancellationToken);                                        
+      266          }
+      267  
+      268          foreach (var b in tars)
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 3 lines, removed 3 lines
+      275              }
+      276  
+      277              // No original_size on tar blobs — the per-file si
+           zes live on the thin chunks.
+      278 -            var metadata = Merge(blob.Metadata, new()         
+      278 +            var descriptor = new Dictionary<string, string>   
+      279              {
+      280                  [BlobMetadataKeys.AriusType] = BlobMetadataKey
+           s.TypeTar,
+      281                  [BlobMetadataKeys.ChunkSize] = blob.Length.ToS
+           tring(CultureInfo.InvariantCulture),
+      282 -            });                                               
+      283 -            await _blobs.SetMetadataAsync(BlobPaths.ChunkPath(
+          -ChunkHash.FromDigest(b.Hash)), metadata, cancellationToken);  
+      282 +            };                                                
+      283 +            await WriteDescriptorAsync(b.Hash, blob, descripto
+          +r, cancellationToken);                                        
+      284          }
+      285  
+      286          foreach (var b in thins)
+
+⏺ Now add the WriteDescriptorAsync helper after the thin loop (before the Merge
+  method):
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 24 lines
+      293              }
+      294  
+      295              // Creates an empty stub blob at chunks/<fileHash>
+            carrying the thin metadata; idempotent.
+      296 +            // Thin stubs are always created fresh at Cool tie
+          +r, so their own metadata is always writable —                 
+      297 +            // they never need a descriptor sidecar.          
+      298              await _chunkStorage.UploadThinAsync(
+      299                  ContentHash.FromDigest(b.Hash),
+      300                  ChunkHash.FromDigest(b.ParentHash!),
+     ...
+      302                  parent.Length,
+      303                  cancellationToken);
+      304          }
+      305 +                                                              
+      306 +        return;                                               
+      307 +                                                              
+      308 +        // Writes the v7 chunk descriptor. Non-archived blobs 
+          +take the merged metadata (so v5 keys such as                  
+      309 +        // SmallChunkCount survive and the repo stays v5-reada
+          +ble). Archived blobs forbid Set Blob Metadata                 
+      310 +        // (409 BlobArchived), so for those we write the same 
+          +descriptor to a zero-byte Cool sidecar at                     
+      311 +        // chunk-descriptors/<hash>; chunk-index repair reads 
+          +it as a fallback. overwrite:true keeps the                    
+      312 +        // migration idempotent across re-runs.               
+      313 +        async Task WriteDescriptorAsync(byte[] hash, ChunkBlob
+          + blob, Dictionary<string, string> descriptor, CancellationToke
+          +n ct)                                                         
+      314 +        {                                                     
+      315 +            var chunkHash = ChunkHash.FromDigest(hash);       
+      316 +            if (blob.Tier == BlobTier.Archive)                
+      317 +                await _blobs.UploadAsync(                     
+      318 +                    blobName:          BlobPaths.ChunkDescript
+          +orPath(chunkHash),                                            
+      319 +                    content:           new MemoryStream([], wr
+          +itable: false),                                               
+      320 +                    metadata:          descriptor,            
+      321 +                    tier:              BlobTier.Cool,         
+      322 +                    overwrite:         true,                  
+      323 +                    cancellationToken: ct);                   
+      324 +            else                                              
+      325 +                await _blobs.SetMetadataAsync(BlobPaths.ChunkP
+          +ath(chunkHash), Merge(blob.Metadata, descriptor), ct);        
+      326 +        }                                                     
+      327      }
+      328  
+      329      private static Dictionary<string, string> Merge(IReadOnlyD
+           ictionary<string, string> existing, Dictionary<string, string>
+            updates)
+
+⏺ Task 2 done. Task 3 — the repair read path:
+
+⏺ Update(src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs)
+  ⎿  Added 30 lines, removed 13 lines
+      722          // A tar contributes no entry of its own — it is recov
+           ered via its thin chunks.
+      723          async IAsyncEnumerable<ShardEntry> GetRepairEntriesAsy
+           nc([EnumeratorCancellation] CancellationToken ct = default)
+      724          {
+      725 +            // Chunks migrated from v5 while already in the Ar
+          +chive tier could not have their own metadata                  
+      726 +            // written (Set Blob Metadata is forbidden on arch
+          +ived blobs), so the migration parked their                    
+      727 +            // descriptor in a zero-byte sidecar at chunk-desc
+          +riptors/<hash>. Load those up front; a chunk whose            
+      728 +            // own metadata lacks arius_type falls back to its
+          + sidecar. This dictionary is empty for repositories           
+      729 +            // that were never migrated from v5, so native v7 
+          +repos are unaffected beyond one empty listing.                
+      730 +            var sidecarDescriptors = new Dictionary<string, IR
+          +eadOnlyDictionary<string, string>>(StringComparer.Ordinal);   
+      731 +            await foreach (var sidecar in _blobs.ListAsync(Blo
+          +bPaths.ChunkDescriptorsPrefix, includeMetadata: true, cancella
+          +tionToken: ct))                                               
+      732 +            {                                                 
+      733 +                if (sidecar.Metadata is { Count: > 0 })       
+      734 +                    sidecarDescriptors[sidecar.Name.Name.ToStr
+          +ing()] = sidecar.Metadata;                                    
+      735 +            }                                                 
+      736 +                                                              
+      737              await foreach (var item in _blobs.ListAsync(BlobPa
+           ths.ChunksPrefix, includeMetadata: true, cancellationToken: ct
+           ))
+      738              {
+      739                  ct.ThrowIfCancellationRequested();
+      740                  listedChunkCount++;
+      741  
+      730 -                var metadata = item.Metadata ?? throw new Chun
+          -kIndexRepairException(item.Name, "metadata was not loaded for 
+          -repair listing");                                             
+      731 -                if (!metadata.TryGetValue(BlobMetadataKeys.Ari
+          -usType, out var ariusType))                                   
+      742 +                // Resolve the descriptor: the chunk's own met
+          +adata when present, otherwise its sidecar. The                
+      743 +                // chunk's tier always comes from the live lis
+          +ting below (a sidecar can't track tier changes).              
+      744 +                var ownMetadata = item.Metadata ?? throw new C
+          +hunkIndexRepairException(item.Name, "metadata was not loaded f
+          +or repair listing");                                          
+      745 +                var descriptor = ownMetadata.ContainsKey(BlobM
+          +etadataKeys.AriusType)                                        
+      746 +                    ? ownMetadata                             
+      747 +                    : sidecarDescriptors.GetValueOrDefault(ite
+          +m.Name.Name.ToString());                                      
+      748 +                if (descriptor is null || !descriptor.TryGetVa
+          +lue(BlobMetadataKeys.AriusType, out var ariusType))           
+      749                      continue;
+      750  
+      751                  switch (ariusType)
+     ...
+      753                      case BlobMetadataKeys.TypeLarge:
+      754                      {
+      755                          var contentHash  = ContentHash.Parse(i
+           tem.Name.Name.ToString());
+      739 -                        var originalSize = ReadRequiredLongMet
+          -adata(item, BlobMetadataKeys.OriginalSize);                   
+      740 -                        var chunkSize    = ReadChunkSize(item)
+          -;                                                             
+      756 +                        var originalSize = ReadRequiredLong(de
+          +scriptor, item, BlobMetadataKeys.OriginalSize);               
+      757 +                        var chunkSize    = ReadChunkSize(descr
+          +iptor, item);                                                 
+      758                          yield return new ShardEntry(contentHas
+           h, ChunkHash.Parse(contentHash), originalSize, chunkSize, item
+           .Tier ?? BlobTier.Hot);
+      759                          break;
+      760                      }
+      761                      case BlobMetadataKeys.TypeThin:
+      762                      {
+      763                          var contentHash = ContentHash.Parse(it
+           em.Name.Name.ToString());
+      747 -                        var parentChunkHash = ReadRequiredChun
+          -kHashMetadata(item, BlobMetadataKeys.ParentChunkHash);        
+      764 +                        var parentChunkHash = ReadRequiredChun
+          +kHash(descriptor, item, BlobMetadataKeys.ParentChunkHash);    
+      765                          referencedParents.Add(parentChunkHash)
+           ;
+      749 -                        yield return new ShardEntry(contentHas
+          -h, parentChunkHash, ReadRequiredLongMetadata(item, BlobMetadat
+          -aKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTier.C
+          -ool);                                                         
+      766 +                        yield return new ShardEntry(contentHas
+          +h, parentChunkHash, ReadRequiredLong(descriptor, item, BlobMet
+          +adataKeys.OriginalSize), ChunkSize: 0, StorageTierHint: BlobTi
+          +er.Cool);                                                     
+      767                          break;
+      768                      }
+      769                      case BlobMetadataKeys.TypeTar when ChunkHa
+           sh.TryParse(item.Name.Name.ToString(), out var tarHash):
+      770                      {
+      754 -                        tarMetadata[tarHash] = (item.Tier ?? B
+          -lobTier.Hot, ReadChunkSize(item));                            
+      771 +                        tarMetadata[tarHash] = (item.Tier ?? B
+          +lobTier.Hot, ReadChunkSize(descriptor, item));                
+      772                          break;
+      773                      }
+      774                  }
+      775              }
+      776  
+      760 -            static long ReadRequiredLongMetadata(BlobListItem 
+          -item, string key)                                             
+      761 -                => item.Metadata is not null && item.Metadata.
+          -TryGetValue(key, out var value) && long.TryParse(value, out va
+          -r parsed)                                                     
+      777 +            static long ReadRequiredLong(IReadOnlyDictionary<s
+          +tring, string> descriptor, BlobListItem item, string key)     
+      778 +                => descriptor.TryGetValue(key, out var value) 
+          +&& long.TryParse(value, out var parsed)                       
+      779                      ? parsed : throw new ChunkIndexRepairExcep
+           tion(item.Name, $"missing or invalid {key} metadata");
+      780  
+      764 -            static ChunkHash ReadRequiredChunkHashMetadata(Blo
+          -bListItem item, string key)                                   
+      765 -                => item.Metadata is not null && item.Metadata.
+          -TryGetValue(key, out var value) && ChunkHash.TryParse(value, o
+          -ut var parsed)                                                
+      781 +            static ChunkHash ReadRequiredChunkHash(IReadOnlyDi
+          +ctionary<string, string> descriptor, BlobListItem item, string
+          + key)                                                         
+      782 +                => descriptor.TryGetValue(key, out var value) 
+          +&& ChunkHash.TryParse(value, out var parsed)                  
+      783                      ? parsed : throw new ChunkIndexRepairExcep
+           tion(item.Name, $"missing or invalid {key} metadata");
+      784  
+      768 -            static long ReadChunkSize(BlobListItem item)      
+      769 -                => item.Metadata is not null && item.Metadata.
+          -TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long
+          -.TryParse(value, out var size)                                
+      785 +            static long ReadChunkSize(IReadOnlyDictionary<stri
+          +ng, string> descriptor, BlobListItem item)                    
+      786 +                => descriptor.TryGetValue(BlobMetadataKeys.Chu
+          +nkSize, out var value) && long.TryParse(value, out var size)  
+      787                      ? size : item.ContentLength ?? throw new C
+           hunkIndexRepairException(item.Name, $"missing or invalid {Blob
+           MetadataKeys.ChunkSize} metadata");
+      788          }
+      789      }
+
+⏺ Task 3 done. Before writing tests, let me confirm where
+  FakeContentHash/FakeChunkHash come from (they're used unqualified):
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; grep -rln
+      "FakeContentHash" src; echo "===DEF==="; grep -rn "FakeContentHash(" src |
+      grep -i "stati…)
+  ⎿  src/Arius.Integration.Tests/ChunkIndex/ChunkIndexServiceIntegrationTes
+     ts.cs
+     src/Arius.Integration.Tests/ChunkIndex/ChunkIndexServiceArchiveScenari
+     … +51 lines (ctrl+o to expand)
+
+⏺ Confirmed — they're in Arius.Tests.Shared/Hashes/HashTestData.cs and the
+  existing tests in this file use them unqualified, so my new tests can too.
+  Task 4 — adding the tests:
+
+⏺ Update(src/Arius.Core.Tests/Shared/ChunkIndex/ChunkIndexServiceRepairTests.cs)  ⎿  Added 70 lines
+       65      }
+       66  
+       67      [Test]
+       68 +    public async Task RepairAsync_ArchivedLargeChunk_ReadsDesc
+          +riptorFromSidecar()                                           
+       69 +    {                                                         
+       70 +        var blobs = new FakeInMemoryBlobContainerService();   
+       71 +        var largeContentHash = FakeContentHash('a');          
+       72 +                                                              
+       73 +        // Archived large chunk: its own metadata could not be
+          + written (Set Blob Metadata is forbidden on                   
+       74 +        // archived blobs), so the migration parked the descri
+          +ptor in a Cool sidecar at chunk-descriptors/<hash>.           
+       75 +        blobs.SeedBlob(BlobPaths.ChunkPath(ChunkHash.Parse(lar
+          +geContentHash)), [1, 2, 3], BlobTier.Archive);                
+       76 +        blobs.SeedBlob(                                       
+       77 +            BlobPaths.ChunkDescriptorPath(ChunkHash.Parse(larg
+          +eContentHash)),                                               
+       78 +            [],                                               
+       79 +            BlobTier.Cool,                                    
+       80 +            new Dictionary<string, string>                    
+       81 +            {                                                 
+       82 +                [BlobMetadataKeys.AriusType] = BlobMetadataKey
+          +s.TypeLarge,                                                  
+       83 +                [BlobMetadataKeys.OriginalSize] = "100",      
+       84 +                [BlobMetadataKeys.ChunkSize] = "3",           
+       85 +            });                                               
+       86 +        using var index = CreateIndex(blobs, "repair-archived-
+          +large-sidecar");                                              
+       87 +                                                              
+       88 +        var result = await index.RepairAsync();               
+       89 +                                                              
+       90 +        result.ListedChunkCount.ShouldBe(1);                  
+       91 +        result.RebuiltEntryCount.ShouldBe(1);                 
+       92 +                                                              
+       93 +        // Type/sizes come from the sidecar; the tier comes fr
+          +om the live chunk blob (Archive).                             
+       94 +        (await index.LookupAsync(largeContentHash)).ShouldBe(n
+          +ew ShardEntry(largeContentHash, ChunkHash.Parse(largeContentHa
+          +sh), 100, 3, BlobTier.Archive));                              
+       95 +    }                                                         
+       96 +                                                              
+       97 +    [Test]                                                    
+       98 +    public async Task RepairAsync_ArchivedTarWithSidecar_ThinI
+          +nheritsArchiveTierAndSize()                                   
+       99 +    {                                                         
+      100 +        var blobs = new FakeInMemoryBlobContainerService();   
+      101 +        var thinContentHash = FakeContentHash('b');           
+      102 +        var parentChunkHash = FakeChunkHash('c');             
+      103 +                                                              
+      104 +        // Archived tar: descriptor lives in a Cool sidecar (i
+          +ts own metadata couldn't be written).                         
+      105 +        blobs.SeedBlob(BlobPaths.ChunkPath(parentChunkHash), [
+          +4, 5], BlobTier.Archive);                                     
+      106 +        blobs.SeedBlob(                                       
+      107 +            BlobPaths.ChunkDescriptorPath(parentChunkHash),   
+      108 +            [],                                               
+      109 +            BlobTier.Cool,                                    
+      110 +            new Dictionary<string, string>                    
+      111 +            {                                                 
+      112 +                [BlobMetadataKeys.AriusType] = BlobMetadataKey
+          +s.TypeTar,                                                    
+      113 +                [BlobMetadataKeys.ChunkSize] = "2",           
+      114 +            });                                               
+      115 +        // The thin stub is created fresh at Cool tier during 
+          +migration, so it keeps its own metadata (no sidecar).         
+      116 +        blobs.SeedBlob(                                       
+      117 +            BlobPaths.ThinChunkPath(thinContentHash),         
+      118 +            [],                                               
+      119 +            BlobTier.Cool,                                    
+      120 +            new Dictionary<string, string>                    
+      121 +            {                                                 
+      122 +                [BlobMetadataKeys.AriusType] = BlobMetadataKey
+          +s.TypeThin,                                                   
+      123 +                [BlobMetadataKeys.ParentChunkHash] = parentChu
+          +nkHash.ToString(),                                            
+      124 +                [BlobMetadataKeys.OriginalSize] = "10",       
+      125 +            });                                               
+      126 +        using var index = CreateIndex(blobs, "repair-archived-
+          +tar-sidecar");                                                
+      127 +                                                              
+      128 +        var result = await index.RepairAsync();               
+      129 +                                                              
+      130 +        result.ListedChunkCount.ShouldBe(2);                  
+      131 +        result.RebuiltEntryCount.ShouldBe(1); // the thin entr
+          +y; the tar contributes none of its own                        
+      132 +                                                              
+      133 +        // The thin entry's tier and chunk size are sourced fr
+          +om the archived tar, whose descriptor came from the sidecar.  
+      134 +        (await index.LookupAsync(thinContentHash)).ShouldBe(ne
+          +w ShardEntry(thinContentHash, parentChunkHash, 10, 2, BlobTier
+          +.Archive));                                                   
+      135 +    }                                                         
+      136 +                                                              
+      137 +    [Test]                                                    
+      138      public async Task RepairAsync_WritesRepairMarker_Recreates
+           SqliteCache_AndStagesEntriesInSqlite()
+      139      {
+      140          var blobs = new FakeInMemoryBlobContainerService();
+
+⏺ Task 4 done. Now build and test:
+
+⏺ Bash(dotnet build src/Arius.Migration 2>&1 | tail -20)
+  ⎿  /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3/src/Arius.Cor
+     e/Shared/Encryption/PassphraseEncryptionService.cs(412,107): warning S
+     927: Rename parameter 'ct' to 'cancellationToken' to match the base cl
+     … +71 lines (ctrl+o to expand)
+  ⎿  (timeout 5m)
+
+⏺ Build succeeds (0 errors; the warnings are pre-existing SonarAnalyzer style
+  suggestions, and warnings aren't errors here). Now run the repair tests:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet test
+      src/Arius.Core.Tests --treenode-filter
+      "/*/*/ChunkIndexServiceRepairTests/*" 2>&1 | tai…)
+  ⎿  Specifying a directory for 'dotnet test' should be via '--project' or
+     '--solution'.
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet test
+      --project src/Arius.Core.Tests --treenode-filter
+      "/*/*/ChunkIndexServiceRepairTests/*"…)
+  ⎿  CSC : warning MSG0005: MediatorGenerator found message without any reg
+     istered handler: Arius.Core.Features.ArchiveCommand.TarBundleSealingEv
+     ent [/Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3/src/Ariu
+     … +70 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ All 12 repair tests pass (10 existing + 2 new). Build is clean. Now the
+  end-to-end verification against the real ariusciuse repo — the actual archived
+  blobs that triggered the failure. Dry run first:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet run
+      --project src/Arius.Migration --no-build -- -a ariusciuse -c
+      v5migrationtest -p ariustes…)
+  ⎿  Using launch settings from src/Arius.Migration/Properties/launchSettin
+     gs.json...
+     21:04:02 info: Arius.Migration.MigrateV5[0] ── Stage 1: reading v5 sta
+     … +49 lines (ctrl+o to expand)
+
+⏺ Dry run is clean (9 binaries, 5 chunk blobs). Now the real run — this is the
+  exact scenario that previously failed at Stage 3 with 409 BlobArchived:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet run
+      --project src/Arius.Migration --no-build -- -a ariusciuse -c
+      v5migrationtest -p ariustes…)
+  ⎿  Using launch settings from src/Arius.Migration/Properties/launchSettin
+     gs.json...
+     21:04:09 info: Arius.Migration.MigrateV5[0] ── Stage 1: reading v5 sta
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ Migration completed with no 409 BlobArchived — the exact failure is gone.
+  Stage 4 repair rebuilt 8 entries (4 large + 4 thin) from a 9-chunk listing,
+  and critically it did not throw "parent tar not found": the archived tar's
+  descriptor was resolved from its sidecar (otherwise the thin-enrich pass would
+  have failed). That proves the sidecar read path works end-to-end against real
+  archived blobs.
+
+  Now the durability invariant — re-run to confirm idempotency and that the
+  index is fully reconstructible from per-blob descriptors:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet run
+      --project src/Arius.Migration --no-build -- -a ariusciuse -c
+      v5migrationtest -p ariustes…)
+  ⎿  Using launch settings from src/Arius.Migration/Properties/launchSettin
+     gs.json...
+     21:04:36 info: Arius.Migration.MigrateV5[0] ── Stage 1: reading v5 sta
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ Idempotent: second run shows "9 chunk blobs" (4 thin stubs now persisted),
+  same RebuiltEntryCount=8, identical rootHash 6dbbbfc2 — the index rebuilt
+  identically from per-blob descriptors. Let me close the loop with a functional
+  arius ls, matching the earlier ariuscibec verification:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; grep -rn
+      "ls\|list" src/Arius.Cli/Program.cs 2>/dev/null | head; echo "=== commands
+      ==="; ls src/Ar…)
+  ⎿  === commands ===
+     Archive
+     Ls
+     … +3 lines (ctrl+o to expand)
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; ls
+      src/Arius.Cli/Commands/Ls; echo "=== usage/options ==="; grep -rn
+      "account\|container\|passphras…)
+  ⎿  LsStateFormatter.cs
+     LsVerb.cs
+     === usage/options ===
+     … +47 lines (ctrl+o to expand)
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet run
+      --project src/Arius.Cli -- ls -a ariusciuse -c v5migrationtest -p
+      ariustestpassphrase 2>…)
+  ⎿  /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3/src/Arius.Azu
+     reBlob/Arius.AzureBlob.csproj : warning NU1903: Package 'SQLitePCLRaw.
+     lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https:/
+     … +22 lines (ctrl+o to expand)
+  ⎿  (timeout 5m)
+
+⏺ All 10 files resolve from the rebuilt index. The decisive proof is the 7 files
+  marked ..RA (in Repository, Archived) — those are backed by archived chunks
+  whose descriptors could only have come from the sidecars (their own metadata
+  was unwritable), while the A archived-state flag came from the live chunk-blob
+  tier. Type/sizes from sidecar + tier from listing, exactly as designed.
+
+  Let me make sure the repair refactor didn't regress neighbouring suites that
+  share the listing/repair path:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet test
+      --project src/Arius.Core.Tests --treenode-filter
+      "/*/*/ChunkIndexService*/*" 2>&1 | tai…)
+  ⎿      - /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3/src/Ari
+     us.Core.Tests/bin/Debug/net10.0/TestResults/Arius.Core.Tests-macos-net
+     10.0-report.html
+     … +7 lines (ctrl+o to expand)
+⏺ All 61 ChunkIndexService tests pass — no regression. The implementation is
+  complete and verified end-to-end. Final review of the diff:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; git
+      --no-pager diff --stat)
+  ⎿   .../ChunkIndex/ChunkIndexServiceRepairTests.cs     | 70 +++++++++++++
+     +++++++++
+      .../Shared/ChunkIndex/ChunkIndexService.cs         | 43 +++++++++----
+     … +3 lines (ctrl+o to expand)
+
+⏺ The work is done and verified. Summary:
+
+  What was wrong
+
+  The ariusciuse/v5migrationtest migration died at Stage 3 with 409 BlobArchived
+  — Azure forbids Set Blob Metadata on Archive-tier blobs, and that metadata is
+  the per-blob source of truth chunk-index repair rebuilds from. Rehydrating
+  was too costly; dropping to index-only would break repair.
+
+  The fix (4 files, +140/-19)
+
+  Per-chunk descriptor sidecars, modeled on the existing thin-stub pattern:
+
+  - BlobConstants.cs — new chunk-descriptors/{hash} prefix + path helper (kept
+  separate from chunks/ so no existing chunk-iterating code needs new filters).
+  - MigrateV5.cs — Stage 3 WriteDescriptorAsync: Archive-tier chunks get a
+  zero-byte Cool sidecar carrying the descriptor (overwrite:true, idempotent);
+  everything else keeps the merged-metadata path. Native v7 and thin stubs
+  untouched.
+  - ChunkIndexService.cs — repair lists chunk-descriptors/ once into a dict and
+  resolves each chunk's descriptor as own metadata, else sidecar; tier still
+  read live from the chunks/ listing.
+  - ChunkIndexServiceRepairTests.cs — 2 new deterministic tests (archived large
+  via sidecar; archived tar via sidecar with thin inheriting Archive tier).
+
+  Verification
+
+  - Unit: 12/12 repair tests pass; 61/61 across all ChunkIndexService suites —
+  no regression.
+  - Real Azure (the original failure): migration completes with no 409; Stage 4
+  rebuilt 8 entries from a 9-chunk listing without a "parent tar not found"
+  error — proving the archived tar's descriptor was read from its sidecar.
+  - Idempotent: re-run produces the identical index (rootHash 6dbbbfc2),
+  confirming the index is fully reconstructible from per-blob descriptors.
+  - Functional: arius ls lists all 10 files; the 7 ..RA (archived) files prove
+  descriptor-from-sidecar + tier-from-listing working together.
+
+  Cost stays ~$0 recurring (zero-byte Cool blobs), native v7's write path is
+  unchanged, and the only follow-up note is the comment I left: if chunk GC is
+  ever added, it must also delete the sidecar.
+
+  Two things worth flagging that I did not change: the chunk-descriptors/ name
+  is easy to swap to chunks-v5/ if you'd rather brand it as migration
+  scaffolding; and there's a pre-existing high-severity NuGet advisory on
+  SQLitePCLRaw.lib.e_sqlite3 2.1.11 surfaced during the CLI run, unrelated to
+  this work. Want me to commit these changes?
+
+✻ Cogitated for 24m 10s
+
+※ recap: Goal: migrate the v5 ariusciuse repo to v7. The archive-tier fix is implemented, tested, and verified end-to-end (migration succeeds, `arius ls` lists all 10 files). Next action: commit the changes once you confirm. (disable recaps in /config)
+
+❯ i made some changes to the code. should we give the sidecards a contenttype   
+  (cf blobconstants.cs)?                                                        
+
+⏺ Let me ground my answer in your current code before recommending.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Confirmed — the sidecar currently passes no contentType, so Azure stamps it
+  the default application/octet-stream. Let me check one practical thing:
+  whether ContentTypes (it's internal) is even reachable from the
+  Arius.Migration assembly, since that affects how we'd set it.
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; echo "===
+      InternalsVisibleTo for Migration? ==="; grep -rn "InternalsVisibleTo"
+      src/Arius.Core* src…)
+  ⎿  === InternalsVisibleTo for Migration? ===
+     src/Arius.Core/AssemblyMarker.cs:9:[assembly: InternalsVisibleTo("Ariu
+     s.Migration")]
+     … +13 lines (ctrl+o to expand)
+
+⏺ Arius.Core grants InternalsVisibleTo("Arius.Migration"), so ContentTypes is
+  reachable from the migration. With that confirmed, here's my read.
+
+  Short answer: yes — but purely for consistency, not function.
+
+  - Content type here is informational only. The ContentTypes doc comment says
+  so, the read path auto-detects format from the frame header, and repair reads
+  the sidecar's metadata, never its content type. So leaving it off is
+  functionally harmless — the only effect is the blob shows the default
+  application/octet-stream in Storage Explorer / the portal.
+  - But every other blob Arius writes is typed, and the sidecar's closest
+  sibling — the thin stub, which is also an empty, metadata-only stub — uses
+  ContentTypes.Thin = "text/plain; charset=utf-8". Leaving the sidecar as the
+  one untyped blob reads as an oversight to anyone inspecting the container, and
+  ContentTypes exists precisely "to allow quick identification of blob content
+  without inspecting metadata."
+
+  On the value: the body is empty, so the MIME is just a label. I'd add a
+  dedicated constant (so it isn't conflated with thin pointers) with the same
+  text/plain; charset=utf-8 value as the empty-stub precedent — e.g. a
+  ContentTypes.V5LegacyMetadataSideCar — and pass it in the UploadAsync call.
+  Reusing ContentTypes.Thin directly would work but mislabels the blob as a thin
+  pointer in inspection.
+
+⏺ User answered Claude's questions:
+  ⎿  · How do you want to set the content type on the v5-legacy metadata 
+     sidecar? (It's informational-only — affects inspection, not behavior.) → 
+     New dedicated constant (Recommended)
+
+⏺ Decision captured. Let me record this small follow-up in the plan file, then
+  request approval to implement it.
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ A small, well-scoped change. Requesting approval to implement:
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/mellow-tickling-puddle.md · /plan to edit
+     Plan: Archive-safe chunk descriptors via per-chunk sidecar blobs
+
+     Context
+
+     The v5→v7 migration (src/Arius.Migration/MigrateV5.cs) fails with
+     Azure.RequestFailedException: 409 BlobArchived in Stage 3 when it calls
+     SetMetadataAsync on chunk blobs that are already in the Azure Archive
+     access tier (e.g. ariusciuse/v5migrationtest). Azure forbids Set Blob 
+     Metadata on archived blobs.
+
+     That metadata (arius_type, original_size, chunk_size, parent_chunk_hash —
+     BlobMetadataKeys in src/Arius.Core/Shared/Storage/BlobConstants.cs) is the
+     durable, per-blob source of truth that ChunkIndexService.RepairAsync
+     re-reads to rebuild the chunk index. So we cannot just put it in the index
+     (that breaks repair), and we will not rehydrate (cost).
+
+     Why this approach. Native v7 never has this problem: it writes the
+     descriptor while the blob is still Hot/Cool, then tiers to Archive —
+     metadata persists (read-only) and repair reads it fine. The problem exists
+     only for the migration of blobs that are already archived. So we need an
+     archive-writable carrier used only by the migration.
+
+     We evaluated three carriers:
+     - Blob index tags — archive-writable, but carry a small perpetual per-tag
+     charge, are weakly supported in Azurite, and need a new SetTagsAsync +
+     tags-listing abstraction. Rejected.
+     - All-metadata→tags — pays the recurring cost on every chunk to solve a
+     migration-only problem. Rejected.
+     - Per-chunk descriptor sidecar blob (chosen) — a zero-byte Cool blob
+     carrying the descriptor in its metadata, modeled on the existing thin-stub
+     pattern (ChunkStorageService.UploadThinAsync). Zero-byte Cool blobs are
+     billed at 0 bytes (no minimum object size), so it's ~$0 recurring, fully 
+     Azurite-testable (normal blobs + metadata), and reuses a pattern already in
+     the codebase.
+
+     Layout decision. Sidecars live under a separate sibling prefix 
+     chunk-descriptors/{hash} (1:1 with chunks/{hash}), not colocated under
+     chunks/. This keeps the chunks/ namespace untouched — every existing
+     chunk-iterating path (ChunkIndexService repair switch, ChunkStorageService
+     archived-chunk enumeration, counts/dedup) stays correct-by-construction
+     with no new filters. Repair pays a cheap second list pass + hash join (same
+     shape as the existing thin→tar enrich pass).
+
+     Scope reminder. The native v7 upload path (ChunkStorageService) is
+     unchanged — it keeps writing free metadata. Sidecars are created only by
+     the migration, only for chunks found in the Archive tier. Thin stubs are
+     created fresh at Cool tier and are never archived, so they keep their own
+     metadata and need no sidecar. Only large and tar chunks can be archived.
+
+     Changes by file
+
+     1. src/Arius.Core/Shared/Storage/BlobConstants.cs — repo layout + reuse 
+     keys
+
+     - Add a prefix + path helper next to ChunksPrefix/ChunkPath/ThinChunkPath
+     (~lines 76-92):
+       - ChunkDescriptorsPrefix => "chunk-descriptors"
+       - ChunkDescriptorPath(ChunkHash hash) => ChunkDescriptorsPrefix / 
+     hash.ToString()
+     - Reuse the existing BlobMetadataKeys (arius_type, original_size,
+     chunk_size, parent_chunk_hash) verbatim — the sidecar carries the same
+     descriptor keys it would have written to the chunk. No new keys.
+     - Optionally reuse ContentTypes.Thin (text/plain; charset=utf-8) for the
+     empty sidecar body, or leave default.
+
+     2. src/Arius.Migration/MigrateV5.cs — Stage 3 write path (the fix)
+
+     ChunkBlob already carries BlobTier Tier (captured in
+     EnumerateChunkBlobsAsync, ~line 203-216; record at ~425). In
+     UpsertChunkMetadataAsync (~244-303), introduce one local helper and branch
+     on tier in the large (~250-266) and tar (~268-284) loops:
+
+     // Archived blobs forbid Set Blob Metadata (409 BlobArchived). For those, 
+     write the SAME descriptor
+     // to a zero-byte Cool sidecar at chunk-descriptors/{hash} (repair reads it
+     as a fallback). Non-archived
+     // chunks keep the UPSERT-merged metadata so v5 keys and v5-readability are
+     preserved.
+     async Task WriteDescriptorAsync(ChunkHash hash, ChunkBlob blob,
+     Dictionary<string,string> descriptor, CancellationToken ct)
+     {
+         if (blob.Tier == BlobTier.Archive)
+             await _blobs.UploadAsync(BlobPaths.ChunkDescriptorPath(hash),
+     Stream.Null /* empty */,
+                                      descriptor, BlobTier.Cool, contentType:
+     ContentTypes.Thin, overwrite: true, ct);
+         else
+             await _blobs.SetMetadataAsync(BlobPaths.ChunkPath(hash),
+     Merge(blob.Metadata, descriptor), ct);
+     }
+     - The two loops build the descriptor dict exactly as today (large:
+     arius_type=large, original_size, chunk_size; tar: arius_type=tar, 
+     chunk_size) and call WriteDescriptorAsync instead of SetMetadataAsync
+     directly.
+     - overwrite: true keeps the migration idempotent (re-running re-creates the
+     sidecar). Verify the exact IBlobContainerService.UploadAsync
+     overload/param order; Stream.Null or new MemoryStream([]) for the empty
+     body (match UploadThinAsync's new MemoryStream([], writable:false)).
+     - Thin loop (~286-302) is unchanged (UploadThinAsync, Cool, metadata).
+
+     3. src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs — repair read path
+     (the durability guarantee)
+
+     In RepairAsync/GetRepairEntriesAsync (~657-772):
+     - Before the chunks/ enumeration, list the sidecar prefix once into a dict:
+     descriptors[hash] = item.Metadata for each item in
+     ListAsync(BlobPaths.ChunkDescriptorsPrefix, includeMetadata: true, ct) (key
+     by item.Name.Name, the hash).
+     - In the per-chunk body, resolve the descriptor as chunk's own metadata, 
+     else the sidecar:
+     var descriptor = (item.Metadata is { Count: > 0 } m &&
+     m.ContainsKey(BlobMetadataKeys.AriusType))
+         ? item.Metadata
+         : descriptors.GetValueOrDefault(item.Name.Name.ToString());
+     if (descriptor is null ||
+     !descriptor.TryGetValue(BlobMetadataKeys.AriusType, out var ariusType))
+         continue; // not an arius chunk
+     - Route the existing reads (arius_type switch, ReadRequiredLongMetadata,
+     ReadChunkSize, ReadRequiredChunkHashMetadata) through descriptor instead of
+     item.Metadata. Keep tier from the live chunks/ listing (item.Tier) — the
+     sidecar does not carry live tier (lifecycle can change it). For an archived
+     tar, tarMetadata[tarHash] = (item.Tier, ReadChunkSize(descriptor)); the
+     thin-enrich pass is unchanged.
+     - A chunk with neither own-metadata nor a sidecar descriptor → existing
+     ChunkIndexRepairException (genuine corruption), consistent with the current
+     missing-parent-tar behavior (~687-689).
+
+     Edge cases / invariants
+
+     - Orphans: v7 has no chunk GC/delete path today (deletes touch only
+     chunks-rehydrated/ temp copies and stale chunk-index/ shards). So sidecars
+     cannot orphan now. Add a code comment at the delete sites and in BlobPaths
+     noting that if chunk pruning is ever added it must also delete
+     chunk-descriptors/{hash}.
+     - Restore/rehydration unaffected: the descriptor is not read on the hot
+     path; restore reads the chunk index, rehydration reads only tier. Sidecars
+     feed repair only.
+     - Cool early-deletion: Cool has a 30-day minimum retention; irrelevant
+     since we don't delete sidecars.
+
+     Tests
+
+     - Unit (primary): 
+     src/Arius.Core.Tests/Shared/ChunkIndex/ChunkIndexServiceRepairTests.cs +
+     src/Arius.Tests.Shared/Storage/FakeInMemoryBlobContainerService.cs (already
+     supports seeding blobs with metadata and prefix listing — confirm a second
+     prefix lists cleanly):
+       - RepairAsync_ArchivedLargeChunk_ReadsDescriptorFromSidecar: seed
+     chunks/{h} with no descriptor metadata, Tier=Archive; seed
+     chunk-descriptors/{h} (Cool) with {arius_type=large, original_size, 
+     chunk_size}. Assert LookupAsync returns ShardEntry(h, ChunkHash.Parse(h), 
+     original, chunk, BlobTier.Archive) (tier from the chunk listing, descriptor
+     from the sidecar).
+       - Archived tar + thin sibling: tar archived with sidecar-only descriptor,
+     thin stub Cool with own metadata; assert the thin entry inherits the tar's
+     Archive tier and chunk_size (mirrors the existing assertion at ~`:64`).
+       - Keep existing tests green (metadata-first path is unchanged for
+     non-archived chunks).
+     - No Azurite archive test — Azurite can't reproduce the 409 (the suite
+     fakes Archive via RehydrationSimulatingBlobService). The sidecar is plain
+     blobs+metadata, fully covered by the in-memory fake; the archived-write
+     end-to-end is proven by the real-Azure run below.
+
+     Run (TUnit, per AGENTS.md — --treenode-filter, not --filter):
+     dotnet test --project src/Arius.Core.Tests --treenode-filter
+     "/*/*/ChunkIndexServiceRepairTests/*"
+     dotnet build src/Arius.Migration
+
+     Verification (end-to-end against the real repo)
+
+     1. Dry run: dotnet run --project src/Arius.Migration -- -a ariusciuse -c 
+     v5migrationtest -p ariustestpassphrase --dry-run (key from user secrets;
+     confirms classification/connectivity).
+     2. Real run: same without --dry-run. Expect no 409 BlobArchived; Stage 3
+     completes; logs show ── Stage 4: rebuilding chunk index (repair) then Chunk
+     index repaired: ... with rebuilt-entry count = large+thin; Stage 6
+     Migration complete.
+     3. Storage Explorer spot-check: archived large/tar chunks are unchanged
+     (still Archive, body untouched); a chunk-descriptors/{hash} Cool blob
+     exists for each with the descriptor in its metadata.
+     4. Idempotency: re-run the migration — Stage 3 re-UPSERTs / re-uploads
+     sidecars (overwrite:true), Stage 4 rebuilds the same index, no errors.
+     Proves the index is fully reconstructible from per-blob descriptors (the
+     durability invariant).
+     5. Functional: arius ls against the migrated repo lists all files (..RH),
+     matching the earlier successful ariuscibec migration.
+
+     Follow-up: give the sidecar a content type (informational only)
+
+     The sidecar is currently uploaded with no contentType, so Azure stamps it
+     the default application/octet-stream — the lone untyped blob Arius writes.
+     Content type is informational-only here (nothing reads it; repair reads
+     metadata), but for consistency with every other Arius blob and the
+     thin-stub sibling, type it:
+
+     - src/Arius.Core/Shared/Storage/BlobConstants.cs (ContentTypes): add a
+     dedicated constant
+     public const string V5LegacyMetadataSideCar = "text/plain; charset=utf-8";
+     (matches the empty-stub precedent; a distinct constant so it isn't
+     conflated with thin pointers).
+     - src/Arius.Migration/MigrateV5.cs (WriteMetadataAsync, the Archive-tier
+     UploadAsync): pass contentType: ContentTypes.V5LegacyMetadataSideCar.
+     ContentTypes is reachable from Arius.Migration (Core grants
+     InternalsVisibleTo("Arius.Migration")).
+
+     No tests needed (purely cosmetic). Verify with dotnet build 
+     src/Arius.Migration; optionally re-run the migration and confirm the
+     sidecar shows text/plain in the portal.
+
+     Critical files
+
+     - src/Arius.Core/Shared/Storage/BlobConstants.cs — new chunk-descriptors/
+     prefix + path helper; reuse BlobMetadataKeys.
+     - src/Arius.Migration/MigrateV5.cs — Stage 3 WriteDescriptorAsync tier
+     branch (sidecar for Archive, metadata otherwise).
+     - src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs — repair lists
+     sidecars + resolves descriptor (own-metadata else sidecar), tier from live
+     listing.
+     - src/Arius.Core.Tests/Shared/ChunkIndex/ChunkIndexServiceRepairTests.cs +
+     src/Arius.Tests.Shared/Storage/FakeInMemoryBlobContainerService.cs —
+     sidecar-fallback unit tests.
+
+⏺ Now implementing. First the constant in ContentTypes:
+
+⏺ Update(src/Arius.Core/Shared/Storage/BlobConstants.cs)
+  ⎿  Added 3 lines
+      50      // ── Thin pointer ────────────────────────────────────────
+          ───────────────────
+      51      public const string Thin           = "text/plain; charset=u
+          tf-8";
+      52  
+      53 +    // ── v5-legacy metadata sidecar (empty body; chunk descrip
+         +tor carried in metadata) ──                                    
+      54 +    public const string V5LegacyMetadataSideCar = "text/plain; 
+         +charset=utf-8";                                                
+      55 +                                                               
+      56      // ── File tree ───────────────────────────────────────────
+          ───────────────────
+      57      public const string FileTreeGcmEncrypted = "application/aes
+          256gcm+zstd";
+      58      public const string FileTreeCbcEncrypted = "application/aes
+          256cbc+gzip";
+
+⏺ Now pass it in the sidecar upload in MigrateV5.WriteMetadataAsync:
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 1 line
+      315                      content:           new MemoryStream([], wr
+           itable: false),
+      316                      metadata:          metadata,
+      317                      tier:              BlobTier.Cool,
+      318 +                    contentType:       ContentTypes.V5LegacyMe
+          +tadataSideCar,                                                
+      319                      overwrite:         true,
+      320                      cancellationToken: ct);
+      321              else
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet build
+      src/Arius.Migration 2>&1 | tail -4)
+  ⎿      53 Warning(s)
+         0 Error(s)
+
+     Time Elapsed 00:00:03.70
+  ⎿  (timeout 5m)
+
+⏺ Done. The change compiles cleanly (0 errors), and ContentTypes resolves from
+  Arius.Migration as expected.
+
+  Summary of this follow-up:
+  - BlobConstants.cs — added ContentTypes.V5LegacyMetadataSideCar = "text/plain;
+  charset=utf-8" (dedicated constant, same value as the thin-stub precedent, so
+  it's not conflated with thin pointers).
+  - MigrateV5.cs — the Archive-tier sidecar UploadAsync now passes contentType: 
+  ContentTypes.V5LegacyMetadataSideCar.
+
+  No tests touched — it's informational-only (nothing reads content type; repair
+  reads metadata), so existing tests and the repair path are unaffected. New
+  sidecars will now show text/plain; charset=utf-8 in the portal instead of the
+  default application/octet-stream; existing ones get updated on the next
+  migration run (idempotent overwrite).
+
+  If you'd like to see it reflected on the already-migrated ariusciuse sidecars,
+  I can re-run the migration — otherwise this is complete and ready to commit
+  alongside the rest.
+
+✻ Crunched for 2m 45s
+
+※ recap: We're fixing the v5→v7 migration's archived-blob failure using per-chunk metadata sidecars; the code and content-type tweak are implemented, built, and verified. Next action: commit the changes, or optionally re-run the ariusciuse migration first. (disable recaps in /config)
+❯ can we parallellize ipsertchunkmetadataasync with 3 parallel.foreachasync and 
+  then at the end await them all? or are they interdependent                    
+
+⏺ Good question — let me verify the dependency analysis against the current code
+  before answering, since the loops were edited.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Your analysis instinct is right — they're independent, safe to run as 3
+  concurrent Parallel.ForEachAsync joined with Task.WhenAll. Confirmed against
+  the code:
+
+  1. No cross-loop ordering dependency. The thin loop's only "parent" reference
+  is parent.Length, read from the in-memory chunkBlobs dict (populated in Stage
+  2, read-only here) — not from the tar blob in storage. UploadThinAsync never
+  touches the parent tar blob. So thins don't wait on the tar loop.
+  2. No write conflicts. Each loop writes a disjoint set of blob names —
+  large/tar by their own hash (or sidecar), thins by their content hash.
+  BinaryProperties.Hash is a PK and each row is classified into exactly one
+  list, so every target blob is unique across all three loops.
+  3. Shared state is read-only / thread-safe. Concurrent chunkBlobs.TryGetValue
+  on a non-mutated Dictionary is safe; _logger, _blobs, _chunkStorage are all
+  safe for concurrent distinct-blob calls (Azure SDK clients are thread-safe;
+  the in-memory fake uses ConcurrentDictionary).
+
+  I'll bound each loop's degree (the codebase fans blob work out at 32, e.g.
+  FlushWorkers). Implementing:
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 3 lines
+      35  {
+      36      private const string PointerSuffix = ".pointer.arius";
+      37  
+      38 +    // Stage 3 issues one small blob op per chunk; fan them out
+         + (matches the codebase's blob-fanout degree).                  
+      39 +    private const int UpsertWorkers = 32;                      
+      40 +                                                               
+      41      private readonly IBlobContainerService _blobs;
+      42      private readonly IEncryptionService    _encryption;
+      43      private readonly ICompressionService   _compression;
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 20 lines, removed 13 lines
+      250      {
+      251          _logger.LogInformation("── Stage 3: upserting chunk me
+           tadata ({Large} large, {Tar} tar, {Thin} thin)", large.Count, 
+           tars.Count, thins.Count);
+      252  
+      253 -        foreach (var b in large)                              
+      253 +        // The three groups are independent and run concurrent
+          +ly: each writes a disjoint set of blob names                  
+      254 +        // (large/tar by their own hash, thins by their conten
+          +t hash), the parent-tar size a thin needs is read             
+      255 +        // from the in-memory chunkBlobs map (not from storage
+          +), and chunkBlobs is read-only here.                          
+      256 +        var options = new ParallelOptions { MaxDegreeOfParalle
+          +lism = UpsertWorkers, CancellationToken = cancellationToken };
+      257 +                                                              
+      258 +        var largeTask = Parallel.ForEachAsync(large, options, 
+          +async (b, ct) =>                                              
+      259          {
+      260              var hex = ToHex(b.Hash);
+      261              if (!chunkBlobs.TryGetValue(hex, out var blob))
+      262              {
+      263                  _logger.LogWarning("Large chunk blob missing f
+           or {Hash}; skipping.", hex[..8]);
+      259 -                continue;                                     
+      264 +                return;                                       
+      265              }
+      266  
+      267              var metadata = new Dictionary<string, string>
+     ...
+      270                  [BlobMetadataKeys.OriginalSize] = b.OriginalSi
+           ze.ToString(CultureInfo.InvariantCulture),
+      271                  [BlobMetadataKeys.ChunkSize]    = blob.Length.
+           ToString(CultureInfo.InvariantCulture),
+      272              };
+      268 -            await WriteMetadataAsync(b.Hash, blob, metadata, c
+          -ancellationToken);                                            
+      269 -        }                                                     
+      273 +            await WriteMetadataAsync(b.Hash, blob, metadata, c
+          +t);                                                           
+      274 +        });                                                   
+      275  
+      271 -        foreach (var b in tars)                               
+      276 +        var tarTask = Parallel.ForEachAsync(tars, options, asy
+          +nc (b, ct) =>                                                 
+      277          {
+      278              var hex = ToHex(b.Hash);
+      279              if (!chunkBlobs.TryGetValue(hex, out var blob))
+      280              {
+      281                  _logger.LogWarning("Tar chunk blob missing for
+            {Hash}; skipping.", hex[..8]);
+      277 -                continue;                                     
+      282 +                return;                                       
+      283              }
+      284  
+      285              // No original_size on tar blobs — the per-file si
+           zes live on the thin chunks.
+      281 -            var descriptor = new Dictionary<string, string>   
+      286 +            var metadata = new Dictionary<string, string>     
+      287              {
+      288                  [BlobMetadataKeys.AriusType] = BlobMetadataKey
+           s.TypeTar,
+      289                  [BlobMetadataKeys.ChunkSize] = blob.Length.ToS
+           tring(CultureInfo.InvariantCulture),
+      290              };
+      286 -            await WriteMetadataAsync(b.Hash, blob, descriptor,
+          - cancellationToken);                                          
+      287 -        }                                                     
+      291 +            await WriteMetadataAsync(b.Hash, blob, metadata, c
+          +t);                                                           
+      292 +        });                                                   
+      293  
+      289 -        foreach (var b in thins)                              
+      294 +        var thinTask = Parallel.ForEachAsync(thins, options, a
+          +sync (b, ct) =>                                               
+      295          {
+      296              var parentHex = ToHex(b.ParentHash!);
+      297              if (!chunkBlobs.TryGetValue(parentHex, out var par
+           ent))
+      298              {
+      299                  _logger.LogWarning("Parent tar {Tar} missing f
+           or thin chunk {Hash}; skipping.", parentHex[..8], ToHex(b.Hash
+           )[..8]);
+      295 -                continue;                                     
+      300 +                return;                                       
+      301              }
+      302  
+      303              await _chunkStorage.UploadThinAsync(
+     ...
+      305                  ChunkHash.FromDigest(b.ParentHash!),
+      306                  b.OriginalSize,
+      307                  parent.Length,
+      303 -                cancellationToken);                           
+      304 -        }                                                     
+      308 +                ct);                                          
+      309 +        });                                                   
+      310  
+      311 +        await Task.WhenAll(largeTask, tarTask, thinTask);     
+      312  
+      313 +        return;                                               
+      314  
+      315          // Write the metadata
+      316          // For v5 chunks in archive tier we write the metadata
+            to the sidecar (409 BlobArchived otherwise)
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet build
+      src/Arius.Migration 2>&1 | tail -4)
+  ⎿      53 Warning(s)
+         0 Error(s)
+
+     Time Elapsed 00:00:01.93
+
+⏺ Builds clean. Let me verify the parallelized Stage 3 still produces a correct
+  result against the real archived repo (idempotent re-run):
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet run
+      --project src/Arius.Migration --no-build -- -a ariusciuse -c
+      v5migrationtest -p ariustes…)
+  ⎿  09:31:03 info: Arius.Migration.MigrateV5[0] ── Stage 1: reading v5 sta
+     te DB 'states/2026-06-20T18-01-34.131'
+     09:31:03 info: Arius.Migration.MigrateV5[0] v5 state: 9 binaries (4 la
+     … +18 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ Parallelized Stage 3 verified against the real archived repo — identical
+  result (ListedChunkCount=9, RebuiltEntryCount=8, same rootHash 6dbbbfc2), no
+  409, no ordering issues.
+
+  Answer & what changed
+
+  They're independent — safe to parallelize. The three groups have no ordering
+  dependency (thins read the parent-tar size from the in-memory chunkBlobs map,
+  never from the tar blob), write disjoint blob names (unique hashes,
+  PK-enforced), and share only read-only / thread-safe state.
+
+  Implemented exactly your shape in MigrateV5.UpsertChunkMetadataAsync:
+  - Three Parallel.ForEachAsync (large / tar / thin) started concurrently,
+  joined with await Task.WhenAll(...).
+  - Each bounded by MaxDegreeOfParallelism = UpsertWorkers (32, matching the
+  codebase's blob-fanout degree like FlushWorkers), with the shared
+  cancellationToken.
+  - Loop continue → return inside the lambdas; var name normalized
+  (descriptor→metadata in the tar branch).
+
+  Two things worth knowing:
+  - Peak concurrency is up to 3×32 since each loop caps independently — but
+  large/tar are tiny and finish near-instantly, so in practice the thin loop
+  dominates and it's effectively ~32. If you'd prefer a hard global cap, I can
+  switch to a single Parallel.ForEachAsync over the combined set (dispatching on
+  type) or a shared SemaphoreSlim.
+  - Error behavior: if any iteration throws, that loop's task faults and
+  Task.WhenAll surfaces it, aborting the migration — same intent as the old
+  sequential code.
+
+  The chunk_size/original_size/repair semantics are untouched, so the existing
+  61 ChunkIndex tests still cover the read side. Ready to commit alongside the
+  sidecar + content-type changes whenever you want.
+
+✻ Baked for 3m 19s
+
+※ recap: Goal: migrate v5→v7 repos with archived chunks. Done: sidecar-blob fix, content-type, and parallelized Stage 3, all verified against ariusciuse with passing tests. Next action: commit the changes when you're ready.
+
+❯ can you have the name of the statedb carry over as the name of the snapshot?  
+  it should be a parseable datetime(offset)                                     
+
+⏺ Let me explore the snapshot creation API and the v5 state-name format before
+  implementing.
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; echo "===
+      ISnapshotService ==="; find src/Arius.Core -name "ISnapshotService.cs" -o
+      -name "Snapshot…)
+  ⎿  === ISnapshotService ===
+     src/Arius.Core/Shared/Snapshot/SnapshotService.cs
+     === CreateAsync signatures ===
+     … +14 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ CreateAsync already accepts an optional DateTimeOffset? timestamp, and the
+  snapshot blob name is always rendered through TimestampFormat
+  (yyyy-MM-ddTHHmmss.fffZ) and read back by ParseTimestamp. So passing a parsed
+  timestamp gives a guaranteed-parseable snapshot name. The only real work is
+  parsing the v5 state-DB name. Let me confirm its exact format.
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; echo "===
+      state name format refs ==="; grep -rni "states/\|statedb\|state
+      db\|HH-mm-ss\|yyyy-MM-ddT…)
+  ⎿  === state name format refs ===
+     src/Arius.Migration/MigrateV5.cs:23:///   <item>── Stage 1: Read the v
+     5 SQLite state DB (download → decrypt → gunzip → temp .sqlite).</item>
+     … +55 lines (ctrl+o to expand)
+
+⏺ CreateAsync already takes an optional timestamp — good. One important catch
+  though: it uploads the snapshot with overwrite: false, so re-running the
+  migration with a fixed (state-derived) timestamp would throw
+  BlobAlreadyExistsException at Stage 6 — breaking the idempotency we verified
+  earlier. Let me check the rest of CreateAsync / the disk write before deciding
+  how to handle that.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ WriteToDiskAsync uses WriteAllBytesAsync (overwrites fine) — so the only
+  re-run hazard is the blob upload's overwrite: false. Let me check all
+  CreateAsync callers before extending the signature:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; grep -rn
+      "\.CreateAsync(" src --include=*.cs | grep -i "snapshot\|_snapshots" ;
+      echo "=== broader (…)
+  ⎿  (eval):1: no matches found: --include=*.cs
+     === broader (snapshot CreateAsync usages) ===
+     (eval):1: no matches found: --include=*.cs
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; grep -rn
+      "snapshots.CreateAsync\|snapshotService.CreateAsync\|_snapshots.CreateAsyn
+      c\|\.CreateAsync…)
+  ⎿  src/Arius.Integration.Tests/Pipeline/CrashRecoveryTests.cs:56:
+     await using var fix = await PipelineFixture.CreateAsync(azurite);
+     src/Arius.Integration.Tests/Pipeline/CrashRecoveryTests.cs:107:
+     … +127 lines (ctrl+o to expand)
+⏺ All snapshot CreateAsync callers either stop at timestamp or use a named
+  cancellationToken:, so adding bool overwrite = false between them is safe. The
+  normal archive path (ArchiveCommandHandler.cs:644) keeps overwrite:false
+  (correct — snapshots are append-only there); the migration will opt into
+  overwrite:true so re-runs stay idempotent. Let me re-read the current Stage 1
+  / RunAsync / Stage 6 regions (shifted by my earlier edits) to edit precisely.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ I have everything. Implementing now. First, add the overwrite option to
+  ISnapshotService.CreateAsync and the implementation:
+
+⏺ Update(src/Arius.Core/Shared/Snapshot/SnapshotService.cs)
+  ⎿  Added 6 lines
+      14      /// Creates a new snapshot: writes plain JSON to disk first
+           (write-through),
+      15      /// then uploads (gzip + optional encrypt) to Azure.
+      16      /// Returns the created manifest.
+      17 +    /// <para>                                                 
+      18 +    /// <paramref name="overwrite"/> defaults to <c>false</c> (
+         +snapshots are append-only in normal operation,                 
+      19 +    /// where each run gets a fresh <c>now</c> timestamp). Pass
+         + <c>true</c> when re-creating a snapshot at a                  
+      20 +    /// deterministic <paramref name="timestamp"/> should be id
+         +empotent (e.g. re-running the v5 migration).                   
+      21 +    /// </para>                                                
+      22      /// </summary>
+      23      Task<SnapshotManifest> CreateAsync(
+      24          FileTreeHash      rootHash,
+      25          long              fileCount,
+      26          long              totalSize,
+      27          DateTimeOffset?   timestamp         = null,
+      28 +        bool              overwrite         = false,           
+      29          CancellationToken cancellationToken = default);
+      30  
+      31      /// <summary>
+
+⏺ Update(src/Arius.Core/Shared/Snapshot/SnapshotService.cs)
+  ⎿  Added 1 line
+      118          long              fileCount,
+      119          long              totalSize,
+      120          DateTimeOffset?   timestamp         = null,
+      121 +        bool              overwrite         = false,          
+      122          CancellationToken cancellationToken = default)
+      123      {
+      124          var ts = timestamp ?? DateTimeOffset.UtcNow;
+
+⏺ Update(src/Arius.Core/Shared/Snapshot/SnapshotService.cs)
+  ⎿  Added 1 line, removed 1 line
+      144              new Dictionary<string, string>(),
+      145              BlobTier.Cool,
+      146              _encryption.IsEncrypted ? ContentTypes.SnapshotGcm
+           Encrypted : ContentTypes.SnapshotPlaintext,
+      147 -            overwrite: false,                                 
+      147 +            overwrite: overwrite,                             
+      148              cancellationToken: cancellationToken);
+      149  
+      150          return manifest;
+
+⏺ Now the migration side. Add the format const + parse helper, change
+  DownloadStateDbAsync to return the timestamp, thread it through RunAsync and
+  BuildAndSnapshotAsync:
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 4 lines
+      38      // Stage 3 issues one small blob op per chunk; fan them out
+           (matches the codebase's blob-fanout degree).
+      39      private const int UpsertWorkers = 32;
+      40  
+      41 +    // v5 names its state-DB blob "states/<yyyy-MM-ddTHH-mm-ss.
+         +fff>" (UTC). The migration reuses that instant                 
+      42 +    // as the v7 snapshot timestamp, so the snapshot is named a
+         +fter the v5 state it was built from.                           
+      43 +    private static readonly string[] V5StateTimestampFormats = 
+         +["yyyy-MM-ddTHH-mm-ss.fff", "yyyy-MM-ddTHH-mm-ss"];            
+      44 +                                                               
+      45      private readonly IBlobContainerService _blobs;
+      46      private readonly IEncryptionService    _encryption;
+      47      private readonly ICompressionService   _compression;
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 1 line, removed 1 line
+      78          if (_passphrase is not null && !Ascii.IsValid(_passphra
+          se))
+      79              throw new NotSupportedException("Migration requires
+           an ASCII passphrase (v5 keys/hashes are derived from ASCII byt
+          es).");
+      80  
+      81 -        var dbPath = await DownloadStateDbAsync(cancellationTok
+         -en);                                                           
+      81 +        var (dbPath, snapshotTimestamp) = await DownloadStateDb
+         +Async(cancellationToken);                                      
+      82          try
+      83          {
+      84              await using var connection = new SqliteConnection($
+          "Data Source={dbPath}");
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 1 line, removed 1 line
+      102  
+      103              await UpsertChunkMetadataAsync(large, tars, thins,
+            chunkBlobs, cancellationToken);
+      104              await RebuildChunkIndexAsync(cancellationToken);
+      105 -            await BuildAndSnapshotAsync(pointers, binaries, ca
+          -ncellationToken);                                             
+      105 +            await BuildAndSnapshotAsync(pointers, binaries, sn
+          +apshotTimestamp, cancellationToken);                          
+      106          }
+      107          finally
+      108          {
+
+⏺ Now DownloadStateDbAsync — return the parsed timestamp and add the parse
+  helper:
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 19 lines, removed 3 lines
+      113  
+      114      // ── Stage 1: Read the v5 state DB ──────────────────────
+           ─────────────────────────
+      115  
+      116 -    private async Task<string> DownloadStateDbAsync(Cancellati
+          -onToken cancellationToken)                                    
+      116 +    private async Task<(string DbPath, DateTimeOffset Snapshot
+          +Timestamp)> DownloadStateDbAsync(CancellationToken cancellatio
+          +nToken)                                                       
+      117      {
+      118          // The v5 state DB lives at "states/<name>" (no v7 Blo
+           bPaths constant). "Latest" is the
+      119          // lexicographically-greatest name (timestamps sort ch
+           ronologically).
+     ...
+      131          if (latest.Metadata is { } meta && meta.TryGetValue("D
+           atabaseVersion", out var version) && version != "5")
+      132              _logger.LogWarning("State blob DatabaseVersion is 
+           '{Version}', expected '5'. Proceeding anyway.", version);
+      133  
+      134 -        _logger.LogInformation("── Stage 1: reading v5 state D
+          -B '{Name}'", latest.Name);                                    
+      134 +        var snapshotTimestamp = ResolveSnapshotTimestamp(lates
+          +t.Name);                                                      
+      135 +        _logger.LogInformation("── Stage 1: reading v5 state D
+          +B '{Name}' (snapshot will be timestamped {Timestamp:o})", late
+          +st.Name, snapshotTimestamp);                                  
+      136  
+      137          var dbPath = Path.Combine(Path.GetTempPath(), $"arius-
+           v5-{Guid.NewGuid():N}.sqlite");
+      138          var download = await _blobs.DownloadAsync(latest.Name,
+            cancellationToken);
+     ...
+      145          await using (var file = File.Create(dbPath))
+      146              await decompressed.CopyToAsync(file, cancellationT
+           oken);
+      147  
+      147 -        return dbPath;                                        
+      148 +        return (dbPath, snapshotTimestamp);                   
+      149      }
+      150  
+      151 +    /// <summary>                                             
+      152 +    /// Parses the v5 state-DB blob name (e.g. "2026-06-20T18-
+          +01-34.131", interpreted as UTC) into the instant              
+      153 +    /// used to name the v7 snapshot, so the snapshot carries 
+          +the v5 state's timestamp. Falls back to the current           
+      154 +    /// time if the name isn't a recognizable v5 timestamp.   
+      155 +    /// </summary>                                            
+      156 +    private DateTimeOffset ResolveSnapshotTimestamp(RelativePa
+          +th stateName)                                                 
+      157 +    {                                                         
+      158 +        if (DateTimeOffset.TryParseExact(stateName.Name.ToStri
+          +ng(), V5StateTimestampFormats, CultureInfo.InvariantCulture,  
+      159 +                DateTimeStyles.AssumeUniversal | DateTimeStyle
+          +s.AdjustToUniversal, out var ts))                             
+      160 +            return ts;                                        
+      161 +                                                              
+      162 +        _logger.LogWarning("State DB name '{Name}' is not a pa
+          +rseable v5 timestamp; using the current time for the snapshot.
+          +", stateName.Name);                                           
+      163 +        return DateTimeOffset.UtcNow;                         
+      164 +    }                                                         
+      165 +                                                              
+      166      // ── Stage 2: Load + classify ───────────────────────────
+           ─────────────────────────
+      167  
+      168      private (List<BinaryRow> Binaries, List<PointerRow> Pointe
+           rs) LoadState(SqliteConnection connection)
+
+⏺ Now BuildAndSnapshotAsync — add the parameter and pass it (with overwrite: 
+  true) to CreateAsync:
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 1 line, removed 1 line
+      387  
+      388      // ── Stages 5 & 6: Build filetrees, snapshot, promote ───
+           ─────────────────────────
+      389  
+      390 -    private async Task BuildAndSnapshotAsync(List<PointerRow> 
+          -pointers, List<BinaryRow> binaries, CancellationToken cancella
+          -tionToken)                                                    
+      390 +    private async Task BuildAndSnapshotAsync(List<PointerRow> 
+          +pointers, List<BinaryRow> binaries, DateTimeOffset snapshotTim
+          +estamp, CancellationToken cancellationToken)                  
+      391      {
+      392          _logger.LogInformation("── Stage 5: building filetrees
+            from {Count} pointer entries", pointers.Count);
+      393  
+
+⏺ Update(src/Arius.Migration/MigrateV5.cs)
+  ⎿  Added 4 lines, removed 2 lines
+      428              return;
+      429          }
+      430  
+      431 -        _logger.LogInformation("── Stage 6: creating snapshot 
+          -({Files} files, {Bytes} bytes)", fileCount, totalSize);       
+      432 -        var snapshot = await _snapshots.CreateAsync(rootHash.V
+          -alue, fileCount, totalSize, cancellationToken: cancellationTok
+          -en);                                                          
+      431 +        _logger.LogInformation("── Stage 6: creating snapshot 
+          +{Timestamp:o} ({Files} files, {Bytes} bytes)", snapshotTimesta
+          +mp, fileCount, totalSize);                                    
+      432 +        // overwrite: true — the timestamp is deterministic (t
+          +he v5 state name), so re-running the migration                
+      433 +        // on the same state must idempotently rewrite the sna
+          +pshot rather than fail on an existing blob.                   
+      434 +        var snapshot = await _snapshots.CreateAsync(rootHash.V
+          +alue, fileCount, totalSize, timestamp: snapshotTimestamp, over
+          +write: true, cancellationToken: cancellationToken);           
+      435          await _chunkIndex.PromoteToSnapshotVersionAsync(BlobPa
+           ths.SnapshotPath(snapshot.Timestamp).Name.ToString());
+      436  
+      437          _logger.LogInformation("Migration complete. Snapshot {
+           Timestamp} created with {Files} files.", snapshot.Timestamp, f
+           ileCount);
+
+⏺ Now build (Migration pulls in Core), then verify against the real repo:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet build
+      src/Arius.Migration 2>&1 | tail -4)
+  ⎿      53 Warning(s)
+         0 Error(s)
+
+     Time Elapsed 00:00:02.65
+
+⏺ Builds clean. Now verify end-to-end against the real repo — the state DB is
+  states/2026-06-20T18-01-34.131, so the snapshot should now be timestamped
+  2026-06-20T18:01:34.131Z instead of "now":
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet run
+      --project src/Arius.Migration --no-build -- -a ariusciuse -c
+      v5migrationtest -p ariustes…)
+  ⎿  09:50:10 info: Arius.Migration.MigrateV5[0] ── Stage 1: reading v5 sta
+     te DB 'states/2026-06-20T18-01-34.131' (snapshot will be timestamped 2
+     026-06-20T18:01:34.1310000+00:00)
+     … +4 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ The snapshot now carries the v5 state timestamp 2026-06-20T18:01:34.131+00:00
+  (parsed from the state name 2026-06-20T18-01-34.131). Let me confirm
+  idempotency (re-run must overwrite, not fail) and that the carried-over
+  snapshot is resolvable/parseable:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; echo "===
+      idempotent re-run (overwrite) ==="; dotnet run --project
+      src/Arius.Migration --no-build -…)
+  ⎿  === idempotent re-run (overwrite) ===
+     09:50:35 info: Arius.Migration.MigrateV5[0] ── Stage 6: creating snaps
+     hot 2026-06-20T18:01:34.1310000+00:00 (10 files, 25127069 bytes)
+     … +17 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ Both pass: the re-run overwrote the snapshot at 2026-06-20T18:01:34.131 with
+  no BlobAlreadyExistsException (idempotent), and arius ls -v 2026-06-20T180134
+  resolves that snapshot and lists all 10 files — proving the name is a
+  parseable DateTimeOffset.
+
+  Let me confirm the CreateAsync signature change didn't break any caller across
+  the solution (incl. test projects):
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet build
+      2>&1 | tail -5)
+  ⎿  MSBUILD : error MSB1003: Specify a project or solution file. The curre
+     nt working directory does not contain a project or solution file.
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; ls *.sln*
+      src/*.sln* 2>/dev/null; echo "---"; dotnet build src/Arius.Core.Tests
+      src/Arius.Integrati…)
+  ⎿  (eval):1: no matches found: *.sln*
+     ---
+     MSBUILD : error MSB1008: Only one project can be specified.
+     … +12 lines (ctrl+o to expand)
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; find .
+      -maxdepth 2 -name "*.sln" 2>/dev/null; echo "=== build the two test
+      projects that call snaps…)
+  ⎿  === build the two test projects that call snapshot CreateAsync with ti
+     mestamp ===
+         1 Error(s)
+     … +5 lines (ctrl+o to expand)
+  ⎿  (timeout 7m)
+
+⏺ Arius.Core.Tests has 1 error — let me see it:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet build
+      src/Arius.Core.Tests 2>&1 | grep -iE "error|: error" | head)
+  ⎿  /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3/src/Arius.Cor
+     e.Tests/Shared/Snapshot/Fakes/FakeSnapshotService.cs(5,45): error CS05
+     35: 'FakeSnapshotService' does not implement interface member 'ISnapsh
+     … +10 lines (ctrl+o to expand)
+
+⏺ There's a FakeSnapshotService implementing the interface — it needs the new
+  signature. Let me look at it:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(src/Arius.Core.Tests/Shared/Snapshot/Fakes/FakeSnapshotService.cs)
+  ⎿  Added 1 line
+      16          long              fileCount,
+      17          long              totalSize,
+      18          DateTimeOffset?   timestamp         = null,
+      19 +        bool              overwrite         = false,           
+      20          CancellationToken cancellationToken = default) => throw
+           new NotSupportedException();
+      21  
+      22      public Task<IReadOnlyList<RelativePath>> ListBlobNamesAsync
+          (CancellationToken cancellationToken = default)
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; echo "===
+      any other ISnapshotService implementers? ==="; grep -rln ":
+      ISnapshotService" src; echo "…)
+  ⎿  === any other ISnapshotService implementers? ===
+     src/Arius.Core.Tests/Shared/Snapshot/Fakes/FakeSnapshotService.cs
+     src/Arius.Core/Shared/Snapshot/SnapshotService.cs
+     … +4 lines (ctrl+o to expand)
+
+⏺ Only two implementers; the fake is fixed and Core.Tests builds clean. Let me
+  run the affected unit suites (snapshot, filetree, chunk-index) to confirm no
+  regression:
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet test
+      --project src/Arius.Core.Tests --treenode-filter
+      "/*/*/{ChunkIndexServiceRepairTests,Sn…)
+  ⎿    error: 1
+
+       total: 0
+     … +6 lines (ctrl+o to expand)
+
+⏺ The brace filter syntax isn't supported. Let me run the full Core.Tests
+  project (it's fast, all unit-level):
+
+⏺ Bash(cd /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3; dotnet test
+      --project src/Arius.Core.Tests 2>&1 | tail -8)
+  ⎿      - /Users/wouter/.superset/worktrees/Arius7/migrate-v5-v7-3/src/Ari
+     us.Core.Tests/bin/Debug/net10.0/TestResults/Arius.Core.Tests-macos-net
+     10.0-report.html
+     … +7 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+⏺ All 569 Core.Tests pass (1 pre-existing skip) — no regression.
+
+  Done — snapshot now carries the v5 state-DB timestamp
+
+  Verified end-to-end: state states/2026-06-20T18-01-34.131 → snapshot
+  timestamped 2026-06-20T18:01:34.131+00:00, which arius ls -v 2026-06-20T180134
+  resolves and lists, and a re-run idempotently overwrites it.
+
+  Changes:
+  - ISnapshotService.CreateAsync / SnapshotService.CreateAsync — added bool 
+  overwrite = false, threaded to the blob upload. The normal archive path keeps
+  overwrite:false (snapshots stay append-only with now timestamps); only the
+  migration opts in.
+  - MigrateV5.cs:
+    - ResolveSnapshotTimestamp parses the v5 state-DB name
+  (yyyy-MM-ddTHH-mm-ss[.fff]) into a DateTimeOffset; DownloadStateDbAsync
+  returns it alongside the db path; BuildAndSnapshotAsync passes it as
+  timestamp: with overwrite: true. The snapshot blob name is always rendered
+  through SnapshotService.TimestampFormat and read back by ParseTimestamp, so
+  it's guaranteed parseable.
+    - Stage 1 / Stage 6 logs now show the carried-over timestamp.
+  - FakeSnapshotService — updated to the new signature.
+
+  Two assumptions worth confirming:
+  1. The v5 state name is interpreted as UTC (AssumeUniversal, consistent with
+  the migration's existing ReadTimestamp). If v5 actually wrote local time into
+  those names, the snapshot would be shifted by the local offset — let me know
+  and I'll adjust.
+  2. If the name doesn't parse (unexpected v5 format), it logs a warning and
+  falls back to DateTimeOffset.UtcNow rather than failing the migration.
+
+  One artifact to note: the test repo now has several snapshots from our
+  repeated dev runs (the old now-stamped ones from before this change are later
+  than 18:01:34, so they're still "latest"). A clean migration of a real v5 repo
+  has no prior v7 snapshots, so the state-stamped one would be the only/latest.
+  Want me to commit everything (sidecar + content-type + parallelization +
+  snapshot-timestamp), or clean up those stray dev snapshots first?
+
+✻ Worked for 7m 50s
+
+❯ why did you do the overwrite parameter?                                       
+
+⏺ Direct reason: I changed the snapshot's timestamp from DateTimeOffset.UtcNow
+  to a deterministic value (the v5 state-DB name). That removed the free
+  idempotency we'd been relying on.
+
+  Before the change, every migration run stamped the snapshot with now → a
+  unique blob name each time → CreateAsync's overwrite: false never collided.
+  Now that the name is fixed (2026-06-20T180134.131Z), a second run of the 
+  migration would hit the same blob name, and CreateAsync uploads with
+  overwrite: false, which throws BlobAlreadyExistsException at Stage 6. We
+  re-ran the migration repeatedly during this session, so that would have broken
+  immediately.
+
+  So overwrite: true makes re-running the migration on the same state
+  idempotently rewrite the (identical-content) snapshot instead of failing —
+  consistent with how the rest of Stage 3/4 already behaves (sidecars use
+  overwrite:true, thin stubs handle existing, repair rebuilds).
+
+  That said — it's a fair thing to question, and there are two things worth your
+  call:
+
+  1. Whether to widen the shared interface for a migration-only need. I added
+  overwrite to ISnapshotService.CreateAsync (default false, so the normal
+  append-only archive path is untouched). The alternative is to keep the
+  interface narrow and handle the collision inside the migration — e.g. catch
+  BlobAlreadyExistsException and proceed (we already know the timestamp for
+  PromoteToSnapshotVersionAsync), or pre-delete the snapshot blob. That keeps
+  ISnapshotService clean at the cost of a few lines of catch-logic in MigrateV5.
+  2. Whether re-runs should be idempotent at all. A defensible alternative is to
+  leave overwrite: false and let a second migration fail loudly ("snapshot
+  already exists") — treating migration as strictly one-shot. I went with
+  idempotent because re-running yields an identical snapshot (same rootHash), so
+  overwriting is harmless, and a cryptic 409 mid-migration is poor UX.
+
+  If you'd rather not touch the shared interface, I'd revert the CreateAsync
+  change and catch the conflict in the migration instead. Want me to switch to
+  that?
+
+✻ Brewed for 39s
