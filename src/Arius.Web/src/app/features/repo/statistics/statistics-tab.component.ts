@@ -76,13 +76,6 @@ import { formatBytes, formatCount } from '../../../shared/format';
       </div>
     }
 
-    <div class="ar-card" style="margin-top:18px;padding:16px 20px;background:#f7f9ff;border-color:#dbeafe">
-      <div style="font-size:13px;color:#3f3f46;line-height:1.5">
-        <i class="ki-filled ki-information-2" style="color:#3b82f6"></i>
-        Snapshot counts come from the file-tree; repository-storage figures load the full chunk index, so
-        they reflect every snapshot once ready.
-      </div>
-    </div>
   `,
   styles: [`
     .ar-spinner { width:16px;height:16px;border-radius:999px;border:2px solid #e4e4e7;border-top-color:#6d28d9;display:inline-block;animation:ar-spin .7s linear infinite }
