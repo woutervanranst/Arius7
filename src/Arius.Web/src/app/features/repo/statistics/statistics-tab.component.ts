@@ -5,10 +5,11 @@ import { StatisticsDto } from '../../../core/api/api-models';
 import { formatBytes, formatCount } from '../../../shared/format';
 
 /**
- * Statistics tab. Two scopes are shown separately because they answer different questions and have
- * different scope: "This snapshot" (logical size of the snapshot selected in the bar above the tabs)
+ * Statistics tab. Two scopes are shown separately because they answer different questions:
+ * "This snapshot" (logical size of the snapshot selected in the bar above the tabs — loaded immediately)
  * vs "Repository storage" (deduplicated + compressed footprint across all snapshots, from the chunk
- * index). The snapshot scope follows the shared SnapshotStore selection.
+ * index). The storage figures are lazy-loaded with full chunk-index coverage (server-side), so they are
+ * complete rather than reflecting only what browsing happened to cache — a spinner shows while they load.
  */
 @Component({
   selector: 'arius-statistics-tab',
@@ -34,14 +35,26 @@ import { formatBytes, formatCount } from '../../../shared/format';
           <div style="font-size:12.5px;color:#71717a;margin-top:3px" [title]="card.hint">{{ card.label }}</div>
         </div>
       }
-      @for (card of storageCards(); track card.label) {
-        <div class="ar-card" data-testid="kpi-card" style="padding:15px 16px">
-          <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
-            <i class="ki-filled {{ card.icon }}" style="font-size:17px"></i>
-          </div>
-          <div style="font-size:21px;font-weight:700;color:#18181b;margin-top:10px;line-height:1">{{ card.value }}</div>
-          <div style="font-size:12.5px;color:#71717a;margin-top:3px" [title]="card.hint">{{ card.label }}</div>
+      @if (storageLoading()) {
+        <!-- Spinner spans the three storage columns until the full-coverage figures are ready. -->
+        <div class="ar-card" data-testid="storage-loading" style="grid-column:span 3;padding:15px 16px;display:flex;align-items:center;justify-content:center;gap:10px;color:#71717a">
+          <span class="ar-spinner"></span>
+          <span style="font-size:12.5px">Calculating across all snapshots…</span>
         </div>
+      } @else if (storageError()) {
+        <div class="ar-card" data-testid="storage-error" style="grid-column:span 3;padding:15px 16px;display:flex;align-items:center;gap:8px;color:#b45309;font-size:12.5px">
+          <i class="ki-filled ki-information-2"></i> Could not load repository storage figures.
+        </div>
+      } @else {
+        @for (card of storageCards(); track card.label) {
+          <div class="ar-card" data-testid="kpi-card" style="padding:15px 16px">
+            <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
+              <i class="ki-filled {{ card.icon }}" style="font-size:17px"></i>
+            </div>
+            <div style="font-size:21px;font-weight:700;color:#18181b;margin-top:10px;line-height:1">{{ card.value }}</div>
+            <div style="font-size:12.5px;color:#71717a;margin-top:3px" [title]="card.hint">{{ card.label }}</div>
+          </div>
+        }
       }
     </div>
 
@@ -55,7 +68,7 @@ import { formatBytes, formatCount } from '../../../shared/format';
       </div>
     }
 
-    @if (tiers().length) {
+    @if (!storageLoading() && tiers().length) {
       <div class="ar-card" data-testid="tier-breakdown" style="margin-top:18px;padding:18px 20px">
         <div style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:14px">Stored size by tier</div>
         <div style="display:flex;flex-direction:column;gap:11px">
@@ -76,30 +89,54 @@ import { formatBytes, formatCount } from '../../../shared/format';
     <div class="ar-card" style="margin-top:18px;padding:16px 20px;background:#f7f9ff;border-color:#dbeafe">
       <div style="font-size:13px;color:#3f3f46;line-height:1.5">
         <i class="ki-filled ki-information-2" style="color:#3b82f6"></i>
-        Counts are derived from the file-tree and chunk index. Figures finalise once the local cache
-        has fully downloaded.
+        Snapshot counts come from the file-tree; repository-storage figures load the full chunk index, so
+        they reflect every snapshot once ready.
       </div>
     </div>
   `,
+  styles: [`
+    .ar-spinner { width:16px;height:16px;border-radius:999px;border:2px solid #e4e4e7;border-top-color:#6d28d9;display:inline-block;animation:ar-spin .7s linear infinite }
+    @keyframes ar-spin { to { transform:rotate(360deg) } }
+  `],
 })
 export class StatisticsTabComponent {
   private readonly api = inject(ApiService);
   private readonly snap = inject(SnapshotStore);
   readonly repoId = input.required<string>();
 
-  protected readonly stats = signal<StatisticsDto | null>(null);
+  // Per-snapshot figures (fast); follows the selected snapshot.
+  protected readonly snapStats = signal<StatisticsDto | null>(null);
+  // Repository-wide figures (lazy, full chunk-index coverage); repo-scoped, version-independent.
+  protected readonly storageStats = signal<StatisticsDto | null>(null);
+  protected readonly storageLoading = signal(false);
+  protected readonly storageError = signal(false);
 
   constructor() {
-    // Reload when the repo or the shared snapshot selection (the bar above the tabs) changes.
+    // Snapshot figures: reload when the repo or the shared snapshot selection (bar above the tabs) changes.
     effect(onCleanup => {
       const id = +this.repoId();
       const version = this.snap.version();
-      this.stats.set(null);
-      const sub = this.api.getStatistics(id, version).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
-      onCleanup(() => sub.unsubscribe());   // cancel the in-flight request if the inputs change first
+      this.snapStats.set(null);
+      const sub = this.api.getStatistics(id, version).subscribe({ next: s => this.snapStats.set(s), error: () => this.snapStats.set(null) });
+      onCleanup(() => sub.unsubscribe());
     });
-    // SnapshotStore is normally primed by the bar in the repo shell; prime it too in case Statistics
-    // is the first tab rendered for a repo (deep link), so version resolves to the latest snapshot.
+
+    // Repository-storage figures: lazy-load once per repo with full chunk-index coverage (slow), so the
+    // numbers are complete instead of reflecting only browsed coverage. Repo-wide, so version is ignored.
+    effect(onCleanup => {
+      const id = +this.repoId();
+      this.storageStats.set(null);
+      this.storageError.set(false);
+      this.storageLoading.set(true);
+      const sub = this.api.getStatistics(id, null, true).subscribe({
+        next: s => { this.storageStats.set(s); this.storageLoading.set(false); },
+        error: () => { this.storageError.set(true); this.storageLoading.set(false); },
+      });
+      onCleanup(() => sub.unsubscribe());
+    });
+
+    // SnapshotStore is normally primed by the bar in the repo shell; prime it too in case Statistics is
+    // the first tab rendered for a repo (deep link), so version resolves to the latest snapshot.
     effect(() => {
       const id = +this.repoId();
       untracked(() => this.snap.load(id));
@@ -108,16 +145,16 @@ export class StatisticsTabComponent {
 
   // Logical metrics for the selected snapshot (from its manifest).
   protected snapshotCards() {
-    const s = this.stats();
+    const s = this.snapStats();
     return [
       { label: 'Files', value: s ? formatCount(s.files) : '—', hint: 'Number of files in this snapshot.', icon: 'ki-document', chipBg: '#eff6ff', chipFg: '#3b82f6' },
       { label: 'Original size', value: s ? formatBytes(s.originalSize) : '—', hint: 'Total uncompressed size of all files in this snapshot (the size you would restore).', icon: 'ki-data', chipBg: '#f0fdf4', chipFg: '#15803d' },
     ];
   }
 
-  // Physical metrics for the repository (deduplicated + compressed, from the chunk index).
+  // Physical metrics for the repository (deduplicated + compressed, from the full chunk index).
   protected storageCards() {
-    const s = this.stats();
+    const s = this.storageStats();
     return [
       { label: 'Deduplicated size', value: s ? formatBytes(s.deduplicatedSize) : '—', hint: 'Unique data before compression — duplicate content counted once.', icon: 'ki-copy', chipBg: '#fefce8', chipFg: '#ca8a04' },
       { label: 'Stored size', value: s ? formatBytes(s.storedSize) : '—', hint: 'Actual cloud storage footprint — deduplicated and compressed.', icon: 'ki-cloud', chipBg: '#f5f3ff', chipFg: '#6d28d9' },
@@ -125,17 +162,19 @@ export class StatisticsTabComponent {
     ];
   }
 
-  // Combined deduplication + compression reduction, original (logical) → stored (physical).
-  // Only meaningful on the latest snapshot: stored/dedup are repo-wide, so comparing them against a
-  // single historical snapshot's (smaller) original size would overstate or invert the ratio.
+  // Combined deduplication + compression reduction, original (logical) → stored (physical). Needs both the
+  // selected snapshot's original size and the repo-wide stored size. Only meaningful on the latest snapshot:
+  // stored/dedup are repo-wide, so comparing them against a historical snapshot's (smaller) original size
+  // would overstate or invert the ratio.
   protected savings() {
     if (this.snap.version()) return null;
-    const s = this.stats();
-    if (!s || s.originalSize <= 0 || s.storedSize <= 0 || s.storedSize >= s.originalSize) return null;
+    const snap = this.snapStats();
+    const storage = this.storageStats();
+    if (!snap || !storage || snap.originalSize <= 0 || storage.storedSize <= 0 || storage.storedSize >= snap.originalSize) return null;
     return {
-      original: formatBytes(s.originalSize),
-      stored: formatBytes(s.storedSize),
-      percent: `${Math.round((1 - s.storedSize / s.originalSize) * 100)}%`,
+      original: formatBytes(snap.originalSize),
+      stored: formatBytes(storage.storedSize),
+      percent: `${Math.round((1 - storage.storedSize / snap.originalSize) * 100)}%`,
     };
   }
 
@@ -145,7 +184,7 @@ export class StatisticsTabComponent {
   };
 
   protected tiers() {
-    const rows = this.stats()?.storedByTier ?? [];
+    const rows = this.storageStats()?.storedByTier ?? [];
     const max = Math.max(1, ...rows.map(t => t.storedSize));
     return rows.map(t => ({
       tier: t.tier,

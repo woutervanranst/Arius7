@@ -2,6 +2,10 @@ import { test, expect } from '../support/fixtures';
 
 test('statistics tab shows the five KPI cards with real figures', async ({ page, repo }) => {
   await page.goto(`/repos/${repo.repoId}/statistics`);
+
+  // The two snapshot cards render immediately; the three repository-storage cards lazy-load behind a
+  // spinner (full chunk-index coverage). Wait for that to finish, then all five carry real figures.
+  await expect(page.getByTestId('storage-loading')).toBeHidden({ timeout: 60_000 });
   const cards = page.getByTestId('kpi-card');
   await expect(cards).toHaveCount(5, { timeout: 30_000 });
 
@@ -17,13 +21,10 @@ test('statistics tab shows the five KPI cards with real figures', async ({ page,
 });
 
 test('statistics tab shows the stored-size-by-tier breakdown', async ({ page, repo }) => {
-  // Stats read straight from the local chunk-index cache (no blob reads), so the tier breakdown
-  // only appears once the cache holds coverage. Browse the Files tab first to warm it (LookupAsync),
-  // mirroring real usage where Files is the repo's default tab.
-  await page.goto(`/repos/${repo.repoId}/files`);
-  await expect(page.getByTestId('tree-node').first()).toBeVisible({ timeout: 40_000 });
-
+  // The repository-storage figures (and the tier breakdown) load the full chunk index server-side, so
+  // they no longer depend on having browsed the Files tab first.
   await page.goto(`/repos/${repo.repoId}/statistics`);
+  await expect(page.getByTestId('storage-loading')).toBeHidden({ timeout: 60_000 });
 
   const breakdown = page.getByTestId('tier-breakdown');
   await expect(breakdown).toBeVisible({ timeout: 30_000 });

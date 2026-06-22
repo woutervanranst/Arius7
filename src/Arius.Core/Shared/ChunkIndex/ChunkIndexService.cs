@@ -191,6 +191,63 @@ internal sealed class ChunkIndexService : IChunkIndexService
         _localStore.PromoteToSnapshotVersion(oldSnapshotVersion, newSnapshotVersion);
     }
 
+    // -- Full coverage -------------------------------------------------------
+
+    /// <summary>
+    /// Loads every existing remote shard into the local cache so <see cref="GetStatistics"/> reflects the
+    /// complete index rather than only browsed coverage. Read-only — shards are downloaded (or
+    /// etag-revalidated) and ingested, but no remote shard is written or deleted. Roots load concurrently,
+    /// each under its root gate so the sweep cannot race a concurrent lookup/flush on the same subtree.
+    /// </summary>
+    public async Task EnsureFullCoverageAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
+
+        var latestSnapshotName = await _latestSnapshotName;
+        var listing = await _shardListing.GetAsync(cancellationToken);
+
+        await Parallel.ForEachAsync(
+            listing,
+            new ParallelOptions { MaxDegreeOfParallelism = PrefixLoadWorkers, CancellationToken = cancellationToken },
+            async (rootEntry, ct) =>
+            {
+                var root = PathSegment.Parse(rootEntry.Key);
+                var gate = _rootGates.GetOrAdd(root, static _ => new(1, 1));
+                await gate.WaitAsync(ct);
+                try
+                {
+                    // Parent-wins: a crashed split can leave a parent ("aa") and a child ("aa3") that both
+                    // contain the same hashes; the parent is authoritative (the child was never published).
+                    // Load only the shallowest shard per range so its entries are not double-counted.
+                    var authoritativeShards = rootEntry.Value
+                        .Where(shard => !rootEntry.Value.Keys.Any(other =>
+                            other.Length < shard.Key.Length && shard.Key.StartsWith(other, StringComparison.Ordinal)))
+                        .ToList();
+
+                    var downloaded  = new ConcurrentBag<(PathSegment Prefix, string Etag, IReadOnlyList<ShardEntry> Entries)>();
+                    var revalidated = new ConcurrentBag<(PathSegment Prefix, string Etag)>();
+                    var raced       = new ConcurrentBag<PathSegment>();
+
+                    await Parallel.ForEachAsync(
+                        authoritativeShards,
+                        new ParallelOptions { MaxDegreeOfParallelism = PrefixLoadWorkers, CancellationToken = ct },
+                        async (shard, shardCt) =>
+                        {
+                            await LoadShardAsync(PathSegment.Parse(shard.Key), shard.Value, downloaded, revalidated, raced, shardCt);
+                        });
+
+                    // A listed-but-vanished shard (a racing split deleted it) is recorded as an empty range;
+                    // the surviving parent/sibling still covers its hashes on a later lookup.
+                    _localStore.IngestCoverage(latestSnapshotName, downloaded, revalidated, raced.ToHashSet());
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+    }
+
     // -- Synchronization -----------------------------------------------------
 
     /// <summary>

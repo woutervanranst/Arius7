@@ -32,9 +32,14 @@ export class ApiService {
     return this.http.get<SnapshotDto[]>(`/api/repos/${id}/snapshots`);
   }
 
-  getStatistics(id: number, version?: string | null): Observable<StatisticsDto> {
-    const query = version ? `?version=${encodeURIComponent(version)}` : '';
-    return this.http.get<StatisticsDto>(`/api/repos/${id}/stats${query}`);
+  // `full` loads the whole chunk index server-side so the repository-wide storage figures are complete
+  // (slower) rather than reflecting only browsed coverage; the Statistics screen lazy-loads with full=true.
+  getStatistics(id: number, version?: string | null, full = false): Observable<StatisticsDto> {
+    const params = new URLSearchParams();
+    if (version) params.set('version', version);
+    if (full) params.set('full', 'true');
+    const query = params.toString();
+    return this.http.get<StatisticsDto>(`/api/repos/${id}/stats${query ? `?${query}` : ''}`);
   }
 
   createRepository(req: CreateRepositoryRequest): Observable<RepositoryDto> {

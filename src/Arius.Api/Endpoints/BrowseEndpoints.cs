@@ -19,11 +19,13 @@ internal static class BrowseEndpoints
             return snapshots.Select(s => new SnapshotDto(s.Version, s.Timestamp, s.FileCount)).ToList();
         });
 
-        app.MapGet("/repos/{id:long}/stats", async (long id, string? version, RepositoryProviderRegistry registry, CancellationToken ct) =>
+        // `full=true` loads the whole chunk index so the repository-wide storage figures are complete
+        // (slower); the web Statistics screen lazy-loads its storage section with that flag.
+        app.MapGet("/repos/{id:long}/stats", async (long id, string? version, bool? full, RepositoryProviderRegistry registry, CancellationToken ct) =>
         {
             var provider = await registry.GetReadProviderAsync(id, ct);
             var mediator = provider.GetRequiredService<IMediator>();
-            var stats = await mediator.Send(new StatisticsQuery(version), ct);
+            var stats = await mediator.Send(new StatisticsQuery(version, full ?? false), ct);
             return new StatisticsDto(
                 stats.Files, stats.OriginalSize, stats.DeduplicatedSize, stats.StoredSize, stats.UniqueChunks,
                 stats.StoredByTier.Select(t => new TierStatisticsDto(t.Tier.ToString(), t.UniqueChunks, t.StoredSize)).ToList());

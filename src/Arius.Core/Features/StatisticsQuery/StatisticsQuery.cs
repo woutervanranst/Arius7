@@ -11,7 +11,12 @@ namespace Arius.Core.Features.StatisticsQuery;
 /// Mediator command: aggregate repository statistics for the Statistics view.
 /// </summary>
 /// <param name="Version">Snapshot version (partial match). <c>null</c> = latest.</param>
-public sealed record StatisticsQuery(string? Version = null) : ICommand<RepositoryStatistics>;
+/// <param name="EnsureFullCoverage">
+/// When <c>true</c>, fully loads the chunk index into the local cache before reading the repository-wide
+/// figures, so they are complete rather than reflecting only browsed coverage. Slower (downloads the
+/// whole index, etag-cached on repeat); the caller lazy-loads the storage section behind this.
+/// </param>
+public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCoverage = false) : ICommand<RepositoryStatistics>;
 
 // --- RESULT
 
@@ -70,6 +75,10 @@ public sealed class StatisticsQueryHandler(
         }
 
         // ── Stage 2: chunk-index aggregate (deduplicated original size + distinct chunks by tier) ──
+        // Optionally load the whole index first so the repository-wide figures are complete rather than
+        // reflecting only the coverage that browsing happened to populate.
+        if (query.EnsureFullCoverage)
+            await chunkIndex.EnsureFullCoverageAsync(cancellationToken);
         var chunkStats = chunkIndex.GetStatistics();
         var byTier     = chunkStats.ByTier;
 
