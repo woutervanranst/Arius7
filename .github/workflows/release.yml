@@ -207,13 +207,18 @@ jobs:
       - name: 🚀 Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Move tag-derived (attacker-controllable) context into env vars and quote on use, so a
+          # crafted tag name can't inject shell — see the GitHub script-injection guidance.
+          VERSION: ${{ steps.version.outputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           # Mark pre-release tags (e.g. v1.2.3-beta) as GitHub pre-releases.
           prerelease=""
-          if [[ "${{ steps.version.outputs.version }}" == *-* ]]; then prerelease="--prerelease"; fi
-          gh release create ${{ github.ref_name }} \
-            --repo ${{ github.repository }} \
-            --title "Arius ${{ steps.version.outputs.version }}" \
+          if [[ "$VERSION" == *-* ]]; then prerelease="--prerelease"; fi
+          gh release create "$REF_NAME" \
+            --repo "$REPO" \
+            --title "Arius $VERSION" \
             --notes-file CHANGELOG.md \
             $prerelease \
             dist/*
