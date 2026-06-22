@@ -31,7 +31,7 @@ Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a 
 `StatisticsQuery(Version? = null)` returns `RepositoryStatistics(Files, OriginalSize, DeduplicatedSize, StoredSize, UniqueChunks, StoredByTier)`. It joins two sources at **two different scopes**:
 
 - **Per-snapshot** (from the resolved snapshot manifest): `Files` and `OriginalSize` — the logical size of *this* snapshot, i.e. the sum of original (uncompressed) file sizes counting duplicates once per file (the size you would restore).
-- **Repository-wide** (from `IChunkIndexService`, across all snapshots): `DeduplicatedSize` (`GetDeduplicatedOriginalSize()` — sum of original sizes over distinct content, *before* compression), plus `StoredSize`, `UniqueChunks`, and the per-tier breakdown (`GetStatistics()` → `ChunkTierStatistic(Tier, UniqueChunks, StoredSize)` — the deduplicated *and* compressed cloud footprint).
+- **Repository-wide** (from `IChunkIndexService`, across all snapshots): a single `GetStatistics()` call returns `ChunkIndexStatistics(DeduplicatedOriginalSize, ByTier)`. `DeduplicatedSize` ← `DeduplicatedOriginalSize` (sum of original sizes over distinct content, *before* compression); `StoredSize`, `UniqueChunks`, and the per-tier breakdown come from `ByTier` (`ChunkTierStatistic(Tier, UniqueChunks, StoredSize)` — the deduplicated *and* compressed cloud footprint). Both aggregates are computed on one local-cache connection (no blob reads).
 
 The three sizes form a logical→physical chain: `OriginalSize` (logical, with duplicates) ≥ `DeduplicatedSize` (unique, uncompressed) ≥ `StoredSize` (unique, compressed). No snapshot for the version ⇒ all-zero stats.
 
