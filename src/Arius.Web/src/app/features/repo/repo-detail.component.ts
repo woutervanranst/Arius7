@@ -31,9 +31,9 @@ import { SnapshotBarComponent } from './snapshot-bar.component';
           </div>
         </div>
         <div class="flex items-center gap-2.5">
-          <button class="ar-btn-outline" data-testid="btn-properties" (click)="drawer.openProperties(r.id)"><i class="ki-filled ki-setting-2"></i>Properties</button>
           <button class="ar-btn-outline" data-testid="btn-restore" (click)="drawer.openRestore(r.id, null, [])"><i class="ki-filled ki-cloud-download"></i>Restore</button>
           <button class="ar-btn-primary" data-testid="btn-archive" (click)="drawer.openArchive(r.id, r.defaultTier)"><i class="ki-filled ki-cloud-add"></i>Archive</button>
+          <button class="ar-btn-outline" data-testid="btn-properties" (click)="drawer.openProperties(r.id)"><i class="ki-filled ki-setting-2"></i>Properties</button>
         </div>
       </div>
 

@@ -1,12 +1,14 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { ApiService } from '../../../core/api/api.service';
+import { SnapshotStore } from '../../../core/state/snapshot.store';
 import { StatisticsDto } from '../../../core/api/api-models';
 import { formatBytes, formatCount } from '../../../shared/format';
 
 /**
  * Statistics tab. Two scopes are shown separately because they answer different questions and have
- * different scope: "This snapshot" (logical size of the selected snapshot) vs "Repository storage"
- * (deduplicated + compressed footprint across all snapshots, from the chunk index).
+ * different scope: "This snapshot" (logical size of the snapshot selected in the bar above the tabs)
+ * vs "Repository storage" (deduplicated + compressed footprint across all snapshots, from the chunk
+ * index). The snapshot scope follows the shared SnapshotStore selection.
  */
 @Component({
   selector: 'arius-statistics-tab',
@@ -81,17 +83,25 @@ import { formatBytes, formatCount } from '../../../shared/format';
 })
 export class StatisticsTabComponent {
   private readonly api = inject(ApiService);
+  private readonly snap = inject(SnapshotStore);
   readonly repoId = input.required<string>();
 
   protected readonly stats = signal<StatisticsDto | null>(null);
 
   constructor() {
-    // Reload when repoId changes — the router reuses this component across /repos/:id navigations.
+    // Reload when the repo or the shared snapshot selection (the bar above the tabs) changes.
     effect(onCleanup => {
       const id = +this.repoId();
+      const version = this.snap.version();
       this.stats.set(null);
-      const sub = this.api.getStatistics(id).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
-      onCleanup(() => sub.unsubscribe());   // cancel the in-flight request if repoId changes first
+      const sub = this.api.getStatistics(id, version).subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
+      onCleanup(() => sub.unsubscribe());   // cancel the in-flight request if the inputs change first
+    });
+    // SnapshotStore is normally primed by the bar in the repo shell; prime it too in case Statistics
+    // is the first tab rendered for a repo (deep link), so version resolves to the latest snapshot.
+    effect(() => {
+      const id = +this.repoId();
+      untracked(() => this.snap.load(id));
     });
   }
 
@@ -115,7 +125,10 @@ export class StatisticsTabComponent {
   }
 
   // Combined deduplication + compression reduction, original (logical) → stored (physical).
+  // Only meaningful on the latest snapshot: stored/dedup are repo-wide, so comparing them against a
+  // single historical snapshot's (smaller) original size would overstate or invert the ratio.
   protected savings() {
+    if (this.snap.version()) return null;
     const s = this.stats();
     if (!s || s.originalSize <= 0 || s.storedSize <= 0 || s.storedSize >= s.originalSize) return null;
     return {

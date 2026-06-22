@@ -1,4 +1,5 @@
 import { test, expect } from '../support/fixtures';
+import { revealFiles } from '../support/files';
 
 test('global search returns cross-repository hits and navigates to the repo', async ({ page, repo }) => {
   test.setTimeout(120_000);
@@ -18,12 +19,10 @@ test('global search returns cross-repository hits and navigates to the repo', as
   await expect(page).toHaveURL(/\/repos\/\d+\/files/);
 });
 
-/** Opens the repo's file list and returns a distinctive substring of the first file's name. */
+/** Opens the repo's file list (drilling into folders as needed) and returns a distinctive substring of the first file's name. */
 async function deriveTerm(page: import('@playwright/test').Page, repoId: number): Promise<string> {
-  await page.goto(`/repos/${repoId}/files`);
-  const name = page.getByTestId('file-name').first();
-  await expect(name).toBeVisible({ timeout: 40_000 });
-  const text = (await name.innerText()).trim();
+  const rows = await revealFiles(page, repoId);
+  const text = (await rows.first().getByTestId('file-name').innerText()).trim();
   // a stable substring: filename without extension, capped, min 3 chars
   const base = (text.split('.')[0] || text).slice(0, 8);
   return base.length >= 3 ? base : text.slice(0, 4);
