@@ -191,7 +191,7 @@ that captures a point-in-time state of the repository:
 | `timestamp` | UTC time of snapshot creation |
 | `rootHash` | SHA-256 hash of the root Merkle tree node |
 | `fileCount` | Total number of files |
-| `totalSize` | Sum of original file sizes in bytes |
+| `originalSize` | Logical size: sum of original (uncompressed) file sizes in bytes |
 | `ariusVersion` | Tool version that created the snapshot |
 
 Snapshots are immutable and never deleted. To browse the repository at a given point in

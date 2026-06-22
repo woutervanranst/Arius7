@@ -167,7 +167,7 @@ sequenceDiagram
     alt root hash unchanged
         Snap-->>ACH: reuse latest snapshot
     else changed
-        ACH->>Snap: CreateAsync(rootHash, fileCount, totalSize)
+        ACH->>Snap: CreateAsync(rootHash, fileCount, originalSize)
     end
 ```
 

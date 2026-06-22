@@ -28,14 +28,20 @@ Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a 
 
 ### StatisticsQuery
 
-`StatisticsQuery(Version? = null)` returns `RepositoryStatistics(Files, OriginalSize, StoredSize, UniqueChunks, StoredByTier)`. It joins two sources: the snapshot manifest supplies `Files` and `OriginalSize` (uncompressed totals); `IChunkIndexService.GetStatistics()` supplies stored size, distinct-chunk count, and the per-tier breakdown (`ChunkTierStatistic(Tier, UniqueChunks, StoredSize)`). No snapshot for the version ⇒ all-zero stats.
+`StatisticsQuery(Version? = null)` returns `RepositoryStatistics(Files, OriginalSize, DeduplicatedSize, StoredSize, UniqueChunks, StoredByTier)`. It joins two sources at **two different scopes**:
+
+- **Per-snapshot** (from the resolved snapshot manifest): `Files` and `OriginalSize` — the logical size of *this* snapshot, i.e. the sum of original (uncompressed) file sizes counting duplicates once per file (the size you would restore).
+- **Repository-wide** (from `IChunkIndexService`, across all snapshots): `DeduplicatedSize` (`GetDeduplicatedOriginalSize()` — sum of original sizes over distinct content, *before* compression), plus `StoredSize`, `UniqueChunks`, and the per-tier breakdown (`GetStatistics()` → `ChunkTierStatistic(Tier, UniqueChunks, StoredSize)` — the deduplicated *and* compressed cloud footprint).
+
+The three sizes form a logical→physical chain: `OriginalSize` (logical, with duplicates) ≥ `DeduplicatedSize` (unique, uncompressed) ≥ `StoredSize` (unique, compressed). No snapshot for the version ⇒ all-zero stats.
 
 ## Key invariants
 
 - **Hydration status is keyed by distinct chunk, not file.** Multiple repository files dedup to the same chunk; their hydration status is identical and must be resolved once. Breaking the per-`ChunkHash` cache turns a list view into one blob call per file.
 - **A container is an Arius repository iff it has a real blob under `snapshots/`.** The detection probe must stay a single bounded listing (`pageSizeHint: 1`) and must exclude the bare prefix marker — changing this either mislabels containers or makes account scans O(blobs).
 - **`SnapshotInfo.Version` is the storage filename, not a display ordinal.** It is the value `Version` filters round-trip on; "v28"-style labels are UI ordinals derived from position, never persisted.
-- **Statistics figures come from the local chunk-index cache, with no blob reads.** They reflect the cache's current coverage and finalise only once it has fully synchronised.
+- **Statistics mix per-snapshot and repository-wide scopes.** `Files` and `OriginalSize` are scoped to the resolved snapshot; `DeduplicatedSize`, `StoredSize`, `UniqueChunks`, and `StoredByTier` are repository-wide (all snapshots), read from the chunk index. The two scopes must be labelled distinctly in any UI so a snapshot's logical size is not read as the repository's physical footprint.
+- **Statistics chunk-index figures come from the local chunk-index cache, with no blob reads.** The repository-wide figures reflect the cache's current coverage and finalise only once it has fully synchronised.
 
 ## Why this shape
 

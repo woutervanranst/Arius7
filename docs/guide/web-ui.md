@@ -123,10 +123,14 @@ drawer scoped to exactly those files.
 
 ### Statistics tab
 
-Four KPI cards — **Files**, **Original size**, **Stored size** (after dedup + compression), and
-**Unique chunks** — plus a **Stored size by tier** breakdown bar. A note explains the figures are
-derived from the file-tree and chunk index and finalise once the local cache has fully downloaded,
-so they may read low right after you add a large repository.
+KPI cards in two scoped sections. **This snapshot** shows **Files** and **Original size** (the
+logical, uncompressed size of the selected snapshot — what you would restore). **Repository
+storage · across all snapshots** shows **Deduplicated size** (unique data before compression),
+**Stored size** (the actual cloud footprint after dedup + compression), and **Unique chunks**.
+A green **savings** banner expresses the original→stored reduction as a percentage, and a
+**Stored size by tier** breakdown bar follows. A note explains the figures are derived from the
+file-tree and chunk index and finalise once the local cache has fully downloaded, so they may
+read low right after you add a large repository.
 
 ### Properties tab
 
