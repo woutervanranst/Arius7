@@ -15,31 +15,32 @@ import { formatBytes, formatCount } from '../../../shared/format';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div data-testid="section-snapshot" style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:12px">This snapshot</div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px">
-      @for (card of snapshotCards(); track card.label) {
-        <div class="ar-card" data-testid="kpi-card" style="padding:19px 20px">
-          <div style="width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
-            <i class="ki-filled {{ card.icon }}" style="font-size:20px"></i>
-          </div>
-          <div style="font-size:24px;font-weight:700;color:#18181b;margin-top:12px;line-height:1">{{ card.value }}</div>
-          <div style="font-size:13px;color:#71717a;margin-top:4px" [title]="card.hint">{{ card.label }}</div>
-        </div>
-      }
+    <!-- Section labels aligned over the unified card row (2 snapshot + 3 storage columns). -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:10px">
+      <div data-testid="section-snapshot" style="grid-column:span 2;font-size:13px;font-weight:600;color:#3f3f46">This snapshot</div>
+      <div data-testid="section-storage" style="grid-column:span 3;font-size:13px;font-weight:600;color:#3f3f46">
+        Repository storage <span style="font-weight:400;color:#a1a1aa">· across all snapshots</span>
+      </div>
     </div>
 
-    <div data-testid="section-storage" style="font-size:13px;font-weight:600;color:#3f3f46;margin:22px 0 12px">
-      Repository storage
-      <span style="font-weight:400;color:#a1a1aa">· across all snapshots</span>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
-      @for (card of storageCards(); track card.label) {
-        <div class="ar-card" data-testid="kpi-card" style="padding:19px 20px">
-          <div style="width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
-            <i class="ki-filled {{ card.icon }}" style="font-size:20px"></i>
+    <!-- All five KPI cards in a single row. -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
+      @for (card of snapshotCards(); track card.label) {
+        <div class="ar-card" data-testid="kpi-card" style="padding:15px 16px">
+          <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
+            <i class="ki-filled {{ card.icon }}" style="font-size:17px"></i>
           </div>
-          <div style="font-size:24px;font-weight:700;color:#18181b;margin-top:12px;line-height:1">{{ card.value }}</div>
-          <div style="font-size:13px;color:#71717a;margin-top:4px" [title]="card.hint">{{ card.label }}</div>
+          <div style="font-size:21px;font-weight:700;color:#18181b;margin-top:10px;line-height:1">{{ card.value }}</div>
+          <div style="font-size:12.5px;color:#71717a;margin-top:3px" [title]="card.hint">{{ card.label }}</div>
+        </div>
+      }
+      @for (card of storageCards(); track card.label) {
+        <div class="ar-card" data-testid="kpi-card" style="padding:15px 16px">
+          <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
+            <i class="ki-filled {{ card.icon }}" style="font-size:17px"></i>
+          </div>
+          <div style="font-size:21px;font-weight:700;color:#18181b;margin-top:10px;line-height:1">{{ card.value }}</div>
+          <div style="font-size:12.5px;color:#71717a;margin-top:3px" [title]="card.hint">{{ card.label }}</div>
         </div>
       }
     </div>
