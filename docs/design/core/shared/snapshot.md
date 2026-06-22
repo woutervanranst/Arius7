@@ -32,7 +32,7 @@ flowchart TD
     subgraph create[CreateAsync — write-through]
       C1[Build manifest at ts] --> C2[WriteToDiskAsync: plain JSON to local snapshots/]
       C2 --> C3[SnapshotSerializer.SerializeAsync: zstd + optional encrypt]
-      C3 --> C4["UploadAsync snapshots/&lt;ts&gt;, overwrite:false, Cool tier"]
+      C3 --> C4["UploadAsync snapshots/&lt;ts&gt;, overwrite:false (default), Cool tier"]
     end
     subgraph resolve[ResolveAsync — disk-first]
       R1[ListBlobNamesAsync: list snapshots/, sort by ParseTimestamp] --> R2{version?}
@@ -76,7 +76,7 @@ A re-archive of unchanged data rebuilds the same `rootHash`; stage 6d resolves t
 
 ## Key invariants
 
-- **Manifests are immutable and content-rooted.** A snapshot is never edited; `RootHash` is the SHA-256 root of the filetree, so two snapshots with the same root describe the same state. `CreateAsync` uploads with `overwrite: false`.
+- **Manifests are immutable and content-rooted.** A snapshot is never edited; `RootHash` is the SHA-256 root of the filetree, so two snapshots with the same root describe the same state. `CreateAsync` defaults to `overwrite: false` (each normal run gets a fresh `now` timestamp, so manifests are append-only). The one exception is a caller that creates a snapshot at a *deterministic* `timestamp` and needs re-runs to be idempotent — the [v5→v7 migration](../../migration.md) passes an explicit `timestamp` (the source state's version) with `overwrite: true` so replaying it rewrites the same blob rather than failing on a conflict.
 - **Timestamp lexicographic order == chronological order.** `TimestampFormat = "yyyy-MM-ddTHHmmss.fffZ"` (UTC, zero-padded) makes "latest" a plain string sort on both disk filenames and blob names — `ResolveAsync` and `ValidateAsync` rely on this to pick the epoch without parsing every name.
 - **Disk-write-before-upload, and "latest local == latest remote" ⇒ this machine wrote last.** The local `snapshots/` marker is written only when *this* machine completes an archive, so name equality is exactly the fast-path proposition in `FileTreeService.ValidateAsync` ([ADR-0016](../../../decisions/adr-0016-multi-machine-cache-coherence.md)).
 - **Snapshot last.** The manifest is published only after all data it references is durable; a resolvable snapshot is therefore always fully restorable ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md)).
