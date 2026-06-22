@@ -65,13 +65,13 @@ public class ChunkIndexServiceRepairTests
     }
 
     [Test]
-    public async Task RepairAsync_ArchivedLargeChunk_ReadsDescriptorFromSidecar()
+    public async Task RepairAsync_ArchivedLargeChunk_ReadsMetadataFromSidecar()
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var largeContentHash = FakeContentHash('a');
 
         // Archived large chunk: its own metadata could not be written (Set Blob Metadata is forbidden on
-        // archived blobs), so the migration parked the descriptor in a Cool sidecar at chunk-descriptors/<hash>.
+        // archived blobs), so the migration parked the metadata in a Cool sidecar at chunks-v5legacy-metadata/<hash>.
         blobs.SeedBlob(BlobPaths.ChunkPath(ChunkHash.Parse(largeContentHash)), [1, 2, 3], BlobTier.Archive);
         blobs.SeedBlob(
             BlobPaths.V5LegacySideCarPath(ChunkHash.Parse(largeContentHash)),
@@ -101,7 +101,7 @@ public class ChunkIndexServiceRepairTests
         var thinContentHash = FakeContentHash('b');
         var parentChunkHash = FakeChunkHash('c');
 
-        // Archived tar: descriptor lives in a Cool sidecar (its own metadata couldn't be written).
+        // Archived tar: metadata lives in a Cool sidecar (its own metadata couldn't be written).
         blobs.SeedBlob(BlobPaths.ChunkPath(parentChunkHash), [4, 5], BlobTier.Archive);
         blobs.SeedBlob(
             BlobPaths.V5LegacySideCarPath(parentChunkHash),
@@ -130,7 +130,7 @@ public class ChunkIndexServiceRepairTests
         result.ListedChunkCount.ShouldBe(2);
         result.RebuiltEntryCount.ShouldBe(1); // the thin entry; the tar contributes none of its own
 
-        // The thin entry's tier and chunk size are sourced from the archived tar, whose descriptor came from the sidecar.
+        // The thin entry's tier and chunk size are sourced from the archived tar, whose metadata came from the sidecar.
         (await index.LookupAsync(thinContentHash)).ShouldBe(new ShardEntry(thinContentHash, parentChunkHash, 10, 2, BlobTier.Archive));
     }
 

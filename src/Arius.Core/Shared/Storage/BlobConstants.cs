@@ -50,7 +50,7 @@ internal static class ContentTypes
     // ── Thin pointer ───────────────────────────────────────────────────────────
     public const string Thin           = "text/plain; charset=utf-8";
 
-    // ── v5-legacy metadata sidecar (empty body; chunk descriptor carried in metadata) ──
+    // ── v5-legacy chunk metadata sidecar (empty body; chunk metadata carried in blob metadata) ──
     public const string V5LegacyMetadataSideCar = "text/plain; charset=utf-8";
 
     // ── File tree ──────────────────────────────────────────────────────────────
@@ -83,8 +83,8 @@ public static class BlobPaths
     public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / PathSegment.Parse("chunks-rehydrated");
 
     /// <summary>
-    /// Descriptor sidecars for chunks whose own metadata cannot be written — Archive-tier blobs migrated from v5, where Azure forbids Set Blob Metadata.
-    /// NOTE: if chunk pruning/GC is ever added, deleting a chunk must also delete its descriptor sidecar.
+    /// Chunk metadata sidecars for chunks whose own metadata cannot be written — Archive-tier blobs migrated from v5, where Azure forbids Set Blob Metadata.
+    /// NOTE: if chunk pruning/GC is ever added, deleting a chunk must also delete its metadata sidecar.
     /// </summary>
     public static RelativePath V5LegacySideCarPrefix => RelativePath.Root / PathSegment.Parse("chunks-v5legacy-metadata");
 

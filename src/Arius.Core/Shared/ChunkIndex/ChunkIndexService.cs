@@ -722,7 +722,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // A tar contributes no entry of its own — it is recovered via its thin chunks.
         async IAsyncEnumerable<ShardEntry> GetRepairEntriesAsync([EnumeratorCancellation] CancellationToken ct = default)
         {
-            // v5 > v7 migration cannot set metadata on chunks in archive tier, so the migration puts a sidecar at chunk-descriptors/{hash}.
+            // v5 > v7 migration cannot set metadata on chunks in archive tier, so the migration puts a chunk metadata sidecar at chunks-v5legacy-metadata/{hash}.
             // a chunk whose own metadata lacks arius_type falls back to its sidecar.
             var sidecarMetadata = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
             await foreach (var sidecar in _blobs.ListAsync(BlobPaths.V5LegacySideCarPrefix, includeMetadata: true, cancellationToken: ct))
@@ -773,16 +773,16 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 }
             }
 
-            static long ReadRequiredLong(IReadOnlyDictionary<string, string> descriptor, BlobListItem item, string key)
-                => descriptor.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
+            static long ReadRequiredLong(IReadOnlyDictionary<string, string> metadata, BlobListItem item, string key)
+                => metadata.TryGetValue(key, out var value) && long.TryParse(value, out var parsed)
                     ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
 
-            static ChunkHash ReadRequiredChunkHash(IReadOnlyDictionary<string, string> descriptor, BlobListItem item, string key)
-                => descriptor.TryGetValue(key, out var value) && ChunkHash.TryParse(value, out var parsed)
+            static ChunkHash ReadRequiredChunkHash(IReadOnlyDictionary<string, string> metadata, BlobListItem item, string key)
+                => metadata.TryGetValue(key, out var value) && ChunkHash.TryParse(value, out var parsed)
                     ? parsed : throw new ChunkIndexRepairException(item.Name, $"missing or invalid {key} metadata");
 
-            static long ReadChunkSize(IReadOnlyDictionary<string, string> descriptor, BlobListItem item)
-                => descriptor.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
+            static long ReadChunkSize(IReadOnlyDictionary<string, string> metadata, BlobListItem item)
+                => metadata.TryGetValue(BlobMetadataKeys.ChunkSize, out var value) && long.TryParse(value, out var size)
                     ? size : item.ContentLength ?? throw new ChunkIndexRepairException(item.Name, $"missing or invalid {BlobMetadataKeys.ChunkSize} metadata");
         }
     }
