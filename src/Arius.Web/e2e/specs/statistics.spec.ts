@@ -18,6 +18,28 @@ test('statistics tab shows the five KPI cards with real figures', async ({ page,
   await expect(page.getByText('Original size')).toBeVisible();
   await expect(page.getByText('Deduplicated size')).toBeVisible();
   await expect(page.getByText('Unique chunks')).toBeVisible();
+
+  // The dedup/compression "savings" banner was removed for good.
+  await expect(page.getByTestId('savings')).toHaveCount(0);
+});
+
+test('the "This snapshot" figures follow the snapshot selected in the bar', async ({ page, repo }) => {
+  await page.goto(`/repos/${repo.repoId}/statistics`);
+  await expect(page.getByTestId('storage-loading')).toBeHidden({ timeout: 60_000 });
+
+  await page.getByTestId('snapshot-picker').click();
+  const items = page.getByTestId('snapshot-item');
+  await expect(items.first()).toBeVisible({ timeout: 30_000 });
+  test.skip(await items.count() < 2, 'needs more than one snapshot to switch the snapshot scope');
+
+  // Selecting an older snapshot must re-query the snapshot-scoped figures with that version (the
+  // repository-storage figures are repo-wide and intentionally stay put).
+  const versioned = page.waitForRequest(r => /\/repos\/\d+\/stats\?.*\bversion=/.test(r.url()));
+  await items.last().click(); // the oldest snapshot
+  await versioned;
+
+  // The shared bar reflects the historical selection on the Statistics tab too.
+  await expect(page.getByText('Historical view')).toBeVisible();
 });
 
 test('statistics tab shows the stored-size-by-tier breakdown', async ({ page, repo }) => {
