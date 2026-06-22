@@ -83,7 +83,8 @@ public sealed class JobRunner(
         finally
         {
             if (provider is not null) await provider.DisposeAsync();
-            registry.Evict(repositoryId);   // snapshot may have changed → rebuild read caches
+            registry.Evict(repositoryId);            // snapshot may have changed → rebuild read caches
+            database.ClearStatisticsCache(repositoryId); // …and discard memoized statistics for the old snapshot set
             gate.Release();
         }
     }

@@ -14,7 +14,7 @@ The component has three concerns, each in its own type, all constructed *inside*
 
 | Concern | Type | Owns |
 |---|---|---|
-| Orchestration / remote I/O | `ChunkIndexService` | Lookup, flush, split, repair, the run-scoped shard listing, per-root gates |
+| Orchestration / remote I/O | `ChunkIndexService` | Lookup, flush, split, repair, the full-coverage sweep, the run-scoped shard listing, per-root gates |
 | Routing | `ChunkIndexRouter` (static) | Mapping a content hash to its authoritative shard given the existing blob set |
 | Local state | `ChunkIndexLocalStore` | The only owner of the SQLite schema, connections, and transactions |
 
@@ -68,6 +68,12 @@ flowchart TD
 ```
 
 A shard listed at snapshot time but gone at download time is a **racing split**: `LoadShardAsync` records it as `raced`, the run-scoped listing is `Reset()` once, and the resolution retries from a fresh listing (bounded to a single retry per call). After the retry a still-missing shard is treated as an empty range.
+
+### Full-coverage sweep
+
+`LookupAsync` only ever loads the shards a given set of hashes routes to, so `GetStatistics()` after browsing reflects *partial* coverage. `EnsureFullCoverageAsync` is the opposite move: it pulls **every** existing remote shard into the local cache so the repository-wide aggregates are complete. It is **read-only** — shards are downloaded or etag-revalidated and ingested, but none is written, split, or deleted — and the only caller is the [statistics query](../features/queries.md#statisticsquery) under its `EnsureFullCoverage` flag.
+
+The sweep reuses the lookup machinery rather than walking shards blindly. It fans out over the 256 roots from the run-scoped listing (`PrefixLoadWorkers` concurrency), each root taken **under its own root gate** so the sweep cannot race a concurrent lookup/flush on the same subtree. Within a root it applies **parent-wins** at listing level: only the *shallowest* shard per prefix range is loaded (a shard whose key is a strict prefix of another's wins), because a crashed split can leave a parent (`aa`) and a child (`aa3`) that both hold the same hashes — loading both would double-count. Each root's downloads land in one batched `IngestCoverage` transaction, and a listed-but-vanished shard is recorded as an empty range (the surviving parent/sibling still covers its hashes on a later lookup), mirroring the racing-split handling above.
 
 ### Write + flush flow
 

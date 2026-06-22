@@ -1,6 +1,6 @@
 # Testing
 
-> **Code:** `src/Arius.Architecture.Tests`, `src/Arius.Tests.Shared`, `src/Arius.E2E.Tests/Workflows`, `src/Arius.Integration.Tests`, `src/Arius.Core.Tests`, `src/Arius.Cli.Tests`  ·  **Decisions:** [ADR-0001](../../decisions/adr-0001-structure-representative-e2e-coverage.md) · [ADR-0005](../../decisions/adr-0005-adopt-scoped-stryker-mutation-testing.md) · [ADR-0009](../../decisions/adr-0009-clarify-test-fixture-boundaries.md) · [ADR-0011](../../decisions/adr-0011-require-90-percent-production-line-coverage.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [tar chunk](../../glossary.md#tar-chunk) · [storage tier hint](../../glossary.md#storage-tier-hint)
+> **Code:** `src/Arius.Architecture.Tests`, `src/Arius.Tests.Shared`, `src/Arius.E2E.Tests/Workflows`, `src/Arius.Integration.Tests`, `src/Arius.Core.Tests`, `src/Arius.Cli.Tests`, `src/Arius.Api.Tests`  ·  **Decisions:** [ADR-0001](../../decisions/adr-0001-structure-representative-e2e-coverage.md) · [ADR-0005](../../decisions/adr-0005-adopt-scoped-stryker-mutation-testing.md) · [ADR-0009](../../decisions/adr-0009-clarify-test-fixture-boundaries.md) · [ADR-0011](../../decisions/adr-0011-require-90-percent-production-line-coverage.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [tar chunk](../../glossary.md#tar-chunk) · [storage tier hint](../../glossary.md#storage-tier-hint)
 
 ## Purpose
 
@@ -14,6 +14,7 @@ Arius is a backup tool, so tests are the primary review surface for correctness,
 |---|---|---|
 | `Arius.Core.Tests` | Fast unit/behavior tests for Core feature handlers and shared services | in-memory (`FakeInMemoryBlobContainerService`) |
 | `Arius.Cli.Tests` | CLI parsing, option validation, account/key resolution, DI wiring | none (no Azure, no network) |
+| `Arius.Api.Tests` | Web-host logic in isolation — the `AppDatabase` and its statistics cache (hit/miss, fingerprint-based pruning, clear) | host SQLite only (no Azure, no Core) |
 | `Arius.Integration.Tests` | Repository pipeline behavior against a real blob backend; crash recovery, faulting, rehydration simulation | Azurite (Docker) |
 | `Arius.E2E.Tests` | One representative archive→restore lifecycle; live-Azure-only probes | Azurite **and** real Azure |
 | `Arius.Architecture.Tests` | Dependency/boundary rules as executable contracts | reflection only (no I/O) |

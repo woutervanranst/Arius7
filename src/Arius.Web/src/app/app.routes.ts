@@ -26,7 +26,6 @@ export const routes: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'files' },
       { path: 'files', loadComponent: () => import('./features/repo/files/files-tab.component').then(m => m.FilesTabComponent) },
       { path: 'statistics', loadComponent: () => import('./features/repo/statistics/statistics-tab.component').then(m => m.StatisticsTabComponent) },
-      { path: 'properties', loadComponent: () => import('./features/repo/properties/properties-tab.component').then(m => m.PropertiesTabComponent) },
     ],
   },
   {

@@ -469,6 +469,53 @@ public class ChunkIndexServiceLookupTests
         blobs.ListedNamePrefixes.ShouldBeEmpty();
     }
 
+    // ── Full coverage (statistics) ───────────────────────────────────────────
+
+    [Test]
+    public async Task EnsureFullCoverageAsync_LoadsAllShards_StatisticsReflectCompleteIndex()
+    {
+        // Two shards under distinct roots; neither browsed yet, so the cold cache reports nothing.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var hashA = FakeContentHash('a');
+        var hashD = FakeContentHash('d');
+        var entryA = new ShardEntry(hashA, FakeChunkHash('1'), OriginalSize: 100, ChunkSize: 40, BlobTier.Cool);
+        var entryD = new ShardEntry(hashD, FakeChunkHash('2'), OriginalSize: 200, ChunkSize: 60, BlobTier.Archive);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(ChunkIndexRouter.GetRootPrefix(hashA)), await ShardSerializer.SerializeAsync(CreateShard(entryA), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(ChunkIndexRouter.GetRootPrefix(hashD)), await ShardSerializer.SerializeAsync(CreateShard(entryD), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), BlobTier.Cool);
+        using var index = CreateIndex(blobs, "full-coverage");
+
+        index.GetStatistics().DeduplicatedOriginalSize.ShouldBe(0); // cold cache: nothing loaded
+
+        await index.EnsureFullCoverageAsync();
+
+        var stats = index.GetStatistics();
+        stats.DeduplicatedOriginalSize.ShouldBe(300);      // 100 + 200 over distinct content
+        stats.ByTier.Sum(t => t.UniqueChunks).ShouldBe(2);
+        stats.ByTier.Sum(t => t.StoredSize).ShouldBe(100); // 40 + 60
+    }
+
+    [Test]
+    public async Task EnsureFullCoverageAsync_CrashedSplitParentAndChild_CountsParentOnce()
+    {
+        // Parent "aa" and child "aa3" both contain the hash (a crashed split). Parent-wins: the parent is
+        // authoritative, so full coverage must count it once — not sum the shadowed child too.
+        var blobs = new FakeInMemoryBlobContainerService();
+        var contentHash = ContentHash.Parse("aa3".PadRight(64, '9'));
+        var parentEntry = new ShardEntry(contentHash, FakeChunkHash('1'), 10, 5, BlobTier.Cool);
+        var childEntry  = new ShardEntry(contentHash, FakeChunkHash('2'), 20, 8, BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")), await ShardSerializer.SerializeAsync(CreateShard(parentEntry), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), BlobTier.Cool);
+        blobs.SeedBlob(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3")), await ShardSerializer.SerializeAsync(CreateShard(childEntry), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), BlobTier.Cool);
+        using var index = CreateIndex(blobs, "full-coverage-split");
+
+        await index.EnsureFullCoverageAsync();
+
+        var stats = index.GetStatistics();
+        stats.DeduplicatedOriginalSize.ShouldBe(10);       // parent only
+        stats.ByTier.Sum(t => t.UniqueChunks).ShouldBe(1);
+        stats.ByTier.Sum(t => t.StoredSize).ShouldBe(5);
+        blobs.RequestedBlobNames.ShouldNotContain(BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa3"))); // shadowed child not downloaded
+    }
+
     private static ChunkIndexService CreateIndex(FakeInMemoryBlobContainerService blobs, string name)
     {
         var repositoryKey = UniqueRepositoryKey(name);

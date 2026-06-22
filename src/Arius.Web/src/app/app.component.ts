@@ -3,6 +3,7 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { filter } from 'rxjs/operators';
 import { MetronicInitService } from './core/services/metronic-init.service';
 import { ArchiveRestoreDrawerComponent } from './features/drawer/archive-restore-drawer.component';
+import { PropertiesDrawerComponent } from './features/drawer/properties-drawer.component';
 import { GlobalSearchOverlayComponent } from './features/search/global-search-overlay.component';
 import { SearchStore } from './core/state/search.store';
 
@@ -16,7 +17,7 @@ interface RailItem { label: string; icon: string; link: string; }
   selector: 'body[app-root]',
   standalone: true,
   encapsulation: ViewEncapsulation.None,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ArchiveRestoreDrawerComponent, GlobalSearchOverlayComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ArchiveRestoreDrawerComponent, PropertiesDrawerComponent, GlobalSearchOverlayComponent],
   template: `
     <!-- Icon rail -->
     <aside class="fixed top-0 bottom-0 start-0 z-20 flex flex-col items-center bg-muted py-4"
@@ -76,8 +77,9 @@ interface RailItem { label: string; icon: string; link: string; }
       </main>
     </div>
 
-    <!-- Global slide-over (archive / restore) + cross-repo search overlay -->
+    <!-- Global slide-overs (archive / restore / properties) + cross-repo search overlay -->
     <arius-drawer></arius-drawer>
+    <arius-properties-drawer></arius-properties-drawer>
     <arius-global-search></arius-global-search>
   `,
 })

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { toArray } from 'rxjs/operators';
@@ -6,7 +6,8 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/api/api.service';
 import { RealtimeService } from '../../../core/api/realtime.service';
 import { DrawerStore } from '../../../core/state/drawer.store';
-import { EntryDto, SnapshotDto } from '../../../core/api/api-models';
+import { SnapshotStore } from '../../../core/state/snapshot.store';
+import { EntryDto } from '../../../core/api/api-models';
 import { StateRingComponent } from '../../../shared/state-ring/state-ring.component';
 import { StateLegendComponent } from '../../../shared/state-legend/state-legend.component';
 import { formatBytes } from '../../../shared/format';
@@ -20,48 +21,6 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, FormsModule, StateRingComponent, StateLegendComponent],
   template: `
-    <!-- Snapshot / time-travel bar -->
-    <div class="ar-card" style="padding:13px 18px;display:flex;align-items:center;gap:18px">
-      <div style="position:relative">
-        <button class="ar-btn-outline" data-testid="snapshot-picker" (click)="pickerOpen.set(!pickerOpen())">
-          <i class="ki-filled ki-time"></i>
-          <span>Snapshot <b>{{ activeSnapLabel() }}</b></span>
-          @if (!viewSnap()) { <span class="ar-pill-green">LATEST</span> }
-          <i class="ki-filled ki-down" style="font-size:13px"></i>
-        </button>
-        @if (pickerOpen()) {
-          <div class="ar-snap-menu">
-            @for (s of snapshots(); track s.version; let i = $index) {
-              <button class="ar-snap-item" data-testid="snapshot-item" (click)="pickSnapshot(s, i)">
-                <span style="font-weight:600">v{{ snapshots().length - i }}</span>
-                <span style="color:#71717a">{{ s.timestamp | date:'dd MMM yyyy · HH:mm' }}</span>
-                <span style="color:#a1a1aa">{{ s.fileCount }} files</span>
-                @if (i === 0) { <span class="ar-pill-green">LATEST</span> }
-              </button>
-            } @empty {
-              <div style="padding:12px;color:#a1a1aa;font-size:12.5px">No snapshots</div>
-            }
-          </div>
-        }
-      </div>
-
-      <!-- Scrubber -->
-      <div style="flex:1;display:flex;align-items:center;gap:10px;height:20px">
-        <div style="position:relative;flex:1;height:4px;background:#eef0f3;border-radius:999px">
-          @for (s of snapshots(); track s.version; let i = $index) {
-            <span class="ar-scrub-dot" data-testid="scrubber-dot" [class.active]="isActiveIndex(i)" [class.past]="i < activeIndex()"
-                  [style.left.%]="dotLeft(i)" (click)="pickSnapshot(s, i)"></span>
-          }
-        </div>
-      </div>
-
-      @if (viewSnap()) {
-        <span class="ar-pill-amber">Historical view</span>
-      } @else {
-        <span style="font-size:12.5px;color:#16a34a;font-weight:600">● Live working state</span>
-      }
-    </div>
-
     <!-- Collected action bar -->
     @if (collectedCount() > 0) {
       <div data-testid="collected-bar" style="margin-top:14px;display:flex;align-items:center;gap:14px;background:#eff6ff;border:1px solid #dbeafe;border-radius:11px;padding:11px 16px">
@@ -156,14 +115,6 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
     </div>
   `,
   styles: [`
-    .ar-pill-green { font-size:10px;font-weight:700;color:#15803d;background:#f0fdf4;border-radius:999px;padding:1px 7px;letter-spacing:.04em }
-    .ar-pill-amber { font-size:11.5px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:3px 10px }
-    .ar-snap-menu { position:absolute;top:46px;left:0;z-index:30;min-width:300px;background:#fff;border:1px solid #e4e4e7;border-radius:11px;box-shadow:0 12px 32px rgba(9,9,11,.14);padding:6px;max-height:320px;overflow-y:auto }
-    .ar-snap-item { display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:8px;font-size:12.5px;text-align:left }
-    .ar-snap-item:hover { background:#f7f9ff }
-    .ar-scrub-dot { position:absolute;top:50%;width:11px;height:11px;border-radius:999px;background:#d8dce2;transform:translate(-50%,-50%);cursor:pointer;border:2px solid #fff }
-    .ar-scrub-dot.past { background:#bcd3f5 }
-    .ar-scrub-dot.active { width:15px;height:15px;background:#3b82f6 }
     .ar-icon-btn { width:32px;height:32px;border-radius:8px;border:1px solid #e4e4e7;color:#71717a;display:flex;align-items:center;justify-content:center }
     .ar-icon-btn:disabled { opacity:.4 }
     .ar-tree-row.sel { background:#eff6ff }
@@ -175,12 +126,10 @@ export class FilesTabComponent {
   private readonly api = inject(ApiService);
   private readonly realtime = inject(RealtimeService);
   private readonly drawer = inject(DrawerStore);
+  private readonly snap = inject(SnapshotStore);
 
   readonly repoId = input.required<string>();
 
-  protected readonly snapshots = signal<SnapshotDto[]>([]);
-  protected readonly viewSnap = signal<string | null>(null);
-  protected readonly pickerOpen = signal(false);
   protected readonly selectedFolder = signal('');
   protected readonly fileFilter = signal('');
   protected readonly collected = signal<Map<string, number>>(new Map());
@@ -196,21 +145,20 @@ export class FilesTabComponent {
 
   protected readonly formatBytes = formatBytes;
 
-  private currentRepo = -1;
   private filterTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
-    // React to repo + snapshot changes (input() read inside an effect-like via queueMicrotask polling avoided: use a getter).
-    queueMicrotask(() => this.initIfNeeded());
-  }
-
-  private initIfNeeded(): void {
-    const id = +this.repoId();
-    if (id === this.currentRepo) return;
-    this.currentRepo = id;
-    this.api.getRepository(id).subscribe(r => { this.alias.set(r.alias); this.container.set(r.container); });
-    this.api.getSnapshots(id).subscribe({ next: s => this.snapshots.set(s), error: () => this.snapshots.set([]) });
-    this.resetToRoot();
+    // Repo metadata for the tree header.
+    effect(() => {
+      const id = +this.repoId();
+      untracked(() => this.api.getRepository(id).subscribe(r => { this.alias.set(r.alias); this.container.set(r.container); }));
+    });
+    // Reload the explorer whenever the repo or the selected snapshot (shared, from the bar) changes.
+    effect(() => {
+      this.repoId();
+      this.snap.version();
+      untracked(() => this.resetToRoot());
+    });
   }
 
   private resetToRoot(): void {
@@ -289,7 +237,7 @@ export class FilesTabComponent {
   private fetch(prefix: string, filter: string | null): Promise<EntryDto[]> {
     return firstValueFrom(
       this.realtime.listEntries(+this.repoId(), {
-        version: this.viewSnap(),
+        version: this.snap.version(),
         prefix: prefix || null,
         filter,
         includeLocal: true,
@@ -307,29 +255,6 @@ export class FilesTabComponent {
   protected readonly shownFiles = computed(() => this.files());
   protected readonly shownBytes = computed(() => this.files().reduce((sum, f) => sum + (f.originalSize ?? 0), 0));
 
-  // ── Snapshots / time-travel ─────────────────────────────────────────────
-  protected readonly activeIndex = computed(() => {
-    const v = this.viewSnap();
-    if (!v) return 0;
-    return Math.max(0, this.snapshots().findIndex(s => s.version === v));
-  });
-  protected isActiveIndex(i: number): boolean { return i === this.activeIndex(); }
-  protected dotLeft(i: number): number {
-    const n = this.snapshots().length;
-    return n <= 1 ? 0 : (i / (n - 1)) * 100;
-  }
-  protected readonly activeSnapLabel = computed(() => {
-    const list = this.snapshots();
-    if (!list.length) return '—';
-    const i = this.activeIndex();
-    return 'v' + (list.length - i);
-  });
-  protected pickSnapshot(s: SnapshotDto, index: number): void {
-    this.pickerOpen.set(false);
-    this.viewSnap.set(index === 0 ? null : s.version);
-    this.resetToRoot();
-  }
-
   // ── Collect ────────────────────────────────────────────────────────────────
   protected toggleCollect(f: EntryDto): void {
     const next = new Map(this.collected());
@@ -339,7 +264,7 @@ export class FilesTabComponent {
   }
   protected clearCollected(): void { this.collected.set(new Map()); }
   protected restoreCollected(): void {
-    this.drawer.openRestore(+this.repoId(), this.viewSnap(), [...this.collected().keys()]);
+    this.drawer.openRestore(+this.repoId(), this.snap.version(), [...this.collected().keys()]);
   }
   protected readonly collectedCount = computed(() => this.collected().size);
   protected readonly collectedBytes = computed(() => [...this.collected().values()].reduce((a, b) => a + b, 0));

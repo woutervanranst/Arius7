@@ -88,19 +88,24 @@ Click **Create repository** to land on its Files view.
 ## Browsing a repository
 
 Selecting a repository (from a table row, or after a wizard) opens the **repository detail** screen:
-a header with the alias, the container and local-path chips, and the **Archive** / **Restore**
-buttons, over three tabs — **Files**, **Statistics**, **Properties**.
+a header with the alias, the container and local-path chips, and the **Restore**, **Archive**, and
+**Properties** buttons, then the **snapshot bar**, then two tabs — **Files** and **Statistics**.
+(Restore and Archive open right-hand drawers; **Properties** opens a drawer too — see *Properties*
+below.)
 
-### Files tab — snapshots and the explorer
+**Snapshot / time-travel bar.** Each archive run produces a *snapshot*. The bar sits above the tabs
+and applies to whatever tab you're on. It shows the active snapshot with a **LATEST** pill, a
+dropdown picker listing every snapshot **newest-first** (version + timestamp), and a scrubber with
+one dot per snapshot. Versions are numbered oldest-first — **v1** is the first archive run, the
+highest number is the latest. Click a dropdown item or a scrubber dot to *time-travel* — the Files
+explorer then shows the repository exactly as it was at that snapshot, and an amber **Historical
+view** badge appears. Pick the latest snapshot (the top of the dropdown, or **LATEST**) to return to
+the live working state.
 
-The Files tab is where you browse what's in the repository and pick files to restore.
+### Files tab — the explorer
 
-**Snapshot / time-travel bar (top).** Each archive run produces a *snapshot*. The bar shows the
-active snapshot with a **LATEST** pill, a dropdown picker listing every snapshot (version,
-timestamp, file count), and a scrubber with one dot per snapshot. Click a dropdown item or a
-scrubber dot to *time-travel* — the explorer then shows the repository exactly as it was at that
-snapshot, and an amber **Historical view** badge appears. Pick the newest snapshot (or **LATEST**)
-to return to the live working state.
+The Files tab is where you browse what's in the repository and pick files to restore, scoped to the
+snapshot selected in the bar above.
 
 **Explorer (folder tree + file list).** The left pane is the folder tree (expand folders to drill
 in); the right pane lists the **files** in the selected folder. Above them: an **up** button, the
@@ -123,23 +128,32 @@ drawer scoped to exactly those files.
 
 ### Statistics tab
 
-KPI cards in two scoped sections. **This snapshot** shows **Files** and **Original size** (the
-logical, uncompressed size of the selected snapshot — what you would restore). **Repository
-storage · across all snapshots** shows **Deduplicated size** (unique data before compression),
-**Stored size** (the actual cloud footprint after dedup + compression), and **Unique chunks**.
-A green **savings** banner expresses the original→stored reduction as a percentage, and a
-**Stored size by tier** breakdown bar follows. A note explains the figures are derived from the
-file-tree and chunk index and finalise once the local cache has fully downloaded, so they may
-read low right after you add a large repository.
+Five KPI cards in one row, in two scoped sections. **This snapshot** (follows the snapshot bar)
+shows **Files** and **Original size** — the logical, uncompressed size of the selected snapshot,
+what you would restore. **Repository storage · across all snapshots** shows **Deduplicated size**
+(unique data before compression), **Stored size** (the actual cloud footprint after dedup +
+compression), and **Unique chunks**. A **Stored size by tier** breakdown bar follows.
 
-### Properties tab
+The two snapshot cards load immediately; the three repository-storage cards are **calculated across
+all snapshots** and load separately. The result is cached serverside per snapshot.
+
+### Properties
+
+**Properties** is a right-hand drawer, opened from the button in the repository header.
 
 - **Friendly alias** and **Local folder** — editable; **Save changes** persists them.
 - **Storage account** and **Container** — read-only.
 - **Account key** — type a new value to rotate it (stored encrypted; left blank means unchanged).
+- **Encryption passphrase** — type a new passphrase to rotate it; a **Confirm passphrase** field
+  appears and must match before **Save changes** is enabled. Leaving it blank keeps the current one.
+  Note that existing snapshots stay readable with the passphrase they were written with — rotating
+  affects future writes, it does not re-encrypt the archive.
 - **Scheduled archives** — add a cron expression (e.g. `0 2 * * *`, interpreted in **UTC**) to fire
   archive runs automatically. Existing schedules show their next run time and a trash button to
   delete them.
+- **Delete repository** *(danger zone)* — removes the repository from Arius after a confirm step.
+  The Azure container and its blobs are **not** deleted; you can re-add it later with **Add
+  existing**.
 
 ---
 

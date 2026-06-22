@@ -41,6 +41,14 @@ public interface IChunkIndexService : IDisposable
     internal Task FlushAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Loads every existing remote shard into the local cache so the repository-wide aggregates from
+    /// <see cref="GetStatistics"/> reflect the complete index rather than only the coverage that
+    /// browsing/lookups happened to populate. Read-only: shards are downloaded or etag-revalidated and
+    /// ingested, but no remote shard is written or deleted.
+    /// </summary>
+    internal Task EnsureFullCoverageAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Drops the remote-backed local cache so later lookups revalidate prefixes from remote state.
     /// </summary>
     internal void InvalidateCaches();

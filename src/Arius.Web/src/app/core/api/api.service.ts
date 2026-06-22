@@ -28,13 +28,23 @@ export class ApiService {
     return this.http.patch<RepositoryDto>(`/api/repos/${id}`, body);
   }
 
+  /** Removes the repository from Arius's registry. The Azure container and its blobs are left intact. */
+  deleteRepository(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/repos/${id}`);
+  }
+
   getSnapshots(id: number): Observable<SnapshotDto[]> {
     return this.http.get<SnapshotDto[]>(`/api/repos/${id}/snapshots`);
   }
 
-  getStatistics(id: number, version?: string | null): Observable<StatisticsDto> {
-    const query = version ? `?version=${encodeURIComponent(version)}` : '';
-    return this.http.get<StatisticsDto>(`/api/repos/${id}/stats${query}`);
+  // `full` loads the whole chunk index server-side so the repository-wide storage figures are complete
+  // (slower) rather than reflecting only browsed coverage; the Statistics screen lazy-loads with full=true.
+  getStatistics(id: number, version?: string | null, full = false): Observable<StatisticsDto> {
+    const params = new URLSearchParams();
+    if (version) params.set('version', version);
+    if (full) params.set('full', 'true');
+    const query = params.toString();
+    return this.http.get<StatisticsDto>(`/api/repos/${id}/stats${query ? `?${query}` : ''}`);
   }
 
   createRepository(req: CreateRepositoryRequest): Observable<RepositoryDto> {

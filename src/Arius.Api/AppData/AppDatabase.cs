@@ -76,6 +76,21 @@ public sealed class AppDatabase
                 enabled   INTEGER NOT NULL DEFAULT 1,
                 next_run  TEXT
             );
+
+            -- Memoizes the (expensive) Arius.Core statistics computation. Keyed by the request
+            -- variant (version + full-coverage flag) and stamped with the repository fingerprint —
+            -- the latest snapshot version at compute time. A row is a hit only while its fingerprint
+            -- still matches the current latest snapshot; a new snapshot changes the fingerprint and
+            -- the stale rows are recomputed (and pruned) on the next read.
+            CREATE TABLE IF NOT EXISTS statistics_cache (
+                repo_id     INTEGER NOT NULL REFERENCES repositories(id),
+                version     TEXT NOT NULL,
+                full        INTEGER NOT NULL,
+                fingerprint TEXT NOT NULL,
+                payload     TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                PRIMARY KEY (repo_id, version, full)
+            );
             """;
         create.ExecuteNonQuery();
     }
@@ -205,8 +220,8 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
-        // Cascade: a repository's jobs/schedules reference it, so remove them first.
-        foreach (var table in new[] { "jobs", "schedules" })
+        // Cascade: a repository's jobs/schedules/cached statistics reference it, so remove them first.
+        foreach (var table in new[] { "jobs", "schedules", "statistics_cache" })
         {
             using var child = connection.CreateCommand();
             child.Transaction = transaction;
@@ -315,6 +330,75 @@ public sealed class AppDatabase
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM schedules WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id);
+        command.ExecuteNonQuery();
+    }
+
+    // ── Statistics cache ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the cached statistics <c>payload</c> for a request variant, or <c>null</c> if not cached.
+    /// This is a pure local read — no blob storage is touched — so a hit is fast. Freshness is the
+    /// caller's responsibility: the cache is invalidated explicitly (see <see cref="ClearStatisticsCache"/>)
+    /// when the snapshot set changes (archive) or the repository's connection changes. The stored
+    /// fingerprint records which snapshot the figures were computed against (provenance + prune), but is
+    /// deliberately not re-verified against blob storage on every read.
+    /// </summary>
+    public string? GetCachedStatistics(long repositoryId, string version, bool full)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT payload FROM statistics_cache WHERE repo_id = $repoId AND version = $version AND full = $full;";
+        command.Parameters.AddWithValue("$repoId", repositoryId);
+        command.Parameters.AddWithValue("$version", version);
+        command.Parameters.AddWithValue("$full", full ? 1 : 0);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? reader.GetString(0) : null;
+    }
+
+    /// <summary>
+    /// Stores (overwriting any prior variant) the computed statistics <c>payload</c> for a request
+    /// variant and prunes the repository's now-stale rows (those stamped with an older fingerprint).
+    /// </summary>
+    public void UpsertCachedStatistics(long repositoryId, string version, bool full, string fingerprint, string payload)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+
+        using var prune = connection.CreateCommand();
+        prune.Transaction = transaction;
+        prune.CommandText = "DELETE FROM statistics_cache WHERE repo_id = $repoId AND fingerprint <> $fingerprint;";
+        prune.Parameters.AddWithValue("$repoId", repositoryId);
+        prune.Parameters.AddWithValue("$fingerprint", fingerprint);
+        prune.ExecuteNonQuery();
+
+        using var upsert = connection.CreateCommand();
+        upsert.Transaction = transaction;
+        upsert.CommandText = """
+            INSERT INTO statistics_cache(repo_id, version, full, fingerprint, payload, created_at)
+            VALUES ($repoId, $version, $full, $fingerprint, $payload, $createdAt)
+            ON CONFLICT(repo_id, version, full) DO UPDATE SET
+                fingerprint = excluded.fingerprint,
+                payload     = excluded.payload,
+                created_at  = excluded.created_at;
+            """;
+        upsert.Parameters.AddWithValue("$repoId", repositoryId);
+        upsert.Parameters.AddWithValue("$version", version);
+        upsert.Parameters.AddWithValue("$full", full ? 1 : 0);
+        upsert.Parameters.AddWithValue("$fingerprint", fingerprint);
+        upsert.Parameters.AddWithValue("$payload", payload);
+        upsert.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
+        upsert.ExecuteNonQuery();
+
+        transaction.Commit();
+    }
+
+    /// <summary>Drops all cached statistics for a repository (e.g. after an archive that may have added a snapshot).</summary>
+    public void ClearStatisticsCache(long repositoryId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM statistics_cache WHERE repo_id = $repoId;";
+        command.Parameters.AddWithValue("$repoId", repositoryId);
         command.ExecuteNonQuery();
     }
 

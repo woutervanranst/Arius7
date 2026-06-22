@@ -1,7 +1,5 @@
 # Encryption golden files
 
-`Hash` is the first 8 characters of the golden file name. The Arius version column describes the persisted format contract, not where the fixture was created.
-
 | Hash | Arius version (v5 or v7) | Encryption algorithm | Compression algorithm | Pdkf2Iter | Purpose |
 |---|---|---|---|---:|---|
 | `2552b810` | v5 | AES-256-CBC (`Salted__`) | gzip | 10,000 | Real legacy tar chunk with `world` and `42` entries. |
