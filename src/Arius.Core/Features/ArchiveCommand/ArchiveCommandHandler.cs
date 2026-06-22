@@ -472,7 +472,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, storedSize, opts.UploadTier), ct);
                         await fileTreeEntryChannel.Writer.WriteAsync(upload.HashedPair, ct);
                         Interlocked.Increment(ref filesUploaded);
-                        Interlocked.Add(ref incrementalStoredSize, storedSize);
+                        // Only count bytes actually written this run; a pre-existing blob (recovered from a
+                        // prior crashed/concurrent run) stores nothing new even though it reports a StoredSize.
+                        if (!uploadResult.AlreadyExisted)
+                            Interlocked.Add(ref incrementalStoredSize, storedSize);
 
                         await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize), ct);
 
@@ -551,8 +554,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     using var tarStream = new MemoryStream(sealedTar.Content.Array!, sealedTar.Content.Offset, sealedTar.Content.Count, writable: false, publiclyVisible: true);
                     var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
                     var             storedSize     = uploadResult.StoredSize;
-                    // One stored size per tar blob (its thin entries share the blob), so add it once here.
-                    Interlocked.Add(ref incrementalStoredSize, storedSize);
+                    // One stored size per tar blob (its thin entries share the blob), so add it once here —
+                    // but only when the blob was actually written this run, not recovered from a prior one.
+                    if (!uploadResult.AlreadyExisted)
+                        Interlocked.Add(ref incrementalStoredSize, storedSize);
 
                     // Parallel thin chunk creation for each entry
                     await Parallel.ForEachAsync(
