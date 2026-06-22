@@ -5,13 +5,14 @@ import { of, switchMap } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { ApiService } from '../../core/api/api.service';
 import { DrawerStore } from '../../core/state/drawer.store';
+import { SnapshotBarComponent } from './snapshot-bar.component';
 
-/** Repository detail shell: header (alias, container/local chips, Restore/Archive) + tab bar + child outlet. */
+/** Repository detail shell: header (alias, chips, Properties/Restore/Archive) + snapshot bar + tab bar + child outlet. */
 @Component({
   selector: 'arius-repo-detail',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, SnapshotBarComponent],
   template: `
     @if (repo(); as r) {
       <!-- Header -->
@@ -30,16 +31,21 @@ import { DrawerStore } from '../../core/state/drawer.store';
           </div>
         </div>
         <div class="flex items-center gap-2.5">
+          <button class="ar-btn-outline" data-testid="btn-properties" (click)="drawer.openProperties(r.id)"><i class="ki-filled ki-setting-2"></i>Properties</button>
           <button class="ar-btn-outline" data-testid="btn-restore" (click)="drawer.openRestore(r.id, null, [])"><i class="ki-filled ki-cloud-download"></i>Restore</button>
           <button class="ar-btn-primary" data-testid="btn-archive" (click)="drawer.openArchive(r.id, r.defaultTier)"><i class="ki-filled ki-cloud-add"></i>Archive</button>
         </div>
       </div>
 
+      <!-- Snapshot time-travel bar (shared across tabs) -->
+      <div style="margin-top:18px">
+        <arius-snapshot-bar [repoId]="numericId()" />
+      </div>
+
       <!-- Tab bar -->
-      <div class="flex items-center gap-6" style="margin-top:20px;border-bottom:1px solid #f0f0f2">
+      <div class="flex items-center gap-6" style="margin-top:18px;border-bottom:1px solid #f0f0f2">
         <a class="ar-tab" data-testid="tab-files" routerLink="files" routerLinkActive="active">Files</a>
         <a class="ar-tab" data-testid="tab-statistics" routerLink="statistics" routerLinkActive="active">Statistics</a>
-        <a class="ar-tab" data-testid="tab-properties" routerLink="properties" routerLinkActive="active">Properties</a>
       </div>
 
       <div style="margin-top:18px">

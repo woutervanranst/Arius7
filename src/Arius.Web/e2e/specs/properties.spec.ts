@@ -1,7 +1,9 @@
 import { test, expect } from '../support/fixtures';
 
 test('properties shows the repo fields and supports schedule add + delete', async ({ page, repo }) => {
-  await page.goto(`/repos/${repo.repoId}/properties`);
+  await page.goto(`/repos/${repo.repoId}/files`);
+  await page.getByTestId('btn-properties').click();
+  await expect(page.getByTestId('properties-drawer')).toBeVisible();
 
   await expect(page.getByTestId('prop-alias')).toHaveValue(repo.alias);
   await expect(page.getByTestId('prop-container')).toHaveValue(repo.container);

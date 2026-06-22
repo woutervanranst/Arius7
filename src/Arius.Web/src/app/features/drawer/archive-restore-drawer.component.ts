@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
 import { ApiService } from '../../core/api/api.service';
 import { DrawerStore } from '../../core/state/drawer.store';
@@ -12,7 +12,7 @@ import { formatBytes } from '../../shared/format';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LiveConsoleComponent, TitleCasePipe],
   template: `
-    @if (store.type(); as type) {
+    @if (arType(); as type) {
       <div class="ar-scrim" (click)="onScrim()"></div>
       <aside class="ar-drawer" data-testid="drawer">
         <!-- Header -->
@@ -155,6 +155,12 @@ export class ArchiveRestoreDrawerComponent {
   private readonly api = inject(ApiService);
   protected readonly formatBytes = formatBytes;
   protected readonly tiers = ['hot', 'cool', 'cold', 'archive'];
+
+  // This drawer only handles archive/restore; the Properties panel is a separate component.
+  protected readonly arType = computed(() => {
+    const t = this.store.type();
+    return t === 'archive' || t === 'restore' ? t : null;
+  });
 
   protected readonly alias = signal('repository');
   protected readonly repoLocal = signal('');

@@ -2,13 +2,13 @@ import { Injectable, inject, signal } from '@angular/core';
 import { RealtimeService } from '../api/realtime.service';
 import { CostEstimateMsg, LogLine } from '../api/api-models';
 
-export type DrawerType = 'archive' | 'restore' | null;
+export type DrawerType = 'archive' | 'restore' | 'properties' | null;
 export type StreamState = 'idle' | 'running' | 'cost' | 'done';
 
 /**
- * Drives the Archive and Restore slide-over drawers: the idle forms, the live stream
- * (log/progress), the restore cost-approval modal, and the terminal state. A root singleton so the
- * repo header and the Files tab's "Restore collected" can open it from anywhere.
+ * Drives the right slide-over drawers: Archive/Restore (idle forms, live stream, cost-approval modal,
+ * terminal state) and the Properties panel. A root singleton so the repo header and the Files tab's
+ * "Restore collected" can open it from anywhere.
  */
 @Injectable({ providedIn: 'root' })
 export class DrawerStore {
@@ -40,6 +40,12 @@ export class DrawerStore {
     this.realtime.progress$.subscribe(p => { this.progress.set(p.pct); if (p.stats) this.stats.set(p.stats); });
     this.realtime.cost$.subscribe(c => { this.cost.set(c); this.streamState.set('cost'); });
     this.realtime.done$.subscribe(d => { this.streamState.set('done'); this.progress.set(100); this.summary.set(d.summary); });
+  }
+
+  openProperties(repoId: number): void {
+    this.resetStream();
+    this.type.set('properties');
+    this.repoId.set(repoId);
   }
 
   openArchive(repoId: number, tier: string): void {
