@@ -58,16 +58,6 @@ import { formatBytes, formatCount } from '../../../shared/format';
       }
     </div>
 
-    @if (savings(); as sv) {
-      <div data-testid="savings" class="ar-card" style="margin-top:18px;padding:14px 20px;background:#f0fdf4;border-color:#bbf7d0">
-        <div style="font-size:13px;color:#15803d;line-height:1.5">
-          <i class="ki-filled ki-discount" style="color:#15803d"></i>
-          Stored <strong>{{ sv.stored }}</strong> from <strong>{{ sv.original }}</strong> of files —
-          <strong>{{ sv.percent }}</strong> smaller after deduplication and compression.
-        </div>
-      </div>
-    }
-
     @if (!storageLoading() && tiers().length) {
       <div class="ar-card" data-testid="tier-breakdown" style="margin-top:18px;padding:18px 20px">
         <div style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:14px">Stored size by tier</div>
@@ -160,22 +150,6 @@ export class StatisticsTabComponent {
       { label: 'Stored size', value: s ? formatBytes(s.storedSize) : '—', hint: 'Actual cloud storage footprint — deduplicated and compressed.', icon: 'ki-cloud', chipBg: '#f5f3ff', chipFg: '#6d28d9' },
       { label: 'Unique chunks', value: s ? formatCount(s.uniqueChunks) : '—', hint: 'Number of distinct chunks stored.', icon: 'ki-element-11', chipBg: '#fffbeb', chipFg: '#b45309' },
     ];
-  }
-
-  // Combined deduplication + compression reduction, original (logical) → stored (physical). Needs both the
-  // selected snapshot's original size and the repo-wide stored size. Only meaningful on the latest snapshot:
-  // stored/dedup are repo-wide, so comparing them against a historical snapshot's (smaller) original size
-  // would overstate or invert the ratio.
-  protected savings() {
-    if (this.snap.version()) return null;
-    const snap = this.snapStats();
-    const storage = this.storageStats();
-    if (!snap || !storage || snap.originalSize <= 0 || storage.storedSize <= 0 || storage.storedSize >= snap.originalSize) return null;
-    return {
-      original: formatBytes(snap.originalSize),
-      stored: formatBytes(storage.storedSize),
-      percent: `${Math.round((1 - storage.storedSize / snap.originalSize) * 100)}%`,
-    };
   }
 
   // Warmer → cooler colours so the access-tier story reads at a glance (Archive = coldest = slowest to restore).

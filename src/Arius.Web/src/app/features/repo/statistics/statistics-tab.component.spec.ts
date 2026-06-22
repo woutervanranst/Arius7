@@ -45,13 +45,6 @@ describe('StatisticsTabComponent', () => {
     expect(el.textContent).toContain('Unique chunks');
   });
 
-  it('shows the savings note (original → stored reduction)', () => {
-    const el = render(multiTier);
-    const savings = el.querySelector('[data-testid="savings"]');
-    expect(savings).not.toBeNull();
-    expect(savings!.textContent).toContain('90%'); // 1 - 100/1000
-  });
-
   it('renders one tier row per StatisticsDto.storedByTier entry, in order', () => {
     const el = render(multiTier);
 
