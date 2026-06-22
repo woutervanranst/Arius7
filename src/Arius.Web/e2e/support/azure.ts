@@ -22,7 +22,9 @@ export async function deleteScratchContainers(): Promise<number> {
   if (!svc) return 0;
   let deleted = 0;
   for await (const c of svc.listContainers({ prefix: SCRATCH_PREFIX })) {
-    try { await svc.deleteContainer(c.name); deleted++; } catch { /* already gone / racing another run */ }
+    // A container already gone (raced by another run) is fine; log anything else (auth/network) so a
+    // broken teardown is visible rather than silently leaking scratch containers.
+    try { await svc.deleteContainer(c.name); deleted++; } catch (err) { console.warn(`[e2e] failed to delete scratch container ${c.name}:`, err); }
   }
   return deleted;
 }
