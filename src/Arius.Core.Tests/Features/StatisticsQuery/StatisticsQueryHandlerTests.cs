@@ -21,7 +21,7 @@ public class StatisticsQueryHandlerTests
             Timestamp    = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
             RootHash     = FileTreeHashOf("root"),
             FileCount    = 3,
-            OriginalSize    = 600,
+            OriginalSize    = 1000, // per-snapshot logical size; deliberately ≠ the repo-wide deduplicated sum (600)
             AriusVersion = "test"
         };
         blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
@@ -38,8 +38,8 @@ public class StatisticsQueryHandlerTests
         var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.Files.ShouldBe(3);
-        stats.OriginalSize.ShouldBe(600);
-        stats.DeduplicatedSize.ShouldBe(600); // distinct content a+b+c = 100+200+300 (uncompressed)
+        stats.OriginalSize.ShouldBe(1000); // from the manifest, independent of the chunk index
+        stats.DeduplicatedSize.ShouldBe(600); // distinct content a+b+c = 100+200+300 (uncompressed); proves it is NOT the manifest's OriginalSize
         stats.UniqueChunks.ShouldBe(2);
         stats.StoredSize.ShouldBe(90);
 

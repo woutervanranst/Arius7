@@ -69,7 +69,8 @@ public class ArchiveRecoveryTests
         [Matrix(false, true)] bool alreadyExisted)
     {
         await using var fixture = await CreateArchiveFixtureAsync();
-        await WriteRandomFileAsync(fixture, RelativePath.Parse("large.bin"), 2 * 1024 * 1024);
+        const int fileSize = 2 * 1024 * 1024;
+        await WriteRandomFileAsync(fixture, RelativePath.Parse("large.bin"), fileSize);
 
         const long storedSize = 4096;
         var chunkStorage = new RecordingChunkStorageService(
@@ -88,6 +89,10 @@ public class ArchiveRecoveryTests
             CancellationToken.None);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
+        // The guard isolates stored size only: original/incremental (uncompressed) sizes are decided at
+        // dedup time and are unaffected by whether the blob already existed in storage.
+        result.OriginalSize.ShouldBe(fileSize);
+        result.IncrementalSize.ShouldBe(fileSize);
         result.IncrementalStoredSize.ShouldBe(alreadyExisted ? 0 : storedSize);
     }
 
@@ -97,7 +102,8 @@ public class ArchiveRecoveryTests
         [Matrix(false, true)] bool alreadyExisted)
     {
         await using var fixture = await CreateArchiveFixtureAsync();
-        await WriteRandomFileAsync(fixture, RelativePath.Parse("small.txt"), 256);
+        const int fileSize = 256;
+        await WriteRandomFileAsync(fixture, RelativePath.Parse("small.txt"), fileSize);
 
         const long storedSize = 2048;
         var chunkStorage = new RecordingChunkStorageService(
@@ -117,6 +123,10 @@ public class ArchiveRecoveryTests
             CancellationToken.None);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
+        // The guard isolates stored size only: original/incremental (uncompressed) sizes are decided at
+        // dedup time and are unaffected by whether the tar blob already existed in storage.
+        result.OriginalSize.ShouldBe(fileSize);
+        result.IncrementalSize.ShouldBe(fileSize);
         result.IncrementalStoredSize.ShouldBe(alreadyExisted ? 0 : storedSize);
     }
 
