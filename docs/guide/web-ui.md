@@ -135,10 +135,7 @@ what you would restore. **Repository storage · across all snapshots** shows **D
 compression), and **Unique chunks**. A **Stored size by tier** breakdown bar follows.
 
 The two snapshot cards load immediately; the three repository-storage cards are **calculated across
-all snapshots** and load separately, showing a *"Calculating across all snapshots…"* spinner while
-the full index is read. This pass is complete and accurate (not a partial estimate that creeps up as
-you browse), and the result is cached server-side — so the first visit after an archive does the
-work, and revisits are instant until the next archive.
+all snapshots** and load separately. The result is cached serverside per snapshot.
 
 ### Properties
 
