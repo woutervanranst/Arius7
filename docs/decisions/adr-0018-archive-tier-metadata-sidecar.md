@@ -7,7 +7,7 @@ informed: ["Arius maintainers"]
 confidence: "high"
 ---
 
-# Carry v7 chunk descriptors for Archive-tier blobs in a separate-prefix metadata sidecar
+# v5→v7 migration only: carry chunk descriptors for Archive-tier blobs in a metadata sidecar
 
 ## Context and Problem Statement
 
