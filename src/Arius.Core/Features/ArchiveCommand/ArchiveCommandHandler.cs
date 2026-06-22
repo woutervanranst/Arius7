@@ -189,15 +189,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         if (opts is { RemoveLocal: true, NoPointers: true })
             return new ArchiveResult
             {
-                Success         = false,
-                FilesScanned    = 0,
-                FilesUploaded   = 0,
-                FilesDeduped    = 0,
-                TotalSize       = 0,
-                IncrementalSize = 0,
-                RootHash        = null,
-                SnapshotTime    = DateTimeOffset.UtcNow,
-                ErrorMessage    = "--remove-local cannot be combined with --no-pointers"
+                Success               = false,
+                FilesScanned          = 0,
+                FilesUploaded         = 0,
+                FilesDeduped          = 0,
+                OriginalSize          = 0,
+                IncrementalSize       = 0,
+                IncrementalStoredSize = 0,
+                RootHash              = null,
+                SnapshotTime          = DateTimeOffset.UtcNow,
+                ErrorMessage          = "--remove-local cannot be combined with --no-pointers"
             };
 
         // ── Shared state ──────────────────────────────────────────────────────
@@ -205,8 +206,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long filesScanned    = 0;
         long filesUploaded   = 0;
         long filesDeduped    = 0;
-        long totalSize       = 0;   // sum of original sizes of ALL files in the snapshot
-        long incrementalSize = 0;   // bytes newly uploaded this run
+        long originalSize          = 0;   // sum of original (uncompressed) sizes of ALL files in the snapshot
+        long incrementalSize       = 0;   // original (uncompressed) bytes newly uploaded this run
+        long incrementalStoredSize = 0;   // stored (compressed) bytes newly written to storage this run
 
         var stagingCacheDirectory = RepositoryLocalStatePaths.GetFileTreeCacheRoot(_accountName, _containerName);
         var fs = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
@@ -229,15 +231,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             _logger.LogError(ex, "Archive pipeline failed");
             return new ArchiveResult
             {
-                Success         = false,
-                FilesScanned    = filesScanned,
-                FilesUploaded   = filesUploaded,
-                FilesDeduped    = filesDeduped,
-                TotalSize       = totalSize,
-                IncrementalSize = incrementalSize,
-                RootHash        = snapshotRootHash,
-                SnapshotTime    = snapshotRootHash is null ? DateTimeOffset.UtcNow : snapshotTime,
-                ErrorMessage    = ex.Message
+                Success               = false,
+                FilesScanned          = filesScanned,
+                FilesUploaded         = filesUploaded,
+                FilesDeduped          = filesDeduped,
+                OriginalSize          = originalSize,
+                IncrementalSize       = incrementalSize,
+                IncrementalStoredSize = incrementalStoredSize,
+                RootHash              = snapshotRootHash,
+                SnapshotTime          = snapshotRootHash is null ? DateTimeOffset.UtcNow : snapshotTime,
+                ErrorMessage          = ex.Message
             };
         }
 
@@ -392,7 +395,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
                                 var pointerSize = isKnown ? known[hashed.ContentHash].OriginalSize : inFlightHashes[hashed.ContentHash];
-                                Interlocked.Add(ref totalSize, pointerSize);
+                                Interlocked.Add(ref originalSize, pointerSize);
                                 continue;
                             }
 
@@ -402,14 +405,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
-                                Interlocked.Add(ref totalSize, fs.GetFileSize(hashed.FilePair.RelativePath));
+                                Interlocked.Add(ref originalSize, fs.GetFileSize(hashed.FilePair.RelativePath));
                             }
                             else
                             {
                                 // Needs upload → mark in-flight, route by size
                                 var fileSize = fs.GetFileSize(hashed.FilePair.RelativePath);
                                 inFlightHashes.TryAdd(hashed.ContentHash, fileSize);
-                                Interlocked.Add(ref totalSize, fileSize);
+                                Interlocked.Add(ref originalSize, fileSize);
                                 Interlocked.Add(ref incrementalSize, fileSize);
                                 var upload = new FileToUpload(hashed, fileSize);
                                 var route  = fileSize >= opts.SmallFileThreshold ? "large" : "small";
@@ -469,6 +472,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, storedSize, opts.UploadTier), ct);
                         await fileTreeEntryChannel.Writer.WriteAsync(upload.HashedPair, ct);
                         Interlocked.Increment(ref filesUploaded);
+                        Interlocked.Add(ref incrementalStoredSize, storedSize);
 
                         await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize), ct);
 
@@ -547,6 +551,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     using var tarStream = new MemoryStream(sealedTar.Content.Array!, sealedTar.Content.Offset, sealedTar.Content.Count, writable: false, publiclyVisible: true);
                     var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
                     var             storedSize     = uploadResult.StoredSize;
+                    // One stored size per tar blob (its thin entries share the blob), so add it once here.
+                    Interlocked.Add(ref incrementalStoredSize, storedSize);
 
                     // Parallel thin chunk creation for each entry
                     await Parallel.ForEachAsync(
@@ -650,7 +656,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 }
                 else
                 {
-                    var snapshot = await _snapshotSvc.CreateAsync(rootHash.Value, filesScanned, totalSize, cancellationToken: cancellationToken);
+                    var snapshot = await _snapshotSvc.CreateAsync(rootHash.Value, filesScanned, originalSize, cancellationToken: cancellationToken);
                     snapshotRootHash = snapshot.RootHash;
                     snapshotTime     = snapshot.Timestamp;
                     await _chunkIndex.PromoteToSnapshotVersionAsync(BlobPaths.SnapshotPath(snapshot.Timestamp).Name.ToString());
@@ -700,18 +706,19 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             _logger.LogInformation("[phase] complete");
 
-            _logger.LogInformation("[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} uploadedSize={IncrementalSize} totalSize={TotalSize} snapshot={Snapshot}", filesScanned, filesUploaded, filesDeduped, incrementalSize.Bytes().Humanize(), totalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
+            _logger.LogInformation("[archive] Done: scanned={Scanned} uploaded={Uploaded} deduped={Deduped} uploadedSize={IncrementalSize} storedSize={IncrementalStoredSize} originalSize={OriginalSize} snapshot={Snapshot}", filesScanned, filesUploaded, filesDeduped, incrementalSize.Bytes().Humanize(), incrementalStoredSize.Bytes().Humanize(), originalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 
             return new ArchiveResult
             {
-                Success         = true,
-                FilesScanned    = filesScanned,
-                FilesUploaded   = filesUploaded,
-                FilesDeduped    = filesDeduped,
-                TotalSize       = totalSize,
-                IncrementalSize = incrementalSize,
-                RootHash        = snapshotRootHash,
-                SnapshotTime    = snapshotTime
+                Success               = true,
+                FilesScanned          = filesScanned,
+                FilesUploaded         = filesUploaded,
+                FilesDeduped          = filesDeduped,
+                OriginalSize          = originalSize,
+                IncrementalSize       = incrementalSize,
+                IncrementalStoredSize = incrementalStoredSize,
+                RootHash              = snapshotRootHash,
+                SnapshotTime          = snapshotTime
             };
         }
         catch (Exception ex)
@@ -719,15 +726,16 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             _logger.LogError(ex, "Archive pipeline failed");
             return new ArchiveResult
             {
-                Success         = false,
-                FilesScanned    = filesScanned,
-                FilesUploaded   = filesUploaded,
-                FilesDeduped    = filesDeduped,
-                TotalSize       = totalSize,
-                IncrementalSize = incrementalSize,
-                RootHash        = snapshotRootHash,
-                SnapshotTime    = snapshotRootHash is not null ? snapshotTime : DateTimeOffset.UtcNow,
-                ErrorMessage    = ex.Message
+                Success               = false,
+                FilesScanned          = filesScanned,
+                FilesUploaded         = filesUploaded,
+                FilesDeduped          = filesDeduped,
+                OriginalSize          = originalSize,
+                IncrementalSize       = incrementalSize,
+                IncrementalStoredSize = incrementalStoredSize,
+                RootHash              = snapshotRootHash,
+                SnapshotTime          = snapshotRootHash is not null ? snapshotTime : DateTimeOffset.UtcNow,
+                ErrorMessage          = ex.Message
             };
         }
     }

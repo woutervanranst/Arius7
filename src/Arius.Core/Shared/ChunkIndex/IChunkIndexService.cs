@@ -57,6 +57,14 @@ public interface IChunkIndexService : IDisposable
     /// share one chunk.
     /// </summary>
     internal IReadOnlyList<ChunkTierStatistic> GetStatistics();
+
+    /// <summary>
+    /// Sum of original (uncompressed) sizes over distinct content — the deduplicated, uncompressed size
+    /// of all unique data in the repository. Read from the local chunk-index cache only; no blob reads.
+    /// Unlike <see cref="ChunkTierStatistic.StoredSize"/> this is <em>before</em> compression, and unlike
+    /// the snapshot's original size it counts each unique content once (deduplicated).
+    /// </summary>
+    internal long GetDeduplicatedOriginalSize();
 }
 
 /// <summary>

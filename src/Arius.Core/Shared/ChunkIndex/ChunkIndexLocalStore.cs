@@ -308,6 +308,27 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
+    /// <summary>
+    /// Sum of original (uncompressed) sizes over distinct content. The <c>content_hash</c> primary key
+    /// already collapses identical content to one row, so a plain <c>SUM(original_size)</c> yields the
+    /// deduplicated, uncompressed size of all unique data in the repository.
+    /// </summary>
+    public long GetDeduplicatedOriginalSize()
+    {
+        try
+        {
+            using var connection = OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COALESCE(SUM(original_size), 0) FROM chunk_index_entries;";
+            var result = command.ExecuteScalar();
+            return result is long size ? size : Convert.ToInt64(result);
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
     // -- PENDING FLUSH -------------------------------------------------
 
     /// <summary>

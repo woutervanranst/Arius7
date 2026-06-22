@@ -28,7 +28,7 @@ public class ListQueryHandlerTests
             Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
             RootHash = FileTreeBuilder.ComputeHash(rootTree, IEncryptionService.PlaintextInstance),
             FileCount = 1,
-            TotalSize = 123,
+            OriginalSize = 123,
             AriusVersion = "test"
         };
 
@@ -79,7 +79,7 @@ public class ListQueryHandlerTests
             Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
             RootHash = FileTreeBuilder.ComputeHash(rootTree, IEncryptionService.PlaintextInstance),
             FileCount = 2,
-            TotalSize = 456,
+            OriginalSize = 456,
             AriusVersion = "test"
         };
 
@@ -153,7 +153,7 @@ public class ListQueryHandlerTests
                 Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
                 RootHash = FileTreeBuilder.ComputeHash(rootTree, IEncryptionService.PlaintextInstance),
                 FileCount = 2,
-                TotalSize = 100,
+                OriginalSize = 100,
                 AriusVersion = "test"
             };
 
@@ -218,7 +218,7 @@ public class ListQueryHandlerTests
                 Timestamp = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
                 RootHash = FileTreeBuilder.ComputeHash(rootTree, IEncryptionService.PlaintextInstance),
                 FileCount = 2,
-                TotalSize = 100,
+                OriginalSize = 100,
                 AriusVersion = "test"
             };
 
@@ -675,7 +675,7 @@ public class ListQueryHandlerTests
         Timestamp  = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
         RootHash   = rootHash,
         FileCount  = 0,
-        TotalSize  = 0,
+        OriginalSize  = 0,
         AriusVersion = "test"
     };
 

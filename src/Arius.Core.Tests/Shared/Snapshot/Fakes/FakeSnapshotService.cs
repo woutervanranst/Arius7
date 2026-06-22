@@ -14,7 +14,7 @@ internal sealed class FakeSnapshotService : ISnapshotService
     public Task<SnapshotManifest> CreateAsync(
         FileTreeHash      rootHash,
         long              fileCount,
-        long              totalSize,
+        long              originalSize,
         DateTimeOffset?   timestamp         = null,
         bool              overwrite         = false,
         CancellationToken cancellationToken = default) => throw new NotSupportedException();

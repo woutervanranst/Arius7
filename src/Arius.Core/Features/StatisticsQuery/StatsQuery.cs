@@ -18,19 +18,31 @@ public sealed record StatisticsQuery(string? Version = null) : ICommand<Reposito
 /// <summary>
 /// Repository statistics.
 /// </summary>
-/// <param name="Files">Number of files in the snapshot (from the manifest).</param>
-/// <param name="OriginalSize">Sum of original (uncompressed) file sizes in bytes (from the manifest).</param>
-/// <param name="StoredSize">Sum of stored chunk sizes over distinct chunks (from the chunk index).</param>
-/// <param name="UniqueChunks">Number of distinct chunks (from the chunk index).</param>
-/// <param name="StoredByTier">Distinct-chunk count and stored size split by storage tier.</param>
+/// <param name="Files">Number of files in the snapshot (from the manifest; per-snapshot).</param>
+/// <param name="OriginalSize">
+/// Logical size: sum of original (uncompressed) file sizes in bytes, counting duplicates once per file
+/// (from the manifest; per-snapshot). This is the size you would restore.
+/// </param>
+/// <param name="DeduplicatedSize">
+/// Sum of original (uncompressed) sizes over distinct content — the unique data before compression
+/// (from the chunk index; repository-wide across all snapshots).
+/// </param>
+/// <param name="StoredSize">
+/// Sum of stored chunk sizes over distinct chunks — the actual cloud storage footprint, deduplicated
+/// and compressed (from the chunk index; repository-wide across all snapshots).
+/// </param>
+/// <param name="UniqueChunks">Number of distinct chunks (from the chunk index; repository-wide).</param>
+/// <param name="StoredByTier">Distinct-chunk count and stored size split by storage tier (repository-wide).</param>
 /// <remarks>
-/// An empty repository (no snapshot yet) reports all-zero figures. The stored/unique-chunk figures
-/// are read straight from the local chunk-index cache (no blob reads), so they reflect the cache's
-/// current coverage and finalise once it has fully synchronised.
+/// An empty repository (no snapshot yet) reports all-zero figures. <see cref="Files"/> and
+/// <see cref="OriginalSize"/> are scoped to the resolved snapshot; the deduplicated/stored/chunk figures
+/// are read straight from the local chunk-index cache (no blob reads) and are repository-wide — they
+/// reflect the cache's current coverage and finalise once it has fully synchronised.
 /// </remarks>
 public sealed record RepositoryStatistics(
     long Files,
     long OriginalSize,
+    long DeduplicatedSize,
     long StoredSize,
     long UniqueChunks,
     IReadOnlyList<ChunkTierStatistic> StoredByTier);
@@ -54,17 +66,18 @@ public sealed class StatisticsQueryHandler(
         if (snapshot is null)
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
-            return new RepositoryStatistics(0, 0, 0, 0, []);
+            return new RepositoryStatistics(0, 0, 0, 0, 0, []);
         }
 
         // ── Stage 2: chunk-index aggregate over distinct chunks, split by storage tier ──
         var byTier = chunkIndex.GetStatistics();
 
         return new RepositoryStatistics(
-            Files:        snapshot.FileCount,
-            OriginalSize: snapshot.TotalSize,
-            StoredSize:   byTier.Sum(t => t.StoredSize),
-            UniqueChunks: byTier.Sum(t => t.UniqueChunks),
-            StoredByTier: byTier);
+            Files:            snapshot.FileCount,
+            OriginalSize:     snapshot.OriginalSize,
+            DeduplicatedSize: chunkIndex.GetDeduplicatedOriginalSize(),
+            StoredSize:       byTier.Sum(t => t.StoredSize),
+            UniqueChunks:     byTier.Sum(t => t.UniqueChunks),
+            StoredByTier:     byTier);
     }
 }

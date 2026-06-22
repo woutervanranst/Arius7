@@ -3,23 +3,54 @@ import { ApiService } from '../../../core/api/api.service';
 import { StatisticsDto } from '../../../core/api/api-models';
 import { formatBytes, formatCount } from '../../../shared/format';
 
-/** Statistics tab: Files / Original size / Stored size / Unique chunks, with the "pending" banner. */
+/**
+ * Statistics tab. Two scopes are shown separately because they answer different questions and have
+ * different scope: "This snapshot" (logical size of the selected snapshot) vs "Repository storage"
+ * (deduplicated + compressed footprint across all snapshots, from the chunk index).
+ */
 @Component({
   selector: 'arius-statistics-tab',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px">
-      @for (card of cards(); track card.label) {
+    <div data-testid="section-snapshot" style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:12px">This snapshot</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px">
+      @for (card of snapshotCards(); track card.label) {
         <div class="ar-card" data-testid="kpi-card" style="padding:19px 20px">
           <div style="width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
             <i class="ki-filled {{ card.icon }}" style="font-size:20px"></i>
           </div>
           <div style="font-size:24px;font-weight:700;color:#18181b;margin-top:12px;line-height:1">{{ card.value }}</div>
-          <div style="font-size:13px;color:#71717a;margin-top:4px">{{ card.label }}</div>
+          <div style="font-size:13px;color:#71717a;margin-top:4px" [title]="card.hint">{{ card.label }}</div>
         </div>
       }
     </div>
+
+    <div data-testid="section-storage" style="font-size:13px;font-weight:600;color:#3f3f46;margin:22px 0 12px">
+      Repository storage
+      <span style="font-weight:400;color:#a1a1aa">· across all snapshots</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+      @for (card of storageCards(); track card.label) {
+        <div class="ar-card" data-testid="kpi-card" style="padding:19px 20px">
+          <div style="width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center" [style.background]="card.chipBg" [style.color]="card.chipFg">
+            <i class="ki-filled {{ card.icon }}" style="font-size:20px"></i>
+          </div>
+          <div style="font-size:24px;font-weight:700;color:#18181b;margin-top:12px;line-height:1">{{ card.value }}</div>
+          <div style="font-size:13px;color:#71717a;margin-top:4px" [title]="card.hint">{{ card.label }}</div>
+        </div>
+      }
+    </div>
+
+    @if (savings(); as sv) {
+      <div data-testid="savings" class="ar-card" style="margin-top:18px;padding:14px 20px;background:#f0fdf4;border-color:#bbf7d0">
+        <div style="font-size:13px;color:#15803d;line-height:1.5">
+          <i class="ki-filled ki-discount" style="color:#15803d"></i>
+          Stored <strong>{{ sv.stored }}</strong> from <strong>{{ sv.original }}</strong> of files —
+          <strong>{{ sv.percent }}</strong> smaller after deduplication and compression.
+        </div>
+      </div>
+    }
 
     @if (tiers().length) {
       <div class="ar-card" data-testid="tier-breakdown" style="margin-top:18px;padding:18px 20px">
@@ -64,14 +95,34 @@ export class StatisticsTabComponent {
     });
   }
 
-  protected cards() {
+  // Logical metrics for the selected snapshot (from its manifest).
+  protected snapshotCards() {
     const s = this.stats();
     return [
-      { label: 'Files', value: s ? formatCount(s.files) : '—', icon: 'ki-document', chipBg: '#eff6ff', chipFg: '#3b82f6' },
-      { label: 'Original size', value: s ? formatBytes(s.originalSize) : '—', icon: 'ki-data', chipBg: '#f0fdf4', chipFg: '#15803d' },
-      { label: 'Stored size', value: s ? formatBytes(s.storedSize) : '—', icon: 'ki-cloud', chipBg: '#f5f3ff', chipFg: '#6d28d9' },
-      { label: 'Unique chunks', value: s ? formatCount(s.uniqueChunks) : '—', icon: 'ki-element-11', chipBg: '#fffbeb', chipFg: '#b45309' },
+      { label: 'Files', value: s ? formatCount(s.files) : '—', hint: 'Number of files in this snapshot.', icon: 'ki-document', chipBg: '#eff6ff', chipFg: '#3b82f6' },
+      { label: 'Original size', value: s ? formatBytes(s.originalSize) : '—', hint: 'Total uncompressed size of all files in this snapshot (the size you would restore).', icon: 'ki-data', chipBg: '#f0fdf4', chipFg: '#15803d' },
     ];
+  }
+
+  // Physical metrics for the repository (deduplicated + compressed, from the chunk index).
+  protected storageCards() {
+    const s = this.stats();
+    return [
+      { label: 'Deduplicated size', value: s ? formatBytes(s.deduplicatedSize) : '—', hint: 'Unique data before compression — duplicate content counted once.', icon: 'ki-copy', chipBg: '#fefce8', chipFg: '#ca8a04' },
+      { label: 'Stored size', value: s ? formatBytes(s.storedSize) : '—', hint: 'Actual cloud storage footprint — deduplicated and compressed.', icon: 'ki-cloud', chipBg: '#f5f3ff', chipFg: '#6d28d9' },
+      { label: 'Unique chunks', value: s ? formatCount(s.uniqueChunks) : '—', hint: 'Number of distinct chunks stored.', icon: 'ki-element-11', chipBg: '#fffbeb', chipFg: '#b45309' },
+    ];
+  }
+
+  // Combined deduplication + compression reduction, original (logical) → stored (physical).
+  protected savings() {
+    const s = this.stats();
+    if (!s || s.originalSize <= 0 || s.storedSize <= 0 || s.storedSize >= s.originalSize) return null;
+    return {
+      original: formatBytes(s.originalSize),
+      stored: formatBytes(s.storedSize),
+      percent: `${Math.round((1 - s.storedSize / s.originalSize) * 100)}%`,
+    };
   }
 
   // Warmer → cooler colours so the access-tier story reads at a glance (Archive = coldest = slowest to restore).

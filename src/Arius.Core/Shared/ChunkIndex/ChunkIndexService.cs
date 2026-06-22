@@ -633,6 +633,18 @@ internal sealed class ChunkIndexService : IChunkIndexService
         return _localStore.GetStatistics();
     }
 
+    /// <summary>
+    /// Sum of original (uncompressed) sizes over distinct content — i.e. the deduplicated, uncompressed
+    /// size of all unique data in the repository. Read from the local cache only; no blob reads.
+    /// </summary>
+    public long GetDeduplicatedOriginalSize()
+    {
+        ThrowIfRepairIncomplete();
+        ThrowIfFlushed();
+
+        return _localStore.GetDeduplicatedOriginalSize();
+    }
+
     // -- Cache ---------------------------------------------------------------
 
     /// <summary>

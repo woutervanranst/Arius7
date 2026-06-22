@@ -95,10 +95,13 @@ public sealed record ArchiveResult
     public required long FilesDeduped { get; init; }
 
     /// <summary>Sum of original (uncompressed) sizes of all files in the snapshot, in bytes.</summary>
-    public required long TotalSize { get; init; }
+    public required long OriginalSize { get; init; }
 
     /// <summary>Original (uncompressed) bytes newly uploaded during this run, in bytes.</summary>
     public required long IncrementalSize { get; init; }
+
+    /// <summary>Stored (compressed + encrypted) bytes newly written to storage during this run, in bytes.</summary>
+    public required long IncrementalStoredSize { get; init; }
 
     /// <summary>
     /// Root hash of the snapshot's file tree. <c>null</c> when no snapshot was produced — an empty source

@@ -56,7 +56,7 @@ public class SnapshotsQueryHandlerTests
             Timestamp    = timestamp,
             RootHash     = FileTreeHashOf($"root-{timestamp:O}"),
             FileCount    = fileCount,
-            TotalSize    = fileCount * 1000,
+            OriginalSize    = fileCount * 1000,
             AriusVersion = "test"
         };
         blobs.AddBlob(BlobPaths.SnapshotPath(timestamp), await SnapshotSerializer.SerializeAsync(manifest, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));

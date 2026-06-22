@@ -23,7 +23,7 @@ public interface ISnapshotService
     Task<SnapshotManifest> CreateAsync(
         FileTreeHash      rootHash,
         long              fileCount,
-        long              totalSize,
+        long              originalSize,
         DateTimeOffset?   timestamp         = null,
         bool              overwrite         = false,
         CancellationToken cancellationToken = default);
@@ -116,7 +116,7 @@ internal sealed class SnapshotService : ISnapshotService
     public async Task<SnapshotManifest> CreateAsync(
         FileTreeHash      rootHash,
         long              fileCount,
-        long              totalSize,
+        long              originalSize,
         DateTimeOffset?   timestamp         = null,
         bool              overwrite         = false,
         CancellationToken cancellationToken = default)
@@ -127,7 +127,7 @@ internal sealed class SnapshotService : ISnapshotService
             Timestamp    = ts,
             RootHash     = rootHash,
             FileCount    = fileCount,
-            TotalSize    = totalSize,
+            OriginalSize = originalSize,
             AriusVersion = GetAriusVersion()
         };
 

@@ -25,7 +25,7 @@ public class SnapshotServiceIntegrationTests(AzuriteFixture azurite)
         var svc = new SnapshotService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, container.AccountName, container.Name);
 
         var ts       = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero);
-        var snapshot = await svc.CreateAsync(s_rootHash, fileCount: 10, totalSize: 1024, timestamp: ts);
+        var snapshot = await svc.CreateAsync(s_rootHash, fileCount: 10, originalSize: 1024, timestamp: ts);
 
         snapshot.RootHash.ShouldBe(s_rootHash);
         snapshot.FileCount.ShouldBe(10);

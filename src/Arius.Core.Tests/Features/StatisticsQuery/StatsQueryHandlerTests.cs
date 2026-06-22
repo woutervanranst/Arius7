@@ -21,7 +21,7 @@ public class StatisticsQueryHandlerTests
             Timestamp    = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
             RootHash     = FileTreeHashOf("root"),
             FileCount    = 3,
-            TotalSize    = 600,
+            OriginalSize    = 600,
             AriusVersion = "test"
         };
         blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
@@ -39,6 +39,7 @@ public class StatisticsQueryHandlerTests
 
         stats.Files.ShouldBe(3);
         stats.OriginalSize.ShouldBe(600);
+        stats.DeduplicatedSize.ShouldBe(600); // distinct content a+b+c = 100+200+300 (uncompressed)
         stats.UniqueChunks.ShouldBe(2);
         stats.StoredSize.ShouldBe(90);
 
@@ -58,7 +59,7 @@ public class StatisticsQueryHandlerTests
             Timestamp    = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
             RootHash     = FileTreeHashOf("root"),
             FileCount    = 2,
-            TotalSize    = 500,
+            OriginalSize    = 500,
             AriusVersion = "test"
         };
         blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
@@ -74,6 +75,7 @@ public class StatisticsQueryHandlerTests
 
         stats.UniqueChunks.ShouldBe(2);
         stats.StoredSize.ShouldBe(100);
+        stats.DeduplicatedSize.ShouldBe(500); // distinct content a+b = 100+400 (uncompressed)
 
         // Ordered by serialized tier (Cool=2 before Archive=4).
         stats.StoredByTier.Count.ShouldBe(2);
@@ -94,6 +96,7 @@ public class StatisticsQueryHandlerTests
 
         stats.Files.ShouldBe(0);
         stats.OriginalSize.ShouldBe(0);
+        stats.DeduplicatedSize.ShouldBe(0);
         stats.UniqueChunks.ShouldBe(0);
         stats.StoredSize.ShouldBe(0);
     }

@@ -26,6 +26,7 @@ export interface SnapshotDto {
 export interface StatisticsDto {
   files: number;
   originalSize: number;
+  deduplicatedSize: number;
   storedSize: number;
   uniqueChunks: number;
   storedByTier: TierStatisticsDto[];
