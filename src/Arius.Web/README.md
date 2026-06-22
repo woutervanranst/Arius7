@@ -93,11 +93,9 @@ services:
       - /volume1/docker/ariusweb/data:/data
       - /volume1/folder1:/my-local-archive1
       - /volume1/folder2:/my-local-archive2
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+      
   watchtower:
     image: containrrr/watchtower:latest
     container_name: watchtower
