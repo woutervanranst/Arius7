@@ -69,13 +69,14 @@ public sealed class StatisticsQueryHandler(
             return new RepositoryStatistics(0, 0, 0, 0, 0, []);
         }
 
-        // ── Stage 2: chunk-index aggregate over distinct chunks, split by storage tier ──
-        var byTier = chunkIndex.GetStatistics();
+        // ── Stage 2: chunk-index aggregate (deduplicated original size + distinct chunks by tier) ──
+        var chunkStats = chunkIndex.GetStatistics();
+        var byTier     = chunkStats.ByTier;
 
         return new RepositoryStatistics(
             Files:            snapshot.FileCount,
             OriginalSize:     snapshot.OriginalSize,
-            DeduplicatedSize: chunkIndex.GetDeduplicatedOriginalSize(),
+            DeduplicatedSize: chunkStats.DeduplicatedOriginalSize,
             StoredSize:       byTier.Sum(t => t.StoredSize),
             UniqueChunks:     byTier.Sum(t => t.UniqueChunks),
             StoredByTier:     byTier);

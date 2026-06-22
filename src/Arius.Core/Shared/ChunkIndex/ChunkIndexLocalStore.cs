@@ -275,53 +275,44 @@ internal sealed class ChunkIndexLocalStore
     // -- STATISTICS -------------------------------------------------
 
     /// <summary>
-    /// Aggregates distinct-chunk count and stored size per storage tier. Many content hashes can share
-    /// one chunk (tar-bundled small files), so the inner query collapses to one row per chunk hash
-    /// before grouping by tier — summing per content-hash would over-count shared tar chunks. A chunk
-    /// blob lives in exactly one tier, so the per-chunk tier hint is unambiguous.
+    /// Aggregates repository-wide chunk-index figures on a single connection:
+    /// <list type="bullet">
+    /// <item>the deduplicated (uncompressed) original size — the <c>content_hash</c> primary key already
+    /// collapses identical content to one row, so a plain <c>SUM(original_size)</c> counts each unique
+    /// content once;</item>
+    /// <item>distinct-chunk count and stored size per storage tier — many content hashes can share one
+    /// chunk (tar-bundled small files), so the inner query collapses to one row per chunk hash before
+    /// grouping by tier (summing per content-hash would over-count shared tar chunks). A chunk blob lives
+    /// in exactly one tier, so the per-chunk tier hint is unambiguous.</item>
+    /// </list>
     /// </summary>
-    public IReadOnlyList<ChunkTierStatistic> GetStatistics()
+    public ChunkIndexStatistics GetStatistics()
     {
         try
         {
             using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = """
+
+            using var dedupCommand = connection.CreateCommand();
+            dedupCommand.CommandText = "SELECT COALESCE(SUM(original_size), 0) FROM chunk_index_entries;";
+            var dedupResult = dedupCommand.ExecuteScalar();
+            var deduplicatedOriginalSize = dedupResult is long size ? size : Convert.ToInt64(dedupResult);
+
+            using var tierCommand = connection.CreateCommand();
+            tierCommand.CommandText = """
                 SELECT storage_tier_hint, COUNT(*) AS unique_chunks, COALESCE(SUM(chunk_size), 0) AS stored_size
                 FROM (SELECT chunk_hash, MAX(chunk_size) AS chunk_size, MAX(storage_tier_hint) AS storage_tier_hint
                       FROM chunk_index_entries GROUP BY chunk_hash)
                 GROUP BY storage_tier_hint
                 ORDER BY storage_tier_hint;
                 """;
-            using var reader = command.ExecuteReader();
-            var stats = new List<ChunkTierStatistic>();
+            using var reader = tierCommand.ExecuteReader();
+            var byTier = new List<ChunkTierStatistic>();
             while (reader.Read())
-                stats.Add(new ChunkTierStatistic(ShardEntry.DeserializeTier(reader.GetInt32(0)), reader.GetInt64(1), reader.GetInt64(2)));
+                byTier.Add(new ChunkTierStatistic(ShardEntry.DeserializeTier(reader.GetInt32(0)), reader.GetInt64(1), reader.GetInt64(2)));
 
-            _logger.LogDebug("[chunk-index-local] GetStats: tiers={TierCount} uniqueChunks={UniqueChunks} storedSize={StoredSize}",
-                stats.Count, stats.Sum(t => t.UniqueChunks), stats.Sum(t => t.StoredSize));
-            return stats;
-        }
-        catch (SqliteException ex)
-        {
-            throw CreateLocalStoreException(ex);
-        }
-    }
-
-    /// <summary>
-    /// Sum of original (uncompressed) sizes over distinct content. The <c>content_hash</c> primary key
-    /// already collapses identical content to one row, so a plain <c>SUM(original_size)</c> yields the
-    /// deduplicated, uncompressed size of all unique data in the repository.
-    /// </summary>
-    public long GetDeduplicatedOriginalSize()
-    {
-        try
-        {
-            using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COALESCE(SUM(original_size), 0) FROM chunk_index_entries;";
-            var result = command.ExecuteScalar();
-            return result is long size ? size : Convert.ToInt64(result);
+            _logger.LogDebug("[chunk-index-local] GetStats: dedupOriginalSize={DedupOriginalSize} tiers={TierCount} uniqueChunks={UniqueChunks} storedSize={StoredSize}",
+                deduplicatedOriginalSize, byTier.Count, byTier.Sum(t => t.UniqueChunks), byTier.Sum(t => t.StoredSize));
+            return new ChunkIndexStatistics(deduplicatedOriginalSize, byTier);
         }
         catch (SqliteException ex)
         {

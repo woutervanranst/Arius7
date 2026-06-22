@@ -620,29 +620,18 @@ internal sealed class ChunkIndexService : IChunkIndexService
     // -- Stats ---------------------------------------------------------------
 
     /// <summary>
-    /// Aggregates distinct-chunk count and stored size per storage tier from the local cache only —
-    /// no blob reads (the cache is the local mirror of the index, populated by browsing/lookups and
-    /// pending archive entries). Deduping is by chunk hash, since tar-bundled content hashes share
-    /// one chunk.
+    /// Aggregates repository-wide chunk-index figures from the local cache only — no blob reads (the
+    /// cache is the local mirror of the index, populated by browsing/lookups and pending archive entries).
+    /// Returns the deduplicated (uncompressed) original size over distinct content and the distinct-chunk
+    /// count / stored size split by storage tier; chunk-level deduping is by chunk hash, since tar-bundled
+    /// content hashes share one chunk.
     /// </summary>
-    public IReadOnlyList<ChunkTierStatistic> GetStatistics()
+    public ChunkIndexStatistics GetStatistics()
     {
         ThrowIfRepairIncomplete();
         ThrowIfFlushed();
 
         return _localStore.GetStatistics();
-    }
-
-    /// <summary>
-    /// Sum of original (uncompressed) sizes over distinct content — i.e. the deduplicated, uncompressed
-    /// size of all unique data in the repository. Read from the local cache only; no blob reads.
-    /// </summary>
-    public long GetDeduplicatedOriginalSize()
-    {
-        ThrowIfRepairIncomplete();
-        ThrowIfFlushed();
-
-        return _localStore.GetDeduplicatedOriginalSize();
     }
 
     // -- Cache ---------------------------------------------------------------
