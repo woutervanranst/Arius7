@@ -5,7 +5,8 @@ import { SnapshotDto } from '../api/api-models';
 /**
  * Holds the snapshot list and the selected snapshot for a repository. A root singleton so the
  * snapshot bar (rendered in the repo shell, above the tabs) and the Files tab share one selection.
- * `version` is null when the latest snapshot / live working state is selected.
+ * `version` is null when the latest snapshot / live working state is selected. The snapshot list is
+ * oldest-first (index 0 = v1 = oldest, last = newest).
  */
 @Injectable({ providedIn: 'root' })
 export class SnapshotStore {
@@ -16,10 +17,13 @@ export class SnapshotStore {
 
   private loadedRepo = -1;
 
-  /** Active index into `snapshots` (0 = latest). Falls back to 0 when the version is unknown. */
+  /**
+   * Active index into `snapshots`. The list is oldest-first, so no selection (live working state)
+   * maps to the newest snapshot — the last index.
+   */
   readonly activeIndex = computed(() => {
     const v = this.version();
-    if (!v) return 0;
+    if (!v) return Math.max(0, this.snapshots().length - 1);
     return Math.max(0, this.snapshots().findIndex(s => s.version === v));
   });
 
@@ -34,9 +38,9 @@ export class SnapshotStore {
     });
   }
 
-  /** Select a snapshot by index; index 0 (the latest) maps to null (live working state). */
+  /** Select a snapshot by index; the last index (the newest) maps to null (live working state). */
   select(index: number): void {
     const list = this.snapshots();
-    this.version.set(index === 0 ? null : (list[index]?.version ?? null));
+    this.version.set(index === list.length - 1 ? null : (list[index]?.version ?? null));
   }
 }

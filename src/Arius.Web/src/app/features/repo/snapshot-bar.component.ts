@@ -24,10 +24,10 @@ import { SnapshotStore } from '../../core/state/snapshot.store';
           <div class="ar-snap-menu">
             @for (s of snap.snapshots(); track s.version; let i = $index) {
               <button class="ar-snap-item" data-testid="snapshot-item" (click)="pick(i)">
-                <span style="font-weight:600">v{{ snap.snapshots().length - i }}</span>
+                <span style="font-weight:600">v{{ i + 1 }}</span>
                 <span style="color:#71717a">{{ s.timestamp | date:'dd MMM yyyy · HH:mm' }}</span>
                 <span style="color:#a1a1aa">{{ s.fileCount }} files</span>
-                @if (i === 0) { <span class="ar-pill-green">LATEST</span> }
+                @if (i === snap.snapshots().length - 1) { <span class="ar-pill-green">LATEST</span> }
               </button>
             } @empty {
               <div style="padding:12px;color:#a1a1aa;font-size:12.5px">No snapshots</div>
@@ -76,7 +76,7 @@ export class SnapshotBarComponent {
   protected readonly activeSnapLabel = computed(() => {
     const list = this.snap.snapshots();
     if (!list.length) return '—';
-    return 'v' + (list.length - this.snap.activeIndex());
+    return 'v' + (this.snap.activeIndex() + 1);
   });
 
   protected dotLeft(i: number): number {
