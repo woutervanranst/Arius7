@@ -15,8 +15,11 @@ public sealed record SnapshotManifest
     /// <summary>Total number of files in this snapshot.</summary>
     public required long           FileCount   { get; init; }
 
-    /// <summary>Sum of original (uncompressed) sizes of all files in bytes.</summary>
-    public required long           TotalSize   { get; init; }
+    /// <summary>
+    /// Sum of original (uncompressed) sizes of all files in bytes, counting duplicates once per file —
+    /// the logical size of this snapshot (the size you would restore). Not deduplicated or compressed.
+    /// </summary>
+    public required long           OriginalSize { get; init; }
 
     /// <summary>Arius tool version that created this snapshot.</summary>
     public required string         AriusVersion { get; init; }

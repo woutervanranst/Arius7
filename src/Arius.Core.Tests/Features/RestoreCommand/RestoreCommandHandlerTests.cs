@@ -374,7 +374,7 @@ public class RestoreCommandHandlerTests
                 Timestamp    = DateTimeOffset.UtcNow,
                 RootHash     = rootHash,
                 FileCount    = 2,
-                TotalSize    = 2,
+                OriginalSize    = 2,
                 AriusVersion = "test"
             };
 
@@ -433,7 +433,7 @@ public class RestoreCommandHandlerTests
                 Timestamp    = DateTimeOffset.UtcNow,
                 RootHash     = rootHash,
                 FileCount    = 1,
-                TotalSize    = 7,
+                OriginalSize    = 7,
                 AriusVersion = "test"
             };
 
@@ -1045,7 +1045,7 @@ public class RestoreCommandHandlerTests
                 Timestamp    = DateTimeOffset.UtcNow,
                 RootHash     = rootHash,
                 FileCount    = 1,
-                TotalSize    = 7,
+                OriginalSize    = 7,
                 AriusVersion = "test"
             };
 

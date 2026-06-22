@@ -73,12 +73,48 @@ public sealed record ArchiveCommandOptions
 /// </summary>
 public sealed record ArchiveResult
 {
+    /// <summary>
+    /// <c>true</c> if the pipeline ran to completion. <c>false</c> on option validation failure,
+    /// failure to open the staging session, or any unhandled pipeline exception; see <see cref="ErrorMessage"/>.
+    /// </summary>
     public required bool Success { get; init; }
+
+    /// <summary>Total number of files enumerated from the source directory, before deduplication.</summary>
     public required long FilesScanned { get; init; }
+
+    /// <summary>
+    /// Number of files whose content was uploaded during this run (one per new large file plus one per
+    /// new entry bundled into a tar). Excludes files skipped by deduplication (<see cref="FilesDeduped"/>).
+    /// </summary>
     public required long FilesUploaded { get; init; }
+
+    /// <summary>
+    /// Number of files skipped because their content was already present — either in the chunk index from a
+    /// prior run or already queued earlier in this run (includes pointer-only files resolved to an existing chunk).
+    /// </summary>
     public required long FilesDeduped { get; init; }
-    public required long TotalSize { get; init; }
+
+    /// <summary>Sum of original (uncompressed) sizes of all files in the snapshot, in bytes.</summary>
+    public required long OriginalSize { get; init; }
+
+    /// <summary>Original (uncompressed) bytes newly uploaded during this run, in bytes.</summary>
+    public required long IncrementalSize { get; init; }
+
+    /// <summary>Stored (compressed + encrypted) bytes newly written to storage during this run, in bytes.</summary>
+    public required long IncrementalStoredSize { get; init; }
+
+    /// <summary>
+    /// Root hash of the snapshot's file tree. <c>null</c> when no snapshot was produced — an empty source
+    /// tree, or a failure before the tree was built.
+    /// </summary>
     public required FileTreeHash? RootHash { get; init; }
+
+    /// <summary>
+    /// Timestamp of the snapshot: the existing snapshot's timestamp when the tree is unchanged, or the
+    /// newly created snapshot's timestamp otherwise. Falls back to the current time when no snapshot exists.
+    /// </summary>
     public required DateTimeOffset SnapshotTime { get; init; }
+
+    /// <summary>Human-readable error description when <see cref="Success"/> is <c>false</c>; otherwise <c>null</c>.</summary>
     public string? ErrorMessage { get; init; }
 }

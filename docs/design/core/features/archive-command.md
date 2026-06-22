@@ -95,7 +95,7 @@ flowchart LR
 - **6d Create snapshot** — if the root hash differs from the latest snapshot, `CreateAsync` writes the manifest and `PromoteToSnapshotVersionAsync` promotes the index; a matching root reuses the existing snapshot and creates nothing (ADR-0002). Emits `SnapshotCreatedEvent`.
 - **6e/6f concurrent** — `pendingPointers` are written in parallel via `PointerFileFormat.WriteAsync` (unless `--no-pointers`) while `pendingDeletes` are deleted (only with `--remove-local`); their paths are disjoint (pointer sidecar vs binary), so they cannot race (`Task.WhenAll`).
 
-`Handle` returns an `ArchiveResult` carrying `Success`, the scanned/uploaded/deduped counts, total size, and the snapshot root hash + time. The whole body is wrapped so any fault returns a `Success=false` result with counters collected so far rather than throwing.
+`Handle` returns an `ArchiveResult` carrying `Success`, the scanned/uploaded/deduped counts, three sizes, and the snapshot root hash + time. The sizes separate the snapshot total from this run's increment: `OriginalSize` is the logical size of the whole snapshot (every file, deduped content counted once per file — not just what this run uploaded), while `IncrementalSize` (original/uncompressed bytes newly uploaded) and `IncrementalStoredSize` (compressed bytes newly written to storage) measure only this run's work. The whole body is wrapped so any fault returns a `Success=false` result with counters collected so far rather than throwing.
 
 ## Key invariants
 

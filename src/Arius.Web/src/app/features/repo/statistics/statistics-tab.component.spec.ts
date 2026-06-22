@@ -24,6 +24,7 @@ describe('StatisticsTabComponent', () => {
   const multiTier: StatisticsDto = {
     files: 10,
     originalSize: 1000,
+    deduplicatedSize: 200,
     storedSize: 100,
     uniqueChunks: 5,
     storedByTier: [
@@ -34,12 +35,21 @@ describe('StatisticsTabComponent', () => {
 
   afterEach(() => TestBed.resetTestingModule());
 
-  it('renders the four KPI cards with real figures', () => {
+  it('renders the five KPI cards with real figures', () => {
     const el = render(multiTier);
     const cards = el.querySelectorAll('[data-testid="kpi-card"]');
-    expect(cards.length).toBe(4);
+    expect(cards.length).toBe(5);
     expect(el.textContent).not.toContain('—');
+    expect(el.textContent).toContain('Original size');
+    expect(el.textContent).toContain('Deduplicated size');
     expect(el.textContent).toContain('Unique chunks');
+  });
+
+  it('shows the savings note (original → stored reduction)', () => {
+    const el = render(multiTier);
+    const savings = el.querySelector('[data-testid="savings"]');
+    expect(savings).not.toBeNull();
+    expect(savings!.textContent).toContain('90%'); // 1 - 100/1000
   });
 
   it('renders one tier row per StatisticsDto.storedByTier entry, in order', () => {
@@ -61,6 +71,6 @@ describe('StatisticsTabComponent', () => {
     const el = render({ ...multiTier, storedByTier: [] });
     expect(el.querySelector('[data-testid="tier-breakdown"]')).toBeNull();
     // KPI cards still render (a repo with no cached chunk-index coverage shows zeroed figures).
-    expect(el.querySelectorAll('[data-testid="kpi-card"]').length).toBe(4);
+    expect(el.querySelectorAll('[data-testid="kpi-card"]').length).toBe(5);
   });
 });

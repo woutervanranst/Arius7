@@ -60,6 +60,76 @@ public class ArchiveRecoveryTests
         (await resumedIndex.LookupAsync(contentHash)).ShouldNotBeNull();
     }
 
+    // Regression: a blob recovered from a prior crashed/concurrent run (AlreadyExisted) reports a
+    // StoredSize but stores nothing new, so it must not inflate IncrementalStoredSize ("bytes written
+    // this run"). A freshly written blob must still be counted.
+    [Test]
+    [MatrixDataSource]
+    public async Task Archive_IncrementalStoredSize_CountsOnlyLargeBlobsWrittenThisRun(
+        [Matrix(false, true)] bool alreadyExisted)
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        const int fileSize = 2 * 1024 * 1024;
+        await WriteRandomFileAsync(fixture, RelativePath.Parse("large.bin"), fileSize);
+
+        const long storedSize = 4096;
+        var chunkStorage = new RecordingChunkStorageService(
+            uploadLargeAsync: (chunkHash, _, sourceSize, _, _, _) =>
+                Task.FromResult(new ChunkUploadResult(chunkHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, OriginalSize: sourceSize)));
+
+        var handler = CreateHandlerWith(fixture, chunkStorage);
+
+        var result = await handler.Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier = BlobTier.Cool,
+                SmallFileThreshold = 0,
+            }),
+            CancellationToken.None);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        // The guard isolates stored size only: original/incremental (uncompressed) sizes are decided at
+        // dedup time and are unaffected by whether the blob already existed in storage.
+        result.OriginalSize.ShouldBe(fileSize);
+        result.IncrementalSize.ShouldBe(fileSize);
+        result.IncrementalStoredSize.ShouldBe(alreadyExisted ? 0 : storedSize);
+    }
+
+    [Test]
+    [MatrixDataSource]
+    public async Task Archive_IncrementalStoredSize_CountsOnlyTarBlobsWrittenThisRun(
+        [Matrix(false, true)] bool alreadyExisted)
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        const int fileSize = 256;
+        await WriteRandomFileAsync(fixture, RelativePath.Parse("small.txt"), fileSize);
+
+        const long storedSize = 2048;
+        var chunkStorage = new RecordingChunkStorageService(
+            uploadTarAsync: (tarHash, _, sourceSize, _, _, _) =>
+                Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, OriginalSize: sourceSize)),
+            uploadThinAsync: (_, _, _, _, _) => Task.FromResult(true));
+
+        var handler = CreateHandlerWith(fixture, chunkStorage);
+
+        var result = await handler.Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fixture.LocalDirectory.ToString(),
+                UploadTier = BlobTier.Cool,
+                SmallFileThreshold = 1024 * 1024,
+            }),
+            CancellationToken.None);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        // The guard isolates stored size only: original/incremental (uncompressed) sizes are decided at
+        // dedup time and are unaffected by whether the tar blob already existed in storage.
+        result.OriginalSize.ShouldBe(fileSize);
+        result.IncrementalSize.ShouldBe(fileSize);
+        result.IncrementalStoredSize.ShouldBe(alreadyExisted ? 0 : storedSize);
+    }
+
     [Test]
     public async Task Archive_LargeBlobWithoutMetadata_Rerun_DeletesAndRetries()
     {
@@ -520,6 +590,20 @@ public class ArchiveRecoveryTests
         (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(largeContent)))!.StorageTierHint.ShouldBe(uploadTier);
         (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(smallContent)))!.StorageTierHint.ShouldBe(uploadTier);
     }
+
+    private static ArchiveCommandHandler CreateHandlerWith(RepositoryTestFixture fixture, IChunkStorageService chunkStorage)
+        => new(
+            fixture.BlobContainer,
+            fixture.Encryption,
+            fixture.Index,
+            chunkStorage,
+            fixture.FileTreeService,
+            fixture.Snapshot,
+            fixture.Mediator,
+            new FakeLogger<ArchiveCommandHandler>(),
+            NullLoggerFactory.Instance,
+            fixture.AccountName,
+            fixture.ContainerName);
 
     private static async ValueTask<RepositoryTestFixture> CreateArchiveFixtureAsync()
         => await RepositoryTestFixture.CreateWithEncryptionAsync(

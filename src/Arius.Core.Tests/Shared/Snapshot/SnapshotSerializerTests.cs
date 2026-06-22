@@ -18,7 +18,7 @@ public class SnapshotSerializerTests
             Timestamp    = ts,
             RootHash     = rootHash,
             FileCount    = 42,
-            TotalSize    = 1024L * 1024 * 500,
+            OriginalSize    = 1024L * 1024 * 500,
             AriusVersion = "1.0.0"
         };
 
@@ -30,7 +30,7 @@ public class SnapshotSerializerTests
         back.Timestamp.ShouldBe(ts);
         back.RootHash.ShouldBe(manifest.RootHash);
         back.FileCount.ShouldBe(42);
-        back.TotalSize.ShouldBe(manifest.TotalSize);
+        back.OriginalSize.ShouldBe(manifest.OriginalSize);
         back.AriusVersion.ShouldBe("1.0.0");
     }
 
@@ -45,7 +45,7 @@ public class SnapshotSerializerTests
             Timestamp    = ts,
             RootHash     = rootHash,
             FileCount    = 7,
-            TotalSize    = 512,
+            OriginalSize    = 512,
             AriusVersion = "2.0.0-test"
         };
 
@@ -66,7 +66,7 @@ public class SnapshotSerializerTests
             Timestamp    = ts,
             RootHash     = rootHash,
             FileCount    = 3,
-            TotalSize    = 123,
+            OriginalSize    = 123,
             AriusVersion = "1.2.3"
         };
 

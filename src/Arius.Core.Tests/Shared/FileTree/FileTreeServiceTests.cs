@@ -607,7 +607,7 @@ public class FileTreeServiceTests
 
         var ts       = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
         var rootHash = FileTreeHash.Parse("aabbccdd" + new string('0', 56));
-        var manifest = await fixture.Snapshot.CreateAsync(rootHash, fileCount: 5, totalSize: 512, timestamp: ts);
+        var manifest = await fixture.Snapshot.CreateAsync(rootHash, fileCount: 5, originalSize: 512, timestamp: ts);
 
         var expectedFileName = ts.UtcDateTime.ToString(SnapshotService.TimestampFormat);
         var localPath        = RelativePath.Parse(expectedFileName);

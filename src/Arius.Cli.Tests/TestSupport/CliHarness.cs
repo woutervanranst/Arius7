@@ -53,7 +53,9 @@ internal sealed class CliHarness
                 FilesScanned = 0,
                 FilesUploaded = 0,
                 FilesDeduped = 0,
-                TotalSize = 0,
+                OriginalSize = 0,
+                IncrementalSize = 0,
+                IncrementalStoredSize = 0,
                 RootHash = null,
                 SnapshotTime = DateTimeOffset.UtcNow,
             });
@@ -86,7 +88,7 @@ internal sealed class CliHarness
 
         statsHandler
             .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, [])));
+            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, [])));
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;

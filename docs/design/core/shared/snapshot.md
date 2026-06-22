@@ -16,7 +16,7 @@ A [snapshot](../../../glossary.md#snapshot) is the immutable, point-in-time mani
 |---|---|
 | `Timestamp` | UTC creation time; doubles as the blob name and version id |
 | `RootHash` | root `FileTreeHash` (SHA-256 hex) produced by the tree builder |
-| `FileCount` / `TotalSize` | repository totals (count, summed original bytes) |
+| `FileCount` / `OriginalSize` | snapshot totals: file count and the logical size — summed original (uncompressed) bytes of all files, counting duplicates once per file (the size you would restore). Not deduplicated or compressed. |
 | `AriusVersion` | tool version that wrote it (`AssemblyInformationalVersionAttribute`) |
 
 The manifest is the *root* of the Merkle structure: `RootHash` points at the top filetree blob, which references the rest. `FileTreeHashJsonConverter` persists `RootHash` as its canonical lowercase-hex string.
@@ -65,7 +65,7 @@ sequenceDiagram
     alt rootHash == latest.RootHash (no-op)
         H-->>H: reuse latest Timestamp + RootHash, no write
     else changed
-        H->>S: CreateAsync(rootHash, fileCount, totalSize)
+        H->>S: CreateAsync(rootHash, fileCount, originalSize)
         S->>S: WriteToDisk (epoch marker) then Upload
         H->>CI: PromoteToSnapshotVersionAsync(snapshot name)
         H-->>H: publish SnapshotCreatedEvent

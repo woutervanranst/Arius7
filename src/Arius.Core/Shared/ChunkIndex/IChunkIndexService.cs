@@ -51,13 +51,26 @@ public interface IChunkIndexService : IDisposable
     internal Task<ChunkIndexRepairResult> RepairAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Aggregates distinct-chunk count and stored size per storage tier from the local chunk-index cache
-    /// only — no blob reads. Figures reflect the cache's current coverage (entries loaded by browsing/lookups
-    /// plus not-yet-flushed pending entries). Deduping is by chunk hash, since tar-bundled content hashes
-    /// share one chunk.
+    /// Aggregates repository-wide chunk-index figures from the local cache only — no blob reads. Figures
+    /// reflect the cache's current coverage (entries loaded by browsing/lookups plus not-yet-flushed
+    /// pending entries). Returns the deduplicated (uncompressed) original size over distinct content and
+    /// the distinct-chunk count / stored size split by storage tier; chunk-level deduping is by chunk
+    /// hash, since tar-bundled content hashes share one chunk.
     /// </summary>
-    internal IReadOnlyList<ChunkTierStatistic> GetStatistics();
+    internal ChunkIndexStatistics GetStatistics();
 }
+
+/// <summary>
+/// Repository-wide chunk-index aggregates (from the local cache only).
+/// </summary>
+/// <param name="DeduplicatedOriginalSize">
+/// Sum of original (uncompressed) sizes over distinct content — the deduplicated, uncompressed size of
+/// all unique data in the repository. Unlike <see cref="ChunkTierStatistic.StoredSize"/> this is
+/// <em>before</em> compression, and unlike the snapshot's original size it counts each unique content
+/// once (deduplicated).
+/// </param>
+/// <param name="ByTier">Distinct-chunk count and stored size split by storage tier.</param>
+public sealed record ChunkIndexStatistics(long DeduplicatedOriginalSize, IReadOnlyList<ChunkTierStatistic> ByTier);
 
 /// <summary>
 /// Distinct-chunk count and stored size for one storage tier (<see cref="BlobTier"/>).

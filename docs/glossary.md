@@ -177,6 +177,40 @@ parent tar chunk blob size, not a per-file share. Restore, download progress, an
 rehydration cost estimates operate on distinct chunks and must use this full size.
 *Code:* `ShardEntry.ChunkSize` in `src/Arius.Core/Shared/ChunkIndex/Shard.cs`.
 
+---
+
+## Sizes
+
+Three distinct size metrics describe the logical→physical chain. Always qualify which one
+is meant — "size" alone is ambiguous. They are related by
+`original size ≥ deduplicated size ≥ stored size`.
+
+### original size
+
+**original size** — the logical, uncompressed size of files, counting duplicate content
+once *per file* (i.e. the size you would restore). Reported per-snapshot from the manifest
+(`SnapshotManifest.OriginalSize`) and per-archive-run from `ArchiveResult.OriginalSize`.
+*Code:* `SnapshotManifest.OriginalSize`; `ArchiveResult.OriginalSize`;
+`ShardEntry.OriginalSize` (the per-content original size stored in the index).
+
+### deduplicated size
+
+**deduplicated size** — the sum of original (uncompressed) sizes over *distinct* content:
+the unique data of the whole repository before compression. Repository-wide across all
+snapshots; computed from the chunk index. Differs from [original size](#original-size) by
+collapsing duplicate content, and from [stored size](#stored-size) by being pre-compression.
+*Code:* `IChunkIndexService.GetDeduplicatedOriginalSize()` in
+`src/Arius.Core/Shared/ChunkIndex/ChunkIndexService.cs`.
+
+### stored size
+
+**stored size** — the actual cloud storage footprint: sum of stored [chunk sizes](#chunk-size)
+over distinct chunks — deduplicated *and* compressed (plus optional encryption). Repository-wide
+across all snapshots, split by [storage tier hint](#storage-tier-hint). The per-run increment is
+`ArchiveResult.IncrementalStoredSize`.
+*Code:* `ChunkTierStatistic.StoredSize`; `ShardEntry.ChunkSize`;
+`ArchiveResult.IncrementalStoredSize`.
+
 ### storage tier hint
 
 **storage tier hint** — the chunk blob's storage tier at archive time, recorded per
@@ -246,7 +280,8 @@ full path.
 ### snapshot
 
 **snapshot** — an immutable point-in-time manifest recording the root filetree hash and
-repository totals (file count, total original size, creating Arius version).
+snapshot totals (file count; `OriginalSize` — the logical size, i.e. summed original
+uncompressed bytes of all files, counting duplicates once per file; creating Arius version).
 *Code:* `SnapshotManifest` in `src/Arius.Core/Shared/Snapshot/SnapshotManifest.cs`;
 resolve/create/list in `SnapshotService`
 (`src/Arius.Core/Shared/Snapshot/SnapshotService.cs`); named via
