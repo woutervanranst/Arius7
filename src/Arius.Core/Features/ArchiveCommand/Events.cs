@@ -26,6 +26,27 @@ public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash Cont
 /// <param name="RelativePath">Relative path of the skipped file; used to clear its progress row.</param>
 public sealed record FileSkippedEvent(RelativePath RelativePath) : INotification;
 
+/// <summary>Why a file or directory was skipped during enumeration (before it ever entered the pipeline).</summary>
+public enum SkipReason
+{
+    /// <summary>Name matched the configured exclusion list (file or directory).</summary>
+    ExcludedByName,
+    /// <summary>Carried an excluded <see cref="FileAttributes.System"/>/<see cref="FileAttributes.Hidden"/> attribute.</summary>
+    ExcludedByAttribute,
+    /// <summary>A dangling file or directory symbolic link.</summary>
+    BrokenSymlink,
+    /// <summary>A directory whose listing could not be read (e.g. permission denied).</summary>
+    UnreadableDirectory,
+}
+
+/// <summary>
+/// A file or directory was skipped during enumeration and never scanned/backed up. A pruned directory
+/// is a single event (its contents are never enumerated).
+/// </summary>
+/// <param name="RelativePath">Relative path of the skipped entry.</param>
+/// <param name="Reason">Why it was skipped.</param>
+public sealed record EntrySkippedEvent(RelativePath RelativePath, SkipReason Reason) : INotification;
+
 /// <summary>A chunk upload started.</summary>
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;
 

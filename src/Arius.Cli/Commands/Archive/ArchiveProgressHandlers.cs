@@ -15,6 +15,18 @@ public sealed class FileScannedHandler(ProgressState state) : INotificationHandl
     }
 }
 
+// ── EntrySkippedHandler ───────────────────────────────────────────────────────
+
+/// <summary>Counts entries skipped during enumeration (excluded / broken symlink / unreadable dir).</summary>
+public sealed class EntrySkippedHandler(ProgressState state) : INotificationHandler<EntrySkippedEvent>
+{
+    public ValueTask Handle(EntrySkippedEvent notification, CancellationToken cancellationToken)
+    {
+        state.IncrementFilesSkippedScanning();
+        return ValueTask.CompletedTask;
+    }
+}
+
 // ── ScanCompleteHandler ───────────────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.TotalFiles"/>, <see cref="ProgressState.TotalBytes"/>, and <see cref="ProgressState.ScanComplete"/> when enumeration finishes.</summary>

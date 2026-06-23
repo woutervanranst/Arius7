@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
 namespace Arius.Core.Features.ArchiveCommand;
@@ -10,13 +11,28 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// with responsibility for recognizing pointer files, pairing them with binaries, and tolerating unreadable
 /// or invalid pointer content without leaking host-path details into the rest of the core.
 /// </summary>
+/// <remarks>
+/// Like <see cref="TarBuilder"/>, this is a mediator-free helper: it does not log or publish skip events
+/// itself. When it skips an entry it invokes the injected <c>onSkipped</c> callback, leaving the log
+/// vocabulary and event publishing to the caller (the handler). The walk is an <see cref="IAsyncEnumerable{T}"/>
+/// purely so the callback can be awaited inline; the filesystem I/O underneath is synchronous.
+/// </remarks>
 internal sealed class LocalFileEnumerator
 {
-    private readonly ILogger<LocalFileEnumerator>? _logger;
+    private readonly ILogger<LocalFileEnumerator>?                       _logger;
+    private readonly Func<RelativePath, SkipReason, Exception?, ValueTask>? _onSkipped;
 
-    public LocalFileEnumerator(ILogger<LocalFileEnumerator>? logger = null)
+    /// <param name="logger">Used only for non-skip anomalies (invalid/unreadable pointer content).</param>
+    /// <param name="onSkipped">
+    /// Invoked when an entry is skipped, with its path, the reason, and the triggering exception (or
+    /// <c>null</c>). The caller owns logging and any event publishing. When <c>null</c>, skips are silent.
+    /// </param>
+    public LocalFileEnumerator(
+        ILogger<LocalFileEnumerator>?                          logger    = null,
+        Func<RelativePath, SkipReason, Exception?, ValueTask>? onSkipped = null)
     {
-        _logger = logger;
+        _logger    = logger;
+        _onSkipped = onSkipped;
     }
 
     // ── Task 7.2: Depth-first enumeration ────────────────────────────────────
@@ -39,16 +55,17 @@ internal sealed class LocalFileEnumerator
     /// <param name="filter">
     /// Exclusion policy. When <c>null</c>, nothing is excluded (preserves the unfiltered walk).
     /// </param>
-    public IEnumerable<FilePair> Enumerate(LocalDirectory rootDirectory, FileExclusionFilter? filter = null)
+    /// <param name="cancellationToken">Observed between entries.</param>
+    public IAsyncEnumerable<FilePair> Enumerate(LocalDirectory rootDirectory, FileExclusionFilter? filter = null, CancellationToken cancellationToken = default)
     {
         var fileSystem = new RelativeFileSystem(rootDirectory);
-        return EnumerateDirectory(fileSystem, RelativePath.Root, filter ?? FileExclusionFilter.None);
+        return EnumerateDirectory(fileSystem, RelativePath.Root, filter ?? FileExclusionFilter.None, cancellationToken);
     }
 
-    private IEnumerable<FilePair> EnumerateDirectory(RelativeFileSystem fileSystem, RelativePath directory, FileExclusionFilter filter)
+    private async IAsyncEnumerable<FilePair> EnumerateDirectory(RelativeFileSystem fileSystem, RelativePath directory, FileExclusionFilter filter, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // ── Files in this directory ───────────────────────────────────────────
-        foreach (var relativePath in SafeEnumerate(fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly), directory))
+        await foreach (var relativePath in SafeEnumerate(fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly), directory, cancellationToken))
         {
             // Exclusion is keyed on the file's *logical* name: for a pointer-only file (thin archive)
             // the logical name is the binary it stands in for (thumbs.db, not thumbs.db.pointer.arius),
@@ -58,20 +75,20 @@ internal sealed class LocalFileEnumerator
             // Name-based exclusion is cheapest and needs no stat.
             if (filter.ShouldExcludeFile(logicalName, default))
             {
-                _logger?.LogWarning("Skipping excluded file: {RelPath}", relativePath);
+                await Skipped(relativePath, SkipReason.ExcludedByName, null);
                 continue;
             }
 
             if (!fileSystem.IsValidSymlink(relativePath))
             {
-                _logger?.LogWarning("Skipping broken symlink: {RelPath}", relativePath);
+                await Skipped(relativePath, SkipReason.BrokenSymlink, null);
                 continue;
             }
 
             // Attribute-based exclusion only stats the entry when an attribute rule is active.
             if (filter.RequiresAttributes && filter.ShouldExcludeFile(logicalName, SafeGetAttributes(fileSystem, relativePath)))
             {
-                _logger?.LogWarning("Skipping excluded file (System/Hidden attribute): {RelPath}", relativePath);
+                await Skipped(relativePath, SkipReason.ExcludedByAttribute, null);
                 continue;
             }
 
@@ -124,40 +141,52 @@ internal sealed class LocalFileEnumerator
         }
 
         // ── Subdirectories (pruned) ───────────────────────────────────────────
-        foreach (var subDirectory in SafeEnumerate(fileSystem.EnumerateDirectories(directory), directory))
+        await foreach (var subDirectory in SafeEnumerate(fileSystem.EnumerateDirectories(directory), directory, cancellationToken))
         {
             // A dangling directory symlink can't be descended into — recursing would fault the whole
             // scan. Skip it (mirrors the per-file symlink check above; the old flat AllDirectories walk
             // skipped inaccessible entries by default).
             if (!fileSystem.IsValidSymlink(subDirectory))
             {
-                _logger?.LogWarning("Skipping broken directory symlink: {RelPath}", subDirectory);
+                await Skipped(subDirectory, SkipReason.BrokenSymlink, null);
                 continue;
             }
 
-            var attributes = filter.RequiresAttributes ? SafeGetAttributes(fileSystem, subDirectory) : default;
-            if (filter.ShouldExcludeDirectory(subDirectory.Name, attributes))
+            // Name-based exclusion first (no stat); then attribute-based, mirroring the file path.
+            if (filter.ShouldExcludeDirectory(subDirectory.Name, default))
             {
-                _logger?.LogWarning("Skipping excluded directory: {RelPath}", subDirectory);
+                await Skipped(subDirectory, SkipReason.ExcludedByName, null);
                 continue;
             }
 
-            foreach (var pair in EnumerateDirectory(fileSystem, subDirectory, filter))
+            if (filter.RequiresAttributes && filter.ShouldExcludeDirectory(subDirectory.Name, SafeGetAttributes(fileSystem, subDirectory)))
+            {
+                await Skipped(subDirectory, SkipReason.ExcludedByAttribute, null);
+                continue;
+            }
+
+            await foreach (var pair in EnumerateDirectory(fileSystem, subDirectory, filter, cancellationToken))
                 yield return pair;
         }
     }
 
+    /// <summary>Invokes the skip callback (if any). The caller owns logging and event publishing.</summary>
+    private ValueTask Skipped(RelativePath path, SkipReason reason, Exception? exception) =>
+        _onSkipped?.Invoke(path, reason, exception) ?? ValueTask.CompletedTask;
+
     /// <summary>
-    /// Enumerates a directory listing, logging a warning and stopping if the directory cannot be read
-    /// (e.g. permission denied, or a path that vanished mid-walk). Yields lazily so a huge directory is
-    /// never materialized and the walk stays memory-bounded. This mirrors the old flat
+    /// Enumerates a directory listing, skipping (and reporting via <c>onSkipped</c>) the directory if it
+    /// cannot be read (e.g. permission denied, or a path that vanished mid-walk). Yields lazily so a huge
+    /// directory is never materialized and the walk stays memory-bounded. This mirrors the old flat
     /// <c>EnumerateFiles(AllDirectories)</c> walk, which skipped inaccessible directories by default.
     /// </summary>
-    internal IEnumerable<RelativePath> SafeEnumerate(IEnumerable<RelativePath> listing, RelativePath directory)
+    internal async IAsyncEnumerable<RelativePath> SafeEnumerate(IEnumerable<RelativePath> listing, RelativePath directory, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var enumerator = listing.GetEnumerator();
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             RelativePath entry;
             try
             {
@@ -167,7 +196,7 @@ internal sealed class LocalFileEnumerator
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
-                _logger?.LogWarning(ex, "Skipping unreadable directory: {RelPath}", directory);
+                await Skipped(directory, SkipReason.UnreadableDirectory, ex);
                 yield break;
             }
 

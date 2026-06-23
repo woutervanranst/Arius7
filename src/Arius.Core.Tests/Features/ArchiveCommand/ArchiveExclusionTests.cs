@@ -1,6 +1,7 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Tests.Shared.Fixtures;
+using NSubstitute;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
 
@@ -47,6 +48,10 @@ public class ArchiveExclusionTests
         var archiveResult = await ArchiveAsync(fixture, exclusions);
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
         archiveResult.OriginalSize.ShouldBe(3); // snapshot contains only keep.bin (3 bytes)
+
+        // Two enumeration skips: the @eaDir directory (pruned) and the thumbs.db file.
+        archiveResult.FilesSkipped.ShouldBe(2);
+        await fixture.Mediator.Received(2).Publish(Arg.Any<EntrySkippedEvent>(), Arg.Any<CancellationToken>());
 
         var restoreResult = await RestoreAsync(fixture, fixture.RestoreDirectory);
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);

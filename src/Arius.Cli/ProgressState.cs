@@ -371,6 +371,13 @@ public sealed class ProgressState
         Volatile.Write(ref _scanComplete, true);
     }
 
+    /// <summary>Number of entries skipped during enumeration (excluded by filter, broken symlink, or unreadable directory).</summary>
+    public long FilesSkippedScanning => Interlocked.Read(ref _filesSkippedScanning);
+    private long _filesSkippedScanning;
+
+    /// <summary>Increments the enumeration-skip counter (called per <c>EntrySkippedEvent</c>).</summary>
+    public void IncrementFilesSkippedScanning() => Interlocked.Increment(ref _filesSkippedScanning);
+
     // ── Archive: hashing (aggregate counters) ────────────────────────────────
 
     /// <summary>Number of files for which hashing has completed.</summary>

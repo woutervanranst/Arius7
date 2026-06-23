@@ -81,6 +81,18 @@ public class NotificationHandlerTests
     }
 
     [Test]
+    public async Task EntrySkippedHandler_IncrementsFilesSkippedScanning()
+    {
+        var state    = new ProgressState();
+        var handler  = new EntrySkippedHandler(state);
+
+        await handler.Handle(new EntrySkippedEvent(RelativePath.Parse("@eaDir"), SkipReason.ExcludedByName), CancellationToken.None);
+        await handler.Handle(new EntrySkippedEvent(RelativePath.Parse("thumbs.db"), SkipReason.ExcludedByName), CancellationToken.None);
+
+        state.FilesSkippedScanning.ShouldBe(2L);
+    }
+
+    [Test]
     public async Task FileSkippedHandler_WhileStillHashing_RemovesTrackedFileAndIncrementsHashSkipCounter()
     {
         var state    = new ProgressState();
