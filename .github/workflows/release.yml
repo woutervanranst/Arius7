@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: 🛎️ Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: ⚙️ Setup .NET
         uses: actions/setup-dotnet@v5
@@ -77,7 +77,7 @@ jobs:
 
     steps:
       - name: 🛎️ Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🏷️ Extract version + image tags from tag
         id: version
@@ -123,7 +123,7 @@ jobs:
 
     steps:
       - name: 🛎️ Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🐍 Install Python recovery dependencies
         run: pip install cryptography zstandard
@@ -180,7 +180,7 @@ jobs:
 
     steps:
       - name: 🛎️ Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
