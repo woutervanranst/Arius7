@@ -158,11 +158,21 @@ internal static class UpdateVerb
                     return 0;
                 }
 
-                // File.Move throws IOException across filesystem boundaries (e.g. /tmp → /usr/local/bin on Linux).
-                // Use Copy + overwrite instead, which works across devices, then remove the temp file.
-                File.Copy(tempFile, currentExe, overwrite: true);
+                // A running executable cannot be overwritten in place on Unix: File.Copy opens the
+                // destination with truncation, which the kernel rejects with ETXTBSY ("Text file busy").
+                // Instead, stage the new binary as a sibling file in the executable's own directory and
+                // atomically rename it over the running executable. rename(2) only swaps the directory
+                // entry — the running process keeps the old (now-unlinked) inode — so it is permitted.
+                // Staging in the same directory also keeps the rename within one filesystem (File.Move
+                // throws across filesystem boundaries, e.g. /tmp → /usr/local/bin); the cross-device copy
+                // happens first, into that sibling path.
+                var exeDir     = Path.GetDirectoryName(currentExe)!;
+                var stagedPath = Path.Combine(exeDir, $".{Path.GetFileName(currentExe)}.{versionStr}.new");
+
+                File.Copy(tempFile, stagedPath, overwrite: true);
+                File.SetUnixFileMode(stagedPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                File.Move(stagedPath, currentExe, overwrite: true);
                 try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
-                File.SetUnixFileMode(currentExe, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
 
                 try
                 {
