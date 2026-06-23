@@ -8,4 +8,4 @@ Sync the `docs/` tree to a finished change.
 
 Use the repo-local `update-docs` skill for the full procedure (map changed code → affected docs, classify by doc type, apply grounded edits, freeze the intent into `docs/history/`, run the `mkdocs build --strict` gate). Read `docs/README.md` first — it is the law for *what goes where*.
 
-Makes NO code changes. Prefer tables, mermaid diagrams, and bullet lists over elaborate prose.
+Makes NO code changes.
