@@ -183,7 +183,7 @@ Everything that must persist lives under `/data` (the container sets `HOME=/data
 | App database (accounts, repositories, jobs, schedules) | `/data/arius-app.sqlite` | Your fleet configuration |
 | Data-Protection key ring | `/data/keys` | **Decrypts your stored account keys + passphrases** |
 | Arius.Core caches (`~/.arius`) | `/data/.arius` | [chunk index](../glossary.md#chunk-index), [filetree](../glossary.md#filetree), [snapshot](../glossary.md#snapshot) caches — rebuildable, but speeds up browsing |
-| Per-repository logs | `/data/.arius/{account}-{container}/logs/` | One daily-rolling log per repository capturing every archive/restore/browse operation (the same files the CLI writes) — your forensic trail |
+|| Per-repository logs | `/data/.arius/{account}-{container}/logs/` | One daily-rolling log per repository capturing every archive/restore/browse operation (in the same directory and line format the CLI uses) — your forensic trail |
 
 > **Back up `/data`.** If you lose the **Data-Protection keys** (`/data/keys`), the app
 > can no longer decrypt the Azure account keys and repository passphrases it has stored —
