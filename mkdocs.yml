@@ -125,5 +125,6 @@ nav:
       - decisions/adr-0016-multi-machine-cache-coherence.md
       - decisions/adr-0017-idempotent-non-distributed-recovery.md
       - decisions/adr-0018-archive-tier-metadata-sidecar.md
+      - decisions/adr-0019-central-file-exclusion-configuration.md
   - Glossary: glossary.md
   - History: history/INDEX.md

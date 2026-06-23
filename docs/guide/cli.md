@@ -74,6 +74,12 @@ of the file at all) — the command rejects the combination with an error.
 Fixed pipeline behavior (not configurable from the CLI): files **≥ 1 MB** upload individually as
 *large chunks*; files **< 1 MB** are bundled into *tar chunks* with a 64 MB target bundle size.
 
+**Always skipped** (so they never enter a *snapshot*): NAS metadata folders (`@eaDir`, `eaDir`,
+`SynoResource`), OS junk files (`autorun.ini`, `thumbs.db`, `.DS_Store`), and entries carrying the
+*System* attribute. An excluded folder is skipped whole — its contents are never scanned. This list
+is built into Arius (see the [design notes](../design/core/features/archive-command.md#how-it-works)
+for how it is sourced).
+
 ### Example
 
 Archive a photo library to the Archive tier and reclaim local disk by removing the originals,
