@@ -106,6 +106,25 @@ jobs:
           name: coverage-${{ matrix.runner }}
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  architecture:
+    name: 🏛️ Architecture (Debug)
+    # ArchUnitNET derives the dependency graph from compiled IL. Release optimizations hide
+    # cross-namespace usages that live inside async state machines / extension-method calls, so
+    # the Modulith namespace-scoping rule only enforces reliably in a Debug build — the Release
+    # matrix run above can silently miss real violations. This job is the enforcing one.
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v7
+
+      - name: ⚙️ Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: 🏛️ Run architecture tests (Debug)
+        run: dotnet test src/Arius.Architecture.Tests/Arius.Architecture.Tests.csproj -c Debug
+
   e2e:
     name: 🎭 Playwright e2e
     # PRs + master push (+ release tags, so release.yml's called CI gates the image on e2e)
