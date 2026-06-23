@@ -96,13 +96,15 @@ arius archive ./photos \
 On success you get a one-line summary, e.g.:
 
 ```
-Archive complete. Scanned: 1240, Uploaded: 312, Deduped: 928, Uploaded: 2.1 GB stored (3.0 GB uncompressed), Original size: 8.4 GB, Snapshot: 2026-06-17T142233.117Z
+Archive complete. Scanned: 1240, Skipped: 12, Uploaded: 312, Deduped: 928, Uploaded: 2.1 GB stored (3.0 GB uncompressed), Original size: 8.4 GB, Snapshot: 2026-06-17T142233.117Z
 ```
 
-The summary separates *this run's* upload from the snapshot total: **Uploaded** reports the bytes
-newly written to storage (compressed) and, in parentheses, their uncompressed size; **Original size**
-is the logical size of the whole snapshot (every file, what you would restore) — not just what this
-run uploaded.
+The summary separates *this run's* upload from the snapshot total: **Skipped** counts entries dropped
+during the scan — the always-skipped noise (NAS metadata folders, OS junk, System-attribute entries),
+broken symlinks, or unreadable folders, with a pruned folder counting as one; **Uploaded** reports the
+bytes newly written to storage (compressed) and, in parentheses, their uncompressed size; **Original
+size** is the logical size of the whole snapshot (every file, what you would restore) — not just what
+this run uploaded.
 
 ---
 

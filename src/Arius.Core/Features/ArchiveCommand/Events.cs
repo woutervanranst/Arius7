@@ -22,11 +22,16 @@ public sealed record FileHashingEvent(RelativePath RelativePath, long FileSize) 
 /// <summary>A file finished hashing.</summary>
 public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash) : INotification;
 
-/// <summary>A file was skipped because it could not be read/opened during the pipeline.</summary>
-/// <param name="RelativePath">Relative path of the skipped file; used to clear its progress row.</param>
+/// <summary>
+/// An already-scanned file was dropped <i>during</i> the pipeline because it could no longer be
+/// read/opened (deleted, permission revoked, or broken mid-run) at hashing or upload time. It had a
+/// prior <see cref="FileScannedEvent"/>, so consumers use it to clear that file's progress row.
+/// Contrast <see cref="EntrySkippedEvent"/>, which fires at enumeration before a file is ever scanned.
+/// </summary>
+/// <param name="RelativePath">Relative path of the dropped file; used to clear its progress row.</param>
 public sealed record FileSkippedEvent(RelativePath RelativePath) : INotification;
 
-/// <summary>Why a file or directory was skipped during enumeration (before it ever entered the pipeline).</summary>
+/// <summary>Why a file or directory was skipped at enumeration (before it ever entered the pipeline).</summary>
 public enum SkipReason
 {
     /// <summary>Name matched the configured exclusion list (file or directory).</summary>
@@ -40,10 +45,12 @@ public enum SkipReason
 }
 
 /// <summary>
-/// A file or directory was skipped during enumeration and never scanned/backed up. A pruned directory
-/// is a single event (its contents are never enumerated).
+/// A file or directory was skipped at <i>enumeration</i> — before it ever entered the pipeline — so it is
+/// never scanned, hashed, uploaded, or placed in the snapshot, and (unlike <see cref="FileSkippedEvent"/>)
+/// it never had a <see cref="FileScannedEvent"/>. A pruned directory raises a single event; its contents
+/// are never enumerated. The handler tallies these into <c>ArchiveResult.FilesSkipped</c>.
 /// </summary>
-/// <param name="RelativePath">Relative path of the skipped entry.</param>
+/// <param name="RelativePath">Relative path of the skipped entry (a file, or a pruned directory).</param>
 /// <param name="Reason">Why it was skipped.</param>
 public sealed record EntrySkippedEvent(RelativePath RelativePath, SkipReason Reason) : INotification;
 

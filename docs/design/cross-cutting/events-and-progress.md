@@ -15,7 +15,8 @@ Two slices publish events, both `sealed record … : INotification` declared in 
 | Archive — `Features/ArchiveCommand/Events.cs` | Meaning |
 |---|---|
 | `FileScannedEvent` / `ScanCompleteEvent` | per-file enumeration tick / final totals |
-| `FileHashingEvent` / `FileHashedEvent` / `FileSkippedEvent` | hashing lifecycle of one file |
+| `EntrySkippedEvent` | a file/dir skipped *at enumeration* (excluded, broken symlink, unreadable dir) — never scanned; tallied into `ArchiveResult.FilesSkipped` |
+| `FileHashingEvent` / `FileHashedEvent` / `FileSkippedEvent` | hashing lifecycle of one file; `FileSkippedEvent` drops an already-scanned file mid-pipeline (vs `EntrySkippedEvent` above) |
 | `TarBundleStartedEvent` / `TarEntryAddedEvent` / `TarBundleSealingEvent` / `TarBundleUploadedEvent` | [tar-chunk](../../glossary.md#tar-chunk) bundle lifecycle |
 | `ChunkUploadingEvent` / `ChunkUploadedEvent` | [chunk](../../glossary.md#chunk) upload start / done (carries `ChunkHash`) |
 | `SnapshotCreatedEvent` | the [snapshot](../../glossary.md#snapshot) was written |
