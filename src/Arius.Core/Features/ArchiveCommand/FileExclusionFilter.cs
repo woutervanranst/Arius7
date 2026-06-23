@@ -20,8 +20,8 @@ internal sealed class FileExclusionFilter
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        _excludedDirectoryNames = new HashSet<string>(options.ExcludedDirectoryNames, StringComparer.OrdinalIgnoreCase);
-        _excludedFileNames      = new HashSet<string>(options.ExcludedFileNames,      StringComparer.OrdinalIgnoreCase);
+        _excludedDirectoryNames = new HashSet<string>(options.ExcludedDirectoryNames ?? [], StringComparer.OrdinalIgnoreCase);
+        _excludedFileNames      = new HashSet<string>(options.ExcludedFileNames ?? [],      StringComparer.OrdinalIgnoreCase);
         _excludeSystem          = options.ExcludeSystemEntries;
         _excludeHidden          = options.ExcludeHiddenEntries;
     }
