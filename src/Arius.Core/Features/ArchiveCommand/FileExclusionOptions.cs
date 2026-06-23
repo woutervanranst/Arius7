@@ -13,7 +13,8 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// Migration — inherits the same list and cannot drift. A host may override by passing its own
 /// <see cref="IConfiguration"/> (an <c>Arius:Exclusions</c> section) to <c>AddArius</c>.
 /// </remarks>
-public sealed class FileExclusionOptions
+[SharedWithinAssembly] // bound by the DI composition root (ServiceCollectionExtensions) outside this namespace
+internal sealed class FileExclusionOptions
 {
     /// <summary>Configuration section that binds to this type.</summary>
     public const string SectionName = "Arius:Exclusions";

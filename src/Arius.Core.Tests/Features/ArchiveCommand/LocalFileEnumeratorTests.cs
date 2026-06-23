@@ -411,4 +411,44 @@ public class LocalFileEnumeratorTests : IDisposable
         var excluded = _enumerator.Enumerate(_rootDirectory, Filter(excludeHidden: true)).ToList();
         excluded.Select(p => p.RelativePath.ToString()).ShouldBe(["visible.txt"]);
     }
+
+    [Test]
+    public void Enumerate_PointerOnlyFile_ExcludedByLogicalName()
+    {
+        // Thin archive: only the pointer remains (binary removed via --remove-local). Exclusion must
+        // key on the logical name (thumbs.db), not the pointer filename, or the file slips back in.
+        CreateFile("keep.txt");
+        CreateFile("thumbs.db.pointer.arius", new string('a', 64));
+
+        var pairs = _enumerator.Enumerate(_rootDirectory, Filter(files: ["thumbs.db"])).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
+    }
+
+    [Test]
+    public void Enumerate_PointerOnlyFile_NotExcluded_YieldedByLogicalName()
+    {
+        CreateFile("song.mp3.pointer.arius", new string('a', 64));
+
+        var pair = _enumerator.Enumerate(_rootDirectory, Filter(files: ["thumbs.db"])).Single();
+
+        pair.RelativePath.ShouldBe(RelativePath.Parse("song.mp3"));
+        pair.Binary.ShouldBeNull();
+        pair.Pointer.ShouldNotBeNull();
+    }
+
+    [Test]
+    public void Enumerate_BrokenDirectorySymlink_IsSkipped_WalkCompletes()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // creating symlinks requires elevation on Windows
+
+        CreateFile("photos/real.jpg");
+        var linkFull = _rootDirectory.Resolve(RelativePath.Parse("photos/broken-dir-link"));
+        Directory.CreateSymbolicLink(linkFull, Path.Combine(_rootDirectory.ToString(), "missing-target-dir"));
+
+        var pairs = _enumerator.Enumerate(_rootDirectory).ToList(); // must not throw on the dangling link
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["photos/real.jpg"]);
+    }
 }

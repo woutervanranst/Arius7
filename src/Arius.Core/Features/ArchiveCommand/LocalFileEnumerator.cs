@@ -50,8 +50,13 @@ internal sealed class LocalFileEnumerator
         // ── Files in this directory ───────────────────────────────────────────
         foreach (var relativePath in fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly))
         {
+            // Exclusion is keyed on the file's *logical* name: for a pointer-only file (thin archive)
+            // the logical name is the binary it stands in for (thumbs.db, not thumbs.db.pointer.arius),
+            // so an excluded file can't slip back into the snapshot through its leftover pointer.
+            var logicalName = relativePath.IsPointerPath() ? relativePath.ToBinaryPath().Name : relativePath.Name;
+
             // Name-based exclusion is cheapest and needs no stat.
-            if (filter.ShouldExcludeFile(relativePath.Name, default))
+            if (filter.ShouldExcludeFile(logicalName, default))
             {
                 _logger?.LogDebug("Excluding file: {RelPath}", relativePath);
                 continue;
@@ -64,7 +69,7 @@ internal sealed class LocalFileEnumerator
             }
 
             // Attribute-based exclusion only stats the entry when an attribute rule is active.
-            if (filter.RequiresAttributes && filter.ShouldExcludeFile(relativePath.Name, SafeGetAttributes(fileSystem, relativePath)))
+            if (filter.RequiresAttributes && filter.ShouldExcludeFile(logicalName, SafeGetAttributes(fileSystem, relativePath)))
             {
                 _logger?.LogDebug("Excluding file by attribute: {RelPath}", relativePath);
                 continue;
@@ -121,6 +126,15 @@ internal sealed class LocalFileEnumerator
         // ── Subdirectories (pruned) ───────────────────────────────────────────
         foreach (var subDirectory in fileSystem.EnumerateDirectories(directory))
         {
+            // A dangling directory symlink can't be descended into — recursing would fault the whole
+            // scan. Skip it (mirrors the per-file symlink check above; the old flat AllDirectories walk
+            // skipped inaccessible entries by default).
+            if (!fileSystem.IsValidSymlink(subDirectory))
+            {
+                _logger?.LogWarning("Skipping broken directory symlink: {RelPath}", subDirectory);
+                continue;
+            }
+
             var attributes = filter.RequiresAttributes ? SafeGetAttributes(fileSystem, subDirectory) : default;
             if (filter.ShouldExcludeDirectory(subDirectory.Name, attributes))
             {
