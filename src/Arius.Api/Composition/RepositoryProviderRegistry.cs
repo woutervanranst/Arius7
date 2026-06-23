@@ -1,8 +1,13 @@
 using Arius.Api.AppData;
 using Arius.Api.Jobs;
 using Arius.Core;
+using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
+using Serilog.Templates;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Arius.Api.Composition;
 
@@ -31,6 +36,11 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
     private readonly object _gate = new();
     private readonly Dictionary<long, Lazy<Task<ServiceProvider>>> _readProviders = new();
+
+    // One shared logger factory per repository, writing a rolling file into the repo's CLI logs
+    // directory. Cached independently of providers: a job disposing its provider (or Evict) must
+    // not close the repo's rolling log, so these are only disposed at registry shutdown.
+    private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
 
     public RepositoryProviderRegistry(
         AppDatabase database,
@@ -91,8 +101,10 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
         var services = new ServiceCollection();
 
-        // Route Core's logging through the host's configured logger factory.
-        services.AddSingleton(_loggerFactory);
+        // Route Core's logging to the repository's shared rolling log file (same location the CLI
+        // writes to), so every Web-launched operation is captured on disk, not just the console.
+        var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
+        services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
 
         // Per-job sink resolved by the event forwarders (auto-registered by AddMediator).
@@ -104,6 +116,46 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
         _logger.LogInformation("Built {Mode} provider for repository {RepositoryId} ({Account}/{Container})", mode, repositoryId, connection.AccountName, connection.Container);
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// Gets (building once, then caching) the shared logger factory for a repository. It writes a
+    /// per-repository rolling log file into <c>~/.arius/{account}-{container}/logs/</c> — the same
+    /// directory the CLI uses — plus the console. The line format mirrors
+    /// <c>Arius.Cli.CliBuilder.ConfigureAuditLogging</c> so CLI and Web logs read identically.
+    /// </summary>
+    private ILoggerFactory GetOrCreateRepoLoggerFactory(long repositoryId, string accountName, string containerName)
+    {
+        lock (_gate)
+        {
+            if (_repoLoggerFactories.TryGetValue(repositoryId, out var existing))
+                return existing;
+
+            var logDir = RepositoryLocalStatePaths.GetLogsDirectory(accountName, containerName);
+            Directory.CreateDirectory(logDir);
+
+            var formatter = new ExpressionTemplate(
+                "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}");
+
+            var serilog = new LoggerConfiguration()
+                .MinimumLevel.Information()
+                .Enrich.WithThreadId()
+                .WriteTo.Console()
+                .WriteTo.File(
+                    formatter,
+                    Path.Combine(logDir, "arius-.txt"),
+                    rollingInterval:        RollingInterval.Day,
+                    fileSizeLimitBytes:     100L * 1024 * 1024,
+                    rollOnFileSizeLimit:    true,
+                    retainedFileCountLimit: 366,
+                    restrictedToMinimumLevel: LogEventLevel.Information)
+                .CreateLogger();
+
+            // dispose: true → disposing this factory disposes the Serilog logger, flushing the file.
+            var factory = LoggerFactory.Create(b => b.AddSerilog(serilog, dispose: true));
+            _repoLoggerFactories[repositoryId] = factory;
+            return factory;
+        }
     }
 
     private RepositoryConnection LoadConnection(long repositoryId)
@@ -127,14 +179,21 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         List<Lazy<Task<ServiceProvider>>> providers;
+        List<ILoggerFactory> loggerFactories;
         lock (_gate)
         {
             providers = _readProviders.Values.ToList();
             _readProviders.Clear();
+            loggerFactories = _repoLoggerFactories.Values.ToList();
+            _repoLoggerFactories.Clear();
         }
 
         foreach (var provider in providers)
             await DisposeProviderAsync(provider).ConfigureAwait(false);
+
+        // Dispose loggers last so any provider-disposal logging still lands in the rolling file.
+        foreach (var factory in loggerFactories)
+            factory.Dispose();
     }
 
     private static async Task DisposeProviderAsync(Lazy<Task<ServiceProvider>> lazy)
