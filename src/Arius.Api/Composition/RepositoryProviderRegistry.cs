@@ -39,7 +39,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
     // One shared logger factory per repository, writing a rolling file into the repo's CLI logs
     // directory. Cached independently of providers: a job disposing its provider (or Evict) must
-    // not close the repo's rolling log, so these are only disposed at registry shutdown.
+    // not close the repo's rolling log. Disposed only at registry shutdown (DisposeAsync) or when
+    // the repository is removed for good (Remove) — never on a plain Evict.
     private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
 
     public RepositoryProviderRegistry(
@@ -90,6 +91,26 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         }
 
         _ = DisposeProviderAsync(lazy);
+    }
+
+    /// <summary>
+    /// Fully removes a repository from the registry: evicts its cached read provider AND disposes its
+    /// shared rolling-log factory (releasing the file handle). Use on repository <b>delete</b> — unlike
+    /// <see cref="Evict"/>, which is for archive/properties changes where the repo lives on and its log
+    /// must keep writing.
+    /// </summary>
+    public void Remove(long repositoryId)
+    {
+        Evict(repositoryId); // dispose + drop the cached read provider (fire-and-forget, as today)
+
+        ILoggerFactory? factory;
+        lock (_gate)
+        {
+            if (!_repoLoggerFactories.Remove(repositoryId, out factory))
+                return;
+        }
+
+        factory.Dispose(); // disposes the SerilogLoggerProvider → flushes & closes the rolling file
     }
 
     private async Task<ServiceProvider> BuildAsync(long repositoryId, PreflightMode mode, JobSink jobSink, CancellationToken cancellationToken)

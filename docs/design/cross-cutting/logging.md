@@ -72,7 +72,7 @@ In the web host the per-repo logger is **shared across both provider lifetimes**
 ## Key invariants (web host)
 
 - **One rolling logger per repository, shared across providers.** Don't build a file sink per provider — a job provider and a read provider for the same repo must write the same file through the same instance, or concurrent writes race and the file is split arbitrarily.
-- **Logger lifetime ≠ provider lifetime.** `Evict` / job-provider disposal must never dispose the per-repo logger; only registry shutdown does.
+- **Logger lifetime ≠ provider lifetime.** `Evict` (after archive / on a properties change) and job-provider disposal must never dispose the per-repo logger — the repo lives on and its log keeps writing. Only registry shutdown (`DisposeAsync`) or a repository **delete** (`Remove`, which evicts the provider *and* disposes the logger) closes it.
 
 ## Open seams / future
 

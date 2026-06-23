@@ -61,7 +61,7 @@ internal static class RepositoryEndpoints
                 return Results.NotFound();
 
             db.DeleteRepository(id);
-            registry.Evict(id);
+            registry.Remove(id); // repo is gone for good → also dispose its rolling-log factory, not just Evict the provider
             return Results.NoContent();
         });
     }
