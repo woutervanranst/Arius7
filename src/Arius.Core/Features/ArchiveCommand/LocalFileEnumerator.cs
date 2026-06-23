@@ -48,7 +48,7 @@ internal sealed class LocalFileEnumerator
     private IEnumerable<FilePair> EnumerateDirectory(RelativeFileSystem fileSystem, RelativePath directory, FileExclusionFilter filter)
     {
         // ── Files in this directory ───────────────────────────────────────────
-        foreach (var relativePath in fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly))
+        foreach (var relativePath in SafeEnumerate(fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly), directory))
         {
             // Exclusion is keyed on the file's *logical* name: for a pointer-only file (thin archive)
             // the logical name is the binary it stands in for (thumbs.db, not thumbs.db.pointer.arius),
@@ -58,7 +58,7 @@ internal sealed class LocalFileEnumerator
             // Name-based exclusion is cheapest and needs no stat.
             if (filter.ShouldExcludeFile(logicalName, default))
             {
-                _logger?.LogDebug("Excluding file: {RelPath}", relativePath);
+                _logger?.LogWarning("Skipping excluded file: {RelPath}", relativePath);
                 continue;
             }
 
@@ -71,7 +71,7 @@ internal sealed class LocalFileEnumerator
             // Attribute-based exclusion only stats the entry when an attribute rule is active.
             if (filter.RequiresAttributes && filter.ShouldExcludeFile(logicalName, SafeGetAttributes(fileSystem, relativePath)))
             {
-                _logger?.LogDebug("Excluding file by attribute: {RelPath}", relativePath);
+                _logger?.LogWarning("Skipping excluded file (System/Hidden attribute): {RelPath}", relativePath);
                 continue;
             }
 
@@ -124,7 +124,7 @@ internal sealed class LocalFileEnumerator
         }
 
         // ── Subdirectories (pruned) ───────────────────────────────────────────
-        foreach (var subDirectory in fileSystem.EnumerateDirectories(directory))
+        foreach (var subDirectory in SafeEnumerate(fileSystem.EnumerateDirectories(directory), directory))
         {
             // A dangling directory symlink can't be descended into — recursing would fault the whole
             // scan. Skip it (mirrors the per-file symlink check above; the old flat AllDirectories walk
@@ -138,12 +138,40 @@ internal sealed class LocalFileEnumerator
             var attributes = filter.RequiresAttributes ? SafeGetAttributes(fileSystem, subDirectory) : default;
             if (filter.ShouldExcludeDirectory(subDirectory.Name, attributes))
             {
-                _logger?.LogInformation("[scan] excluding directory: {RelPath}", subDirectory);
+                _logger?.LogWarning("Skipping excluded directory: {RelPath}", subDirectory);
                 continue;
             }
 
             foreach (var pair in EnumerateDirectory(fileSystem, subDirectory, filter))
                 yield return pair;
+        }
+    }
+
+    /// <summary>
+    /// Enumerates a directory listing, logging a warning and stopping if the directory cannot be read
+    /// (e.g. permission denied, or a path that vanished mid-walk). Yields lazily so a huge directory is
+    /// never materialized and the walk stays memory-bounded. This mirrors the old flat
+    /// <c>EnumerateFiles(AllDirectories)</c> walk, which skipped inaccessible directories by default.
+    /// </summary>
+    internal IEnumerable<RelativePath> SafeEnumerate(IEnumerable<RelativePath> listing, RelativePath directory)
+    {
+        using var enumerator = listing.GetEnumerator();
+        while (true)
+        {
+            RelativePath entry;
+            try
+            {
+                if (!enumerator.MoveNext())
+                    yield break;
+                entry = enumerator.Current;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                _logger?.LogWarning(ex, "Skipping unreadable directory: {RelPath}", directory);
+                yield break;
+            }
+
+            yield return entry;
         }
     }
 

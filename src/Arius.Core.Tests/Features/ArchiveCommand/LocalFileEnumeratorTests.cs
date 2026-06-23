@@ -451,4 +451,65 @@ public class LocalFileEnumeratorTests : IDisposable
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["photos/real.jpg"]);
     }
+
+    // ── Skip logging ──────────────────────────────────────────────────────────
+
+    [Test]
+    public void Enumerate_ExcludedEntries_AreLoggedAsWarnings()
+    {
+        CreateFile("keep.txt");
+        CreateFile("thumbs.db");
+        CreateFile("@eaDir/thumb.jpg");
+
+        var logger     = new FakeLogger<LocalFileEnumerator>();
+        var enumerator = new LocalFileEnumerator(logger);
+
+        enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"], files: ["thumbs.db"])).ToList();
+
+        var warnings = logger.Collector.GetSnapshot()
+            .Where(r => r.Level == LogLevel.Warning)
+            .Select(r => r.Message)
+            .ToList();
+        warnings.ShouldContain(m => m.Contains("thumbs.db"));
+        warnings.ShouldContain(m => m.Contains("@eaDir"));
+    }
+
+    [Test]
+    public void SafeEnumerate_UnreadableDirectory_LogsWarningAndStops()
+    {
+        var logger     = new FakeLogger<LocalFileEnumerator>();
+        var enumerator = new LocalFileEnumerator(logger);
+
+        var result = enumerator
+            .SafeEnumerate(ThrowsImmediately(new UnauthorizedAccessException("denied")), RelativePath.Parse("locked"))
+            .ToList();
+
+        result.ShouldBeEmpty();
+        logger.Collector.GetSnapshot()
+            .ShouldContain(r => r.Level == LogLevel.Warning && r.Message.Contains("locked"));
+    }
+
+    [Test]
+    public void SafeEnumerate_FaultMidEnumeration_YieldsPrefixThenWarns()
+    {
+        var logger     = new FakeLogger<LocalFileEnumerator>();
+        var enumerator = new LocalFileEnumerator(logger);
+
+        var result = enumerator
+            .SafeEnumerate(YieldsThenThrows(RelativePath.Parse("a.txt"), new IOException("boom")), RelativePath.Parse("dir"))
+            .ToList();
+
+        result.Select(p => p.ToString()).ShouldBe(["a.txt"]);
+        logger.Collector.GetSnapshot()
+            .ShouldContain(r => r.Level == LogLevel.Warning && r.Message.Contains("dir"));
+    }
+
+    private static IEnumerable<RelativePath> ThrowsImmediately(Exception ex) =>
+        Enumerable.Range(0, 1).Select<int, RelativePath>(_ => throw ex);
+
+    private static IEnumerable<RelativePath> YieldsThenThrows(RelativePath first, Exception ex)
+    {
+        yield return first;
+        throw ex;
+    }
 }
