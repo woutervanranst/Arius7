@@ -17,22 +17,28 @@ test('statistics tier breakdown lists every archived tier, in API order @write',
     data: { accountId: repo.accountId, container: scratchContainer(`tiers-${Date.now()}`), alias: 'E2E Tiers', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
   })).json();
 
-  // Each run adds one new file (distinct content → a new chunk) and uploads it at the chosen tier.
-  const archiveAtTier = async (tier: string, file: string) => {
+  // Each run adds one new file (distinct content → a new chunk) and uploads it at the chosen tier,
+  // producing one new snapshot. `expectedSnapshots` is the snapshot count we expect afterwards.
+  const archiveAtTier = async (tier: string, file: string, expectedSnapshots: number) => {
     fs.writeFileSync(path.join(src, file), `arius e2e ${tier} ${Date.now()}`);
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.locator(`[data-testid="tier-seg"][data-tier="${tier}"]`).click();
     await page.getByTestId('drawer-start').click();
-    await expect(page.getByText('Archive complete', { exact: false })).toBeVisible({ timeout: 180_000 });
-    await page.getByRole('button', { name: 'Close' }).click();
+    // Confirm completion from the backend (the new snapshot lands), not the live "Archive complete"
+    // toast: a sub-second archive can finish before the hub re-subscribes, so that UI event races away
+    // and never shows. The next iteration's page.goto resets the drawer, so no explicit close is needed.
+    await expect.poll(async () => {
+      const s = await (await request.get(`/api/repos/${created.id}/snapshots`)).json();
+      return Array.isArray(s) ? s.length : 0;
+    }, { timeout: 180_000, message: `expected ${expectedSnapshots} snapshot(s) after archiving ${file} at ${tier}` }).toBeGreaterThanOrEqual(expectedSnapshots);
   };
 
   try {
-    await archiveAtTier('hot', 'a.txt');
-    await archiveAtTier('cool', 'b.txt');
-    await archiveAtTier('cold', 'c.txt');
-    await archiveAtTier('archive', 'd.txt');
+    await archiveAtTier('hot', 'a.txt', 1);
+    await archiveAtTier('cool', 'b.txt', 2);
+    await archiveAtTier('cold', 'c.txt', 3);
+    await archiveAtTier('archive', 'd.txt', 4);
 
     // Stats read from the local chunk-index cache; warm it by browsing Files, then wait until the
     // backend reports all four tiers.
