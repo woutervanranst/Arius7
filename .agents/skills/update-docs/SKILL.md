@@ -38,6 +38,7 @@ file is the *law*. Do not restate those rules here or in the docs.
   `cross-cutting/`. A unit gets a design doc only if it has intent above the code; trivial folders stay
   code-only (don't create stubs).
 - **Don't duplicate:** link the glossary for terms and the ADR for decisions instead of restating them.
+- **Prefer structure over prose:** reach for a **table**, a **mermaid diagram**, or a tight **bullet list** before writing a paragraph. Tables for anything comparative or enumerable (per-host/per-variant differences, option/field/flag/event matrices, "X vs Y"); mermaid for flows, sequences, and state; bullets for invariants and short enumerations. Reserve prose for the *"why"* that doesn't fit a row or an arrow. A paragraph that restates a comparison or a list is a smell — convert it. Don't pad: a 3-row table beats three sentences, but a single fact is just a sentence.
 
 ## Procedure
 
@@ -74,7 +75,9 @@ file is the *law*. Do not restate those rules here or in the docs.
 
 ### 4. Apply grounded edits (to the working tree)
 - Ground every claim in the **post-change** code: read the changed files; cite real type/method/constant
-  names. Match the surrounding doc's voice and use mermaid where a picture beats prose.
+  names. Match the surrounding doc's voice, and favour a **table / mermaid / bullets** over a paragraph
+  wherever the content is comparative, enumerable, or a flow (see Principles) — prose is the fallback, not
+  the default.
 - Touch only what the change actually affects (surgical edits, like `simplify`/`design-review`).
 - **Links that leave `docs/`** — to the repo-root `README.md`, `docker-compose.yml`, or `src/**` — must be
   **absolute GitHub URLs** (`https://github.com/woutervanranst/Arius7/...`), never relative: a relative link
