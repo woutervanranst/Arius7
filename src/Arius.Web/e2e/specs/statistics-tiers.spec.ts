@@ -29,7 +29,12 @@ test('statistics tier breakdown lists every archived tier, in API order @write',
     // toast: a sub-second archive can finish before the hub re-subscribes, so that UI event races away
     // and never shows. The next iteration's page.goto resets the drawer, so no explicit close is needed.
     await expect.poll(async () => {
-      const s = await (await request.get(`/api/repos/${created.id}/snapshots`)).json();
+      // While the archive is still creating the container, /snapshots returns 500 (ContainerNotFound).
+      // Treat any non-OK as "not ready yet" and keep polling — calling .json() on the error body would
+      // throw, and expect.poll aborts on a thrown callback instead of retrying.
+      const res = await request.get(`/api/repos/${created.id}/snapshots`);
+      if (!res.ok()) return 0;
+      const s = await res.json();
       return Array.isArray(s) ? s.length : 0;
     }, { timeout: 180_000, message: `expected ${expectedSnapshots} snapshot(s) after archiving ${file} at ${tier}` }).toBeGreaterThanOrEqual(expectedSnapshots);
   };
@@ -47,7 +52,9 @@ test('statistics tier breakdown lists every archived tier, in API order @write',
 
     let storedByTier: { tier: string }[] = [];
     await expect.poll(async () => {
-      const stats = await (await request.get(`/api/repos/${created.id}/stats`)).json();
+      const res = await request.get(`/api/repos/${created.id}/stats`);
+      if (!res.ok()) return 0; // tolerate a transient non-OK while the cache warms, same as the snapshots poll above
+      const stats = await res.json();
       storedByTier = stats?.storedByTier ?? [];
       return storedByTier.length;
     }, { timeout: 60_000, message: 'expected all four tiers in storedByTier' }).toBeGreaterThanOrEqual(4);

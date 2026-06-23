@@ -1,6 +1,6 @@
 # Logging
 
-> **Code:** `src/Arius.Cli/CliBuilder.cs` (audit setup), `src/Arius.Core/Features/*/...Handler.cs` (pipeline logs) · **Decisions:** [ADR-0007](../../decisions/adr-0007-separate-phase-and-detail-logging-in-pipeline-handlers.md) · **Terms:** [content hash](../../glossary.md#content-hash), [chunk index](../../glossary.md#chunk-index), [snapshot](../../glossary.md#snapshot)
+> **Code:** `src/Arius.Cli/CliBuilder.cs` (CLI audit setup), `src/Arius.Api/Composition/RepositoryProviderRegistry.cs` (web per-repo rolling log), `src/Arius.Core/Features/*/...Handler.cs` (pipeline logs) · **Decisions:** [ADR-0007](../../decisions/adr-0007-separate-phase-and-detail-logging-in-pipeline-handlers.md) · **Terms:** [content hash](../../glossary.md#content-hash), [chunk index](../../glossary.md#chunk-index), [snapshot](../../glossary.md#snapshot)
 
 ## Purpose
 
@@ -50,8 +50,32 @@ flowchart LR
 - The two-level phase/detail taxonomy and the no-end-marker rule are the subject of [ADR-0007](../../decisions/adr-0007-separate-phase-and-detail-logging-in-pipeline-handlers.md) — readable benchmark timing without pretending concurrent stages have sequential boundaries.
 - Per-invocation file + Spectre capture means a single artifact reproduces both the trace and the operator's view, which is what you want when diagnosing a one-off archive/restore after the fact.
 
+## Per-host setup
+
+All three hosts emit `ILogger<T>` to a Serilog file, but the *unit* of a file and the surrounding mechanics differ. The shape above (line format, phase/detail taxonomy) is the CLI's; the web host (`RepositoryProviderRegistry.GetOrCreateRepoLoggerFactory`) reuses the **same directory and `ExpressionTemplate`** but logs per **repository** (a long-running server can't open a fresh file per call), and the Explorer keeps its own scheme.
+
+| Aspect | CLI — `Arius.Cli` | Web — `Arius.Api` | Explorer — `Arius.Explorer` |
+|---|---|---|---|
+| Setup site | `CliBuilder.ConfigureAuditLogging` (per verb) | `RepositoryProviderRegistry.GetOrCreateRepoLoggerFactory` | `Program.Main` |
+| Logging unit | per **invocation** (one verb run) | per **repository** (shared across all its operations) | per **app launch** (one file per process) |
+| Sinks | file only | rolling file **+** console | file only |
+| File directory | `~/.arius/{account}-{container}/logs/` | **same** `~/.arius/{account}-{container}/logs/` | `%LocalAppData%/Arius/logs/` |
+| File name | `{yyyy-MM-dd_HH-mm-ss}_{command}.txt` | `arius-{yyyyMMdd}.txt` (+`_NNN` on overflow) | `arius-explorer-{yyyyMMdd_HHmmss}.log` |
+| Rolling | none (new file per run) | daily + 100 MB cap (`rollOnFileSizeLimit`), keep 366 | none (new file per launch) |
+| Min level | `Information` | `Information` | `Debug` |
+| Line format | shared `ExpressionTemplate` (`[ts] [u3] [T:id] [ShortSourceContext] {msg}`) | **identical** `ExpressionTemplate` (copied from CLI) | own `outputTemplate` (full `SourceContext`, date + zone) |
+| Lifetime / flush | `FlushAuditLog` + `Log.CloseAndFlush` in verb `finally` | factory disposed in `registry.DisposeAsync` at app shutdown | `Log.CloseAndFlush` at app exit |
+| Spectre console capture | yes (`--- Console Output ---` footer) | no — progress via SignalR (see [hosts/web.md](../hosts/web.md)) | no |
+
+In the web host the per-repo logger is **shared across both provider lifetimes** — cached read providers (browse/stats/search) and per-job providers (archive/restore) all resolve the one factory in `BuildAsync` — so every Web-launched operation for a repo lands in the same rolling file, and a single instance funnels concurrent writes through one sink. Its lifetime is **decoupled from providers**: registered as an externally-owned singleton (`AddSingleton(instance)`), so neither `Evict` nor a job disposing its provider closes the log — only `DisposeAsync` does (flushing via `AddSerilog(serilog, dispose: true)`, after the providers, so provider-disposal logging still lands).
+
+## Key invariants (web host)
+
+- **One rolling logger per repository, shared across providers.** Don't build a file sink per provider — a job provider and a read provider for the same repo must write the same file through the same instance, or concurrent writes race and the file is split arbitrarily.
+- **Logger lifetime ≠ provider lifetime.** `Evict` (after archive / on a properties change) and job-provider disposal must never dispose the per-repo logger — the repo lives on and its log keeps writing. Only registry shutdown (`DisposeAsync`) or a repository **delete** (`Remove`, which evicts the provider *and* disposes the logger) closes it.
+
 ## Open seams / future
 
-- **Hosts diverge.** `Arius.Api` uses `WriteTo.Console()` (Information+) and `Arius.Explorer` uses `WriteTo.File` at `Debug` with its own template — the audit-log shape and the phase/detail taxonomy are CLI-pipeline conventions, not yet a shared package. Unifying setup would remove the per-host duplication.
+- **Hosts still diverge in setup** (see the [per-host table](#per-host-setup)). The `ExpressionTemplate` line format is *duplicated* CLI ↔ Api rather than shared — Core stays Serilog-free, so a shared package would have to live outside Core. Unifying setup would remove the per-host duplication.
 - **Phase durations are inferred, not recorded.** No machine-readable span data; tooling that wants exact phase timings must parse timestamps between `[phase]` lines.
 - **`RestoreCommandHandler` / `ListQueryHandler` adoption.** ADR-0007 expects these to reuse the same taxonomy; code review is the enforcement mechanism (plus tests asserting the agreed coarse phase names) rather than a type-level contract.

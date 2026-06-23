@@ -183,6 +183,7 @@ Everything that must persist lives under `/data` (the container sets `HOME=/data
 | App database (accounts, repositories, jobs, schedules) | `/data/arius-app.sqlite` | Your fleet configuration |
 | Data-Protection key ring | `/data/keys` | **Decrypts your stored account keys + passphrases** |
 | Arius.Core caches (`~/.arius`) | `/data/.arius` | [chunk index](../glossary.md#chunk-index), [filetree](../glossary.md#filetree), [snapshot](../glossary.md#snapshot) caches — rebuildable, but speeds up browsing |
+| Per-repository logs | `/data/.arius/{account}-{container}/logs/` | One daily-rolling log per repository capturing every archive/restore/browse operation (in the same directory and line format the CLI uses) — your forensic trail |
 
 > **Back up `/data`.** If you lose the **Data-Protection keys** (`/data/keys`), the app
 > can no longer decrypt the Azure account keys and repository passphrases it has stored —
@@ -192,7 +193,8 @@ Everything that must persist lives under `/data` (the container sets `HOME=/data
 
 The caches under `/data/.arius` are safe to lose — Arius rebuilds them from the
 repository on demand — but keeping them avoids re-downloading index/tree state after a
-restart.
+restart. The per-repository `logs/` subfolders are **not** rebuilt: they are the operation
+history, retained ~366 daily files per repository (see [logging](../design/cross-cutting/logging.md#per-host-setup)).
 
 ### 2. Per-repository local-overlay folders
 
