@@ -23,7 +23,11 @@ internal sealed class LocalFileEnumerator
 
     /// <summary>
     /// Enumerates all <see cref="FilePair"/> objects under <paramref name="rootDirectory"/>
-    /// using a single-pass depth-first walk.
+    /// using a single-pass depth-first walk that prunes excluded directory subtrees.
+    ///
+    /// Directories whose name (or, when configured, <see cref="FileAttributes.System"/>/
+    /// <see cref="FileAttributes.Hidden"/>) matches <paramref name="filter"/> are skipped entirely —
+    /// their contents are never enumerated. Files matching the filter are skipped individually.
     ///
     /// When a binary file is encountered, its pointer counterpart is resolved from the
     /// rooted relative filesystem enumeration; the pair is yielded immediately.
@@ -31,15 +35,38 @@ internal sealed class LocalFileEnumerator
     /// emitted as part of the binary's pair); otherwise it is yielded as pointer-only.
     /// No dictionaries or state-tracking collections are used.
     /// </summary>
-    public IEnumerable<FilePair> Enumerate(LocalDirectory rootDirectory)
+    /// <param name="rootDirectory">The repository root to enumerate.</param>
+    /// <param name="filter">
+    /// Exclusion policy. When <c>null</c>, nothing is excluded (preserves the unfiltered walk).
+    /// </param>
+    public IEnumerable<FilePair> Enumerate(LocalDirectory rootDirectory, FileExclusionFilter? filter = null)
     {
         var fileSystem = new RelativeFileSystem(rootDirectory);
+        return EnumerateDirectory(fileSystem, RelativePath.Root, filter ?? FileExclusionFilter.None);
+    }
 
-        foreach (var relativePath in fileSystem.EnumerateFiles())
+    private IEnumerable<FilePair> EnumerateDirectory(RelativeFileSystem fileSystem, RelativePath directory, FileExclusionFilter filter)
+    {
+        // ── Files in this directory ───────────────────────────────────────────
+        foreach (var relativePath in fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly))
         {
+            // Name-based exclusion is cheapest and needs no stat.
+            if (filter.ShouldExcludeFile(relativePath.Name, default))
+            {
+                _logger?.LogDebug("Excluding file: {RelPath}", relativePath);
+                continue;
+            }
+
             if (!fileSystem.IsValidSymlink(relativePath))
             {
                 _logger?.LogWarning("Skipping broken symlink: {RelPath}", relativePath);
+                continue;
+            }
+
+            // Attribute-based exclusion only stats the entry when an attribute rule is active.
+            if (filter.RequiresAttributes && filter.ShouldExcludeFile(relativePath.Name, SafeGetAttributes(fileSystem, relativePath)))
+            {
+                _logger?.LogDebug("Excluding file by attribute: {RelPath}", relativePath);
                 continue;
             }
 
@@ -89,6 +116,37 @@ internal sealed class LocalFileEnumerator
                         : null
                 };
             }
+        }
+
+        // ── Subdirectories (pruned) ───────────────────────────────────────────
+        foreach (var subDirectory in fileSystem.EnumerateDirectories(directory))
+        {
+            var attributes = filter.RequiresAttributes ? SafeGetAttributes(fileSystem, subDirectory) : default;
+            if (filter.ShouldExcludeDirectory(subDirectory.Name, attributes))
+            {
+                _logger?.LogInformation("[scan] excluding directory: {RelPath}", subDirectory);
+                continue;
+            }
+
+            foreach (var pair in EnumerateDirectory(fileSystem, subDirectory, filter))
+                yield return pair;
+        }
+    }
+
+    /// <summary>
+    /// Reads an entry's attributes, returning <c>default</c> when the entry is unreadable
+    /// (e.g. a broken symlink). Attribute-based exclusion then simply does not apply; broken
+    /// symlinks are still handled by the symlink-validity check.
+    /// </summary>
+    private static FileAttributes SafeGetAttributes(RelativeFileSystem fileSystem, RelativePath path)
+    {
+        try
+        {
+            return fileSystem.GetAttributes(path);
+        }
+        catch
+        {
+            return default;
         }
     }
 

@@ -241,7 +241,8 @@ public class ArchiveRecoveryTests
             new FakeLogger<ArchiveCommandHandler>(),
             NullLoggerFactory.Instance,
             fixture.AccountName,
-            fixture.ContainerName);
+            fixture.ContainerName,
+            FileExclusionFilter.None);
 
         var result = await handler.Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -293,7 +294,8 @@ public class ArchiveRecoveryTests
             new FakeLogger<ArchiveCommandHandler>(),
             NullLoggerFactory.Instance,
             fixture.AccountName,
-            fixture.ContainerName);
+            fixture.ContainerName,
+            FileExclusionFilter.None);
 
         var result = await handler.Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -603,7 +605,8 @@ public class ArchiveRecoveryTests
             new FakeLogger<ArchiveCommandHandler>(),
             NullLoggerFactory.Instance,
             fixture.AccountName,
-            fixture.ContainerName);
+            fixture.ContainerName,
+            FileExclusionFilter.None);
 
     private static async ValueTask<RepositoryTestFixture> CreateArchiveFixtureAsync()
         => await RepositoryTestFixture.CreateWithEncryptionAsync(

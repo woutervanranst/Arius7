@@ -51,7 +51,8 @@ public class ContainerCreationTests(AzuriteFixture azurite)
             snapshot, mediator,
             logger,
             NullLoggerFactory.Instance,
-            Account, containerName);
+            Account, containerName,
+            FileExclusionFilter.None);
 
         var tempRoot = TestTempRoots.CreateDirectory("cc");
         var localFileSystem = new RelativeFileSystem(tempRoot);

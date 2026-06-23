@@ -108,9 +108,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly ILoggerFactory                 _loggerFactory;
     private readonly string                         _accountName;
     private readonly string                         _containerName;
+    private readonly FileExclusionFilter             _exclusionFilter;
     private readonly Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
 
-    public ArchiveCommandHandler(
+    internal ArchiveCommandHandler(
         IBlobContainerService           blobs,
         IEncryptionService              encryption,
         IChunkIndexService              index,
@@ -121,8 +122,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ILogger<ArchiveCommandHandler>  logger,
         ILoggerFactory                  loggerFactory,
         string                          accountName,
-        string                          containerName)
-        : this(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, logger, loggerFactory, accountName, containerName, OpenStagingSessionAsync)
+        string                          containerName,
+        FileExclusionFilter             exclusionFilter)
+        : this(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, logger, loggerFactory, accountName, containerName, exclusionFilter, OpenStagingSessionAsync)
     {
     }
 
@@ -138,6 +140,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         ILoggerFactory                  loggerFactory,
         string                          accountName,
         string                          containerName,
+        FileExclusionFilter             exclusionFilter,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
     {
         _blobs              = blobs;
@@ -151,6 +154,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _loggerFactory      = loggerFactory;
         _accountName        = accountName;
         _containerName      = containerName;
+        _exclusionFilter    = exclusionFilter;
         _openStagingSession = openStagingSession;
     }
 
@@ -277,7 +281,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 try
                 {
                     var  enumerator = new LocalFileEnumerator(_loggerFactory.CreateLogger<LocalFileEnumerator>());
-                    var  pairs      = enumerator.Enumerate(LocalDirectory.Parse(opts.RootDirectory));
+                    var  pairs      = enumerator.Enumerate(LocalDirectory.Parse(opts.RootDirectory), _exclusionFilter);
                     long count      = 0;
                     long totalBytes = 0;
 

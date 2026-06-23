@@ -309,4 +309,106 @@ public class LocalFileEnumeratorTests : IDisposable
         iterator.Current.Pointer.ShouldNotBeNull();
         iterator.Current.Pointer!.Hash.ShouldBe(ContentHash.Parse(new string('a', 64)));
     }
+
+    // ── Exclusions ────────────────────────────────────────────────────────────
+
+    private static FileExclusionFilter Filter(
+        IEnumerable<string>? dirs = null,
+        IEnumerable<string>? files = null,
+        bool excludeSystem = false,
+        bool excludeHidden = false) =>
+        new(new FileExclusionOptions
+        {
+            ExcludedDirectoryNames = dirs?.ToList() ?? [],
+            ExcludedFileNames      = files?.ToList() ?? [],
+            ExcludeSystemEntries   = excludeSystem,
+            ExcludeHiddenEntries   = excludeHidden,
+        });
+
+    [Test]
+    public void Enumerate_NullFilter_ExcludesNothing()
+    {
+        CreateFile("keep.txt");
+        CreateFile("@eaDir/thumb.jpg");
+        CreateFile("thumbs.db");
+
+        var pairs = _enumerator.Enumerate(_rootDirectory).ToList(); // no filter
+
+        pairs.Select(p => p.RelativePath.ToString())
+            .ShouldBe(["keep.txt", "@eaDir/thumb.jpg", "thumbs.db"], ignoreOrder: true);
+    }
+
+    [Test]
+    public void Enumerate_ExcludedDirectory_SubtreePruned()
+    {
+        CreateFile("keep.txt");
+        CreateFile("@eaDir/thumb.jpg");
+        CreateFile("@eaDir/nested/more.jpg");
+
+        var pairs = _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
+    }
+
+    [Test]
+    public void Enumerate_NestedExcludedDirectory_OnlySubtreePruned()
+    {
+        CreateFile("photos/real.jpg");
+        CreateFile("photos/@eaDir/thumb.jpg");
+
+        var pairs = _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["photos/real.jpg"]);
+    }
+
+    [Test]
+    public void Enumerate_ExcludedDirectory_CaseInsensitive()
+    {
+        CreateFile("keep.txt");
+        CreateFile("@EADIR/thumb.jpg");
+
+        var pairs = _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
+    }
+
+    [Test]
+    public void Enumerate_ExcludedFileName_NotYielded()
+    {
+        CreateFile("report.pdf");
+        CreateFile("Thumbs.DB");
+        CreateFile(".DS_Store");
+
+        var pairs = _enumerator.Enumerate(_rootDirectory, Filter(files: ["thumbs.db", ".ds_store"])).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["report.pdf"]);
+    }
+
+    [Test]
+    public void Enumerate_ExcludedDirectory_PrunesBinaryAndPointerInside()
+    {
+        CreateFile("keep.txt");
+        CreateFile("@eaDir/vacation.jpg");
+        CreateFile("@eaDir/vacation.jpg.pointer.arius", new string('a', 64));
+
+        var pairs = _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToList();
+
+        pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
+    }
+
+    [Test]
+    public void Enumerate_HiddenDotfile_ExcludedOnlyWhenToggled()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // dotfiles are not Hidden on Windows; filter-level tests cover the logic cross-platform
+
+        CreateFile("visible.txt");
+        CreateFile(".secret");
+
+        var included = _enumerator.Enumerate(_rootDirectory, Filter(excludeHidden: false)).ToList();
+        included.Select(p => p.RelativePath.ToString()).ShouldBe(["visible.txt", ".secret"], ignoreOrder: true);
+
+        var excluded = _enumerator.Enumerate(_rootDirectory, Filter(excludeHidden: true)).ToList();
+        excluded.Select(p => p.RelativePath.ToString()).ShouldBe(["visible.txt"]);
+    }
 }

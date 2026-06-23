@@ -458,6 +458,81 @@ public class RoundtripTests(AzuriteFixture azurite)
         v1FileSystem.FileExists(RelativePath.Parse("delete.bin")).ShouldBeTrue();
     }
 
+    // ── 14.4b: Excluded files/folders never enter the snapshot ───────────────
+
+    [Test]
+    public async Task Archive_ExcludedEntries_AbsentFromSnapshot()
+    {
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
+
+        var keep = new byte[100]; Random.Shared.NextBytes(keep);
+        var junk = new byte[50];  Random.Shared.NextBytes(junk);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("keep.bin"), keep, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("@eaDir/thumb.jpg"), junk, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("thumbs.db"), junk, CancellationToken.None);
+
+        var exclusions = new FileExclusionOptions
+        {
+            ExcludedDirectoryNames = ["@eaDir"],
+            ExcludedFileNames      = ["thumbs.db"],
+        };
+
+        var r = await fix.ArchiveAsync(exclusions: exclusions);
+        r.Success.ShouldBeTrue(r.ErrorMessage);
+        r.OriginalSize.ShouldBe(100); // snapshot contains only keep.bin
+
+        var rl = await fix.RestoreAsync();
+        rl.Success.ShouldBeTrue();
+        fix.RestoreFileSystem.FileExists(RelativePath.Parse("keep.bin")).ShouldBeTrue();
+        fix.RestoreFileSystem.FileExists(RelativePath.Parse("@eaDir/thumb.jpg")).ShouldBeFalse();
+        fix.RestoreFileSystem.FileExists(RelativePath.Parse("thumbs.db")).ShouldBeFalse();
+    }
+
+    // ── 14.4c: A previously archived file disappears once excluded on rerun ───
+
+    [Test]
+    public async Task Archive_PreviouslyArchivedFile_DisappearsWhenExcludedOnRerun()
+    {
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
+
+        var keep = RelativePath.Parse("keep.bin");
+        var junk = RelativePath.Parse("thumbs.db");
+        var keepBytes = new byte[100]; Random.Shared.NextBytes(keepBytes);
+        var junkBytes = new byte[200]; Random.Shared.NextBytes(junkBytes);
+        await fix.LocalFileSystem.WriteAllBytesAsync(keep, keepBytes, CancellationToken.None);
+        await fix.LocalFileSystem.WriteAllBytesAsync(junk, junkBytes, CancellationToken.None);
+
+        // Run 1: no exclusions → both files archived.
+        var r1 = await fix.ArchiveAsync();
+        r1.Success.ShouldBeTrue(r1.ErrorMessage);
+        r1.OriginalSize.ShouldBe(300);
+        var snapshot1 = r1.SnapshotTime.ToString("yyyy-MM-ddTHHmmss");
+
+        await Task.Delay(1100); // ensure a distinct snapshot timestamp
+
+        // Run 2: thumbs.db now excluded → it must disappear from the new snapshot.
+        var r2 = await fix.ArchiveAsync(exclusions: new FileExclusionOptions { ExcludedFileNames = ["thumbs.db"] });
+        r2.Success.ShouldBeTrue(r2.ErrorMessage);
+        r2.OriginalSize.ShouldBe(100); // only keep.bin remains
+
+        // Restore latest → thumbs.db absent.
+        var latestDirectory = fix.RestoreDirectory / RelativePath.Parse("latest");
+        var latestFileSystem = new RelativeFileSystem(latestDirectory);
+        var rl = await fix.CreateRestoreHandler().Handle(
+            new RestoreCommand(new RestoreOptions { RootDirectory = latestDirectory.ToString(), Overwrite = true }), default);
+        rl.Success.ShouldBeTrue();
+        latestFileSystem.FileExists(keep).ShouldBeTrue();
+        latestFileSystem.FileExists(junk).ShouldBeFalse();
+
+        // Restore snapshot 1 → thumbs.db still present in the old snapshot.
+        var v1Directory = fix.RestoreDirectory / RelativePath.Parse("v1");
+        var v1FileSystem = new RelativeFileSystem(v1Directory);
+        var rv1 = await fix.CreateRestoreHandler().Handle(
+            new RestoreCommand(new RestoreOptions { RootDirectory = v1Directory.ToString(), Version = snapshot1, Overwrite = true }), default);
+        rv1.Success.ShouldBeTrue();
+        v1FileSystem.FileExists(junk).ShouldBeTrue();
+    }
+
     // ── 14.5: Special characters in filenames ────────────────────────────────
 
     [Test]
