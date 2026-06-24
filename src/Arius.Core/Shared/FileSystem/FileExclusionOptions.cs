@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace Arius.Core.Features.ArchiveCommand;
+namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
 /// Configures which files and directories the archive enumeration skips.

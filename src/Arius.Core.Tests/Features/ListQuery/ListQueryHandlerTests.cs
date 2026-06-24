@@ -389,7 +389,7 @@ public class ListQueryHandlerTests
         var snapshotSvc = new SnapshotService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, "acct-ls-missing", "ctr-ls-missing");
         using var index = new ChunkIndexService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshotSvc, "acct-ls-missing", "ctr-ls-missing");
         var logger = new FakeLogger<ListQueryHandler>();
-        var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, logger, "acct-ls-missing", "ctr-ls-missing");
+        var handler = new ListQueryHandler(index, fileTreeService, snapshotSvc, logger, FileExclusionFilter.None, "acct-ls-missing", "ctr-ls-missing");
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -666,6 +666,150 @@ public class ListQueryHandlerTests
 
         // Should have stopped well before all 10 levels were traversed
         collected.Count.ShouldBeLessThan(20);
+    }
+
+    // ── Exclusions: the local half mirrors the archive filter ───────────────────
+
+    [Test]
+    public async Task LocalDirectoryReader_Read_ExclusionFilter_HidesExcludedNamesFilesDirsAndPointerOnly()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("ls-exclude-reader");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
+        localFileSystem.CreateDirectory(RelativePath.Parse("@eaDir"));
+        localFileSystem.CreateDirectory(RelativePath.Parse("docs"));
+
+        try
+        {
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("keep.txt"), "keep", CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("thumbs.db"), "junk", CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("@eaDir/thumb.jpg"), "junk", CancellationToken.None);
+            // Pointer with no binary: excluded by its logical (binary) name, not the .pointer.arius name.
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("lonely.bin.pointer.arius"), FakeContentHash('2').ToString(), CancellationToken.None);
+
+            var filter = new FileExclusionFilter(new FileExclusionOptions
+            {
+                ExcludedDirectoryNames = ["@eaDir"],
+                ExcludedFileNames      = ["thumbs.db", "lonely.bin"],
+                ExcludeSystemEntries   = false,
+                ExcludeHiddenEntries   = false,
+            });
+
+            var listing = LocalDirectoryReader.Read(localFileSystem, RelativePath.Root, new FakeLogger<ListQueryHandler>(), filter);
+
+            listing.Subdirectories.ShouldContain(PathSegment.Parse("docs"));
+            listing.Subdirectories.ShouldNotContain(PathSegment.Parse("@eaDir"));
+
+            listing.Files.Keys.ShouldContain(PathSegment.Parse("keep.txt"));
+            listing.Files.Keys.ShouldNotContain(PathSegment.Parse("thumbs.db"));
+            listing.Files.Keys.ShouldNotContain(PathSegment.Parse("lonely.bin"));
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task LocalDirectoryReader_Read_NoFilter_ReturnsEverything()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("ls-exclude-none");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
+        localFileSystem.CreateDirectory(RelativePath.Parse("@eaDir"));
+
+        try
+        {
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("thumbs.db"), "junk", CancellationToken.None);
+
+            // 3-arg overload defaults to FileExclusionFilter.None → nothing is filtered.
+            var listing = LocalDirectoryReader.Read(localFileSystem, RelativePath.Root, new FakeLogger<ListQueryHandler>());
+
+            listing.Subdirectories.ShouldContain(PathSegment.Parse("@eaDir"));
+            listing.Files.Keys.ShouldContain(PathSegment.Parse("thumbs.db"));
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task LocalDirectoryReader_Read_HiddenDotfile_ExcludedOnlyWhenToggled()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // dotfiles are not Hidden on Windows; the name-based test covers the logic cross-platform
+
+        var tempRoot = TestTempRoots.CreateDirectory("ls-exclude-hidden");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
+
+        try
+        {
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("visible.txt"), "v", CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse(".secret"), "s", CancellationToken.None);
+
+            var logger = new FakeLogger<ListQueryHandler>();
+
+            var included = LocalDirectoryReader.Read(localFileSystem, RelativePath.Root, logger,
+                new FileExclusionFilter(new FileExclusionOptions { ExcludeSystemEntries = false, ExcludeHiddenEntries = false }));
+            included.Files.Keys.ShouldContain(PathSegment.Parse(".secret"));
+
+            var excluded = LocalDirectoryReader.Read(localFileSystem, RelativePath.Root, logger,
+                new FileExclusionFilter(new FileExclusionOptions { ExcludeSystemEntries = false, ExcludeHiddenEntries = true }));
+            excluded.Files.Keys.ShouldNotContain(PathSegment.Parse(".secret"));
+            excluded.Files.Keys.ShouldContain(PathSegment.Parse("visible.txt"));
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task Handle_WithLocalPathAndExclusions_ExcludedEntriesDoNotSurfaceAsLocalOnly()
+    {
+        var tempRoot = TestTempRoots.CreateDirectory("ls-exclude-handler");
+        var localFileSystem = new RelativeFileSystem(tempRoot);
+        localFileSystem.CreateDirectory(RelativePath.Root);
+        localFileSystem.CreateDirectory(RelativePath.Parse("@eaDir"));
+
+        try
+        {
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("keep-local.txt"), "keep", CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("thumbs.db"), "junk", CancellationToken.None);
+            await localFileSystem.WriteAllTextAsync(RelativePath.Parse("@eaDir/thumb.jpg"), "junk", CancellationToken.None);
+
+            IReadOnlyList<FileTreeEntry> rootTree = []; // empty remote snapshot: everything on disk is local-only
+            var snapshot = MakeSnapshot(FileTreeBuilder.ComputeHash(rootTree, IEncryptionService.PlaintextInstance));
+
+            var blobs = new FakeSeededBlobContainerService();
+            await SeedTreeAsync(blobs, rootTree);
+            blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
+
+            await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-ls-exclude", "ctr-ls-exclude", IEncryptionService.PlaintextInstance);
+            var handler = fixture.CreateListQueryHandler(new FileExclusionOptions
+            {
+                ExcludedDirectoryNames = ["@eaDir"],
+                ExcludedFileNames      = ["thumbs.db"],
+                ExcludeSystemEntries   = false,
+                ExcludeHiddenEntries   = false,
+            });
+
+            var results = await handler.Handle(new ListQueryType(new ListQueryOptions { LocalPath = tempRoot.ToString(), Recursive = true }), CancellationToken.None)
+                .ToListAsync();
+
+            // The genuine local-only file is still listed…
+            results.ShouldContain(e => e.RelativePath == RelativePath.Parse("keep-local.txt"));
+            // …but the config-excluded file, directory, and the directory's contents never surface.
+            results.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("thumbs.db"));
+            results.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("@eaDir"));
+            results.ShouldNotContain(e => e.RelativePath == RelativePath.Parse("@eaDir/thumb.jpg"));
+        }
+        finally
+        {
+            localFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

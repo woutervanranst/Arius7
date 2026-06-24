@@ -155,6 +155,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<ListQueryHandler>>(),
+                sp.GetRequiredService<FileExclusionFilter>(),
                 accountName,
                 containerName));
 

@@ -61,7 +61,9 @@ instead of raw host strings. Kept internal alongside the other archive-time/loca
 Arius.Core's embedded `appsettings.json` and are applied as a directory-pruning enumeration; see
 [ADR-0019](decisions/adr-0019-central-file-exclusion-configuration.md).
 *Code:* `FileExclusionFilter` / `FileExclusionOptions` in
-`src/Arius.Core/Features/ArchiveCommand/`; applied by `LocalFileEnumerator.Enumerate`.
+`src/Arius.Core/Shared/FileSystem/`; applied by `LocalFileEnumerator.Enumerate` (archive) and by
+`LocalDirectoryReader.Read` for the `ls` local overlay, so excluded entries don't resurface as
+spurious local-only rows.
 
 ---
 

@@ -35,7 +35,7 @@ The question for this ADR is **where the exclusion defaults should live and how 
 
 Chosen option: **central defaults in Arius.Core**, because it gives one source of truth that every host inherits through the single `AddArius` composition call, keeps the list as editable JSON rather than buried `HashSet`s, and still leaves a documented per-host override seam — without making the CLI grow a config file.
 
-`src/Arius.Core/appsettings.json` is an `<EmbeddedResource>` holding the `Arius:Exclusions` section. `AddArius` layers it as the base configuration, optionally over a host `IConfiguration`, binds it to `FileExclusionOptions` via the options pattern, and registers a `FileExclusionFilter` singleton that `LocalFileEnumerator.Enumerate` consults:
+`src/Arius.Core/appsettings.json` is an `<EmbeddedResource>` holding the `Arius:Exclusions` section. `AddArius` layers it as the base configuration, optionally over a host `IConfiguration`, binds it to `FileExclusionOptions` via the options pattern, and registers a `FileExclusionFilter` singleton consulted by both the archive enumeration (`LocalFileEnumerator.Enumerate`) and the `ls` local overlay (`LocalDirectoryReader.Read`), so a listing never shows an excluded file as local-only. Both types live in `Shared/FileSystem` (shared filesystem policy, not an archive-only concern):
 
 Before — v7 enumerated everything (no exclusions); v5 hardcoded them:
 

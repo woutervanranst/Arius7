@@ -1,6 +1,4 @@
-using Arius.Core.Shared.FileSystem;
-
-namespace Arius.Core.Features.ArchiveCommand;
+namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
 /// Decides whether a file or directory should be excluded from the archive, based on a

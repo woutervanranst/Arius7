@@ -87,9 +87,10 @@ internal sealed class PipelineFixture : IAsyncDisposable
     public RestoreCommandHandler CreateRestoreHandler() =>
         Repository.CreateRestoreHandler();
 
-    public ListQueryHandler CreateListQueryHandler() =>
+    public ListQueryHandler CreateListQueryHandler(FileExclusionOptions? exclusions = null) =>
         new(Repository.Index, Repository.FileTreeService, Repository.Snapshot,
             _listLogger,
+            exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions),
             Account, Container.Name);
 
     /// <summary>

@@ -173,7 +173,9 @@ arius restore ./photos \
 
 Stream the file listing of a *snapshot*. Entries are printed as they arrive (no buffering), so
 this stays responsive and memory-bounded even for repositories with millions of files. If you
-pass a local `path`, each row is overlaid with what is present on your disk.
+pass a local `path`, each row is overlaid with what is present on your disk. The overlay applies
+the same exclusions as `archive` (the `@eaDir`/`thumbs.db`/system-attribute set), so excluded files
+are not shown as local-only — the listing reflects what would actually be backed up.
 
 ### Synopsis
 

@@ -236,8 +236,10 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         => new(Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
 
     /// <summary>Creates a list-query handler wired to this fixture's shared repository services.</summary>
-    public ListQueryHandler CreateListQueryHandler()
-        => new(CreateChunkIndexService(), FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
+    public ListQueryHandler CreateListQueryHandler(FileExclusionOptions? exclusions = null)
+        => new(CreateChunkIndexService(), FileTreeService, Snapshot, _listLogger,
+            exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions),
+            AccountName, ContainerName);
 
     private ChunkIndexService CreateChunkIndexService()
     {
