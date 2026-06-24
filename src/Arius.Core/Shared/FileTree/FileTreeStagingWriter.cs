@@ -68,7 +68,9 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         try
         {
-            await _stagingFileSystem.AppendAllTextAsync(path, line + Environment.NewLine, cancellationToken);
+            // Fixed '\n' (not Environment.NewLine): staged lines are re-serialized by FileTreeSerializer
+            // before hashing, but keep the staging format platform-independent and consistent with it.
+            await _stagingFileSystem.AppendAllTextAsync(path, line + "\n", cancellationToken);
         }
         finally
         {
