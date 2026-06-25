@@ -34,7 +34,7 @@ flowchart TD
 
 **The walk (`WalkAsync`).** A FIFO `Queue<DirectoryToWalk>` drives a breadth-first traversal. Each dequeued directory:
 1. `ReadRemoteDirectoryAsync(treeHash)` → `RemoteDirectoryListing` (the tree node split into `FileEntry`/`DirectoryEntry`, kept in **tree order** as the reference sequence). A `null` hash (local-only dir) yields `RemoteDirectoryListing.Empty`.
-2. `ReadLocalDirectory(...)` → `LocalDirectoryListing` via `LocalDirectoryReader.Read` (immediate children only), which applies the same [exclusion](../../../glossary.md#exclusion) `FileExclusionFilter` as archive to the **local half**, so config-excluded entries (`@eaDir`, `thumbs.db`, system/hidden) never enter the listing.
+2. `ReadLocalDirectory(...)` → `LocalDirectoryListing` via `LocalDirectoryReader.Read` (immediate children only), which applies the same [exclusion](../../../glossary.md#exclusion) `FileExclusionFilter` as archive to the **local half**, so config-excluded entries (`@eaDir`, `thumbs.db`, system/hidden) never surface as local-only rows.
 3. `MergeFilesAsync` emits files, then `MergeSubdirectories` emits directories and, when `Recursive`, enqueues them.
 
 `Recursive` and `Prefix` are orthogonal: `Prefix` chooses where the walk *starts*, `Recursive` (default `true`) chooses whether subdirectories are enqueued. `Recursive=false` lists exactly one level.
