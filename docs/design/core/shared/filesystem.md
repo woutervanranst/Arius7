@@ -72,7 +72,7 @@ sequenceDiagram
 
 The archive-time file model — [`FilePair`](../../../glossary.md#filepair) with its optional [binary-file](../../../glossary.md#binary-file) and [pointer-file](../../../glossary.md#pointer-file) components — is deliberately **not** here; it lives in the archive slice (`src/Arius.Core/Features/ArchiveCommand/Models.cs`) because it is archive-time state, not shared filesystem infrastructure. This module owns only the path primitives and the IO boundary they flow through. Restore models its own candidate type rather than reusing `FilePair`, but still derives pointer paths through `PointerFileFormat`.
 
-The [exclusion](../../../glossary.md#exclusion) policy (`FileExclusionFilter` / `FileExclusionOptions`) *does* live here, the converse case: it is shared filesystem policy — consulted by both archive enumeration (`LocalFileEnumerator.Enumerate`) and the `ls` local overlay (`LocalDirectoryReader.Read`) — rather than archive-time state, so it sits beside the path primitives it filters on. See [ADR-0019](../../../decisions/adr-0019-central-file-exclusion-configuration.md).
+The [exclusion](../../../glossary.md#exclusion) policy (`FileExclusionFilter` / `FileExclusionOptions`) *does* live here, the converse case: it is shared filesystem policy — consulted by both archive enumeration (`LocalFileEnumerator.EnumerateAsync`) and the `ls` local overlay (`LocalDirectoryReader.Read`) — rather than archive-time state, so it sits beside the path primitives it filters on. See [ADR-0019](../../../decisions/adr-0019-central-file-exclusion-configuration.md).
 
 ## Key invariants
 
