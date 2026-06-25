@@ -115,12 +115,10 @@ internal sealed class Shard
     /// <summary>Serializes all entries to a text stream (one line per entry, sorted by content-hash).</summary>
     public void WriteTo(TextWriter writer)
     {
-        // Fixed '\n' line terminator (not writer.WriteLine, which uses Environment.NewLine) so the
-        // serialized shard bytes are deterministic across platforms.
         foreach (var entry in _entries.Values.OrderBy(e => e.ContentHash.ToString(), StringComparer.Ordinal))
         {
             writer.Write(entry.Serialize());
-            writer.Write('\n');
+            writer.Write('\n'); // Fixed '\n' line terminator (not writer.WriteLine, which uses Environment.NewLine) so the serialized shard bytes are deterministic across platforms.
         }
     }
 

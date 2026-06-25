@@ -46,8 +46,6 @@ public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, Repository
     private readonly string                    accountName;
     private readonly string                    containerName;
 
-    // Internal ctor: it takes the internal FileExclusionFilter, so the (public) handler keeps an
-    // internal-only construction surface — same pattern as ArchiveCommandHandler.
     internal ListQueryHandler(
         IChunkIndexService        index,
         IFileTreeService          fileTreeService,

@@ -372,7 +372,7 @@ public sealed class ProgressState
     }
 
     /// <summary>Number of entries excluded during enumeration (excluded by filter, broken symlink, or unreadable directory).</summary>
-    public long EntriesExcluded => Interlocked.Read(ref _entriesExcluded);
+    public long EntriesExcluded => Interlocked.Read(ref _entriesExcluded); // TODO not used anywhere
     private long _entriesExcluded;
 
     /// <summary>Increments the enumeration-exclusion counter (called per <c>EntryExcludedEvent</c>).</summary>
