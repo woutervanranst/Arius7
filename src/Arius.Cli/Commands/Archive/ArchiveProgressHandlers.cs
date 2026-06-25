@@ -15,6 +15,18 @@ public sealed class FileScannedHandler(ProgressState state) : INotificationHandl
     }
 }
 
+// ── EntryExcludedHandler ───────────────────────────────────────────────────────
+
+/// <summary>Counts entries excluded during enumeration (excluded / broken symlink / unreadable dir).</summary>
+public sealed class EntryExcludedHandler(ProgressState state) : INotificationHandler<EntryExcludedEvent>
+{
+    public ValueTask Handle(EntryExcludedEvent notification, CancellationToken cancellationToken)
+    {
+        state.IncrementEntriesExcluded();
+        return ValueTask.CompletedTask;
+    }
+}
+
 // ── ScanCompleteHandler ───────────────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.TotalFiles"/>, <see cref="ProgressState.TotalBytes"/>, and <see cref="ProgressState.ScanComplete"/> when enumeration finishes.</summary>

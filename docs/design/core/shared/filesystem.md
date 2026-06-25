@@ -1,6 +1,6 @@
 # Filesystem domain types
 
-> **Code:** `src/Arius.Core/Shared/FileSystem/` (`RelativePath`, `PathSegment`, `LocalDirectory`, `RelativeFileSystem`, `PointerFileFormat`, `PathSegmentComparers`)
+> **Code:** `src/Arius.Core/Shared/FileSystem/` (`RelativePath`, `PathSegment`, `LocalDirectory`, `RelativeFileSystem`, `PointerFileFormat`, `PathSegmentComparers`, `FileExclusionFilter`, `FileExclusionOptions`)
 > · **Decisions:** [ADR-0008 internal filesystem domain types](../../../decisions/adr-0008-introduce-internal-filesystem-domain-types.md)
 > · **Terms:** [RelativePath](../../../glossary.md#relativepath) · [PathSegment](../../../glossary.md#pathsegment) · [RelativeFileSystem](../../../glossary.md#relativefilesystem) · [FilePair](../../../glossary.md#filepair) · [binary file](../../../glossary.md#binary-file) · [pointer file](../../../glossary.md#pointer-file)
 
@@ -72,6 +72,8 @@ sequenceDiagram
 
 The archive-time file model — [`FilePair`](../../../glossary.md#filepair) with its optional [binary-file](../../../glossary.md#binary-file) and [pointer-file](../../../glossary.md#pointer-file) components — is deliberately **not** here; it lives in the archive slice (`src/Arius.Core/Features/ArchiveCommand/Models.cs`) because it is archive-time state, not shared filesystem infrastructure. This module owns only the path primitives and the IO boundary they flow through. Restore models its own candidate type rather than reusing `FilePair`, but still derives pointer paths through `PointerFileFormat`.
 
+The [exclusion](../../../glossary.md#exclusion) policy (`FileExclusionFilter` / `FileExclusionOptions`) *does* live here, the converse case: it is shared filesystem policy — consulted by both archive enumeration (`LocalFileEnumerator.EnumerateAsync`) and the `ls` local overlay (`LocalDirectoryReader.Read`) — rather than archive-time state, so it sits beside the path primitives it filters on. See [ADR-0019](../../../decisions/adr-0019-central-file-exclusion-configuration.md).
+
 ## Key invariants
 
 - **`RelativePath` is canonical, relative, and `/`-separated.** No backslashes, no leading/trailing slash, no `.`/`..`, no drive root, no `//`, no control chars. This is what makes an archive portable across OSes and what lets `Resolve` trust that re-rooting can't escape.
@@ -95,5 +97,5 @@ A small domain model with two public primitives, internal archive/IO types, and 
 
 - **`RelativePath` still mixes path worlds.** Repository paths, Azure blob virtual paths, and cache-relative paths are all the same type. The ADR's deliberate bet is to add semantic wrappers only when a concrete mixup is observed.
 - **Cross-OS restore conflicts are unhandled here.** A name valid on the source OS but unsafe on the target (reserved Windows names, case collisions) is archived faithfully but needs restore-time policy/UX — [issue #82](https://github.com/woutervanranst/Arius7/issues/82). That work lands in the restore slice, not this module.
-- **`RelativeFileSystem` grows by demand.** Its surface (atomic replace, symlink validity, timestamp get/set, the WAL-aware `GetTimestamps` fallback) was added as features needed rooted operations; new rooted IO belongs here as a new method rather than a `Path.Combine` in a handler.
+- **`RelativeFileSystem` grows by demand.** Its surface (atomic replace, symlink validity, timestamp get/set, attribute read via `GetAttributes` — added for the archive [exclusion](../../../glossary.md#exclusion) filter, the WAL-aware `GetTimestamps` fallback) was added as features needed rooted operations; new rooted IO belongs here as a new method rather than a `Path.Combine` in a handler.
 - **Pointer-path helpers are internal extension methods.** If a public consumer ever needs Arius pointer conventions, `PointerFileFormat` is where they'd be promoted to public — not duplicated.

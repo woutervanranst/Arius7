@@ -28,6 +28,28 @@ public class FileTreeSerializerTests
     private static PathSegment DirectoryName(string name) => PathSegment.Parse(name.TrimEnd('/'));
 
     [Test]
+    public void Serialize_UsesFixedLfTerminator_RegardlessOfPlatform()
+    {
+        // Regression guard: the serialized bytes are content-addressed (a node's hash is computed
+        // over them), so they MUST be byte-identical across platforms. A previous version used
+        // StringBuilder.AppendLine, which emits Environment.NewLine ("\r\n" on Windows), so the same
+        // tree hashed to different values depending on the OS that produced the snapshot.
+        var entries = MakeEntries(
+            ("a.txt", false, "a"),
+            ("photos/", true, "b"));
+
+        var text = System.Text.Encoding.UTF8.GetString(FileTreeSerializer.Serialize(entries));
+
+        text.ShouldNotContain("\r");
+
+        // Entries are sorted by name; each line — including the last — is terminated by a single '\n'.
+        var expected =
+            FileTreeSerializer.SerializePersistedFileEntryLine((FileEntry)entries.Single(e => e is FileEntry)) + "\n" +
+            FileTreeSerializer.SerializePersistedDirectoryEntryLine((DirectoryEntry)entries.Single(e => e is DirectoryEntry)) + "\n";
+        text.ShouldBe(expected);
+    }
+
+    [Test]
     public void Deserialize_InvalidFileHash_Throws()
     {
         var text = string.Join(

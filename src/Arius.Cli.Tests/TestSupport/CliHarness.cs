@@ -51,6 +51,7 @@ internal sealed class CliHarness
             {
                 Success = true,
                 FilesScanned = 0,
+                EntriesExcluded = 0,
                 FilesUploaded = 0,
                 FilesDeduped = 0,
                 OriginalSize = 0,

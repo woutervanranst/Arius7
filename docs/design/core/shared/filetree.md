@@ -24,7 +24,7 @@ flowchart TB
 
 A node's identity is the SHA-256 of its canonical serialized plaintext (`FileTreeBuilder.ComputeHash` → `encryption.ComputeHash(FileTreeSerializer.Serialize(entries))`). Two directories with identical content (same children, same names, same file hashes/timestamps) therefore produce the same `FileTreeHash` and are stored once — de-duplication falls out of content-addressing, not a separate mechanism.
 
-`FileTreeSerializer` defines the canonical text format. `Serialize` sorts entries by `Name` (`PathSegmentOrdinalComparer`) before emitting, so the byte layout — and thus the hash — is deterministic regardless of build order. Lines are one of:
+`FileTreeSerializer` defines the canonical text format. `Serialize` sorts entries by `Name` (`PathSegmentOrdinalComparer`) before emitting, so the byte layout — and thus the hash — is deterministic regardless of build order. Each line is terminated with a fixed `'\n'`, **never** `Environment.NewLine`: the bytes are hashed, so a `\r\n` on Windows would give the same tree a different `FileTreeHash` than on Linux/macOS. `FileTreeStagingWriter` uses the same `'\n'` for its staging lines. Lines are one of:
 
 ```text
 <content-hash>      F <created:O> <modified:O> <name>     # FileEntry (persisted or staged — identical)

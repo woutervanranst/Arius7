@@ -81,6 +81,18 @@ public class NotificationHandlerTests
     }
 
     [Test]
+    public async Task EntryExcludedHandler_IncrementsEntriesExcluded()
+    {
+        var state    = new ProgressState();
+        var handler  = new EntryExcludedHandler(state);
+
+        await handler.Handle(new EntryExcludedEvent(RelativePath.Parse("@eaDir"), ExclusionReason.ExcludedByName), CancellationToken.None);
+        await handler.Handle(new EntryExcludedEvent(RelativePath.Parse("thumbs.db"), ExclusionReason.ExcludedByName), CancellationToken.None);
+
+        state.EntriesExcluded.ShouldBe(2L);
+    }
+
+    [Test]
     public async Task FileSkippedHandler_WhileStillHashing_RemovesTrackedFileAndIncrementsHashSkipCounter()
     {
         var state    = new ProgressState();

@@ -22,9 +22,37 @@ public sealed record FileHashingEvent(RelativePath RelativePath, long FileSize) 
 /// <summary>A file finished hashing.</summary>
 public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash) : INotification;
 
-/// <summary>A file was skipped because it could not be read/opened during the pipeline.</summary>
-/// <param name="RelativePath">Relative path of the skipped file; used to clear its progress row.</param>
+/// <summary>
+/// An already-scanned file was dropped <i>during</i> the pipeline because it could no longer be
+/// read/opened (deleted, permission revoked, or broken mid-run) at hashing or upload time. It had a
+/// prior <see cref="FileScannedEvent"/>, so consumers use it to clear that file's progress row.
+/// Contrast <see cref="EntryExcludedEvent"/>, which fires at enumeration before a file is ever scanned.
+/// </summary>
+/// <param name="RelativePath">Relative path of the dropped file; used to clear its progress row.</param>
 public sealed record FileSkippedEvent(RelativePath RelativePath) : INotification;
+
+/// <summary>Why a file or directory was excluded at enumeration (before it ever entered the pipeline).</summary>
+public enum ExclusionReason
+{
+    /// <summary>Name matched the configured exclusion list (file or directory).</summary>
+    ExcludedByName,
+    /// <summary>Carried an excluded <see cref="FileAttributes.System"/>/<see cref="FileAttributes.Hidden"/> attribute.</summary>
+    ExcludedByAttribute,
+    /// <summary>A dangling file or directory symbolic link.</summary>
+    BrokenSymlink,
+    /// <summary>A directory whose listing could not be read (e.g. permission denied).</summary>
+    UnreadableDirectory,
+}
+
+/// <summary>
+/// A file or directory was excluded at <i>enumeration</i> — before it ever entered the pipeline — so it is
+/// never scanned, hashed, uploaded, or placed in the snapshot, and (unlike <see cref="FileSkippedEvent"/>)
+/// it never had a <see cref="FileScannedEvent"/>. A pruned directory raises a single event; its contents
+/// are never enumerated. The handler tallies these into <c>ArchiveResult.EntriesExcluded</c>.
+/// </summary>
+/// <param name="RelativePath">Relative path of the excluded entry (a file, or a pruned directory).</param>
+/// <param name="Reason">Why it was excluded.</param>
+public sealed record EntryExcludedEvent(RelativePath RelativePath, ExclusionReason Reason) : INotification;
 
 /// <summary>A chunk upload started.</summary>
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;

@@ -74,6 +74,12 @@ of the file at all) — the command rejects the combination with an error.
 Fixed pipeline behavior (not configurable from the CLI): files **≥ 1 MB** upload individually as
 *large chunks*; files **< 1 MB** are bundled into *tar chunks* with a 64 MB target bundle size.
 
+**Always skipped** (so they never enter a *snapshot*): NAS metadata folders (`@eaDir`, `eaDir`,
+`SynoResource`), OS junk files (`autorun.ini`, `thumbs.db`, `.DS_Store`), and entries carrying the
+*System* attribute. An excluded folder is skipped whole — its contents are never scanned. This list
+is built into Arius (see the [design notes](../design/core/features/archive-command.md#how-it-works)
+for how it is sourced).
+
 ### Example
 
 Archive a photo library to the Archive tier and reclaim local disk by removing the originals,
@@ -90,13 +96,15 @@ arius archive ./photos \
 On success you get a one-line summary, e.g.:
 
 ```
-Archive complete. Scanned: 1240, Uploaded: 312, Deduped: 928, Uploaded: 2.1 GB stored (3.0 GB uncompressed), Original size: 8.4 GB, Snapshot: 2026-06-17T142233.117Z
+Archive complete. Scanned: 1240, Excluded: 12, Uploaded: 312, Deduped: 928, Uploaded: 2.1 GB stored (3.0 GB uncompressed), Original size: 8.4 GB, Snapshot: 2026-06-17T142233.117Z
 ```
 
-The summary separates *this run's* upload from the snapshot total: **Uploaded** reports the bytes
-newly written to storage (compressed) and, in parentheses, their uncompressed size; **Original size**
-is the logical size of the whole snapshot (every file, what you would restore) — not just what this
-run uploaded.
+The summary separates *this run's* upload from the snapshot total: **Excluded** counts entries dropped
+during the scan — the always-skipped noise (NAS metadata folders, OS junk, System-attribute entries),
+broken symlinks, or unreadable folders, with a pruned folder counting as one; **Uploaded** reports the
+bytes newly written to storage (compressed) and, in parentheses, their uncompressed size; **Original
+size** is the logical size of the whole snapshot (every file, what you would restore) — not just what
+this run uploaded.
 
 ---
 
@@ -165,7 +173,9 @@ arius restore ./photos \
 
 Stream the file listing of a *snapshot*. Entries are printed as they arrive (no buffering), so
 this stays responsive and memory-bounded even for repositories with millions of files. If you
-pass a local `path`, each row is overlaid with what is present on your disk.
+pass a local `path`, each row is overlaid with what is present on your disk. The overlay applies
+the same exclusions as `archive` (the `@eaDir`/`thumbs.db`/system-attribute set), so excluded files
+are not shown as local-only — the listing reflects what would actually be backed up.
 
 ### Synopsis
 

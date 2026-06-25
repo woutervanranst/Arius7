@@ -2,6 +2,9 @@ using System.Collections.Immutable;
 
 namespace Arius.Core.Shared.Extensions;
 
+// Shared stream helpers used across feature namespaces (e.g. TarBuilder), so intentionally shared
+// across namespaces within the assembly.
+[SharedWithinAssembly]
 internal static class StreamExtensions
 {
     extension(MemoryStream stream)

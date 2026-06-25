@@ -9,13 +9,26 @@ namespace Arius.Core.Features.ListQuery;
 /// </summary>
 internal static class LocalDirectoryReader
 {
-    public static LocalDirectoryListing Read(RelativeFileSystem fileSystem, RelativePath directory, ILogger logger)
+    public static LocalDirectoryListing Read(RelativeFileSystem fileSystem, RelativePath directory, ILogger logger, FileExclusionFilter? filter = null)
     {
+        // Apply the same exclusion policy as the archive enumerator to the local half only, so config-
+        // excluded entries (@eaDir, thumbs.db, system/hidden) don't surface in `ls --local` as spurious
+        // local-only rows. The remote/snapshot half is never filtered, so an older snapshot that still
+        // contains such entries keeps listing them as repository rows.
+        filter ??= FileExclusionFilter.None;
+
         var subdirectories = new HashSet<PathSegment>();
         try
         {
             foreach (var subdirectory in fileSystem.EnumerateDirectories(directory))
-                subdirectories.Add(subdirectory.Name);
+            {
+                var name = subdirectory.Name;
+                if (filter.ShouldExcludeDirectory(name, default))
+                    continue;
+                if (filter.RequiresAttributes && filter.ShouldExcludeDirectory(name, SafeGetAttributes(fileSystem, subdirectory)))
+                    continue;
+                subdirectories.Add(name);
+            }
         }
         catch (Exception ex)
         {
@@ -28,6 +41,7 @@ internal static class LocalDirectoryReader
             // Immediate children only: nested files are handled when their own directory is walked,
             // which keeps memory bounded by directory width.
             filePaths = fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly)
+                .Where(file => !IsExcludedFile(fileSystem, file, filter))
                 .OrderBy(file => file.Name, PathSegmentOrdinalIgnoreCaseComparer.Instance)
                 .ToList();
         }
@@ -105,5 +119,37 @@ internal static class LocalDirectoryReader
         }
 
         return files;
+    }
+
+    /// <summary>
+    /// Whether the enumerated path is excluded by policy. Keyed on the file's <i>logical</i> name: for a
+    /// pointer sidecar (<c>thumbs.db.pointer.arius</c>) that is the binary it stands in for
+    /// (<c>thumbs.db</c>), mirroring <c>LocalFileEnumerator</c> so an excluded file can't slip back in
+    /// through a leftover pointer. The cheap name check runs first; attributes are only read when an
+    /// attribute rule is active.
+    /// </summary>
+    private static bool IsExcludedFile(RelativeFileSystem fileSystem, RelativePath path, FileExclusionFilter filter)
+    {
+        var logicalName = path.IsPointerPath() ? path.ToBinaryPath().Name : path.Name;
+        if (filter.ShouldExcludeFile(logicalName, default))
+            return true;
+        return filter.RequiresAttributes && filter.ShouldExcludeFile(logicalName, SafeGetAttributes(fileSystem, path));
+    }
+
+    /// <summary>
+    /// Reads an entry's attributes for an attribute-based exclusion check, treating an unreadable entry
+    /// as not-excluded. Must be per-entry safe: a throw here would otherwise be caught by the enumeration
+    /// try/catch and drop the whole directory listing to empty.
+    /// </summary>
+    private static FileAttributes SafeGetAttributes(RelativeFileSystem fileSystem, RelativePath path)
+    {
+        try
+        {
+            return fileSystem.GetAttributes(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return default;
+        }
     }
 }

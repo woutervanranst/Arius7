@@ -45,7 +45,8 @@ public class CrashRecoveryTests(AzuriteFixture azurite)
             blobService, encryption, index, new ChunkStorageService(blobService, encryption, ICompressionService.ZtdInstance), new FileTreeService(blobService, encryption, ICompressionService.ZtdInstance, Account, containerName), snapshot, mediator,
             logger,
             NullLoggerFactory.Instance,
-            Account, containerName);
+            Account, containerName,
+            FileExclusionFilter.None);
     }
 
     // ── 9.4 / 15.1: Crash after N large-file uploads ─────────────────────────

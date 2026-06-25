@@ -14,8 +14,10 @@ using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Arius.Core;
 
@@ -29,13 +31,19 @@ public static class ServiceCollectionExtensions
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
+    /// <param name="configuration">
+    /// Optional host configuration layered on top of Arius.Core's embedded defaults. When it contains an
+    /// <c>Arius:Exclusions</c> section, those values override the central defaults for file/folder exclusions;
+    /// otherwise the embedded defaults apply. Pass <c>null</c> (the default) to use the central defaults only.
+    /// </param>
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
         IBlobContainerService     blobContainer,
         string?                 passphrase,
         string                  accountName,
-        string                  containerName)
+        string                  containerName,
+        IConfiguration?         configuration = null)
     {
         // Storage
         services.AddSingleton(blobContainer);
@@ -43,6 +51,17 @@ public static class ServiceCollectionExtensions
         {
             services.AddSingleton<IBlobServiceFactory, NullBlobServiceFactory>();
         }
+
+        // File/folder exclusions (options pattern): Arius.Core's embedded appsettings.json is the central
+        // base layer so every host inherits the same defaults; an optional host configuration overrides them.
+        var exclusionConfig = new ConfigurationBuilder()
+            .AddConfiguration(FileExclusionOptions.EmbeddedDefaultConfiguration())
+            .AddConfiguration(configuration ?? new ConfigurationBuilder().Build())
+            .Build();
+        services.AddOptions<FileExclusionOptions>()
+            .Bind(exclusionConfig.GetSection(FileExclusionOptions.SectionName));
+        services.AddSingleton<FileExclusionFilter>(sp =>
+            new FileExclusionFilter(sp.GetRequiredService<IOptions<FileExclusionOptions>>().Value));
 
         // Encryption
         IEncryptionService encryption = passphrase is not null
@@ -108,7 +127,8 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ILogger<ArchiveCommandHandler>>(),
                 sp.GetRequiredService<ILoggerFactory>(),
                 accountName,
-                containerName));
+                containerName,
+                sp.GetRequiredService<FileExclusionFilter>()));
 
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>>(sp =>
             new RestoreCommandHandler(
@@ -135,6 +155,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<ListQueryHandler>>(),
+                sp.GetRequiredService<FileExclusionFilter>(),
                 accountName,
                 containerName));
 

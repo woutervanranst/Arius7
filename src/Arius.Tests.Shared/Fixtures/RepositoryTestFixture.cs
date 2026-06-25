@@ -219,20 +219,27 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     // --- COMMAND HELPERS ---
 
-    /// <summary>Creates an archive handler wired to this fixture's shared repository services.</summary>
-    public ArchiveCommandHandler CreateArchiveHandler()
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName);
+    /// <summary>
+    /// Creates an archive handler wired to this fixture's shared repository services.
+    /// <paramref name="exclusions"/> defaults to <c>null</c> (exclude nothing); pass options to test exclusion behavior.
+    /// </summary>
+    public ArchiveCommandHandler CreateArchiveHandler(FileExclusionOptions? exclusions = null)
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
+            exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions));
 
-    internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession)
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName, openStagingSession);
+    internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession, FileExclusionOptions? exclusions = null)
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
+            exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions), openStagingSession);
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()
         => new(Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
 
     /// <summary>Creates a list-query handler wired to this fixture's shared repository services.</summary>
-    public ListQueryHandler CreateListQueryHandler()
-        => new(CreateChunkIndexService(), FileTreeService, Snapshot, _listLogger, AccountName, ContainerName);
+    public ListQueryHandler CreateListQueryHandler(FileExclusionOptions? exclusions = null)
+        => new(CreateChunkIndexService(), FileTreeService, Snapshot, _listLogger,
+            exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions),
+            AccountName, ContainerName);
 
     private ChunkIndexService CreateChunkIndexService()
     {

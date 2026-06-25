@@ -298,6 +298,11 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     public long GetFileSize(RelativePath path) => new FileInfo(root.Resolve(path)).Length;
 
     /// <summary>
+    /// Reads the filesystem attributes of a file or directory within the rooted directory.
+    /// </summary>
+    public FileAttributes GetAttributes(RelativePath path) => File.GetAttributes(root.Resolve(path));
+
+    /// <summary>
     /// Reads creation and last-write timestamps for a file within the rooted directory.
     /// </summary>
     public (DateTimeOffset Created, DateTimeOffset Modified) GetTimestamps(RelativePath path)

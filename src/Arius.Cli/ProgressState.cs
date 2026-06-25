@@ -371,6 +371,13 @@ public sealed class ProgressState
         Volatile.Write(ref _scanComplete, true);
     }
 
+    /// <summary>Number of entries excluded during enumeration (excluded by filter, broken symlink, or unreadable directory).</summary>
+    public long EntriesExcluded => Interlocked.Read(ref _entriesExcluded); // TODO not used anywhere
+    private long _entriesExcluded;
+
+    /// <summary>Increments the enumeration-exclusion counter (called per <c>EntryExcludedEvent</c>).</summary>
+    public void IncrementEntriesExcluded() => Interlocked.Increment(ref _entriesExcluded);
+
     // ── Archive: hashing (aggregate counters) ────────────────────────────────
 
     /// <summary>Number of files for which hashing has completed.</summary>

@@ -25,12 +25,16 @@ internal static class FileTreeSerializer
 
         var sb = new StringBuilder();
 
+        // Terminate every line with a fixed '\n' — NEVER Environment.NewLine. These bytes are
+        // content-addressed (the node's hash is computed over them), so the serialization must be
+        // byte-identical across platforms. Using AppendLine here emitted "\r\n" on Windows and "\n"
+        // on Linux/macOS, giving the same tree two different hashes depending on the OS that ran it.
         foreach (var entry in entries.OrderBy(e => e.Name, PathSegmentOrdinalComparer.Instance))
         {
             if (entry is FileEntry fileEntry)
-                sb.AppendLine(SerializePersistedFileEntryLine(fileEntry));
+                sb.Append(SerializePersistedFileEntryLine(fileEntry)).Append('\n');
             else if (entry is DirectoryEntry directoryEntry)
-                sb.AppendLine(SerializePersistedDirectoryEntryLine(directoryEntry));
+                sb.Append(SerializePersistedDirectoryEntryLine(directoryEntry)).Append('\n');
             else
                 throw new InvalidOperationException($"Unsupported file tree entry type: {entry.GetType().Name}");
         }

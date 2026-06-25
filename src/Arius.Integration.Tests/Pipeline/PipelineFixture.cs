@@ -81,15 +81,16 @@ internal sealed class PipelineFixture : IAsyncDisposable
 
     // ── Pipeline helpers ──────────────────────────────────────────────────────
 
-    public ArchiveCommandHandler CreateArchiveHandler() =>
-        Repository.CreateArchiveHandler();
+    public ArchiveCommandHandler CreateArchiveHandler(FileExclusionOptions? exclusions = null) =>
+        Repository.CreateArchiveHandler(exclusions);
 
     public RestoreCommandHandler CreateRestoreHandler() =>
         Repository.CreateRestoreHandler();
 
-    public ListQueryHandler CreateListQueryHandler() =>
+    public ListQueryHandler CreateListQueryHandler(FileExclusionOptions? exclusions = null) =>
         new(Repository.Index, Repository.FileTreeService, Repository.Snapshot,
             _listLogger,
+            exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions),
             Account, Container.Name);
 
     /// <summary>
@@ -98,14 +99,15 @@ internal sealed class PipelineFixture : IAsyncDisposable
     /// </summary>
     public Task<ArchiveResult> ArchiveAsync(
         ArchiveCommandOptions? opts = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        FileExclusionOptions? exclusions = null)
     {
         opts ??= new ArchiveCommandOptions
         {
             RootDirectory = LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
         };
-        return CreateArchiveHandler().Handle(new ArchiveCommand(opts), ct).AsTask();
+        return CreateArchiveHandler(exclusions).Handle(new ArchiveCommand(opts), ct).AsTask();
     }
 
     /// <summary>Runs the restore pipeline into the fixture's restore directory.</summary>

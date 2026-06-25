@@ -36,14 +36,34 @@ namespace Arius.Core.Features.ListQuery;
 /// own row — presentation is the client's call), while <c>Prefix</c>/<c>Filter</c> are
 /// case-insensitive user-typed conveniences.
 /// </summary>
-public sealed class ListQueryHandler(
-    IChunkIndexService index,
-    IFileTreeService fileTreeService,
-    ISnapshotService snapshotSvc,
-    ILogger<ListQueryHandler> logger,
-    string accountName,
-    string containerName) : IStreamQueryHandler<ListQuery, RepositoryEntry>
+public sealed class ListQueryHandler : IStreamQueryHandler<ListQuery, RepositoryEntry>
 {
+    private readonly IChunkIndexService        index;
+    private readonly IFileTreeService          fileTreeService;
+    private readonly ISnapshotService          snapshotSvc;
+    private readonly ILogger<ListQueryHandler> logger;
+    private readonly FileExclusionFilter       exclusionFilter;
+    private readonly string                    accountName;
+    private readonly string                    containerName;
+
+    internal ListQueryHandler(
+        IChunkIndexService        index,
+        IFileTreeService          fileTreeService,
+        ISnapshotService          snapshotSvc,
+        ILogger<ListQueryHandler> logger,
+        FileExclusionFilter       exclusionFilter,
+        string                    accountName,
+        string                    containerName)
+    {
+        this.index           = index;
+        this.fileTreeService = fileTreeService;
+        this.snapshotSvc     = snapshotSvc;
+        this.logger          = logger;
+        this.exclusionFilter = exclusionFilter;
+        this.accountName     = accountName;
+        this.containerName   = containerName;
+    }
+
     public async IAsyncEnumerable<RepositoryEntry> Handle(
         ListQuery command,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -162,7 +182,7 @@ public sealed class ListQueryHandler(
         if (localFileSystem is null || !directory.ExistsLocally || !localFileSystem.DirectoryExists(directory.Path))
             return LocalDirectoryListing.Empty;
 
-        return LocalDirectoryReader.Read(localFileSystem, directory.Path, logger);
+        return LocalDirectoryReader.Read(localFileSystem, directory.Path, logger, exclusionFilter);
     }
 
 

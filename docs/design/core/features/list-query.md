@@ -1,6 +1,6 @@
 # List query (`ls`)
 
-> **Code:** `src/Arius.Core/Features/ListQuery/` (`ListQueryHandler.cs`, `LocalDirectoryReader.cs`, `Models.cs`, `ListQuery.cs`)  ·  **Decisions:** [ADR-0010](../../../decisions/adr-0010-use-feature-handlers-for-application-use-cases.md) · [ADR-0015](../../../decisions/adr-0015-chunk-index-scalability.md) · [ADR-0016](../../../decisions/adr-0016-multi-machine-cache-coherence.md)  ·  **Terms:** [filetree](../../../glossary.md#filetree) · [snapshot](../../../glossary.md#snapshot) · [chunk size](../../../glossary.md#chunk-size) · [chunk index](../../../glossary.md#chunk-index) · [storage tier hint](../../../glossary.md#storage-tier-hint) · [pointer file](../../../glossary.md#pointer-file)
+> **Code:** `src/Arius.Core/Features/ListQuery/` (`ListQueryHandler.cs`, `LocalDirectoryReader.cs`, `Models.cs`, `ListQuery.cs`)  ·  **Decisions:** [ADR-0010](../../../decisions/adr-0010-use-feature-handlers-for-application-use-cases.md) · [ADR-0015](../../../decisions/adr-0015-chunk-index-scalability.md) · [ADR-0016](../../../decisions/adr-0016-multi-machine-cache-coherence.md)  ·  **Terms:** [filetree](../../../glossary.md#filetree) · [snapshot](../../../glossary.md#snapshot) · [chunk size](../../../glossary.md#chunk-size) · [chunk index](../../../glossary.md#chunk-index) · [storage tier hint](../../../glossary.md#storage-tier-hint) · [pointer file](../../../glossary.md#pointer-file) · [exclusion](../../../glossary.md#exclusion)
 
 ## Purpose
 
@@ -34,7 +34,7 @@ flowchart TD
 
 **The walk (`WalkAsync`).** A FIFO `Queue<DirectoryToWalk>` drives a breadth-first traversal. Each dequeued directory:
 1. `ReadRemoteDirectoryAsync(treeHash)` → `RemoteDirectoryListing` (the tree node split into `FileEntry`/`DirectoryEntry`, kept in **tree order** as the reference sequence). A `null` hash (local-only dir) yields `RemoteDirectoryListing.Empty`.
-2. `ReadLocalDirectory(...)` → `LocalDirectoryListing` via `LocalDirectoryReader.Read` (immediate children only).
+2. `ReadLocalDirectory(...)` → `LocalDirectoryListing` via `LocalDirectoryReader.Read` (immediate children only), which applies the same [exclusion](../../../glossary.md#exclusion) `FileExclusionFilter` as archive to the **local half**, so config-excluded entries (`@eaDir`, `thumbs.db`, system/hidden) never surface as local-only rows.
 3. `MergeFilesAsync` emits files, then `MergeSubdirectories` emits directories and, when `Recursive`, enqueues them.
 
 `Recursive` and `Prefix` are orthogonal: `Prefix` chooses where the walk *starts*, `Recursive` (default `true`) chooses whether subdirectories are enqueued. `Recursive=false` lists exactly one level.
@@ -54,6 +54,7 @@ flowchart TD
 - **Tree blobs are read through `FileTreeService.ReadAsync`** (cache-first, disk write-through), so a prior `ls`/`restore` reuses cached nodes without contacting Azure. Cache validity is epoch-gated — see [ADR-0016](../../../decisions/adr-0016-multi-machine-cache-coherence.md).
 - **Overlay name matching is case-sensitive** (each case-variant gets its own row), while user-typed `Prefix`/`Filter` are case-insensitive conveniences.
 - **Local IO degrades, never aborts.** `LocalDirectoryReader` catches enumeration/stat failures, logs a warning, and returns a partial/empty listing rather than failing the walk.
+- **Exclusions apply to the local half only.** `LocalDirectoryReader.Read` drops config-[excluded](../../../glossary.md#exclusion) files/dirs (the same `FileExclusionFilter` as archive, keyed on the *logical* name so a leftover `.pointer.arius` is excluded with its binary) so they never surface as spurious local-only rows. The remote/snapshot half is never filtered — an older snapshot that still contains such an entry keeps listing it as a repository row.
 
 ## Why this shape
 

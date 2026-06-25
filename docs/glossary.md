@@ -53,6 +53,18 @@ instead of raw host strings. Kept internal alongside the other archive-time/loca
 *Code:* `RelativeFileSystem` in `src/Arius.Core/Shared/FileSystem/RelativeFileSystem.cs`
 (root type `LocalDirectory` in `src/Arius.Core/Shared/FileSystem/LocalDirectory.cs`).
 
+### exclusion
+
+**exclusion** — a file or directory the archive walk skips so it never enters a
+[snapshot](#snapshot): NAS metadata folders (`@eaDir`), OS junk files (`thumbs.db`,
+`.ds_store`), and — configurably — `System`/`Hidden`-attribute entries. Defaults live once in
+Arius.Core's embedded `appsettings.json` and are applied as a directory-pruning enumeration; see
+[ADR-0019](decisions/adr-0019-central-file-exclusion-configuration.md).
+*Code:* `FileExclusionFilter` / `FileExclusionOptions` in
+`src/Arius.Core/Shared/FileSystem/`; applied by `LocalFileEnumerator.EnumerateAsync` (archive) and by
+`LocalDirectoryReader.Read` for the `ls` local overlay, so excluded entries don't resurface as
+spurious local-only rows.
+
 ---
 
 ## Hashes
