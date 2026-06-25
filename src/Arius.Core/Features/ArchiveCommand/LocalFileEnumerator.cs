@@ -199,7 +199,7 @@ internal sealed class LocalFileEnumerator
         {
             return fileSystem.GetAttributes(path);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return default;
         }
