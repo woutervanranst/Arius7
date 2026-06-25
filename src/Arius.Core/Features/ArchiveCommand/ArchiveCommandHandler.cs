@@ -291,7 +291,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await _mediator.Publish(new EntryExcludedEvent(path, reason), cancellationToken);
                             Interlocked.Increment(ref entriesExcluded);
                         });
-                    var  pairs      = enumerator.Enumerate(LocalDirectory.Parse(opts.RootDirectory), _exclusionFilter, cancellationToken);
+                    var  pairs      = enumerator.EnumerateAsync(LocalDirectory.Parse(opts.RootDirectory), _exclusionFilter, cancellationToken);
                     long count      = 0;
                     long totalBytes = 0;
 

@@ -11,31 +11,19 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// with responsibility for recognizing pointer files, pairing them with binaries, and tolerating unreadable
 /// or invalid pointer content without leaking host-path details into the rest of the core.
 /// </summary>
-/// <remarks>
-/// Like <see cref="TarBuilder"/>, this is a mediator-free helper: it does not log or publish exclusion events
-/// itself. When it excludes an entry it invokes the injected <c>onExcluded</c> callback, leaving the log
-/// vocabulary and event publishing to the caller (the handler). The walk is an <see cref="IAsyncEnumerable{T}"/>
-/// purely so the callback can be awaited inline; the filesystem I/O underneath is synchronous.
-/// </remarks>
 internal sealed class LocalFileEnumerator
 {
-    private readonly ILogger<LocalFileEnumerator>?                       _logger;
+    private readonly ILogger<LocalFileEnumerator>?                               _logger;
     private readonly Func<RelativePath, ExclusionReason, Exception?, ValueTask>? _onExcluded;
 
-    /// <param name="logger">Used only for non-exclusion anomalies (invalid/unreadable pointer content).</param>
-    /// <param name="onExcluded">
-    /// Invoked when an entry is excluded, with its path, the reason, and the triggering exception (or
-    /// <c>null</c>). The caller owns logging and any event publishing. When <c>null</c>, exclusions are silent.
-    /// </param>
+    /// <param name="onExcluded"> Invoked when an entry is excluded, with its path, the reason, and the triggering exception (or <c>null</c>). The caller owns logging and any event publishing. When <c>null</c>, exclusions are silent. </param>
     public LocalFileEnumerator(
-        ILogger<LocalFileEnumerator>?                          logger    = null,
+        ILogger<LocalFileEnumerator>? logger = null,
         Func<RelativePath, ExclusionReason, Exception?, ValueTask>? onExcluded = null)
     {
-        _logger    = logger;
+        _logger     = logger;
         _onExcluded = onExcluded;
     }
-
-    // ── Task 7.2: Depth-first enumeration ────────────────────────────────────
 
     /// <summary>
     /// Enumerates all <see cref="FilePair"/> objects under <paramref name="rootDirectory"/>
@@ -49,23 +37,19 @@ internal sealed class LocalFileEnumerator
     /// rooted relative filesystem enumeration; the pair is yielded immediately.
     /// When a pointer file is encountered, if its binary exists it is skipped (already
     /// emitted as part of the binary's pair); otherwise it is yielded as pointer-only.
-    /// No dictionaries or state-tracking collections are used.
     /// </summary>
     /// <param name="rootDirectory">The repository root to enumerate.</param>
-    /// <param name="filter">
-    /// Exclusion policy. When <c>null</c>, nothing is excluded (preserves the unfiltered walk).
-    /// </param>
-    /// <param name="cancellationToken">Observed between entries.</param>
-    public IAsyncEnumerable<FilePair> Enumerate(LocalDirectory rootDirectory, FileExclusionFilter? filter = null, CancellationToken cancellationToken = default)
+    /// <param name="filter"> Exclusion policy. When <c>null</c>, nothing is excluded (preserves the unfiltered walk). </param>
+    public IAsyncEnumerable<FilePair> EnumerateAsync(LocalDirectory rootDirectory, FileExclusionFilter? filter = null, CancellationToken cancellationToken = default)
     {
         var fileSystem = new RelativeFileSystem(rootDirectory);
-        return EnumerateDirectory(fileSystem, RelativePath.Root, filter ?? FileExclusionFilter.None, cancellationToken);
+        return EnumerateDirectoryAsync(fileSystem, RelativePath.Root, filter ?? FileExclusionFilter.None, cancellationToken);
     }
 
-    private async IAsyncEnumerable<FilePair> EnumerateDirectory(RelativeFileSystem fileSystem, RelativePath directory, FileExclusionFilter filter, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<FilePair> EnumerateDirectoryAsync(RelativeFileSystem fileSystem, RelativePath directory, FileExclusionFilter filter, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // ── Files in this directory ───────────────────────────────────────────
-        await foreach (var relativePath in SafeEnumerate(fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly), directory, cancellationToken))
+        await foreach (var relativePath in SafeEnumerateAsync(fileSystem.EnumerateFiles(directory, SearchOption.TopDirectoryOnly), directory, cancellationToken))
         {
             // Exclusion is keyed on the file's *logical* name: for a pointer-only file (thin archive)
             // the logical name is the binary it stands in for (thumbs.db, not thumbs.db.pointer.arius),
@@ -75,20 +59,20 @@ internal sealed class LocalFileEnumerator
             // Name-based exclusion is cheapest and needs no stat.
             if (filter.ShouldExcludeFile(logicalName, default))
             {
-                await Excluded(relativePath, ExclusionReason.ExcludedByName, null);
+                await ExcludedAsync(relativePath, ExclusionReason.ExcludedByName, null);
                 continue;
             }
 
             if (!fileSystem.IsValidSymlink(relativePath))
             {
-                await Excluded(relativePath, ExclusionReason.BrokenSymlink, null);
+                await ExcludedAsync(relativePath, ExclusionReason.BrokenSymlink, null);
                 continue;
             }
 
             // Attribute-based exclusion only stats the entry when an attribute rule is active.
             if (filter.RequiresAttributes && filter.ShouldExcludeFile(logicalName, SafeGetAttributes(fileSystem, relativePath)))
             {
-                await Excluded(relativePath, ExclusionReason.ExcludedByAttribute, null);
+                await ExcludedAsync(relativePath, ExclusionReason.ExcludedByAttribute, null);
                 continue;
             }
 
@@ -141,37 +125,37 @@ internal sealed class LocalFileEnumerator
         }
 
         // ── Subdirectories (pruned) ───────────────────────────────────────────
-        await foreach (var subDirectory in SafeEnumerate(fileSystem.EnumerateDirectories(directory), directory, cancellationToken))
+        await foreach (var subDirectory in SafeEnumerateAsync(fileSystem.EnumerateDirectories(directory), directory, cancellationToken))
         {
             // A dangling directory symlink can't be descended into — recursing would fault the whole
             // scan. Skip it (mirrors the per-file symlink check above; the old flat AllDirectories walk
             // skipped inaccessible entries by default).
             if (!fileSystem.IsValidSymlink(subDirectory))
             {
-                await Excluded(subDirectory, ExclusionReason.BrokenSymlink, null);
+                await ExcludedAsync(subDirectory, ExclusionReason.BrokenSymlink, null);
                 continue;
             }
 
             // Name-based exclusion first (no stat); then attribute-based, mirroring the file path.
             if (filter.ShouldExcludeDirectory(subDirectory.Name, default))
             {
-                await Excluded(subDirectory, ExclusionReason.ExcludedByName, null);
+                await ExcludedAsync(subDirectory, ExclusionReason.ExcludedByName, null);
                 continue;
             }
 
             if (filter.RequiresAttributes && filter.ShouldExcludeDirectory(subDirectory.Name, SafeGetAttributes(fileSystem, subDirectory)))
             {
-                await Excluded(subDirectory, ExclusionReason.ExcludedByAttribute, null);
+                await ExcludedAsync(subDirectory, ExclusionReason.ExcludedByAttribute, null);
                 continue;
             }
 
-            await foreach (var pair in EnumerateDirectory(fileSystem, subDirectory, filter, cancellationToken))
+            await foreach (var pair in EnumerateDirectoryAsync(fileSystem, subDirectory, filter, cancellationToken))
                 yield return pair;
         }
     }
 
     /// <summary>Invokes the exclusion callback (if any). The caller owns logging and event publishing.</summary>
-    private ValueTask Excluded(RelativePath path, ExclusionReason reason, Exception? exception) =>
+    private ValueTask ExcludedAsync(RelativePath path, ExclusionReason reason, Exception? exception) =>
         _onExcluded?.Invoke(path, reason, exception) ?? ValueTask.CompletedTask;
 
     /// <summary>
@@ -180,7 +164,7 @@ internal sealed class LocalFileEnumerator
     /// directory is never materialized and the walk stays memory-bounded. This mirrors the old flat
     /// <c>EnumerateFiles(AllDirectories)</c> walk, which skipped inaccessible directories by default.
     /// </summary>
-    internal async IAsyncEnumerable<RelativePath> SafeEnumerate(IEnumerable<RelativePath> listing, RelativePath directory, [EnumeratorCancellation] CancellationToken cancellationToken)
+    internal async IAsyncEnumerable<RelativePath> SafeEnumerateAsync(IEnumerable<RelativePath> listing, RelativePath directory, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var enumerator = listing.GetEnumerator();
         while (true)
@@ -196,7 +180,7 @@ internal sealed class LocalFileEnumerator
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
-                await Excluded(directory, ExclusionReason.UnreadableDirectory, ex);
+                await ExcludedAsync(directory, ExclusionReason.UnreadableDirectory, ex);
                 yield break;
             }
 
@@ -221,7 +205,7 @@ internal sealed class LocalFileEnumerator
         }
     }
 
-    // ── Task 7.3: Pointer detection ───────────────────────────────────────────
+    // ── Pointer detection ───────────────────────────────────────────
 
     /// <summary>Reads and validates the hash from a pointer file. Returns <c>null</c> on invalid content.</summary>
     private ContentHash? ReadPointerHash(RelativeFileSystem fileSystem, RelativePath path)

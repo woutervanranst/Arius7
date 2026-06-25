@@ -59,7 +59,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("regular.txt");
         CreateSymbolicLink("broken-link.txt", Path.Combine(_rootDirectory.ToString(), "missing-target"));
 
-        var pairs = await CapturingEnumerator().Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await CapturingEnumerator().EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["regular.txt"]);
         _excluded.ShouldContain(s => s.Path.ToString() == "broken-link.txt" && s.Reason == ExclusionReason.BrokenSymlink);
@@ -74,7 +74,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("target.txt");
         CreateSymbolicLink("valid-link.txt", Path.Combine(_rootDirectory.ToString(), "target.txt"));
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString())
             .ShouldBe(["target.txt", "valid-link.txt"], ignoreOrder: true);
@@ -88,7 +88,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/vacation.jpg");
         CreateFile("photos/vacation.jpg.pointer.arius", "aabbccdd1122334455667788aabbccdd1122334455667788aabbccdd11223344");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         var pair = pairs[0];
@@ -105,7 +105,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("documents/report.pdf");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("documents/report.pdf"));
@@ -121,7 +121,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var hash = new string('a', 64);
         CreateFile("music/song.mp3.pointer.arius", hash);
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         pairs[0].Binary.ShouldBeNull();
@@ -134,7 +134,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("music/song.mp3.pointer.arius", new string('a', 64));
 
-        var pair = (await _enumerator.Enumerate(_rootDirectory).ToListAsync()).Single();
+        var pair = (await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync()).Single();
 
         pair.RelativePath.ShouldBe(RelativePath.Parse("music/song.mp3"));
     }
@@ -147,7 +147,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("docs/file.pdf");
         CreateFile("docs/file.pdf.pointer.arius", "not-a-valid-hex-hash!!");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         pairs[0].Pointer.ShouldNotBeNull();
@@ -163,7 +163,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var oldHash = new string('1', 64); // will differ from computed hash
         CreateFile("img/photo.png.pointer.arius", oldHash);
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         pairs[0].Binary.ShouldNotBeNull();
@@ -179,7 +179,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/b.jpg");
         CreateFile("photos/2024/c.jpg");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(3);
         pairs.Select(p => p.RelativePath.ToString()).ShouldContain("a.txt");
@@ -192,7 +192,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("données/résumé.pdf");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("données/résumé.pdf"));
@@ -203,7 +203,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("my files/my document.pdf");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("my files/my document.pdf"));
@@ -214,7 +214,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         _fileSystem.CreateDirectory(RelativePath.Parse("empty-dir"));
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.ShouldBeEmpty();
     }
@@ -233,7 +233,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/vacation.jpg");
         CreateFile("photos/vacation.jpg.pointer.arius", new string('a', 64));
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1, "pointer-with-binary must not produce an extra pair");
         pairs[0].Binary.ShouldNotBeNull();
@@ -246,7 +246,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/vacation.jpg");
         CreateFile("photos/vacation.jpg.POINTER.ARIUS", new string('a', 64));
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync();
 
         pairs.Count.ShouldBe(1);
         pairs[0].RelativePath.ShouldBe(RelativePath.Parse("photos/vacation.jpg"));
@@ -272,7 +272,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var firstYielded  = false;
         var countConsumed = 0;
 
-        await foreach (var _ in _enumerator.Enumerate(_rootDirectory))
+        await foreach (var _ in _enumerator.EnumerateAsync(_rootDirectory))
         {
             firstYielded = true; // available before the rest are enumerated
             countConsumed++;
@@ -288,7 +288,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("a.txt");
         CreateFile("b.txt");
 
-        await using var iterator = _enumerator.Enumerate(_rootDirectory).GetAsyncEnumerator();
+        await using var iterator = _enumerator.EnumerateAsync(_rootDirectory).GetAsyncEnumerator();
 
         (await iterator.MoveNextAsync()).ShouldBeTrue();
 
@@ -327,7 +327,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("@eaDir/thumb.jpg");
         CreateFile("thumbs.db");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync(); // no filter
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync(); // no filter
 
         pairs.Select(p => p.RelativePath.ToString())
             .ShouldBe(["keep.txt", "@eaDir/thumb.jpg", "thumbs.db"], ignoreOrder: true);
@@ -340,7 +340,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("@eaDir/thumb.jpg");
         CreateFile("@eaDir/nested/more.jpg");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
     }
@@ -351,7 +351,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("photos/real.jpg");
         CreateFile("photos/@eaDir/thumb.jpg");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["photos/real.jpg"]);
     }
@@ -362,7 +362,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("keep.txt");
         CreateFile("@EADIR/thumb.jpg");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
     }
@@ -374,7 +374,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("Thumbs.DB");
         CreateFile(".DS_Store");
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory, Filter(files: ["thumbs.db", ".ds_store"])).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory, Filter(files: ["thumbs.db", ".ds_store"])).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["report.pdf"]);
     }
@@ -386,7 +386,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("@eaDir/vacation.jpg");
         CreateFile("@eaDir/vacation.jpg.pointer.arius", new string('a', 64));
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory, Filter(dirs: ["@eaDir"])).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
     }
@@ -400,10 +400,10 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("visible.txt");
         CreateFile(".secret");
 
-        var included = await _enumerator.Enumerate(_rootDirectory, Filter(excludeHidden: false)).ToListAsync();
+        var included = await _enumerator.EnumerateAsync(_rootDirectory, Filter(excludeHidden: false)).ToListAsync();
         included.Select(p => p.RelativePath.ToString()).ShouldBe(["visible.txt", ".secret"], ignoreOrder: true);
 
-        var excluded = await _enumerator.Enumerate(_rootDirectory, Filter(excludeHidden: true)).ToListAsync();
+        var excluded = await _enumerator.EnumerateAsync(_rootDirectory, Filter(excludeHidden: true)).ToListAsync();
         excluded.Select(p => p.RelativePath.ToString()).ShouldBe(["visible.txt"]);
     }
 
@@ -415,7 +415,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("keep.txt");
         CreateFile("thumbs.db.pointer.arius", new string('a', 64));
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory, Filter(files: ["thumbs.db"])).ToListAsync();
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory, Filter(files: ["thumbs.db"])).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["keep.txt"]);
     }
@@ -425,7 +425,7 @@ public class LocalFileEnumeratorTests : IDisposable
     {
         CreateFile("song.mp3.pointer.arius", new string('a', 64));
 
-        var pair = (await _enumerator.Enumerate(_rootDirectory, Filter(files: ["thumbs.db"])).ToListAsync()).Single();
+        var pair = (await _enumerator.EnumerateAsync(_rootDirectory, Filter(files: ["thumbs.db"])).ToListAsync()).Single();
 
         pair.RelativePath.ShouldBe(RelativePath.Parse("song.mp3"));
         pair.Binary.ShouldBeNull();
@@ -442,7 +442,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var linkFull = _rootDirectory.Resolve(RelativePath.Parse("photos/broken-dir-link"));
         Directory.CreateSymbolicLink(linkFull, Path.Combine(_rootDirectory.ToString(), "missing-target-dir"));
 
-        var pairs = await _enumerator.Enumerate(_rootDirectory).ToListAsync(); // must not throw on the dangling link
+        var pairs = await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync(); // must not throw on the dangling link
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["photos/real.jpg"]);
     }
@@ -456,7 +456,7 @@ public class LocalFileEnumeratorTests : IDisposable
         CreateFile("thumbs.db");
         CreateFile("@eaDir/thumb.jpg");
 
-        await CapturingEnumerator().Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"], files: ["thumbs.db"])).ToListAsync();
+        await CapturingEnumerator().EnumerateAsync(_rootDirectory, Filter(dirs: ["@eaDir"], files: ["thumbs.db"])).ToListAsync();
 
         _excluded.ShouldContain(s => s.Path.ToString() == "thumbs.db" && s.Reason == ExclusionReason.ExcludedByName);
         _excluded.ShouldContain(s => s.Path.ToString() == "@eaDir"    && s.Reason == ExclusionReason.ExcludedByName);
@@ -466,7 +466,7 @@ public class LocalFileEnumeratorTests : IDisposable
     public async Task SafeEnumerate_UnreadableDirectory_ReportsViaCallbackAndStops()
     {
         var result = await CapturingEnumerator()
-            .SafeEnumerate(ThrowsImmediately(new UnauthorizedAccessException("denied")), RelativePath.Parse("locked"), CancellationToken.None)
+            .SafeEnumerateAsync(ThrowsImmediately(new UnauthorizedAccessException("denied")), RelativePath.Parse("locked"), CancellationToken.None)
             .ToListAsync();
 
         result.ShouldBeEmpty();
@@ -480,7 +480,7 @@ public class LocalFileEnumeratorTests : IDisposable
     public async Task SafeEnumerate_FaultMidEnumeration_YieldsPrefixThenReports()
     {
         var result = await CapturingEnumerator()
-            .SafeEnumerate(YieldsThenThrows(RelativePath.Parse("a.txt"), new IOException("boom")), RelativePath.Parse("dir"), CancellationToken.None)
+            .SafeEnumerateAsync(YieldsThenThrows(RelativePath.Parse("a.txt"), new IOException("boom")), RelativePath.Parse("dir"), CancellationToken.None)
             .ToListAsync();
 
         result.Select(p => p.ToString()).ShouldBe(["a.txt"]);
