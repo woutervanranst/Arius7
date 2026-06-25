@@ -287,7 +287,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         _loggerFactory.CreateLogger<LocalFileEnumerator>(),
                         onExcluded: async (path, reason, ex) =>
                         {
-                            // The enumerator is mediator-free; the handler owns the exclusion log + event (cf. TarBuilder).
                             _logger.LogWarning(ex, "[scan] Excluding {Reason}: {RelPath}", reason, path);
                             await _mediator.Publish(new EntryExcludedEvent(path, reason), cancellationToken);
                             Interlocked.Increment(ref entriesExcluded);
