@@ -26,13 +26,13 @@ public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash Cont
 /// An already-scanned file was dropped <i>during</i> the pipeline because it could no longer be
 /// read/opened (deleted, permission revoked, or broken mid-run) at hashing or upload time. It had a
 /// prior <see cref="FileScannedEvent"/>, so consumers use it to clear that file's progress row.
-/// Contrast <see cref="EntrySkippedEvent"/>, which fires at enumeration before a file is ever scanned.
+/// Contrast <see cref="EntryExcludedEvent"/>, which fires at enumeration before a file is ever scanned.
 /// </summary>
 /// <param name="RelativePath">Relative path of the dropped file; used to clear its progress row.</param>
 public sealed record FileSkippedEvent(RelativePath RelativePath) : INotification;
 
-/// <summary>Why a file or directory was skipped at enumeration (before it ever entered the pipeline).</summary>
-public enum SkipReason
+/// <summary>Why a file or directory was excluded at enumeration (before it ever entered the pipeline).</summary>
+public enum ExclusionReason
 {
     /// <summary>Name matched the configured exclusion list (file or directory).</summary>
     ExcludedByName,
@@ -45,14 +45,14 @@ public enum SkipReason
 }
 
 /// <summary>
-/// A file or directory was skipped at <i>enumeration</i> — before it ever entered the pipeline — so it is
+/// A file or directory was excluded at <i>enumeration</i> — before it ever entered the pipeline — so it is
 /// never scanned, hashed, uploaded, or placed in the snapshot, and (unlike <see cref="FileSkippedEvent"/>)
 /// it never had a <see cref="FileScannedEvent"/>. A pruned directory raises a single event; its contents
-/// are never enumerated. The handler tallies these into <c>ArchiveResult.FilesSkipped</c>.
+/// are never enumerated. The handler tallies these into <c>ArchiveResult.EntriesExcluded</c>.
 /// </summary>
-/// <param name="RelativePath">Relative path of the skipped entry (a file, or a pruned directory).</param>
-/// <param name="Reason">Why it was skipped.</param>
-public sealed record EntrySkippedEvent(RelativePath RelativePath, SkipReason Reason) : INotification;
+/// <param name="RelativePath">Relative path of the excluded entry (a file, or a pruned directory).</param>
+/// <param name="Reason">Why it was excluded.</param>
+public sealed record EntryExcludedEvent(RelativePath RelativePath, ExclusionReason Reason) : INotification;
 
 /// <summary>A chunk upload started.</summary>
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;

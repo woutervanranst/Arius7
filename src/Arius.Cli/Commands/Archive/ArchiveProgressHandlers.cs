@@ -15,14 +15,14 @@ public sealed class FileScannedHandler(ProgressState state) : INotificationHandl
     }
 }
 
-// ── EntrySkippedHandler ───────────────────────────────────────────────────────
+// ── EntryExcludedHandler ───────────────────────────────────────────────────────
 
-/// <summary>Counts entries skipped during enumeration (excluded / broken symlink / unreadable dir).</summary>
-public sealed class EntrySkippedHandler(ProgressState state) : INotificationHandler<EntrySkippedEvent>
+/// <summary>Counts entries excluded during enumeration (excluded / broken symlink / unreadable dir).</summary>
+public sealed class EntryExcludedHandler(ProgressState state) : INotificationHandler<EntryExcludedEvent>
 {
-    public ValueTask Handle(EntrySkippedEvent notification, CancellationToken cancellationToken)
+    public ValueTask Handle(EntryExcludedEvent notification, CancellationToken cancellationToken)
     {
-        state.IncrementFilesSkippedScanning();
+        state.IncrementEntriesExcluded();
         return ValueTask.CompletedTask;
     }
 }

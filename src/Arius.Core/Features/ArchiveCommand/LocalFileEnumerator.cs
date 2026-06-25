@@ -12,27 +12,27 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// or invalid pointer content without leaking host-path details into the rest of the core.
 /// </summary>
 /// <remarks>
-/// Like <see cref="TarBuilder"/>, this is a mediator-free helper: it does not log or publish skip events
-/// itself. When it skips an entry it invokes the injected <c>onSkipped</c> callback, leaving the log
+/// Like <see cref="TarBuilder"/>, this is a mediator-free helper: it does not log or publish exclusion events
+/// itself. When it excludes an entry it invokes the injected <c>onExcluded</c> callback, leaving the log
 /// vocabulary and event publishing to the caller (the handler). The walk is an <see cref="IAsyncEnumerable{T}"/>
 /// purely so the callback can be awaited inline; the filesystem I/O underneath is synchronous.
 /// </remarks>
 internal sealed class LocalFileEnumerator
 {
     private readonly ILogger<LocalFileEnumerator>?                       _logger;
-    private readonly Func<RelativePath, SkipReason, Exception?, ValueTask>? _onSkipped;
+    private readonly Func<RelativePath, ExclusionReason, Exception?, ValueTask>? _onExcluded;
 
-    /// <param name="logger">Used only for non-skip anomalies (invalid/unreadable pointer content).</param>
-    /// <param name="onSkipped">
-    /// Invoked when an entry is skipped, with its path, the reason, and the triggering exception (or
-    /// <c>null</c>). The caller owns logging and any event publishing. When <c>null</c>, skips are silent.
+    /// <param name="logger">Used only for non-exclusion anomalies (invalid/unreadable pointer content).</param>
+    /// <param name="onExcluded">
+    /// Invoked when an entry is excluded, with its path, the reason, and the triggering exception (or
+    /// <c>null</c>). The caller owns logging and any event publishing. When <c>null</c>, exclusions are silent.
     /// </param>
     public LocalFileEnumerator(
         ILogger<LocalFileEnumerator>?                          logger    = null,
-        Func<RelativePath, SkipReason, Exception?, ValueTask>? onSkipped = null)
+        Func<RelativePath, ExclusionReason, Exception?, ValueTask>? onExcluded = null)
     {
         _logger    = logger;
-        _onSkipped = onSkipped;
+        _onExcluded = onExcluded;
     }
 
     // ── Task 7.2: Depth-first enumeration ────────────────────────────────────
@@ -75,20 +75,20 @@ internal sealed class LocalFileEnumerator
             // Name-based exclusion is cheapest and needs no stat.
             if (filter.ShouldExcludeFile(logicalName, default))
             {
-                await Skipped(relativePath, SkipReason.ExcludedByName, null);
+                await Excluded(relativePath, ExclusionReason.ExcludedByName, null);
                 continue;
             }
 
             if (!fileSystem.IsValidSymlink(relativePath))
             {
-                await Skipped(relativePath, SkipReason.BrokenSymlink, null);
+                await Excluded(relativePath, ExclusionReason.BrokenSymlink, null);
                 continue;
             }
 
             // Attribute-based exclusion only stats the entry when an attribute rule is active.
             if (filter.RequiresAttributes && filter.ShouldExcludeFile(logicalName, SafeGetAttributes(fileSystem, relativePath)))
             {
-                await Skipped(relativePath, SkipReason.ExcludedByAttribute, null);
+                await Excluded(relativePath, ExclusionReason.ExcludedByAttribute, null);
                 continue;
             }
 
@@ -148,20 +148,20 @@ internal sealed class LocalFileEnumerator
             // skipped inaccessible entries by default).
             if (!fileSystem.IsValidSymlink(subDirectory))
             {
-                await Skipped(subDirectory, SkipReason.BrokenSymlink, null);
+                await Excluded(subDirectory, ExclusionReason.BrokenSymlink, null);
                 continue;
             }
 
             // Name-based exclusion first (no stat); then attribute-based, mirroring the file path.
             if (filter.ShouldExcludeDirectory(subDirectory.Name, default))
             {
-                await Skipped(subDirectory, SkipReason.ExcludedByName, null);
+                await Excluded(subDirectory, ExclusionReason.ExcludedByName, null);
                 continue;
             }
 
             if (filter.RequiresAttributes && filter.ShouldExcludeDirectory(subDirectory.Name, SafeGetAttributes(fileSystem, subDirectory)))
             {
-                await Skipped(subDirectory, SkipReason.ExcludedByAttribute, null);
+                await Excluded(subDirectory, ExclusionReason.ExcludedByAttribute, null);
                 continue;
             }
 
@@ -170,12 +170,12 @@ internal sealed class LocalFileEnumerator
         }
     }
 
-    /// <summary>Invokes the skip callback (if any). The caller owns logging and event publishing.</summary>
-    private ValueTask Skipped(RelativePath path, SkipReason reason, Exception? exception) =>
-        _onSkipped?.Invoke(path, reason, exception) ?? ValueTask.CompletedTask;
+    /// <summary>Invokes the exclusion callback (if any). The caller owns logging and event publishing.</summary>
+    private ValueTask Excluded(RelativePath path, ExclusionReason reason, Exception? exception) =>
+        _onExcluded?.Invoke(path, reason, exception) ?? ValueTask.CompletedTask;
 
     /// <summary>
-    /// Enumerates a directory listing, skipping (and reporting via <c>onSkipped</c>) the directory if it
+    /// Enumerates a directory listing, excluding (and reporting via <c>onExcluded</c>) the directory if it
     /// cannot be read (e.g. permission denied, or a path that vanished mid-walk). Yields lazily so a huge
     /// directory is never materialized and the walk stays memory-bounded. This mirrors the old flat
     /// <c>EnumerateFiles(AllDirectories)</c> walk, which skipped inaccessible directories by default.
@@ -196,7 +196,7 @@ internal sealed class LocalFileEnumerator
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
-                await Skipped(directory, SkipReason.UnreadableDirectory, ex);
+                await Excluded(directory, ExclusionReason.UnreadableDirectory, ex);
                 yield break;
             }
 

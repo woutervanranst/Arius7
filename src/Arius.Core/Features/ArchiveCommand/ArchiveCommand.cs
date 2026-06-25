@@ -83,11 +83,11 @@ public sealed record ArchiveResult
     public required long FilesScanned { get; init; }
 
     /// <summary>
-    /// Number of entries skipped during enumeration — excluded by the configured filter (name or
+    /// Number of entries excluded during enumeration — excluded by the configured filter (name or
     /// System/Hidden attribute), a broken symlink, or an unreadable directory. A pruned directory counts
     /// as one (its contents are never enumerated). These never enter <see cref="FilesScanned"/>.
     /// </summary>
-    public required long FilesSkipped { get; init; }
+    public required long EntriesExcluded { get; init; }
 
     /// <summary>
     /// Number of files whose content was uploaded during this run (one per new large file plus one per

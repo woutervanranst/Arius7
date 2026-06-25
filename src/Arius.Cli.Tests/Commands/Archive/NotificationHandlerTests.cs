@@ -81,15 +81,15 @@ public class NotificationHandlerTests
     }
 
     [Test]
-    public async Task EntrySkippedHandler_IncrementsFilesSkippedScanning()
+    public async Task EntryExcludedHandler_IncrementsEntriesExcluded()
     {
         var state    = new ProgressState();
-        var handler  = new EntrySkippedHandler(state);
+        var handler  = new EntryExcludedHandler(state);
 
-        await handler.Handle(new EntrySkippedEvent(RelativePath.Parse("@eaDir"), SkipReason.ExcludedByName), CancellationToken.None);
-        await handler.Handle(new EntrySkippedEvent(RelativePath.Parse("thumbs.db"), SkipReason.ExcludedByName), CancellationToken.None);
+        await handler.Handle(new EntryExcludedEvent(RelativePath.Parse("@eaDir"), ExclusionReason.ExcludedByName), CancellationToken.None);
+        await handler.Handle(new EntryExcludedEvent(RelativePath.Parse("thumbs.db"), ExclusionReason.ExcludedByName), CancellationToken.None);
 
-        state.FilesSkippedScanning.ShouldBe(2L);
+        state.EntriesExcluded.ShouldBe(2L);
     }
 
     [Test]

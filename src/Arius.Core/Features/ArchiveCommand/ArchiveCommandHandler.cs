@@ -195,7 +195,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 Success               = false,
                 FilesScanned          = 0,
-                FilesSkipped          = 0,
+                EntriesExcluded        = 0,
                 FilesUploaded         = 0,
                 FilesDeduped          = 0,
                 OriginalSize          = 0,
@@ -209,7 +209,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         // ── Shared state ──────────────────────────────────────────────────────
 
         long filesScanned    = 0;
-        long filesSkipped    = 0;   // entries skipped during enumeration (excluded / broken symlink / unreadable dir)
+        long entriesExcluded  = 0;   // entries excluded during enumeration (excluded / broken symlink / unreadable dir)
         long filesUploaded   = 0;
         long filesDeduped    = 0;
         long originalSize          = 0;   // sum of original (uncompressed) sizes of ALL files in the snapshot
@@ -239,7 +239,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 Success               = false,
                 FilesScanned          = filesScanned,
-                FilesSkipped          = Interlocked.Read(ref filesSkipped),
+                EntriesExcluded        = Interlocked.Read(ref entriesExcluded),
                 FilesUploaded         = filesUploaded,
                 FilesDeduped          = filesDeduped,
                 OriginalSize          = originalSize,
@@ -285,12 +285,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                 {
                     var enumerator = new LocalFileEnumerator(
                         _loggerFactory.CreateLogger<LocalFileEnumerator>(),
-                        onSkipped: async (path, reason, ex) =>
+                        onExcluded: async (path, reason, ex) =>
                         {
-                            // The enumerator is mediator-free; the handler owns the skip log + event (cf. TarBuilder).
-                            _logger.LogWarning(ex, "[scan] Skipping {Reason}: {RelPath}", reason, path);
-                            await _mediator.Publish(new EntrySkippedEvent(path, reason), cancellationToken);
-                            Interlocked.Increment(ref filesSkipped);
+                            // The enumerator is mediator-free; the handler owns the exclusion log + event (cf. TarBuilder).
+                            _logger.LogWarning(ex, "[scan] Excluding {Reason}: {RelPath}", reason, path);
+                            await _mediator.Publish(new EntryExcludedEvent(path, reason), cancellationToken);
+                            Interlocked.Increment(ref entriesExcluded);
                         });
                     var  pairs      = enumerator.Enumerate(LocalDirectory.Parse(opts.RootDirectory), _exclusionFilter, cancellationToken);
                     long count      = 0;
@@ -726,13 +726,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             _logger.LogInformation("[phase] complete");
 
-            _logger.LogInformation("[archive] Done: scanned={Scanned} skipped={Skipped} uploaded={Uploaded} deduped={Deduped} uploadedSize={IncrementalSize} storedSize={IncrementalStoredSize} originalSize={OriginalSize} snapshot={Snapshot}", filesScanned, Interlocked.Read(ref filesSkipped), filesUploaded, filesDeduped, incrementalSize.Bytes().Humanize(), incrementalStoredSize.Bytes().Humanize(), originalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
+            _logger.LogInformation("[archive] Done: scanned={Scanned} excluded={Excluded} uploaded={Uploaded} deduped={Deduped} uploadedSize={IncrementalSize} storedSize={IncrementalStoredSize} originalSize={OriginalSize} snapshot={Snapshot}", filesScanned, Interlocked.Read(ref entriesExcluded), filesUploaded, filesDeduped, incrementalSize.Bytes().Humanize(), incrementalStoredSize.Bytes().Humanize(), originalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 
             return new ArchiveResult
             {
                 Success               = true,
                 FilesScanned          = filesScanned,
-                FilesSkipped          = Interlocked.Read(ref filesSkipped),
+                EntriesExcluded        = Interlocked.Read(ref entriesExcluded),
                 FilesUploaded         = filesUploaded,
                 FilesDeduped          = filesDeduped,
                 OriginalSize          = originalSize,
@@ -749,7 +749,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             {
                 Success               = false,
                 FilesScanned          = filesScanned,
-                FilesSkipped          = Interlocked.Read(ref filesSkipped),
+                EntriesExcluded        = Interlocked.Read(ref entriesExcluded),
                 FilesUploaded         = filesUploaded,
                 FilesDeduped          = filesDeduped,
                 OriginalSize          = originalSize,

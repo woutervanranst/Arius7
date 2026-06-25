@@ -11,12 +11,12 @@ public class LocalFileEnumeratorTests : IDisposable
     private readonly RelativeFileSystem _fileSystem;
     private readonly LocalFileEnumerator _enumerator = new();
 
-    // Skips are reported via the onSkipped callback (the enumerator is mediator-free and does not log
-    // skips itself); CapturingEnumerator records them so tests can assert path + reason.
-    private readonly List<(RelativePath Path, SkipReason Reason, Exception? Exception)> _skips = [];
+    // Exclusions are reported via the onExcluded callback (the enumerator is mediator-free and does not log
+    // exclusions itself); CapturingEnumerator records them so tests can assert path + reason.
+    private readonly List<(RelativePath Path, ExclusionReason Reason, Exception? Exception)> _excluded = [];
 
     private LocalFileEnumerator CapturingEnumerator() =>
-        new(onSkipped: (path, reason, ex) => { _skips.Add((path, reason, ex)); return ValueTask.CompletedTask; });
+        new(onExcluded: (path, reason, ex) => { _excluded.Add((path, reason, ex)); return ValueTask.CompletedTask; });
 
     public LocalFileEnumeratorTests()
     {
@@ -62,7 +62,7 @@ public class LocalFileEnumeratorTests : IDisposable
         var pairs = await CapturingEnumerator().Enumerate(_rootDirectory).ToListAsync();
 
         pairs.Select(p => p.RelativePath.ToString()).ShouldBe(["regular.txt"]);
-        _skips.ShouldContain(s => s.Path.ToString() == "broken-link.txt" && s.Reason == SkipReason.BrokenSymlink);
+        _excluded.ShouldContain(s => s.Path.ToString() == "broken-link.txt" && s.Reason == ExclusionReason.BrokenSymlink);
     }
 
     [Test]
@@ -458,8 +458,8 @@ public class LocalFileEnumeratorTests : IDisposable
 
         await CapturingEnumerator().Enumerate(_rootDirectory, Filter(dirs: ["@eaDir"], files: ["thumbs.db"])).ToListAsync();
 
-        _skips.ShouldContain(s => s.Path.ToString() == "thumbs.db" && s.Reason == SkipReason.ExcludedByName);
-        _skips.ShouldContain(s => s.Path.ToString() == "@eaDir"    && s.Reason == SkipReason.ExcludedByName);
+        _excluded.ShouldContain(s => s.Path.ToString() == "thumbs.db" && s.Reason == ExclusionReason.ExcludedByName);
+        _excluded.ShouldContain(s => s.Path.ToString() == "@eaDir"    && s.Reason == ExclusionReason.ExcludedByName);
     }
 
     [Test]
@@ -470,9 +470,9 @@ public class LocalFileEnumeratorTests : IDisposable
             .ToListAsync();
 
         result.ShouldBeEmpty();
-        _skips.ShouldContain(s =>
+        _excluded.ShouldContain(s =>
             s.Path.ToString() == "locked" &&
-            s.Reason == SkipReason.UnreadableDirectory &&
+            s.Reason == ExclusionReason.UnreadableDirectory &&
             s.Exception is UnauthorizedAccessException);
     }
 
@@ -484,7 +484,7 @@ public class LocalFileEnumeratorTests : IDisposable
             .ToListAsync();
 
         result.Select(p => p.ToString()).ShouldBe(["a.txt"]);
-        _skips.ShouldContain(s => s.Path.ToString() == "dir" && s.Reason == SkipReason.UnreadableDirectory);
+        _excluded.ShouldContain(s => s.Path.ToString() == "dir" && s.Reason == ExclusionReason.UnreadableDirectory);
     }
 
     private static IEnumerable<RelativePath> ThrowsImmediately(Exception ex) =>

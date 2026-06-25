@@ -205,7 +205,7 @@ internal static class ArchiveVerb
 
                 AnsiConsole.MarkupLine($"[green]Archive complete.[/] " +
                                        $"Scanned: {result.FilesScanned}, " +
-                                       $"Skipped: {result.FilesSkipped}, " +
+                                       $"Excluded: {result.EntriesExcluded}, " +
                                        $"Uploaded: {result.FilesUploaded}, " +
                                        $"Deduped: {result.FilesDeduped}, " +
                                        $"Uploaded: {result.IncrementalStoredSize.Bytes().Humanize()} stored ({result.IncrementalSize.Bytes().Humanize()} uncompressed), " +

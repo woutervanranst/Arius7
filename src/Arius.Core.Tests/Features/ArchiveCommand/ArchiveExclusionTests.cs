@@ -49,9 +49,9 @@ public class ArchiveExclusionTests
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
         archiveResult.OriginalSize.ShouldBe(3); // snapshot contains only keep.bin (3 bytes)
 
-        // Two enumeration skips: the @eaDir directory (pruned) and the thumbs.db file.
-        archiveResult.FilesSkipped.ShouldBe(2);
-        await fixture.Mediator.Received(2).Publish(Arg.Any<EntrySkippedEvent>(), Arg.Any<CancellationToken>());
+        // Two enumeration exclusions: the @eaDir directory (pruned) and the thumbs.db file.
+        archiveResult.EntriesExcluded.ShouldBe(2);
+        await fixture.Mediator.Received(2).Publish(Arg.Any<EntryExcludedEvent>(), Arg.Any<CancellationToken>());
 
         var restoreResult = await RestoreAsync(fixture, fixture.RestoreDirectory);
         restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
