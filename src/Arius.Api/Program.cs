@@ -46,7 +46,6 @@ try
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials()
-              // Expose the version header so the cross-origin dev SPA (localhost:4200) can read it.
               .WithExposedHeaders("X-Arius-Version")));
 
     var app = builder.Build();
@@ -62,7 +61,6 @@ try
     var api = app.MapGroup("/api");
 
     // Stamp every API response with the running build version (the git tag of the deployed image)
-    // so the web footer can read it from a header — no dedicated version endpoint needed.
     api.AddEndpointFilter(async (ctx, next) =>
     {
         ctx.HttpContext.Response.Headers["X-Arius-Version"] = AriusVersion.Display;
