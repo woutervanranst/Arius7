@@ -38,6 +38,7 @@ file is the *law*. Do not restate those rules here or in the docs.
   `cross-cutting/`. A unit gets a design doc only if it has intent above the code; trivial folders stay
   code-only (don't create stubs).
 - **Don't duplicate:** link the glossary for terms and the ADR for decisions instead of restating them.
+- **Carry intent, not the code's "what":** a doc edit should state the *invariant, structure, or why* and name the type/method so a reader can jump to it — never re-narrate the parsing rules, branch conditions, or field-by-field mechanics the code (and its `// ──` docstrings) already own. If a sentence would go stale the moment a line of code changes, it belongs in code, not the doc. Cite `Type.Method` / a flag name as the anchor and stop; one tight clause beats a paragraph that re-derives the implementation. Smell test for each edit: would this still read correctly after a mechanical refactor that preserves behaviour? If not, cut it back to the intent.
 - **Prefer structure over prose:** reach for a **table**, a **mermaid diagram**, or a tight **bullet list** before writing a paragraph. Tables for anything comparative or enumerable (per-host/per-variant differences, option/field/flag/event matrices, "X vs Y"); mermaid for flows, sequences, and state; bullets for invariants and short enumerations. Reserve prose for the *"why"* that doesn't fit a row or an arrow. A paragraph that restates a comparison or a list is a smell — convert it. Don't pad: a 3-row table beats three sentences, but a single fact is just a sentence.
 
 ## Procedure

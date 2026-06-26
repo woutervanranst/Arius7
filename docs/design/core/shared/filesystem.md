@@ -23,7 +23,7 @@ Four types divide the responsibilities cleanly:
 
 `RelativePath` and `PathSegment` are `readonly record struct`s with a **private** `RawValue` and a `Value` accessor that throws on the uninitialized `default`, so a `default(RelativePath)` cannot silently masquerade as a valid path. Construction goes only through `Parse`/`TryParse`, which reject the things that make string paths dangerous: `RelativePath.TryParse` rejects rooted paths (`/x`, `\x`, `C:/x`), trailing separators, backslashes, `//`, control chars, and any segment that fails `PathSegment.TryParse`; `PathSegment.TryParse` rejects empties, `.`, `..`, and embedded separators. `RelativePath.Root` is the empty string and the identity for composition.
 
-Composition is segment-at-a-time and validated. The `/` operator appends exactly one `PathSegment` (there is no string overload that splits, so `Root / "a/b"` is a compile-time-typed single-segment append that throws at parse time). Pointer naming is centralized in `PointerFileFormat` extension methods — `IsPointerPath`, `ToPointerPath`, `ToBinaryPath` — so the `.pointer.arius` suffix is defined once and never hand-spliced in a handler.
+Composition is segment-at-a-time and validated. The `/` operator appends exactly one `PathSegment` (there is no string overload that splits, so `Root / "a/b"` is a compile-time-typed single-segment append that throws at parse time). Pointer naming is centralized in `PointerFileFormat` extension methods — `IsPointerPath`, `ToPointerPath`, `ToBinaryPath` — so the `.pointer.arius` suffix is defined once and never hand-spliced in a handler. `PointerFileFormat` also owns pointer-*content* parsing (`TryParseHash`), reading both the current v7 (bare hex) and legacy v5 (`{"BinaryHash":…}` JSON) formats and flagging the latter so the [archive command](../features/archive-command.md) upgrades it in place.
 
 ```mermaid
 flowchart LR
@@ -82,7 +82,7 @@ The [exclusion](../../../glossary.md#exclusion) policy (`FileExclusionFilter` / 
 - **Prefix checks are segment-aware.** `RelativePath.StartsWith` only matches on a `/` boundary (or exact equality), so `photoshop/x` does not start with `photos`. List/restore subtree filtering depends on this — a raw `string.StartsWith` would be wrong.
 - **System.IO is quarantined to this namespace.** Only `RelativeFileSystem`, `LocalDirectory`, and the helpers here call `File.*`/`Directory.*`/`Path.*` for Arius path-domain work; feature handlers must go through the boundary with a `RelativePath`. (Enforced by ArchUnit-style tests per ADR-0008.)
 - **Root containment is enforced at the boundary, not by callers.** `Resolve` throws on escape and `TryGetRelativePath` returns false for out-of-root paths, so containment is structural, not a per-caller check.
-- **`.pointer.arius` exists in exactly one place.** `PointerFileFormat` is the sole definition of the suffix and the only `ToPointerPath`/`ToBinaryPath`/`IsPointerPath` logic; `ToBinaryPath` rejects non-pointer paths and double-suffixing.
+- **`.pointer.arius` exists in exactly one place.** `PointerFileFormat` is the sole definition of the suffix and the only `ToPointerPath`/`ToBinaryPath`/`IsPointerPath` logic; `ToBinaryPath` rejects non-pointer paths and double-suffixing. It is also the sole pointer-content reader/writer, so v7 ⇄ legacy-v5 format knowledge lives in one type.
 
 ## Why this shape
 

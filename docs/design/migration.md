@@ -54,3 +54,4 @@ flowchart TD
 - **No GC for sidecars.** If chunk pruning is ever added, deleting a chunk must also delete its `chunks-v5legacy-metadata/` sidecar (also flagged in `BlobConstants.cs`).
 - **v3 tie-break only matters on malformed data.** `ReconstructV3Current`'s hash tie-break is reachable only when the v3 primary key `(BinaryHashValue, RelativeName, VersionUtc)` is violated; it exists purely to keep the result deterministic.
 - **One-off tool.** `Arius.Migration` is not part of the shipped hosts; it is run manually against a repository and is expected to be retired once the known v5 repositories are migrated.
+- **Local v5 pointer files are not this tool's concern.** It migrates the *blob* repository; the JSON pointer files a v5 client leaves on local disk are read and upgraded by the [archive command](core/features/archive-command.md), not here.

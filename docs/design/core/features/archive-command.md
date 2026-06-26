@@ -70,7 +70,7 @@ Single-threaded by design: it owns `inFlightHashes` without locking.
 
 **5a Chunk-index consumer** (×1) — single reader so writes funnel into batched (256) single-writer SQLite transactions via `_chunkIndex.AddEntries`. See [chunk index](../../../glossary.md#chunk-index).
 
-**5b Filetree consumer** (×16) — appends one staging entry per file via `FileTreeStagingWriter.AppendFileEntryAsync` (stripe-locked), and records per-file follow-up intents into two `ConcurrentBag`s: `pendingPointers` (unless `--no-pointers`) and `pendingDeletes` (only if `--remove-local`). Both gate on `Binary is not null`.
+**5b Filetree consumer** (×16) — appends one staging entry per file via `FileTreeStagingWriter.AppendFileEntryAsync` (stripe-locked), and records per-file follow-up intents into two `ConcurrentBag`s: `pendingPointers` (unless `--no-pointers`) and `pendingDeletes` (only if `--remove-local`). `pendingDeletes` gates on `Binary is not null`; `pendingPointers` is broader — it also fires for a pointer-only file flagged `IsLegacyFormat`, rewriting the legacy v5 pointer in place (hash/timestamps unchanged, so the snapshot is unaffected).
 
 ### Fan-in and end-of-pipeline
 
@@ -104,6 +104,7 @@ flowchart LR
 - **A single unreadable file never faults a draining stage.** Hash, large upload, and tar build each catch a per-file open/read failure (`when (!ct.IsCancellationRequested)`), publish `FileSkippedEvent`, and continue — because faulting would stop draining a *bounded* channel and deadlock its producer. By contrast, **storage/index faults in upload propagate** and fail the run (a rerun then performs crash recovery rather than reporting a false success).
 - **Every channel writer is completed in a `finally`** by the stage that owns it; the handler owns and completes `sealedTarChannel`, `chunkIndexEntryChannel`, and `fileTreeEntryChannel`. This is what lets downstream stages terminate.
 - **`inFlightHashes` is mutated only by the single dedup stage**, so it needs no lock; it dedups *within* a run before the index is updated.
+- **Legacy (v5) pointer-only files are read, not dropped.** A v5-migrated repo's local pointers use the old JSON format; parsing them keeps them in the rebuilt filetree — otherwise re-archiving sheds them and spawns a spurious snapshot — and upgrades them in place (stage 5b).
 - **The snapshot is published last** and only after both the chunk-index flush and the filetree build succeed — it must never reference content the chunk index cannot resolve (ADR-0017).
 - **`--remove-local` and `--no-pointers` are mutually exclusive** (validated up front: removing the binary while writing no pointer would lose the path entirely).
 - **`ValidateAsync` must run before the tree build** — `ExistsInRemote` throws otherwise.
