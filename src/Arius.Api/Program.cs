@@ -3,6 +3,7 @@ using Arius.Api.AppData;
 using Arius.Api.Endpoints;
 using Arius.Api.Hubs;
 using Arius.AzureBlob;
+using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
@@ -62,12 +63,13 @@ try
     api.MapRepositoryEndpoints();
     api.MapBrowseEndpoints();
     api.MapJobEndpoints();
+    api.MapInfoEndpoints();
     app.MapHub<JobsHub>("/hubs/arius");
 
     // SPA fallback: client-side routes (/overview, /repos/…) serve index.html (only when present).
     app.MapFallbackToFile("index.html");
 
-    Log.Information("Arius.Api starting — app db {DbPath}", dbPath);
+    Log.Information("Arius.Api {Version} starting — app db {DbPath}", AriusVersion.Display, dbPath);
     app.Run();
 }
 catch (Exception ex)

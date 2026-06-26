@@ -1,5 +1,9 @@
 /** DTOs mirroring Arius.Api's contracts (camelCase over the wire). */
 
+export interface AppInfoDto {
+  version: string;
+}
+
 export interface AccountDto {
   id: number;
   name: string;

@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { AccountDto, CreateRepositoryRequest, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
+import { AccountDto, AppInfoDto, CreateRepositoryRequest, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
 @Injectable({ providedIn: 'root' })
@@ -65,5 +65,10 @@ export class ApiService {
 
   deleteSchedule(repoId: number, scheduleId: number): Observable<void> {
     return this.http.delete<void>(`/api/repos/${repoId}/schedules/${scheduleId}`);
+  }
+
+  /** The running backend's build version (git tag of the deployed image). */
+  getAppInfo(): Observable<AppInfoDto> {
+    return this.http.get<AppInfoDto>('/api/info');
   }
 }

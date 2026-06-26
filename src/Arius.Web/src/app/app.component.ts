@@ -6,6 +6,8 @@ import { ArchiveRestoreDrawerComponent } from './features/drawer/archive-restore
 import { PropertiesDrawerComponent } from './features/drawer/properties-drawer.component';
 import { GlobalSearchOverlayComponent } from './features/search/global-search-overlay.component';
 import { SearchStore } from './core/state/search.store';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ApiService } from './core/api/api.service';
 
 interface RailItem { label: string; icon: string; link: string; }
 
@@ -75,6 +77,14 @@ interface RailItem { label: string; icon: string; link: string; }
       <main class="grow overflow-y-auto" style="padding:24px 26px 36px">
         <router-outlet></router-outlet>
       </main>
+
+      <!-- Footer: build version of the running backend (git tag of the deployed image) -->
+      <footer class="flex items-center justify-end shrink-0 px-6"
+              style="height:34px; border-top:1px solid #f0f0f2">
+        @if (appInfo(); as info) {
+          <span class="ar-mono" style="font-size:11.5px;color:#a1a1aa" data-testid="app-version">Arius v{{ info.version }}</span>
+        }
+      </footer>
     </div>
 
     <!-- Global slide-overs (archive / restore / properties) + cross-repo search overlay -->
@@ -87,6 +97,7 @@ export class AppComponent {
   private readonly router = inject(Router);
   private readonly kt = inject(MetronicInitService);
   protected readonly search = inject(SearchStore);
+  protected readonly appInfo = toSignal(inject(ApiService).getAppInfo());
 
   protected readonly currentSegment = signal('overview');
   protected readonly searchVisible = () => this.currentSegment() !== 'overview'; // hidden on Overview (per spec)

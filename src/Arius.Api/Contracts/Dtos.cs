@@ -1,5 +1,10 @@
 namespace Arius.Api.Contracts;
 
+// ── App ─────────────────────────────────────────────────────────────────────
+
+/// <summary>Information about the running Arius backend (shown in the web footer).</summary>
+public sealed record AppInfoDto(string Version);
+
 // ── Accounts ────────────────────────────────────────────────────────────────
 
 /// <summary>A storage account as shown to the client. The account key is never returned.</summary>

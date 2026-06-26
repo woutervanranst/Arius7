@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -128,7 +127,7 @@ internal sealed class SnapshotService : ISnapshotService
             RootHash     = rootHash,
             FileCount    = fileCount,
             OriginalSize = originalSize,
-            AriusVersion = GetAriusVersion()
+            AriusVersion = AriusVersion.Informational
         };
 
         // Write-through: disk first (plain JSON)
@@ -245,10 +244,4 @@ internal sealed class SnapshotService : ISnapshotService
             : throw new FormatException($"Invalid snapshot blob name: '{blobName}'.");
 
     private static RelativePath GetDiskCachePath(RelativePath blobName) => RelativePath.Root / GetSnapshotFileName(blobName);
-
-    private static string GetAriusVersion() =>
-        Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion
-            ?? "0.0.0";
 }
