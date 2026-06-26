@@ -617,8 +617,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     var pair = entry.FilePair;
                     await stagingWriter.AppendFileEntryAsync(pair.RelativePath, entry.ContentHash, entry.Created, entry.Modified, ct);
 
-                    // Once the files are captured in the FileTree, we can write the pointers & delete them
-                    if (!opts.NoPointers && pair.Binary is not null)
+                    // Once the files are captured in the FileTree, we can write the pointers & delete them.
+                    // We (re)write a pointer for every file with a local binary (keeps it fresh), AND for a
+                    // pointer-only file whose on-disk pointer is a legacy v5 JSON pointer — upgrading it to the
+                    // current format in place. The hash and timestamps are unchanged, so the snapshot stays stable.
+                    if (!opts.NoPointers && (pair.Binary is not null || (pair.Pointer?.IsLegacyFormat ?? false)))
                         pendingPointers.Add(new PendingPointerWrite(pair.RelativePath, entry.ContentHash, entry.Created, entry.Modified));
 
                     if (opts.RemoveLocal && pair.Binary is not null)

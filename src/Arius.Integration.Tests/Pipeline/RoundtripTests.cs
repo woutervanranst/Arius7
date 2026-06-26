@@ -366,6 +366,60 @@ public class RoundtripTests(AzuriteFixture azurite)
         fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(updated);
     }
 
+    // ── 14.2: Legacy v5 JSON pointer (pointer-only) is read, not dropped, and upgraded in place ──
+
+    [Test]
+    public async Task Archive_LegacyV5PointerOnly_NotDropped_PointerUpgraded_NoNewSnapshot()
+    {
+        await using var fix = await PipelineFixture.CreateAsync(azurite);
+
+        var content = new byte[300]; Random.Shared.NextBytes(content);
+        var relativePath = RelativePath.Parse("books/audiobook.mp3");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
+
+        // Archive with --remove-local → chunk uploaded, binary deleted, a current-format pointer left behind.
+        var r1 = await fix.CreateArchiveHandler().Handle(
+            new ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = fix.LocalDirectory.ToString(),
+                UploadTier    = BlobTier.Hot,
+                RemoveLocal   = true,
+            }), default);
+        r1.Success.ShouldBeTrue(r1.ErrorMessage);
+
+        var pointerPath = relativePath.ToPointerPath();
+        fix.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();   // pointer-only now
+        fix.LocalFileSystem.FileExists(pointerPath).ShouldBeTrue();
+
+        // Rewrite the on-disk pointer in the legacy v5 JSON format, preserving its hash and timestamps —
+        // exactly the on-disk state an old v5 client leaves behind after a v5→v7 migration.
+        var hash = fix.LocalFileSystem.ReadAllText(pointerPath).Trim();           // current format = bare hex
+        var (created, modified) = fix.LocalFileSystem.GetTimestamps(pointerPath);
+        await fix.LocalFileSystem.WriteAllTextAsync(pointerPath, $"{{\"BinaryHash\":\"{hash}\"}}", CancellationToken.None);
+        fix.LocalFileSystem.SetTimestamps(pointerPath, created, modified);
+
+        var snapshotsBefore = await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false).CountAsync();
+
+        // Archive again over the legacy pointer.
+        var r2 = await fix.ArchiveAsync();
+        r2.Success.ShouldBeTrue(r2.ErrorMessage);
+
+        // (a) The pointer-only file was NOT dropped: identical tree, so no spurious new snapshot.
+        r2.RootHash.ShouldBe(r1.RootHash);
+        (await fix.BlobContainer.ListAsync(BlobPaths.SnapshotsPrefix, includeMetadata: false).CountAsync())
+            .ShouldBe(snapshotsBefore);
+
+        // (b) The legacy pointer was upgraded in place to the current (bare-hex) format.
+        var upgraded = fix.LocalFileSystem.ReadAllText(pointerPath).Trim();
+        upgraded.ShouldBe(hash);
+        upgraded.ShouldNotContain("{");
+
+        // (c) Content is still restorable from the snapshot.
+        var restore = await fix.RestoreAsync();
+        restore.Success.ShouldBeTrue(restore.ErrorMessage);
+        fix.RestoreFileSystem.ReadAllBytes(relativePath).ShouldBe(content);
+    }
+
     // ── 14.3: File renamed between runs ──────────────────────────────────────
 
     [Test]

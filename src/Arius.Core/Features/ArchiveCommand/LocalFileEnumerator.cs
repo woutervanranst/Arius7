@@ -84,27 +84,29 @@ internal sealed class LocalFileEnumerator
                     continue; // binary was/will be emitted as part of the binary's FilePair
 
                 // Pointer-only (thin archive)
-                var pointerHash = ReadPointerHash(fileSystem, relativePath);
+                var (pointerHash, isLegacyFormat) = ReadPointerHash(fileSystem, relativePath);
                 yield return new FilePair
                 {
                     RelativePath = binaryPath,
                     Binary       = null,
                     Pointer = new PointerFile
                     {
-                        Path       = relativePath,
-                        Hash       = pointerHash
+                        Path           = relativePath,
+                        Hash           = pointerHash,
+                        IsLegacyFormat = isLegacyFormat
                     }
                 };
             }
             else
             {
                 // Binary file: check for pointer via the rooted relative filesystem enumeration.
-                var          pointerPath = relativePath.ToPointerPath();
-                var          hasPointer  = fileSystem.FileExists(pointerPath);
-                ContentHash? pointerHash = null;
+                var          pointerPath    = relativePath.ToPointerPath();
+                var          hasPointer     = fileSystem.FileExists(pointerPath);
+                ContentHash? pointerHash    = null;
+                var          isLegacyFormat = false;
 
                 if (hasPointer)
-                    pointerHash = ReadPointerHash(fileSystem, pointerPath);
+                    (pointerHash, isLegacyFormat) = ReadPointerHash(fileSystem, pointerPath);
 
                 yield return new FilePair
                 {
@@ -116,8 +118,9 @@ internal sealed class LocalFileEnumerator
                     Pointer = hasPointer
                         ? new PointerFile
                         {
-                            Path       = pointerPath,
-                            Hash       = pointerHash
+                            Path           = pointerPath,
+                            Hash           = pointerHash,
+                            IsLegacyFormat = isLegacyFormat
                         }
                         : null
                 };
@@ -207,24 +210,28 @@ internal sealed class LocalFileEnumerator
 
     // ── Pointer detection ───────────────────────────────────────────
 
-    /// <summary>Reads and validates the hash from a pointer file. Returns <c>null</c> on invalid content.</summary>
-    private ContentHash? ReadPointerHash(RelativeFileSystem fileSystem, RelativePath path)
+    /// <summary>
+    /// Reads and validates the hash from a pointer file, accepting both the current and the legacy (v5) format.
+    /// Returns a <c>null</c> hash on invalid content. The <c>IsLegacyFormat</c> flag tells the archive command to
+    /// rewrite the on-disk pointer to the current format.
+    /// </summary>
+    private (ContentHash? Hash, bool IsLegacyFormat) ReadPointerHash(RelativeFileSystem fileSystem, RelativePath path)
     {
         try
         {
             var content = fileSystem.ReadAllText(path);
-            if (!PointerFileFormat.TryParseHash(content, out var hash))
+            if (!PointerFileFormat.TryParseHash(content, out var hash, out var isLegacyFormat))
             {
-                _logger?.LogWarning("Pointer file has invalid hex content, ignoring: {RelPath}", path);
-                return null;
+                _logger?.LogWarning("Pointer file has invalid content, ignoring: {RelPath}", path);
+                return (null, false);
             }
 
-            return hash;
+            return (hash, isLegacyFormat);
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Could not read pointer file: {RelPath}", path);
-            return null;
+            return (null, false);
         }
     }
 }

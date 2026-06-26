@@ -170,6 +170,48 @@ public class LocalFileEnumeratorTests : IDisposable
         pairs[0].Pointer!.Hash.ShouldBe(ContentHash.Parse(oldHash));
     }
 
+    // ── Legacy (v5) JSON pointer ──────────────────────────────────────────────
+
+    [Test]
+    public async Task Enumerate_LegacyV5PointerOnly_ParsesHashAndFlagsLegacy()
+    {
+        var hash = new string('a', 64);
+        CreateFile("music/song.mp3.pointer.arius", $"{{\"BinaryHash\":\"{hash}\"}}");
+
+        var pair = (await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync()).Single();
+
+        pair.Binary.ShouldBeNull();
+        pair.Pointer.ShouldNotBeNull();
+        pair.Pointer!.Hash.ShouldBe(ContentHash.Parse(hash));
+        pair.Pointer!.IsLegacyFormat.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Enumerate_LegacyV5BinaryWithPointer_FlagsLegacy()
+    {
+        var hash = new string('b', 64);
+        CreateFile("photos/vacation.jpg");
+        CreateFile("photos/vacation.jpg.pointer.arius", $"{{\"BinaryHash\":\"{hash}\"}}");
+
+        var pair = (await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync()).Single();
+
+        pair.Binary.ShouldNotBeNull();
+        pair.Pointer.ShouldNotBeNull();
+        pair.Pointer!.Hash.ShouldBe(ContentHash.Parse(hash));
+        pair.Pointer!.IsLegacyFormat.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Enumerate_ModernBareHexPointer_NotFlaggedLegacy()
+    {
+        CreateFile("music/song.mp3.pointer.arius", new string('a', 64));
+
+        var pair = (await _enumerator.EnumerateAsync(_rootDirectory).ToListAsync()).Single();
+
+        pair.Pointer.ShouldNotBeNull();
+        pair.Pointer!.IsLegacyFormat.ShouldBeFalse();
+    }
+
     // ── Multiple files in nested directories ──────────────────────────────────
 
     [Test]
