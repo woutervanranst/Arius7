@@ -113,6 +113,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.version.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

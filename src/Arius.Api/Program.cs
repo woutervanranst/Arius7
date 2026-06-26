@@ -3,6 +3,7 @@ using Arius.Api.AppData;
 using Arius.Api.Endpoints;
 using Arius.Api.Hubs;
 using Arius.AzureBlob;
+using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
@@ -44,7 +45,8 @@ try
         policy.WithOrigins("http://localhost:4200")
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials()));
+              .AllowCredentials()
+              .WithExposedHeaders("X-Arius-Version")));
 
     var app = builder.Build();
 
@@ -57,6 +59,14 @@ try
     // REST endpoints live under /api so they never collide with the Angular SPA's client-side
     // routes (/overview, /repos, /jobs, …). The SignalR hub lives under /hubs.
     var api = app.MapGroup("/api");
+
+    // Stamp every API response with the running build version (the git tag of the deployed image)
+    api.AddEndpointFilter(async (ctx, next) =>
+    {
+        ctx.HttpContext.Response.Headers["X-Arius-Version"] = AriusVersion.Display;
+        return await next(ctx);
+    });
+
     api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
     api.MapAccountEndpoints();
     api.MapRepositoryEndpoints();
@@ -67,7 +77,7 @@ try
     // SPA fallback: client-side routes (/overview, /repos/…) serve index.html (only when present).
     app.MapFallbackToFile("index.html");
 
-    Log.Information("Arius.Api starting — app db {DbPath}", dbPath);
+    Log.Information("Arius.Api {Version} starting — app db {DbPath}", AriusVersion.Display, dbPath);
     app.Run();
 }
 catch (Exception ex)

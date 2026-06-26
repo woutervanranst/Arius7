@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { map, Observable } from 'rxjs';
 import { AccountDto, CreateRepositoryRequest, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
@@ -65,5 +65,12 @@ export class ApiService {
 
   deleteSchedule(repoId: number, scheduleId: number): Observable<void> {
     return this.http.delete<void>(`/api/repos/${repoId}/schedules/${scheduleId}`);
+  }
+
+  /** The running backend's build version, read from the X-Arius-Version response header. */
+  getAppVersion(): Observable<string | null> {
+    return this.http.get('/api/health', { observe: 'response' }).pipe(
+      map(res => res.headers.get('X-Arius-Version')),
+    );
   }
 }

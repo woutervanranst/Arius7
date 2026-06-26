@@ -39,6 +39,12 @@ internal sealed record PointerFile
     public required RelativePath Path { get; init; }
 
     public ContentHash? Hash { get; init; }
+
+    /// <summary>
+    /// True when the on-disk pointer was written in the legacy (v5) JSON format. The archive command rewrites
+    /// such pointers to the current format in place (preserving the hash and timestamps).
+    /// </summary>
+    public bool IsLegacyFormat { get; init; }
 }
 
 

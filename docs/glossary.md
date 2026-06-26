@@ -21,8 +21,10 @@ content that is hashed, chunked, and uploaded.
 
 **pointer file** — a file on disk that stands in for a binary file by carrying only
 its content hash, modelling thin-archive state (the bytes live in the repository, not
-locally).
-*Code:* `PointerFile` in `src/Arius.Core/Features/ArchiveCommand/Models.cs`.
+locally). On-disk format is the bare hex hash (v7); legacy v5 pointers (`{"BinaryHash":…}`
+JSON) are still read and upgraded on archive.
+*Code:* `PointerFile` in `src/Arius.Core/Features/ArchiveCommand/Models.cs`; format in
+`PointerFileFormat` (`src/Arius.Core/Shared/FileSystem/`).
 
 ### FilePair
 

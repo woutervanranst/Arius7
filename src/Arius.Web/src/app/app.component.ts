@@ -6,6 +6,8 @@ import { ArchiveRestoreDrawerComponent } from './features/drawer/archive-restore
 import { PropertiesDrawerComponent } from './features/drawer/properties-drawer.component';
 import { GlobalSearchOverlayComponent } from './features/search/global-search-overlay.component';
 import { SearchStore } from './core/state/search.store';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ApiService } from './core/api/api.service';
 
 interface RailItem { label: string; icon: string; link: string; }
 
@@ -47,6 +49,9 @@ interface RailItem { label: string; icon: string; link: string; }
           <div style="width:40px;height:40px;border-radius:9999px;background:linear-gradient(135deg,#0091e1,#5bd6fd)"></div>
           <span class="absolute" style="right:0;bottom:0;width:10px;height:10px;border-radius:9999px;background:#22c55e;border:2px solid #f4f4f5"></span>
         </div>
+        @if (appVersion(); as version) {
+          <span class="ar-mono" style="font-size:10px;color:#a1a1aa" title="Arius {{ version }}" data-testid="app-version">v{{ version }}</span>
+        }
       </div>
     </aside>
 
@@ -87,6 +92,7 @@ export class AppComponent {
   private readonly router = inject(Router);
   private readonly kt = inject(MetronicInitService);
   protected readonly search = inject(SearchStore);
+  protected readonly appVersion = toSignal(inject(ApiService).getAppVersion());
 
   protected readonly currentSegment = signal('overview');
   protected readonly searchVisible = () => this.currentSegment() !== 'overview'; // hidden on Overview (per spec)

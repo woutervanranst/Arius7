@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
@@ -54,8 +56,59 @@ internal static class PointerFileFormat
 
     public static string Serialize(ContentHash hash) => hash.ToString();
 
+    /// <summary>
+    /// Parses the hash from a pointer file's content, accepting both the current (v7) format — the bare
+    /// lowercase hex hash — and the legacy (v5) format — a JSON object <c>{"BinaryHash":"&lt;hex&gt;"}</c>.
+    /// </summary>
     public static bool TryParseHash(string? content, out ContentHash hash) =>
-        ContentHash.TryParse(content?.Trim(), out hash);
+        TryParseHash(content, out hash, out _);
+
+    /// <summary>
+    /// Parses the hash from a pointer file's content and reports whether it was a legacy (v5) JSON pointer.
+    /// The archive command upgrades legacy pointers to the current format in place.
+    /// </summary>
+    public static bool TryParseHash(string? content, out ContentHash hash, out bool isLegacyFormat)
+    {
+        isLegacyFormat = false;
+        var trimmed = content?.Trim();
+
+        // Current (v7) format: the file content is the bare lowercased hex hash.
+        if (ContentHash.TryParse(trimmed, out hash))
+            return true;
+
+        // Legacy (v5) format: a JSON object {"BinaryHash":"<hex>"} written by old clients.
+        if (TryParseLegacyHash(trimmed, out hash))
+        {
+            isLegacyFormat = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    // A v7 pointer (bare hex) never starts with '{', and v5 JSON never parses as hex, so the two formats are
+    // unambiguous and the bare-hex fast path above always wins for v7 pointers.
+    private static bool TryParseLegacyHash(string? trimmed, out ContentHash hash)
+    {
+        hash = default;
+        if (string.IsNullOrEmpty(trimmed) || trimmed[0] != '{')
+            return false;
+
+        try
+        {
+            var contents = JsonSerializer.Deserialize<LegacyPointerContents>(trimmed, LegacyJsonOptions);
+            return contents?.BinaryHash is { } binaryHash && ContentHash.TryParse(binaryHash, out hash);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static readonly JsonSerializerOptions LegacyJsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>The legacy (v5) pointer-file JSON shape: <c>{"BinaryHash":"&lt;hex&gt;"}</c>.</summary>
+    private sealed record LegacyPointerContents(string? BinaryHash);
 
     public static async Task WriteAsync(
         RelativeFileSystem fileSystem,

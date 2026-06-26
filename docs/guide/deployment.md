@@ -298,6 +298,22 @@ repositories, jobs, and schedules are preserved.
 
 ---
 
+## Which version am I running?
+
+Published images are stamped with the **git tag** of the release (a local build falls back to
+`0.0.0-dev`). That single version surfaces in three places:
+
+| Surface | Where to look |
+|---|---|
+| Web UI | A small `v<version>` badge in the left navigation rail |
+| API | The `X-Arius-Version` response header on every `/api/*` call (and the startup log line) |
+| Snapshots | The `AriusVersion` field recorded in each [snapshot](../glossary.md#snapshot) manifest you create |
+
+So you can confirm the deployed build from the browser, from a quick `curl -I http://<host>:8080/api/health`,
+or from the archive history itself.
+
+---
+
 ## Just the CLI?
 
 If you only want the command-line tool (no web UI), you don't need Docker at all. Download
