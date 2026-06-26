@@ -49,6 +49,9 @@ interface RailItem { label: string; icon: string; link: string; }
           <div style="width:40px;height:40px;border-radius:9999px;background:linear-gradient(135deg,#0091e1,#5bd6fd)"></div>
           <span class="absolute" style="right:0;bottom:0;width:10px;height:10px;border-radius:9999px;background:#22c55e;border:2px solid #f4f4f5"></span>
         </div>
+        @if (appVersion(); as version) {
+          <span class="ar-mono" style="font-size:10px;color:#a1a1aa" title="Arius {{ version }}" data-testid="app-version">v{{ version }}</span>
+        }
       </div>
     </aside>
 
@@ -77,14 +80,6 @@ interface RailItem { label: string; icon: string; link: string; }
       <main class="grow overflow-y-auto" style="padding:24px 26px 36px">
         <router-outlet></router-outlet>
       </main>
-
-      <!-- Footer: build version of the running backend (git tag of the deployed image) -->
-      <footer class="flex items-center justify-end shrink-0 px-6"
-              style="height:34px; border-top:1px solid #f0f0f2">
-        @if (appVersion(); as version) {
-          <span class="ar-mono" style="font-size:11.5px;color:#a1a1aa" data-testid="app-version">Arius v{{ version }}</span>
-        }
-      </footer>
     </div>
 
     <!-- Global slide-overs (archive / restore / properties) + cross-repo search overlay -->
