@@ -81,8 +81,8 @@ interface RailItem { label: string; icon: string; link: string; }
       <!-- Footer: build version of the running backend (git tag of the deployed image) -->
       <footer class="flex items-center justify-end shrink-0 px-6"
               style="height:34px; border-top:1px solid #f0f0f2">
-        @if (appInfo(); as info) {
-          <span class="ar-mono" style="font-size:11.5px;color:#a1a1aa" data-testid="app-version">Arius v{{ info.version }}</span>
+        @if (appVersion(); as version) {
+          <span class="ar-mono" style="font-size:11.5px;color:#a1a1aa" data-testid="app-version">Arius v{{ version }}</span>
         }
       </footer>
     </div>
@@ -97,7 +97,7 @@ export class AppComponent {
   private readonly router = inject(Router);
   private readonly kt = inject(MetronicInitService);
   protected readonly search = inject(SearchStore);
-  protected readonly appInfo = toSignal(inject(ApiService).getAppInfo());
+  protected readonly appVersion = toSignal(inject(ApiService).getAppVersion());
 
   protected readonly currentSegment = signal('overview');
   protected readonly searchVisible = () => this.currentSegment() !== 'overview'; // hidden on Overview (per spec)
