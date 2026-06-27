@@ -22,7 +22,7 @@ internal static class AccountEndpoints
 
         group.MapPost("/", (CreateAccountRequest request, AppDatabase db, SecretProtector secrets) =>
         {
-            var id = db.InsertAccount(request.Name, secrets.Protect(request.AccountKey), NormalizeLocation(request.Location));
+            var id = db.InsertAccount(request.Name, secrets.Protect(request.AccountKey), NormalizeRegion(request.Region));
             var account = db.GetAccount(id)!;
             return Results.Created($"/accounts/{id}", ToDto(db, account));
         });
@@ -36,11 +36,11 @@ internal static class AccountEndpoints
             if (existing is null)
                 return Results.NotFound();
 
-            var newLocation = NormalizeLocation(request.Location);
+            var newRegion = NormalizeRegion(request.Region);
             var keyChanged    = request.AccountKey is not null;
-            var regionChanged = !string.Equals(existing.Location, newLocation, StringComparison.Ordinal);
+            var regionChanged = !string.Equals(existing.Region, newRegion, StringComparison.Ordinal);
 
-            db.UpdateAccount(id, secrets.Protect(request.AccountKey), newLocation);
+            db.UpdateAccount(id, secrets.Protect(request.AccountKey), newRegion);
 
             if (keyChanged || regionChanged)
             {
@@ -67,11 +67,11 @@ internal static class AccountEndpoints
     }
 
     /// <summary>Treat blank / "unknown" as no region.</summary>
-    private static string? NormalizeLocation(string? location)
-        => string.IsNullOrWhiteSpace(location) || location.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+    private static string? NormalizeRegion(string? region)
+        => string.IsNullOrWhiteSpace(region) || region.Equals("unknown", StringComparison.OrdinalIgnoreCase)
             ? null
-            : location.Trim();
+            : region.Trim();
 
     private static AccountDto ToDto(AppDatabase db, AccountRecord account)
-        => new(account.Id, account.Name, db.CountRepositoriesForAccount(account.Id), account.EncryptedAccountKey is not null, account.Location);
+        => new(account.Id, account.Name, db.CountRepositoriesForAccount(account.Id), account.EncryptedAccountKey is not null, account.Region);
 }

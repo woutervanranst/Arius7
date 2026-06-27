@@ -68,7 +68,7 @@ import { DrawerStore } from '../../core/state/drawer.store';
                 <div style="font-size:12px;color:#a1a1aa">{{ account.hasKey ? 'Key configured' : 'No key' }}</div>
               </div>
             </div>
-            <div class="ar-mono" style="font-size:12.5px;color:#71717a">{{ account.location ?? 'Unknown' }}</div>
+            <div class="ar-mono" style="font-size:12.5px;color:#71717a">{{ account.region ?? 'Unknown' }}</div>
             <div style="font-size:12.5px;color:#71717a">{{ account.repositories }}</div>
           </div>
         } @empty {

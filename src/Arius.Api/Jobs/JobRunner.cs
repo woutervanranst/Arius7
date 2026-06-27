@@ -94,7 +94,7 @@ public sealed class JobRunner(
         var sink = new JobSink(jobId, hub);
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
-        var region = database.GetAccount(repo.AccountId)?.Location; // prices the restore cost estimate
+        var region = database.GetAccount(repo.AccountId)?.Region; // prices the restore cost estimate
         database.InsertJob(jobId, repositoryId, "restore", "one-off", "running");
 
         var destination = string.IsNullOrWhiteSpace(repo.LocalPath)

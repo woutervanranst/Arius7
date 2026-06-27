@@ -16,7 +16,7 @@ public sealed class StatisticsCacheTests
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
         var database = new AppDatabase(path);
-        var accountId = database.InsertAccount("acc", encryptedAccountKey: null, location: null);
+        var accountId = database.InsertAccount("acc", encryptedAccountKey: null, region: null);
         var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
         return (database, repositoryId, path);
     }

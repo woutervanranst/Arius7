@@ -2,9 +2,9 @@ namespace Arius.Api.AppData;
 
 /// <summary>
 /// A configured Azure Storage account. <see cref="EncryptedAccountKey"/> is Data-Protection ciphertext.
-/// <see cref="Location"/> is the programmatic Azure region (e.g. <c>westeurope</c>), or <c>null</c> when unknown.
+/// <see cref="Region"/> is the programmatic Azure region (e.g. <c>westeurope</c>), or <c>null</c> when unknown.
 /// </summary>
-public sealed record AccountRecord(long Id, string Name, string? EncryptedAccountKey, string? Location, DateTimeOffset CreatedAt);
+public sealed record AccountRecord(long Id, string Name, string? EncryptedAccountKey, string? Region, DateTimeOffset CreatedAt);
 
 /// <summary>A managed repository (one blob container). <see cref="EncryptedPassphrase"/> is Data-Protection ciphertext.</summary>
 public sealed record RepositoryRecord(

@@ -6,7 +6,7 @@ export interface AccountDto {
   repositories: number;
   hasKey: boolean;
   /** Programmatic Azure region (e.g. "westeurope"), or null when unknown. */
-  location: string | null;
+  region: string | null;
 }
 
 export interface RepositoryDto {

@@ -120,14 +120,14 @@ export class AccountDrawerComponent {
       this.saveError.set(null);
       this.deleteError.set(null);
       this.confirmingDelete.set(false);
-      const sub = this.api.getAccount(id).subscribe(a => { this.account.set(a); this.region.set(a.location ?? ''); });
+      const sub = this.api.getAccount(id).subscribe(a => { this.account.set(a); this.region.set(a.region ?? ''); });
       onCleanup(() => sub.unsubscribe());
     });
   }
 
   protected save(a: AccountDto): void {
     this.saveError.set(null);
-    this.api.updateAccount(a.id, { accountKey: this.key || null, location: this.region() || null }).subscribe({
+    this.api.updateAccount(a.id, { accountKey: this.key || null, region: this.region() || null }).subscribe({
       next: updated => { this.account.set(updated); this.key = ''; this.saved.set(true); this.store.bumpAccounts(); },
       error: () => this.saveError.set('Could not save changes — please try again.'),
     });

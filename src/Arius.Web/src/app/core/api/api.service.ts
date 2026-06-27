@@ -16,12 +16,12 @@ export class ApiService {
     return this.http.get<AccountDto>(`/api/accounts/${id}`);
   }
 
-  createAccount(name: string, accountKey: string | null, location: string | null = null): Observable<AccountDto> {
-    return this.http.post<AccountDto>('/api/accounts', { name, accountKey, location });
+  createAccount(name: string, accountKey: string | null, region: string | null = null): Observable<AccountDto> {
+    return this.http.post<AccountDto>('/api/accounts', { name, accountKey, region });
   }
 
   /** Edit-account flyout: rotate the key (omit/null to keep the stored one) and/or change the region. */
-  updateAccount(id: number, body: { accountKey?: string | null; location: string | null }): Observable<AccountDto> {
+  updateAccount(id: number, body: { accountKey?: string | null; region: string | null }): Observable<AccountDto> {
     return this.http.patch<AccountDto>(`/api/accounts/${id}`, body);
   }
 

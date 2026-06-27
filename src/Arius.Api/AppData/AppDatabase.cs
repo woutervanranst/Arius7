@@ -41,7 +41,7 @@ public sealed class AppDatabase
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 name        TEXT NOT NULL UNIQUE,
                 account_key TEXT,
-                location    TEXT,
+                region      TEXT,
                 created_at  TEXT NOT NULL
             );
 
@@ -95,14 +95,38 @@ public sealed class AppDatabase
             """;
         create.ExecuteNonQuery();
 
-        // Additive migrations for databases created before a column existed. SQLite has no
-        // "ADD COLUMN IF NOT EXISTS", so guard with a column-presence check (CREATE above already
-        // includes these columns for fresh databases).
-        EnsureColumn(connection, "storage_accounts", "location", "TEXT");
+        // Schema migrations for databases created before a change. SQLite has no
+        // "ADD COLUMN IF NOT EXISTS", so guard each with a column-presence check (the CREATE above
+        // already has the current columns for fresh databases).
+        RenameColumnIfExists(connection, "storage_accounts", "location", "region"); // 'location' → 'region'
+        EnsureColumn(connection, "storage_accounts", "region", "TEXT");
     }
 
     /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it is not already present.</summary>
     private static void EnsureColumn(SqliteConnection connection, string table, string column, string typeAndConstraints)
+    {
+        if (HasColumn(connection, table, column))
+            return; // already present
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {typeAndConstraints};";
+        alter.ExecuteNonQuery();
+    }
+
+    /// <summary>Renames <paramref name="from"/> to <paramref name="to"/> on <paramref name="table"/>, but only when the
+    /// old column still exists and the new one does not — so it runs once on legacy databases and is a no-op afterwards.</summary>
+    private static void RenameColumnIfExists(SqliteConnection connection, string table, string from, string to)
+    {
+        if (!HasColumn(connection, table, from) || HasColumn(connection, table, to))
+            return;
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} RENAME COLUMN {from} TO {to};";
+        alter.ExecuteNonQuery();
+    }
+
+    /// <summary>Whether <paramref name="table"/> has a column named <paramref name="column"/> (case-insensitive).</summary>
+    private static bool HasColumn(SqliteConnection connection, string table, string column)
     {
         using var info = connection.CreateCommand();
         info.CommandText = $"PRAGMA table_info({table});";
@@ -110,13 +134,9 @@ public sealed class AppDatabase
         while (reader.Read())
         {
             if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
-                return; // already present
+                return true;
         }
-        reader.Close();
-
-        using var alter = connection.CreateCommand();
-        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {typeAndConstraints};";
-        alter.ExecuteNonQuery();
+        return false;
     }
 
     private SqliteConnection OpenConnection()
@@ -132,7 +152,7 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, name, account_key, location, created_at FROM storage_accounts ORDER BY name;";
+        command.CommandText = "SELECT id, name, account_key, region, created_at FROM storage_accounts ORDER BY name;";
         using var reader = command.ExecuteReader();
         var result = new List<AccountRecord>();
         while (reader.Read())
@@ -144,45 +164,45 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, name, account_key, location, created_at FROM storage_accounts WHERE id = $id;";
+        command.CommandText = "SELECT id, name, account_key, region, created_at FROM storage_accounts WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadAccount(reader) : null;
     }
 
-    public long InsertAccount(string name, string? encryptedAccountKey, string? location)
+    public long InsertAccount(string name, string? encryptedAccountKey, string? region)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO storage_accounts(name, account_key, location, created_at) VALUES ($name, $key, $location, $createdAt);
+            INSERT INTO storage_accounts(name, account_key, region, created_at) VALUES ($name, $key, $region, $createdAt);
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$name", name);
         command.Parameters.AddWithValue("$key", (object?)encryptedAccountKey ?? DBNull.Value);
-        command.Parameters.AddWithValue("$location", (object?)location ?? DBNull.Value);
+        command.Parameters.AddWithValue("$region", (object?)region ?? DBNull.Value);
         command.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
         return (long)command.ExecuteScalar()!;
     }
 
     /// <summary>
     /// Updates an account's connection material. A <c>null</c> <paramref name="encryptedAccountKey"/> leaves the
-    /// stored key unchanged (so the key need not be resupplied when only the region changes). <paramref name="location"/>
+    /// stored key unchanged (so the key need not be resupplied when only the region changes). <paramref name="region"/>
     /// is always written (pass the current value to leave it; <c>null</c> clears it to "unknown").
     /// </summary>
-    public void UpdateAccount(long id, string? encryptedAccountKey, string? location)
+    public void UpdateAccount(long id, string? encryptedAccountKey, string? region)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
             UPDATE storage_accounts SET
                 account_key = COALESCE($key, account_key),
-                location    = $location
+                region      = $region
             WHERE id = $id;
             """;
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$key", (object?)encryptedAccountKey ?? DBNull.Value);
-        command.Parameters.AddWithValue("$location", (object?)location ?? DBNull.Value);
+        command.Parameters.AddWithValue("$region", (object?)region ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 

@@ -2,13 +2,13 @@ namespace Arius.Api.Contracts;
 
 // ── Accounts ────────────────────────────────────────────────────────────────
 
-/// <summary>A storage account as shown to the client. The account key is never returned. <see cref="Location"/> is the programmatic Azure region (e.g. <c>westeurope</c>) or <c>null</c> when unknown.</summary>
-public sealed record AccountDto(long Id, string Name, int Repositories, bool HasKey, string? Location);
+/// <summary>A storage account as shown to the client. The account key is never returned. <see cref="Region"/> is the programmatic Azure region (e.g. <c>westeurope</c>) or <c>null</c> when unknown.</summary>
+public sealed record AccountDto(long Id, string Name, int Repositories, bool HasKey, string? Region);
 
-public sealed record CreateAccountRequest(string Name, string? AccountKey, string? Location);
+public sealed record CreateAccountRequest(string Name, string? AccountKey, string? Region);
 
-/// <summary>Account-flyout update. A <c>null</c> <see cref="AccountKey"/> leaves the stored key unchanged; <see cref="Location"/> is written as given (<c>null</c> = unknown).</summary>
-public sealed record UpdateAccountRequest(string? AccountKey, string? Location);
+/// <summary>Account-flyout update. A <c>null</c> <see cref="AccountKey"/> leaves the stored key unchanged; <see cref="Region"/> is written as given (<c>null</c> = unknown).</summary>
+public sealed record UpdateAccountRequest(string? AccountKey, string? Region);
 
 // ── Repositories ──────────────────────────────────────────────────────────────
 

@@ -53,7 +53,7 @@ internal static class BrowseEndpoints
             // The per-tier storage cost is priced for the account's region; a region change invalidates this
             // cache (see AccountEndpoints PATCH), so the cached payload's cost always matches the current region.
             var repository = database.GetRepository(id);
-            var region     = repository is null ? null : database.GetAccount(repository.AccountId)?.Location;
+            var region     = repository is null ? null : database.GetAccount(repository.AccountId)?.Region;
 
             var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag, region), ct);
             var dto = new StatisticsDto(
