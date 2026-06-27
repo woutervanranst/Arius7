@@ -71,7 +71,10 @@ public sealed class PricingCatalog
     }
 }
 
-/// <summary>Per-region Azure Blob Storage rates loaded from <c>pricing.json</c>.</summary>
+/// <summary>
+/// Per-region Azure Blob Storage rates loaded from <c>pricing.json</c>. A tier is <c>null</c> when the
+/// region does not offer it (e.g. Belgium Central has no Archive tier for standard block blobs).
+/// </summary>
 [SharedWithinAssembly] // consumed by RestoreCostCalculator (Features.RestoreCommand) + StorageCostCalculator
 internal sealed record RegionPricing
 {
@@ -79,63 +82,64 @@ internal sealed record RegionPricing
     [JsonPropertyName("currency")]
     public string Currency { get; init; } = "EUR";
 
-    [JsonPropertyName("archive")]
-    public ArchivePricingTier Archive { get; init; } = new();
+    [JsonPropertyName("hot")]     public TierRates? Hot     { get; init; }
+    [JsonPropertyName("cool")]    public TierRates? Cool    { get; init; }
+    [JsonPropertyName("cold")]    public TierRates? Cold    { get; init; }
+    [JsonPropertyName("archive")] public TierRates? Archive { get; init; }
 
-    [JsonPropertyName("hot")]
-    public TierPricingConfig Hot { get; init; } = new();
-
-    [JsonPropertyName("cool")]
-    public TierPricingConfig Cool { get; init; } = new();
-
-    [JsonPropertyName("cold")]
-    public TierPricingConfig Cold { get; init; } = new();
-
-    /// <summary>Storage rate (currency per GiB per month) for a given blob tier; 0 for unknown tiers.</summary>
-    public double StorageRateFor(BlobTier tier) => tier switch
+    /// <summary>The rate set for a tier, or <c>null</c> if the region doesn't offer it.</summary>
+    public TierRates? For(BlobTier tier) => tier switch
     {
-        BlobTier.Hot     => Hot.StoragePerGBPerMonth,
-        BlobTier.Cool    => Cool.StoragePerGBPerMonth,
-        BlobTier.Cold    => Cold.StoragePerGBPerMonth,
-        BlobTier.Archive => Archive.StoragePerGBPerMonth,
-        _                => 0.0,
+        BlobTier.Hot     => Hot,
+        BlobTier.Cool    => Cool,
+        BlobTier.Cold    => Cold,
+        BlobTier.Archive => Archive,
+        _                => null,
     };
+
+    /// <summary>Storage rate (currency per GiB per month) for a tier; 0 when the tier is unavailable.</summary>
+    public double StorageRateFor(BlobTier tier) => For(tier)?.StoragePerGbMonth ?? 0.0;
+
+    /// <summary>Write-operations rate (currency per 10,000) for a tier; 0 when unavailable.</summary>
+    public double WriteOpsRateFor(BlobTier tier) => For(tier)?.WriteOpsPer10k ?? 0.0;
+
+    /// <summary>Read-operations rate (currency per 10,000) for a tier; the high-priority rate applies only to Archive. 0 when unavailable.</summary>
+    public double ReadOpsRateFor(BlobTier tier, bool highPriority = false)
+        => For(tier) is { } r ? (highPriority ? r.ReadOpsHighPer10k : r.ReadOpsPer10k) : 0.0;
+
+    /// <summary>Data-retrieval rate (currency per GiB) charged when reading from a tier; 0 for Hot and unavailable tiers. High priority applies only to Archive.</summary>
+    public double DataRetrievalRateFor(BlobTier tier, bool highPriority = false)
+        => For(tier) is { } r ? (highPriority ? r.DataRetrievalHighPerGb : r.DataRetrievalPerGb) : 0.0;
 }
 
-/// <summary>Pricing rates for the archive tier (retrieval + read operations, plus storage for the cost view).</summary>
+/// <summary>
+/// Rates for one access tier. Operation rates are per 10,000 operations; per-GB values are per binary GiB.
+/// <see cref="DataRetrievalPerGb"/> is 0 for Hot; the <c>*High*</c> fields are populated only for Archive.
+/// </summary>
 [SharedWithinAssembly] // accessed by RestoreCostCalculator (Features.RestoreCommand)
-internal sealed record ArchivePricingTier
+internal sealed record TierRates
 {
-    /// <summary>Currency per GB of data retrieved from Archive at Standard priority.</summary>
-    [JsonPropertyName("retrievalPerGB")]
-    public double RetrievalPerGB { get; init; }
-
-    /// <summary>Currency per GB of data retrieved from Archive at High priority.</summary>
-    [JsonPropertyName("retrievalHighPerGB")]
-    public double RetrievalHighPerGB { get; init; }
-
-    /// <summary>Currency per 10,000 read operations at Standard priority.</summary>
-    [JsonPropertyName("readOpsPer10000")]
-    public double ReadOpsPer10000 { get; init; }
-
-    /// <summary>Currency per 10,000 read operations at High priority.</summary>
-    [JsonPropertyName("readOpsHighPer10000")]
-    public double ReadOpsHighPer10000 { get; init; }
-
-    /// <summary>Currency per GB stored per month in the Archive tier.</summary>
+    /// <summary>Currency per GiB stored per month.</summary>
     [JsonPropertyName("storagePerGBPerMonth")]
-    public double StoragePerGBPerMonth { get; init; }
-}
+    public double StoragePerGbMonth { get; init; }
 
-/// <summary>Pricing rates for writing and storing in a (non-archive) tier.</summary>
-[SharedWithinAssembly] // accessed by RestoreCostCalculator (Features.RestoreCommand)
-internal sealed record TierPricingConfig
-{
     /// <summary>Currency per 10,000 write operations.</summary>
     [JsonPropertyName("writeOpsPer10000")]
-    public double WriteOpsPer10000 { get; init; }
+    public double WriteOpsPer10k { get; init; }
 
-    /// <summary>Currency per GB stored per month.</summary>
-    [JsonPropertyName("storagePerGBPerMonth")]
-    public double StoragePerGBPerMonth { get; init; }
+    /// <summary>Currency per 10,000 read operations (Standard priority for Archive).</summary>
+    [JsonPropertyName("readOpsPer10000")]
+    public double ReadOpsPer10k { get; init; }
+
+    /// <summary>Currency per 10,000 read operations at High priority (Archive only).</summary>
+    [JsonPropertyName("readOpsHighPer10000")]
+    public double ReadOpsHighPer10k { get; init; }
+
+    /// <summary>Currency per GiB of data retrieved when reading (Cool/Cold/Archive; Standard priority for Archive). 0 for Hot.</summary>
+    [JsonPropertyName("dataRetrievalPerGB")]
+    public double DataRetrievalPerGb { get; init; }
+
+    /// <summary>Currency per GiB of data retrieved at High priority (Archive only).</summary>
+    [JsonPropertyName("dataRetrievalHighPerGB")]
+    public double DataRetrievalHighPerGb { get; init; }
 }

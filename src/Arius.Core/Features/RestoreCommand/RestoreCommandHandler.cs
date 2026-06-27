@@ -6,6 +6,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Pricing;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -126,6 +127,10 @@ public sealed class RestoreCommandHandler(
             var  skipped                  = new StrongBox<long>(0);
             int  fileCount                = 0, availableCount       = 0, rehydratedCount       = 0, needsRehydrationCount = 0, pendingRehydrationCount = 0, largeChunks = 0, totalChunks = 0;
             long totalOriginalBytes       = 0, totalChunkBytes = 0, downloadBytes         = 0, bytesNeedingRehydration = 0, bytesPendingRehydration = 0;
+            // Per-tier breakdown of the online chunks that will be downloaded (cost differs by tier).
+            // A rehydrated archive copy is read from the Hot tier where Arius placed it.
+            int  hotDownloadChunks  = 0, coolDownloadChunks = 0, coldDownloadChunks = 0;
+            long hotDownloadBytes   = 0, coolDownloadBytes  = 0, coldDownloadBytes  = 0;
             var  chunksNeedingRehydration = new Dictionary<ChunkHash, long>();
             var  seenChunks               = new HashSet<ChunkHash>();
 
@@ -171,6 +176,18 @@ public sealed class RestoreCommandHandler(
                     case ChunkHydrationStatus.Available:
                         // NOTE: we _may_ undercount available if the StorageTierHint is not in sync with actual blob storage
                         downloadBytes += entry.ChunkSize;
+                        // Split downloads by source tier so retrieval (Cool/Cold) and read-op rates are priced
+                        // correctly. A rehydrated archive copy lives in Hot regardless of its index tier hint.
+                        if (rehydratedState.ContainsKey(chunkHash))
+                        {
+                            hotDownloadChunks++;  hotDownloadBytes += entry.ChunkSize;
+                        }
+                        else switch (entry.StorageTierHint)
+                        {
+                            case BlobTier.Cool: coolDownloadChunks++; coolDownloadBytes += entry.ChunkSize; break;
+                            case BlobTier.Cold: coldDownloadChunks++; coldDownloadBytes += entry.ChunkSize; break;
+                            default:            hotDownloadChunks++;  hotDownloadBytes  += entry.ChunkSize; break; // Hot or unknown — no retrieval charge
+                        }
                         break;
                     case ChunkHydrationStatus.NeedsRehydration:
                         bytesNeedingRehydration += entry.ChunkSize;
@@ -198,14 +215,18 @@ public sealed class RestoreCommandHandler(
             if (needsRehydrationCount > 0 && opts.ConfirmRehydration is not null)
             {
                 logger.LogInformation("[phase] confirm-rehydration");
-                var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
+                var regionPricing = PricingCatalog.LoadEmbedded().Resolve(opts.Region).Pricing;
+                var costEstimate = new RestoreCostCalculator(regionPricing).Compute(
                     chunksAvailable:          availableCount,
                     chunksAlreadyRehydrated:  rehydratedCount,
                     chunksNeedingRehydration: needsRehydrationCount,
                     chunksPendingRehydration: pendingRehydrationCount,
                     bytesNeedingRehydration:  bytesNeedingRehydration,
                     bytesPendingRehydration:  bytesPendingRehydration,
-                    downloadBytes:            downloadBytes);
+                    downloadBytes:            downloadBytes,
+                    hotDownloadChunks:        hotDownloadChunks,  hotDownloadBytes:  hotDownloadBytes,
+                    coolDownloadChunks:       coolDownloadChunks, coolDownloadBytes: coolDownloadBytes,
+                    coldDownloadChunks:       coldDownloadChunks, coldDownloadBytes: coldDownloadBytes);
 
                 var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
                 if (chosenPriority is null)

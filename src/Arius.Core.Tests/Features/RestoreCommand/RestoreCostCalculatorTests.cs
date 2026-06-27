@@ -8,16 +8,16 @@ public class RestoreCostCalculatorTests
     // Deterministic pricing config for all tests
     private static readonly RegionPricing _pricing = new()
     {
-        Archive = new ArchivePricingTier
+        Archive = new TierRates
         {
-            RetrievalPerGB        = 1.0,
-            RetrievalHighPerGB    = 5.0,
-            ReadOpsPer10000       = 2.0,
-            ReadOpsHighPer10000   = 10.0,
+            DataRetrievalPerGb     = 1.0,
+            DataRetrievalHighPerGb = 5.0,
+            ReadOpsPer10k          = 2.0,
+            ReadOpsHighPer10k      = 10.0,
         },
-        Hot  = new TierPricingConfig { WriteOpsPer10000 = 0.1, StoragePerGBPerMonth = 0.5 },
-        Cool = new TierPricingConfig { WriteOpsPer10000 = 0.2, StoragePerGBPerMonth = 0.3 },
-        Cold = new TierPricingConfig { WriteOpsPer10000 = 0.3, StoragePerGBPerMonth = 0.1 },
+        Hot  = new TierRates { WriteOpsPer10k = 0.1, StoragePerGbMonth = 0.5, ReadOpsPer10k = 0.04 },
+        Cool = new TierRates { WriteOpsPer10k = 0.2, StoragePerGbMonth = 0.3, ReadOpsPer10k = 0.05, DataRetrievalPerGb = 0.6 },
+        Cold = new TierRates { WriteOpsPer10k = 0.3, StoragePerGbMonth = 0.1, ReadOpsPer10k = 0.07, DataRetrievalPerGb = 0.9 },
     };
 
     // 1 GB expressed in bytes
@@ -216,5 +216,44 @@ public class RestoreCostCalculatorTests
             bytesNeedingRehydration: 2 * OneGBBytes, bytesPendingRehydration: 0, downloadBytes: OneGBBytes);
 
         estimate.TotalHigh.ShouldBeGreaterThanOrEqualTo(estimate.TotalStandard);
+    }
+
+    // ── Online download cost (read ops per tier + Cool/Cold data retrieval) ─────
+
+    [Test]
+    public void DownloadCost_ReadOpsPerTier_PlusCoolColdRetrieval()
+    {
+        var estimate = new RestoreCostCalculator(_pricing).Compute(
+            chunksAvailable: 30_000, chunksAlreadyRehydrated: 0,
+            chunksNeedingRehydration: 0, chunksPendingRehydration: 0,
+            bytesNeedingRehydration: 0, bytesPendingRehydration: 0, downloadBytes: 3 * OneGBBytes,
+            hotDownloadChunks: 10_000,  hotDownloadBytes:  OneGBBytes,
+            coolDownloadChunks: 10_000, coolDownloadBytes: OneGBBytes,
+            coldDownloadChunks: 10_000, coldDownloadBytes: OneGBBytes);
+
+        // Read ops: 1*0.04 (hot) + 1*0.05 (cool) + 1*0.07 (cold) = 0.16
+        estimate.DownloadReadOpsCost.ShouldBe(0.16, tolerance: 1e-9);
+        // Retrieval: hot none + 1 GiB*0.6 (cool) + 1 GiB*0.9 (cold) = 1.5
+        estimate.DownloadRetrievalCost.ShouldBe(1.5, tolerance: 1e-9);
+        // No archive rehydration → those components are zero.
+        estimate.RetrievalCostStandard.ShouldBe(0.0);
+        estimate.WriteOpsCost.ShouldBe(0.0);
+        estimate.StorageCost.ShouldBe(0.0);
+        // Download cost is independent of rehydration priority.
+        estimate.TotalStandard.ShouldBe(1.66, tolerance: 1e-9);
+        estimate.TotalHigh.ShouldBe(1.66, tolerance: 1e-9);
+    }
+
+    [Test]
+    public void DownloadCost_HotTier_HasNoRetrievalCharge()
+    {
+        var estimate = new RestoreCostCalculator(_pricing).Compute(
+            chunksAvailable: 10_000, chunksAlreadyRehydrated: 0,
+            chunksNeedingRehydration: 0, chunksPendingRehydration: 0,
+            bytesNeedingRehydration: 0, bytesPendingRehydration: 0, downloadBytes: OneGBBytes,
+            hotDownloadChunks: 10_000, hotDownloadBytes: OneGBBytes);
+
+        estimate.DownloadRetrievalCost.ShouldBe(0.0); // Hot has no per-GiB retrieval charge
+        estimate.DownloadReadOpsCost.ShouldBe(0.04, tolerance: 1e-9);
     }
 }

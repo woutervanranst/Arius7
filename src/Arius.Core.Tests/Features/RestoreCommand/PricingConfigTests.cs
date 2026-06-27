@@ -17,12 +17,12 @@ public class PricingConfigTests
             hotWriteOpsPer10000: 0.1,
             hotStoragePerGbPerMonth: 0.02);
 
-        config.Archive.RetrievalPerGB.ShouldBe(1.0);
-        config.Archive.RetrievalHighPerGB.ShouldBe(5.0);
-        config.Archive.ReadOpsPer10000.ShouldBe(2.0);
-        config.Archive.ReadOpsHighPer10000.ShouldBe(10.0);
-        config.Hot.WriteOpsPer10000.ShouldBe(0.1);
-        config.Hot.StoragePerGBPerMonth.ShouldBe(0.02);
+        config.Archive!.DataRetrievalPerGb.ShouldBe(1.0);
+        config.Archive.DataRetrievalHighPerGb.ShouldBe(5.0);
+        config.Archive.ReadOpsPer10k.ShouldBe(2.0);
+        config.Archive.ReadOpsHighPer10k.ShouldBe(10.0);
+        config.Hot!.WriteOpsPer10k.ShouldBe(0.1);
+        config.Hot.StoragePerGbMonth.ShouldBe(0.02);
     }
 
     [Test]
@@ -94,27 +94,27 @@ public class PricingConfigTests
     {
         return new RegionPricing
         {
-            Archive = new ArchivePricingTier
+            Archive = new TierRates
             {
-                RetrievalPerGB      = retrievalPerGb,
-                RetrievalHighPerGB  = retrievalHighPerGb,
-                ReadOpsPer10000     = readOpsPer10000,
-                ReadOpsHighPer10000 = readOpsHighPer10000,
+                DataRetrievalPerGb     = retrievalPerGb,
+                DataRetrievalHighPerGb = retrievalHighPerGb,
+                ReadOpsPer10k          = readOpsPer10000,
+                ReadOpsHighPer10k      = readOpsHighPer10000,
             },
-            Hot = new TierPricingConfig
+            Hot = new TierRates
             {
-                WriteOpsPer10000     = hotWriteOpsPer10000,
-                StoragePerGBPerMonth = hotStoragePerGbPerMonth,
+                WriteOpsPer10k    = hotWriteOpsPer10000,
+                StoragePerGbMonth = hotStoragePerGbPerMonth,
             },
-            Cool = new TierPricingConfig
+            Cool = new TierRates
             {
-                WriteOpsPer10000     = 0.2,
-                StoragePerGBPerMonth = 0.01,
+                WriteOpsPer10k    = 0.2,
+                StoragePerGbMonth = 0.01,
             },
-            Cold = new TierPricingConfig
+            Cold = new TierRates
             {
-                WriteOpsPer10000     = 0.3,
-                StoragePerGBPerMonth = 0.005,
+                WriteOpsPer10k    = 0.3,
+                StoragePerGbMonth = 0.005,
             },
         };
     }

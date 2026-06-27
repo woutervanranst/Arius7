@@ -94,6 +94,7 @@ public sealed class JobRunner(
         var sink = new JobSink(jobId, hub);
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
+        var region = database.GetAccount(repo.AccountId)?.Location; // prices the restore cost estimate
         database.InsertJob(jobId, repositoryId, "restore", "one-off", "running");
 
         var destination = string.IsNullOrWhiteSpace(repo.LocalPath)
@@ -123,6 +124,7 @@ public sealed class JobRunner(
                     TargetPath    = target is null ? null : RelativePath.Parse(target),
                     Overwrite     = overwrite,
                     NoPointers    = noPointers,
+                    Region        = region,
                     ConfirmRehydration = async (estimate, ct) =>
                     {
                         sink.Log("⚠ archive-tier chunks need rehydration — awaiting approval", "warn");

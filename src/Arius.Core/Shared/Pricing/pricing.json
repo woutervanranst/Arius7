@@ -1,27 +1,81 @@
 {
-  "_comment": "Azure Blob Storage pricing, keyed by programmatic region name. Source: https://azure.microsoft.com/en-us/pricing/details/storage/blobs/ — add a region here to make it selectable in the UI and priced.",
+  "_comment": "Azure Blob Storage retail pricing — EUR, Standard general-purpose v2 block blobs, LRS redundancy, base volume tier (0-50 TB). Keyed by programmatic region name. Source: Azure Retail Prices API (prices.azure.com), product 'General Block Blob v2'. Last updated 2026-06. Add a region here to make it selectable and priced. Azure bills per-GB values as binary GiB (2^30 bytes). Hot has no data-retrieval charge; cool/cold/archive do.",
   "regions": {
     "westeurope": {
       "currency": "EUR",
-      "_comment": "West Europe. Last updated: 2026-03.",
       "hot": {
-        "writeOpsPer10000":         0.0560,
-        "storagePerGBPerMonth":     0.0190
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000":     0.046446,
+        "readOpsPer10000":      0.003698
       },
       "cool": {
-        "writeOpsPer10000":         0.1119,
-        "storagePerGBPerMonth":     0.00861
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000":     0.086010,
+        "readOpsPer10000":      0.008601,
+        "dataRetrievalPerGB":   0.008601
       },
       "cold": {
-        "writeOpsPer10000":         0.2013,
-        "storagePerGBPerMonth":     0.00310
+        "storagePerGBPerMonth": 0.003870,
+        "writeOpsPer10000":     0.154819,
+        "readOpsPer10000":      0.086010,
+        "dataRetrievalPerGB":   0.025803
       },
       "archive": {
-        "retrievalPerGB":           0.0204,
-        "retrievalHighPerGB":       0.1102,
-        "readOpsPer10000":          6.6094,
-        "readOpsHighPer10000":     71.6011,
-        "storagePerGBPerMonth":     0.00086
+        "storagePerGBPerMonth":     0.001548,
+        "writeOpsPer10000":         0.103212,
+        "readOpsPer10000":          5.160624,
+        "readOpsHighPer10000":     55.906765,
+        "dataRetrievalPerGB":       0.020642,
+        "dataRetrievalHighPerGB":   0.111814
+      }
+    },
+    "northeurope": {
+      "currency": "EUR",
+      "hot": {
+        "storagePerGBPerMonth": 0.018922,
+        "writeOpsPer10000":     0.043005,
+        "readOpsPer10000":      0.003440
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000":     0.086010,
+        "readOpsPer10000":      0.008601,
+        "dataRetrievalPerGB":   0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000":     0.154819,
+        "readOpsPer10000":      0.086010,
+        "dataRetrievalPerGB":   0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth":     0.000852,
+        "writeOpsPer10000":         0.094611,
+        "readOpsPer10000":          4.730572,
+        "readOpsHighPer10000":     51.606244,
+        "dataRetrievalPerGB":       0.018922,
+        "dataRetrievalHighPerGB":   0.103212
+      }
+    },
+    "belgiumcentral": {
+      "currency": "EUR",
+      "_comment": "Belgium Central does not offer the Archive access tier for standard block blobs.",
+      "hot": {
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000":     0.046446,
+        "readOpsPer10000":      0.003698
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000":     0.086010,
+        "readOpsPer10000":      0.008601,
+        "dataRetrievalPerGB":   0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003870,
+        "writeOpsPer10000":     0.154819,
+        "readOpsPer10000":      0.086010,
+        "dataRetrievalPerGB":   0.025803
       }
     }
   }

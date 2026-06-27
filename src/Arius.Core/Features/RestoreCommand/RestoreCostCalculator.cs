@@ -1,27 +1,36 @@
 using Arius.Core.Shared.Pricing;
+using Arius.Core.Shared.Storage;
 
 namespace Arius.Core.Features.RestoreCommand;
 
 /// <summary>
-/// Computes the restore cost estimate shown before downloads or rehydration begin.
-/// Restore-specific; storage-by-tier cost lives in <see cref="StorageCostCalculator"/>. Both read
-/// their rates from the shared <see cref="PricingCatalog"/>.
+/// Computes the restore cost estimate shown before downloads or rehydration begin. Restore-specific;
+/// storage-by-tier monthly cost lives in <see cref="StorageCostCalculator"/>. Both read their rates from
+/// the shared region-aware <see cref="PricingCatalog"/>.
 /// </summary>
+/// <remarks>
+/// Two cost groups:
+/// <list type="bullet">
+///   <item><b>Archive rehydration</b> — chunks in the offline archive tier must be rehydrated first: per-GiB
+///   data retrieval + read operations (Standard or High priority), then Arius copies them into the Hot tier
+///   (chunks-rehydrated/), adding Hot write operations + Hot storage for the copies.</item>
+///   <item><b>Online download</b> — chunks already in an online tier (Hot/Cool/Cold, plus archive copies that
+///   are already rehydrated) are read directly: read operations on every chunk + a per-GiB data-retrieval
+///   charge on Cool and Cold (Hot has none).</item>
+/// </list>
+/// </remarks>
 internal sealed class RestoreCostCalculator(RegionPricing? pricing)
 {
+    // Azure bills per-GB storage and retrieval as binary GiB (2^30 bytes).
+    private const double BytesPerGiB = 1024.0 * 1024.0 * 1024.0;
+
     private readonly RegionPricing _pricing = pricing ?? PricingCatalog.LoadEmbedded().Resolve(null).Pricing;
 
     /// <summary>
-    /// Computes a <see cref="RestoreCostEstimate"/> from classified chunk counts and byte totals.
+    /// Computes a <see cref="RestoreCostEstimate"/> from classified chunk counts and byte totals. The
+    /// per-tier <c>*Download*</c> parameters describe the chunks read directly from online tiers (an
+    /// already-rehydrated archive copy counts as Hot); omitting them yields no download cost.
     /// </summary>
-    /// <param name="chunksAvailable">Chunk count ready for immediate download.</param>
-    /// <param name="chunksAlreadyRehydrated">Archive-tier chunk count with ready rehydrated copies.</param>
-    /// <param name="chunksNeedingRehydration">Archive-tier chunk count that needs rehydration.</param>
-    /// <param name="chunksPendingRehydration">Archive-tier chunk count with rehydration already pending.</param>
-    /// <param name="bytesNeedingRehydration">Chunk bytes that require a new rehydration request.</param>
-    /// <param name="bytesPendingRehydration">Chunk bytes already pending rehydration.</param>
-    /// <param name="downloadBytes">Chunk bytes available for immediate download.</param>
-    /// <param name="monthsStored">Storage duration assumed for rehydrated chunk copies.</param>
     public RestoreCostEstimate Compute(
         int            chunksAvailable,
         int            chunksAlreadyRehydrated,
@@ -30,11 +39,23 @@ internal sealed class RestoreCostCalculator(RegionPricing? pricing)
         long           bytesNeedingRehydration,
         long           bytesPendingRehydration,
         long           downloadBytes,
-        double         monthsStored = 1.0)
+        double         monthsStored        = 1.0,
+        int            hotDownloadChunks   = 0, long hotDownloadBytes  = 0,
+        int            coolDownloadChunks  = 0, long coolDownloadBytes = 0,
+        int            coldDownloadChunks  = 0, long coldDownloadBytes = 0)
     {
-        var numberOfBlobs = chunksNeedingRehydration;
-        var totalGB       = bytesNeedingRehydration / (1024.0 * 1024.0 * 1024.0);
-        var opsUnits      = numberOfBlobs / 10_000.0;
+        // ── Archive rehydration (offline → online) ──
+        var rehydGiB = bytesNeedingRehydration / BytesPerGiB;
+        var rehydOps = chunksNeedingRehydration / 10_000.0;
+
+        // ── Online download: read ops on every chunk + per-GiB retrieval on Cool/Cold (Hot is free) ──
+        var downloadReadOps =
+            hotDownloadChunks  / 10_000.0 * _pricing.ReadOpsRateFor(BlobTier.Hot)  +
+            coolDownloadChunks / 10_000.0 * _pricing.ReadOpsRateFor(BlobTier.Cool) +
+            coldDownloadChunks / 10_000.0 * _pricing.ReadOpsRateFor(BlobTier.Cold);
+        var downloadRetrieval =
+            coolDownloadBytes / BytesPerGiB * _pricing.DataRetrievalRateFor(BlobTier.Cool) +
+            coldDownloadBytes / BytesPerGiB * _pricing.DataRetrievalRateFor(BlobTier.Cold);
 
         return new RestoreCostEstimate
         {
@@ -46,19 +67,21 @@ internal sealed class RestoreCostCalculator(RegionPricing? pricing)
             BytesPendingRehydration  = bytesPendingRehydration,
             DownloadBytes            = downloadBytes,
 
-            // Retrieval cost: per GB from archive
-            RetrievalCostStandard = totalGB * _pricing.Archive.RetrievalPerGB,
-            RetrievalCostHigh     = totalGB * _pricing.Archive.RetrievalHighPerGB,
+            // Archive rehydration — per-GiB data retrieval at Standard / High priority.
+            RetrievalCostStandard = rehydGiB * _pricing.DataRetrievalRateFor(BlobTier.Archive),
+            RetrievalCostHigh     = rehydGiB * _pricing.DataRetrievalRateFor(BlobTier.Archive, highPriority: true),
 
-            // Read ops: (N/10000) * rate — Azure charges per operation, not per batch
-            ReadOpsCostStandard   = opsUnits * _pricing.Archive.ReadOpsPer10000,
-            ReadOpsCostHigh       = opsUnits * _pricing.Archive.ReadOpsHighPer10000,
+            // Archive read ops — (N/10000) * rate at Standard / High priority.
+            ReadOpsCostStandard   = rehydOps * _pricing.ReadOpsRateFor(BlobTier.Archive),
+            ReadOpsCostHigh       = rehydOps * _pricing.ReadOpsRateFor(BlobTier.Archive, highPriority: true),
 
-            // Write ops: (N/10000) * rate to Hot tier
-            WriteOpsCost          = opsUnits * _pricing.Hot.WriteOpsPer10000,
+            // Arius copies each rehydrated chunk into the Hot tier (chunks-rehydrated/): write ops + storage.
+            WriteOpsCost          = rehydOps * _pricing.WriteOpsRateFor(BlobTier.Hot),
+            StorageCost           = rehydGiB * _pricing.StorageRateFor(BlobTier.Hot) * monthsStored,
 
-            // Storage: N months in Hot tier (rehydrated copies in chunks-rehydrated/)
-            StorageCost           = totalGB * _pricing.Hot.StoragePerGBPerMonth * monthsStored,
+            // Direct download from online tiers.
+            DownloadReadOpsCost   = downloadReadOps,
+            DownloadRetrievalCost = downloadRetrieval,
         };
     }
 }
@@ -115,11 +138,17 @@ public sealed record RestoreCostEstimate
     /// <summary>Storage cost for rehydrated chunk copies.</summary>
     public required double StorageCost { get; init; }
 
+    /// <summary>Read operation cost for chunks downloaded directly from online tiers (Hot/Cool/Cold + rehydrated copies).</summary>
+    public double DownloadReadOpsCost { get; init; }
+
+    /// <summary>Per-GiB data-retrieval cost for chunks downloaded from the Cool and Cold tiers.</summary>
+    public double DownloadRetrievalCost { get; init; }
+
     // ── Computed totals ───────────────────────────────────────────────────────
 
     /// <summary>Total estimated cost at Standard priority.</summary>
-    public double TotalStandard => RetrievalCostStandard + ReadOpsCostStandard + WriteOpsCost + StorageCost;
+    public double TotalStandard => RetrievalCostStandard + ReadOpsCostStandard + WriteOpsCost + StorageCost + DownloadReadOpsCost + DownloadRetrievalCost;
 
     /// <summary>Total estimated cost at High priority.</summary>
-    public double TotalHigh => RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost;
+    public double TotalHigh => RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost + DownloadReadOpsCost + DownloadRetrievalCost;
 }
