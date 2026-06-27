@@ -21,15 +21,16 @@ test('global search returns cross-repository hits and reveals the clicked file',
   // reveal it (regression guard for ARI-4: previously the click reset the tab to the repo root).
   await expect(page).toHaveURL(/\/repos\/\d+\/files\?path=/);
 
-  // The clicked file's row must be shown AND highlighted (the `.hl` class added on reveal). Read the
-  // revealed path from the URL so the assertion is data-agnostic regardless of which hit streamed first.
+  // The clicked file's row must be revealed AND collected — its checkbox checked (row turns blue)
+  // and it's added to the collector bar. Read the revealed path from the URL so the assertion is
+  // data-agnostic regardless of which hit streamed first.
   const revealedPath = new URL(page.url()).searchParams.get('path');
   expect(revealedPath, 'navigation should include a ?path= for the clicked file').toBeTruthy();
-  const fileName = revealedPath!.split('/').pop()!;
 
-  const highlighted = page.locator('[data-testid="file-row"].hl');
-  await expect(highlighted).toBeVisible();
-  await expect(highlighted).toContainText(fileName);
+  const revealedRow = page.locator(`[data-testid="file-row"][data-rel="${revealedPath}"]`);
+  await expect(revealedRow).toBeVisible();
+  await expect(revealedRow.locator('.ar-check.on')).toBeVisible();   // box is checked
+  await expect(page.getByTestId('collected-bar')).toBeVisible();      // and it joined the collector
 });
 
 /** Opens the repo's file list (drilling into folders as needed) and returns a distinctive substring of the first file's name. */
