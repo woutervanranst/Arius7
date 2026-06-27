@@ -86,7 +86,7 @@ test('statistics tab shows the stored-size-by-tier breakdown', async ({ page, re
   expect(await rows.count()).toBeGreaterThan(0);
   await expect(rows.first()).toContainText(/Hot|Cool|Cold|Archive/);
 
-  // The redesigned breakdown carries an estimated monthly cost per tier plus a grand total.
+  // The breakdown carries an estimated monthly cost per tier plus a grand total.
   await expect(breakdown).toContainText('Est. cost/mo');
   await expect(rows.first().getByTestId('tier-cost')).toBeVisible();
   await expect(breakdown.getByTestId('total-cost')).toBeVisible();

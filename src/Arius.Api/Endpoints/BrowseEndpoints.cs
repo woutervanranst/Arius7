@@ -50,8 +50,6 @@ internal static class BrowseEndpoints
             var snapshotBlobs   = await snapshotService.ListBlobNamesAsync(ct);
             var fingerprint     = snapshotBlobs.Count == 0 ? string.Empty : snapshotService.GetVersion(snapshotBlobs[^1]);
 
-            // The per-tier storage cost is priced for the container's own region, which the cost estimator
-            // reads from the container's metadata — so the query carries no region.
             var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag), ct);
             var dto = new StatisticsDto(
                 statistics.Files, statistics.OriginalSize, statistics.DeduplicatedSize, statistics.StoredSize, statistics.UniqueChunks,
