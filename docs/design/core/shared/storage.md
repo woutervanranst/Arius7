@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This is the seam between the archival domain and the blob backend. It defines three interfaces (`IBlobServiceFactory` → `IBlobService` → `IBlobContainerService`) that abstract *all* persistence, the on-blob layout of a repository (the `chunks/` / `chunks-rehydrated/` / `filetrees/` / `snapshots/` / `chunk-index/` prefixes), and the credential-resolution + preflight handshake every host runs before opening a repository. Arius.Core compiles with **no reference to `Azure.Storage.Blobs`**; the only implementation, `Arius.AzureBlob`, lives behind these interfaces.
+This is the seam between the archival domain and the blob backend. It defines three interfaces (`IBlobServiceFactory` → `IBlobService` → `IBlobContainerService`) that abstract *all* persistence, the on-blob layout of a repository (the `chunks/` / `chunks-rehydrated/` / `filetrees/` / `snapshots/` / `chunk-index/` prefixes), and the credential-resolution + preflight handshake every host runs before opening a repository. Arius.Core compiles with **no reference to `Azure.Storage.Blobs`**; the only implementation, `Arius.AzureBlob`, lives behind these interfaces. The same adapter also implements the storage **cost** port (`IStorageCostEstimator`, [cost estimation](cost.md)), so all Azure-specifics — connection, tiers, *and* pricing — sit in one place.
 
 ## How it works
 

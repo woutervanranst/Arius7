@@ -8,7 +8,7 @@ Four thin Mediator read slices that back UI/host views. Each is a single query r
 
 ## How it works
 
-Each slice is a `record` query implementing either `ICommand<T>` (materialized) or `IStreamQuery<T>` (progressive), dispatched through Mediator and serviced by one handler. The handlers read existing services — `IChunkIndexService`, `IChunkStorageService`, `ISnapshotService`, `IBlobServiceFactory` — and project their state into UI-shaped result records.
+Each slice is a `record` query implementing `ICommand<T>` / `IQuery<T>` (materialized) or `IStreamQuery<T>` (progressive), dispatched through Mediator and serviced by one handler. The handlers read existing services — `IChunkIndexService`, `IChunkStorageService`, `ISnapshotService`, `IBlobServiceFactory`, `IStorageCostEstimator` — and project their state into UI-shaped result records.
 
 ### ChunkHydrationStatusQuery
 
@@ -28,10 +28,11 @@ Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a 
 
 ### StatisticsQuery
 
-`StatisticsQuery(Version? = null, EnsureFullCoverage = false)` returns `RepositoryStatistics(Files, OriginalSize, DeduplicatedSize, StoredSize, UniqueChunks, StoredByTier)`. It joins two sources at **two different scopes**:
+`StatisticsQuery(Version? = null, EnsureFullCoverage = false, Region? = null)` is an `IQuery<RepositoryStatistics>` returning `RepositoryStatistics(Files, OriginalSize, DeduplicatedSize, StoredSize, UniqueChunks, Currency, Region, TotalStorageCostPerMonth, StoredByTier)`. It joins three sources across **two scopes** plus a cost layer:
 
 - **Per-snapshot** (from the resolved snapshot manifest): `Files` and `OriginalSize` — the logical size of *this* snapshot, i.e. the sum of original (uncompressed) file sizes counting duplicates once per file (the size you would restore).
-- **Repository-wide** (from `IChunkIndexService`, across all snapshots): a single `GetStatistics()` call returns `ChunkIndexStatistics(DeduplicatedOriginalSize, ByTier)`. `DeduplicatedSize` ← `DeduplicatedOriginalSize` (sum of original sizes over distinct content, *before* compression); `StoredSize`, `UniqueChunks`, and the per-tier breakdown come from `ByTier` (`ChunkTierStatistic(Tier, UniqueChunks, StoredSize)` — the deduplicated *and* compressed cloud footprint).
+- **Repository-wide** (from `IChunkIndexService`, across all snapshots): a single `GetStatistics()` call returns `ChunkIndexStatistics(DeduplicatedOriginalSize, ByTier)`. `DeduplicatedSize` ← `DeduplicatedOriginalSize` (sum of original sizes over distinct content, *before* compression); `StoredSize` and `UniqueChunks` come from `ByTier` (the deduplicated *and* compressed cloud footprint).
+- **Cost** (from `IStorageCostEstimator.EstimateStorageCost(Region, ByTier)`): the handler prices each tier for the account's region, producing `Currency`, the resolved `Region`, `TotalStorageCostPerMonth`, and the per-tier `StoredByTier` (`TierStorageCost(Tier, UniqueChunks, StoredSize, CostPerMonth)`). Pricing is the provider adapter's concern — see [cost estimation](../../core/shared/cost.md) ([ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)).
 
 The repository-wide figures are read straight from the local chunk-index cache, so by default they reflect only the coverage that browsing/lookups happened to populate — accurate only once the cache has fully synced. When `EnsureFullCoverage` is set, the handler first calls `IChunkIndexService.EnsureFullCoverageAsync` (Stage 2), which downloads (or etag-revalidates) every remote shard into the cache, so the figures are **complete** rather than partial. That sweep touches blob storage and is the slow path; callers that need honest repository-wide totals (the web Statistics screen) lazy-load behind this flag, and the host memoizes the result so the sweep is paid once per snapshot generation (see [web host](../../hosts/web.md#statistics-cache)).
 
@@ -44,6 +45,7 @@ The three sizes form a logical→physical chain: `OriginalSize` (logical, with d
 - **`SnapshotInfo.Version` is the storage filename, not a display ordinal.** It is the value `Version` filters round-trip on; "v28"-style labels are UI ordinals derived from position, never persisted.
 - **Statistics mix per-snapshot and repository-wide scopes.** `Files` and `OriginalSize` are scoped to the resolved snapshot; `DeduplicatedSize`, `StoredSize`, `UniqueChunks`, and `StoredByTier` are repository-wide (all snapshots), read from the chunk index. The two scopes must be labelled distinctly in any UI so a snapshot's logical size is not read as the repository's physical footprint.
 - **Statistics chunk-index figures come from the local chunk-index cache.** On the default path no blob is read, so the repository-wide figures reflect only the cache's current coverage and finalise only once it has fully synchronised; `EnsureFullCoverage` trades that speed for completeness by first sweeping every remote shard into the cache (`EnsureFullCoverageAsync`) — the one path on which this query touches storage.
+- **Cost is region-priced and provider-owned.** `StatisticsQuery` passes the account `Region` to `IStorageCostEstimator`; the per-tier cost, total, and currency come from the provider's catalog (Unknown/missing → provider default), never computed in Core ([cost estimation](../../core/shared/cost.md)). Because the memoized `StatisticsDto` then embeds region-priced cost, the [web host](../../hosts/web.md#statistics-cache) clears the statistics cache when an account's region changes.
 
 ## Why this shape
 
