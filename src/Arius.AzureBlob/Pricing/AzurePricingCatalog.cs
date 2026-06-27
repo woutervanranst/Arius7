@@ -2,15 +2,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Core.Shared.Pricing;
+namespace Arius.AzureBlob.Pricing;
 
 /// <summary>
-/// The canonical, region-keyed Azure Blob Storage pricing — the single source of truth loaded from the
-/// embedded <c>pricing.json</c>. Both the restore-cost path (<c>RestoreCostCalculator</c>) and the
-/// storage-cost path (<c>StorageCostCalculator</c>) resolve their rates through here, and the set of
-/// selectable regions in the UI is derived from <see cref="RegionNames"/>.
+/// The region-keyed Azure Blob Storage pricing, loaded from the embedded <c>pricing.json</c>. This is the
+/// Azure provider's private pricing data; the rest of Arius sees only <c>IStorageCostEstimator</c>.
 /// </summary>
-public sealed class PricingCatalog
+internal sealed class AzurePricingCatalog
 {
     /// <summary>The region used when a requested region is null, "Unknown", or absent from the catalog.</summary>
     private const string DefaultRegionName = "westeurope";
@@ -18,7 +16,7 @@ public sealed class PricingCatalog
     private readonly IReadOnlyDictionary<string, RegionPricing> _regions;
     private readonly string _defaultRegion;
 
-    private PricingCatalog(IReadOnlyDictionary<string, RegionPricing> regions)
+    private AzurePricingCatalog(IReadOnlyDictionary<string, RegionPricing> regions)
     {
         _regions = regions;
         _defaultRegion = regions.ContainsKey(DefaultRegionName)
@@ -33,7 +31,7 @@ public sealed class PricingCatalog
     /// Resolves a requested region to its pricing and the actual region name applied. A null/"Unknown"/unknown
     /// region falls back to the default region (so cost is always estimable).
     /// </summary>
-    internal (string Name, RegionPricing Pricing) Resolve(string? region)
+    public (string Name, RegionPricing Pricing) Resolve(string? region)
     {
         if (!string.IsNullOrWhiteSpace(region) && _regions.TryGetValue(region, out var pricing))
             return (region, pricing);
@@ -49,9 +47,9 @@ public sealed class PricingCatalog
         AllowTrailingCommas = true,
     };
 
-    public static PricingCatalog LoadEmbedded()
+    public static AzurePricingCatalog LoadEmbedded()
     {
-        var assembly = typeof(PricingCatalog).Assembly;
+        var assembly = typeof(AzurePricingCatalog).Assembly;
         var resourceName = assembly.GetManifestResourceNames()
                                .FirstOrDefault(n => n.EndsWith("pricing.json", StringComparison.OrdinalIgnoreCase))
                            ?? throw new InvalidOperationException("Embedded pricing.json resource not found.");
@@ -61,7 +59,7 @@ public sealed class PricingCatalog
                        ?? throw new InvalidOperationException("Embedded pricing.json deserialized to null.");
         if (document.Regions.Count == 0)
             throw new InvalidOperationException("Embedded pricing.json contains no regions.");
-        return new PricingCatalog(document.Regions);
+        return new AzurePricingCatalog(document.Regions);
     }
 
     private sealed record PricingDocument
@@ -72,10 +70,9 @@ public sealed class PricingCatalog
 }
 
 /// <summary>
-/// Per-region Azure Blob Storage rates loaded from <c>pricing.json</c>. A tier is <c>null</c> when the
-/// region does not offer it (e.g. Belgium Central has no Archive tier for standard block blobs).
+/// Per-region Azure Blob Storage rates. A tier is <c>null</c> when the region does not offer it
+/// (e.g. Belgium Central has no Archive tier for standard block blobs).
 /// </summary>
-[SharedWithinAssembly] // consumed by RestoreCostCalculator (Features.RestoreCommand) + StorageCostCalculator
 internal sealed record RegionPricing
 {
     /// <summary>ISO currency code the rates are expressed in (e.g. <c>EUR</c>).</summary>
@@ -120,30 +117,12 @@ internal sealed record RegionPricing
 /// Rates for one access tier. Operation rates are per 10,000 operations; per-GB values are per binary GiB.
 /// <see cref="DataRetrievalPerGb"/> is 0 for Hot; the <c>*High*</c> fields are populated only for Archive.
 /// </summary>
-[SharedWithinAssembly] // accessed by RestoreCostCalculator (Features.RestoreCommand)
 internal sealed record TierRates
 {
-    /// <summary>Currency per GiB stored per month.</summary>
-    [JsonPropertyName("storagePerGBPerMonth")]
-    public double StoragePerGbMonth { get; init; }
-
-    /// <summary>Currency per 10,000 write operations.</summary>
-    [JsonPropertyName("writeOpsPer10000")]
-    public double WriteOpsPer10k { get; init; }
-
-    /// <summary>Currency per 10,000 read operations (Standard priority for Archive).</summary>
-    [JsonPropertyName("readOpsPer10000")]
-    public double ReadOpsPer10k { get; init; }
-
-    /// <summary>Currency per 10,000 read operations at High priority (Archive only).</summary>
-    [JsonPropertyName("readOpsHighPer10000")]
-    public double ReadOpsHighPer10k { get; init; }
-
-    /// <summary>Currency per GiB of data retrieved when reading (Cool/Cold/Archive; Standard priority for Archive). 0 for Hot.</summary>
-    [JsonPropertyName("dataRetrievalPerGB")]
-    public double DataRetrievalPerGb { get; init; }
-
-    /// <summary>Currency per GiB of data retrieved at High priority (Archive only).</summary>
-    [JsonPropertyName("dataRetrievalHighPerGB")]
-    public double DataRetrievalHighPerGb { get; init; }
+    [JsonPropertyName("storagePerGBPerMonth")]   public double StoragePerGbMonth      { get; init; }
+    [JsonPropertyName("writeOpsPer10000")]       public double WriteOpsPer10k         { get; init; }
+    [JsonPropertyName("readOpsPer10000")]        public double ReadOpsPer10k          { get; init; }
+    [JsonPropertyName("readOpsHighPer10000")]    public double ReadOpsHighPer10k      { get; init; }
+    [JsonPropertyName("dataRetrievalPerGB")]     public double DataRetrievalPerGb     { get; init; }
+    [JsonPropertyName("dataRetrievalHighPerGB")] public double DataRetrievalHighPerGb { get; init; }
 }

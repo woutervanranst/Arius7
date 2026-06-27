@@ -2,6 +2,7 @@ using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared.Fakes;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -31,7 +32,8 @@ public class MediatorEventRoutingIntegrationTests
             blobContainer: Substitute.For<IBlobContainerService>(),
             passphrase: null,
             accountName: "test",
-            containerName: "test");
+            containerName: "test",
+            costEstimator: new FakeStorageCostEstimator());
 
         return services.BuildServiceProvider();
     }

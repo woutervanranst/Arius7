@@ -5,8 +5,8 @@ using System.Threading.Channels;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Pricing;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Humanizer;
@@ -72,6 +72,7 @@ public sealed class RestoreCommandHandler(
     IFileTreeService fileTreeService,
     ISnapshotService snapshotSvc,
     IMediator mediator,
+    IStorageCostEstimator costEstimator,
     ILogger<RestoreCommandHandler> logger,
     string accountName,
     string containerName)
@@ -215,18 +216,19 @@ public sealed class RestoreCommandHandler(
             // + internet egress) and, when it is non-zero, ask the caller to approve before any cost is
             // incurred. Archive rehydration also takes hours, so the same prompt carries the priority choice.
             var rehydratePriority = RehydratePriority.Standard;
-            var regionPricing     = PricingCatalog.LoadEmbedded().Resolve(opts.Region).Pricing;
-            var costEstimate      = new RestoreCostCalculator(regionPricing).Compute(
-                chunksAvailable:          availableCount,
-                chunksAlreadyRehydrated:  rehydratedCount,
-                chunksNeedingRehydration: needsRehydrationCount,
-                chunksPendingRehydration: pendingRehydrationCount,
-                bytesNeedingRehydration:  bytesNeedingRehydration,
-                bytesPendingRehydration:  bytesPendingRehydration,
-                downloadBytes:            downloadBytes,
-                hotDownloadChunks:        hotDownloadChunks,  hotDownloadBytes:  hotDownloadBytes,
-                coolDownloadChunks:       coolDownloadChunks, coolDownloadBytes: coolDownloadBytes,
-                coldDownloadChunks:       coldDownloadChunks, coldDownloadBytes: coldDownloadBytes);
+            var costEstimate      = costEstimator.EstimateRestoreCost(opts.Region, new RestoreCostRequest
+            {
+                ChunksAvailable          = availableCount,
+                ChunksAlreadyRehydrated  = rehydratedCount,
+                ChunksNeedingRehydration = needsRehydrationCount,
+                ChunksPendingRehydration = pendingRehydrationCount,
+                BytesNeedingRehydration  = bytesNeedingRehydration,
+                BytesPendingRehydration  = bytesPendingRehydration,
+                DownloadBytes            = downloadBytes,
+                HotDownloadChunks        = hotDownloadChunks,  HotDownloadBytes  = hotDownloadBytes,
+                CoolDownloadChunks       = coolDownloadChunks, CoolDownloadBytes = coolDownloadBytes,
+                ColdDownloadChunks       = coldDownloadChunks, ColdDownloadBytes = coldDownloadBytes,
+            });
 
             if (costEstimate.TotalStandard > 0 && opts.ConfirmRehydration is not null)
             {

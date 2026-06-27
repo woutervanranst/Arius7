@@ -33,6 +33,7 @@ try
     builder.Services.AddSingleton(new AppDatabase(dbPath));
     builder.Services.AddSingleton<SecretProtector>();
     builder.Services.AddSingleton<IBlobServiceFactory, AzureBlobServiceFactory>();
+    builder.Services.AddSingleton<Arius.Core.Shared.Cost.IStorageCostEstimator, Arius.AzureBlob.Pricing.AzureBlobCostEstimator>();
     builder.Services.AddSingleton<RepositoryProviderRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();

@@ -138,7 +138,8 @@ public static class CliBuilder
             blobContainer,
             passphrase,
             accountName,
-            containerName);
+            containerName,
+            new Arius.AzureBlob.Pricing.AzureBlobCostEstimator());
 
         return services.BuildServiceProvider();
     }

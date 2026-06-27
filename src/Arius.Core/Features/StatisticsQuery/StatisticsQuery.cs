@@ -1,5 +1,5 @@
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.Pricing;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -72,7 +72,7 @@ public sealed record RepositoryStatistics(
 public sealed class StatisticsQueryHandler(
     ISnapshotService          snapshots,
     IChunkIndexService        chunkIndex,
-    StorageCostCalculator     storageCost,
+    IStorageCostEstimator     costEstimator,
     ILogger<StatisticsQueryHandler> logger)
     : IQueryHandler<StatisticsQuery, RepositoryStatistics>
 {
@@ -83,7 +83,7 @@ public sealed class StatisticsQueryHandler(
         if (snapshot is null)
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
-            var emptyCost = storageCost.Compute(query.Region, []);
+            var emptyCost = costEstimator.EstimateStorageCost(query.Region, []);
             return new RepositoryStatistics(0, 0, 0, 0, 0, emptyCost.Currency, emptyCost.Region, 0, emptyCost.Tiers);
         }
 
@@ -96,7 +96,7 @@ public sealed class StatisticsQueryHandler(
         var byTier     = chunkStats.ByTier;
 
         // ── Stage 3: price the per-tier stored size for the account's region ──
-        var cost = storageCost.Compute(query.Region, byTier);
+        var cost = costEstimator.EstimateStorageCost(query.Region, byTier);
 
         return new RepositoryStatistics(
             Files:                    snapshot.FileCount,

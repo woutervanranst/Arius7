@@ -10,8 +10,8 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.FileTree;
-using Arius.Core.Shared.Pricing;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -32,6 +32,7 @@ public static class ServiceCollectionExtensions
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
+    /// <param name="costEstimator">The provider's cost estimator (e.g. Azure) used by the statistics and restore handlers.</param>
     /// <param name="configuration">
     /// Optional host configuration layered on top of Arius.Core's embedded defaults. When it contains an
     /// <c>Arius:Exclusions</c> section, those values override the central defaults for file/folder exclusions;
@@ -44,8 +45,10 @@ public static class ServiceCollectionExtensions
         string?                 passphrase,
         string                  accountName,
         string                  containerName,
+        IStorageCostEstimator   costEstimator,
         IConfiguration?         configuration = null)
     {
+        services.AddSingleton(costEstimator);
         // Storage
         services.AddSingleton(blobContainer);
         if (services.All(service => service.ServiceType != typeof(IBlobServiceFactory)))
@@ -139,6 +142,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
+                sp.GetRequiredService<IStorageCostEstimator>(),
                 sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
                 accountName,
                 containerName));
@@ -175,14 +179,11 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<SnapshotsQueryHandler>>()));
 
-        // Shared, region-aware storage pricing (owns the embedded pricing.json catalog).
-        services.AddSingleton<StorageCostCalculator>(_ => new StorageCostCalculator());
-
         services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>>(sp =>
             new StatisticsQueryHandler(
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IChunkIndexService>(),
-                sp.GetRequiredService<StorageCostCalculator>(),
+                sp.GetRequiredService<IStorageCostEstimator>(),
                 sp.GetRequiredService<ILogger<StatisticsQueryHandler>>()));
 
         return services;

@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Pricing\pricing.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Arius.Core\Arius.Core.csproj" />
   </ItemGroup>
 

@@ -1,8 +1,10 @@
+using Arius.AzureBlob.Pricing;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
@@ -212,6 +214,9 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Repository container name used for cache paths and service wiring.</summary>
     public required string ContainerName { get; init; }
 
+    /// <summary>Cost estimator used by the restore/statistics handlers; defaults to the real Azure estimator.</summary>
+    public IStorageCostEstimator CostEstimator { get; init; } = new AzureBlobCostEstimator();
+
     public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
 
     public FakeLogCollector RestoreLogs => _restoreLogger.Collector;
@@ -233,7 +238,7 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()
-        => new(Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _restoreLogger, AccountName, ContainerName);
+        => new(Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, CostEstimator, _restoreLogger, AccountName, ContainerName);
 
     /// <summary>Creates a list-query handler wired to this fixture's shared repository services.</summary>
     public ListQueryHandler CreateListQueryHandler(FileExclusionOptions? exclusions = null)

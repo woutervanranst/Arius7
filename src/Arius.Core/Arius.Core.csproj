@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Shared\Pricing\pricing.json" />
     <EmbeddedResource Include="appsettings.json" />
   </ItemGroup>
 

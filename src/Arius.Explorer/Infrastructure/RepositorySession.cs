@@ -38,7 +38,7 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
             builder.Services.AddSingleton(factory);
         });
         services.AddMediator();
-        services.AddArius(blobContainer, repository.Passphrase, repository.AccountName, repository.ContainerName);
+        services.AddArius(blobContainer, repository.Passphrase, repository.AccountName, repository.ContainerName, new Arius.AzureBlob.Pricing.AzureBlobCostEstimator());
 
         serviceProvider = services.BuildServiceProvider();
         Mediator = serviceProvider.GetRequiredService<IMediator>();
@@ -48,7 +48,7 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
     public static void AddRootCorePlaceholders(IServiceCollection services)
     {
         services.AddSingleton<IBlobContainerService, NullBlobContainerService>();
-        services.AddArius(new NullBlobContainerService(), passphrase: null, accountName: "root", containerName: "root");
+        services.AddArius(new NullBlobContainerService(), passphrase: null, accountName: "root", containerName: "root", new Arius.AzureBlob.Pricing.AzureBlobCostEstimator());
     }
 
     public void Dispose() => DisposeCurrentProvider();
