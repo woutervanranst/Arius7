@@ -6,6 +6,7 @@ using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Features.SnapshotsQuery;
 using Arius.Core.Features.StatisticsQuery;
+using Arius.Core.Features.StorageAccountInfoQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
@@ -186,6 +187,11 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<IStorageCostEstimator>(),
                 sp.GetRequiredService<ILogger<StatisticsQueryHandler>>()));
+
+        services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>(sp =>
+            new StorageAccountInfoQueryHandler(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<IStorageCostEstimator>()));
 
         return services;
     }

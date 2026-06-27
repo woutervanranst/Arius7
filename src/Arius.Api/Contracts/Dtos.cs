@@ -20,7 +20,9 @@ public sealed record RepositoryDto(
     long    AccountId,
     string  Account,
     string? LocalPath,
-    string  DefaultTier);
+    string  DefaultTier,
+    string? Region,
+    bool    RegionIsDefault);
 
 public sealed record CreateRepositoryRequest(
     long    AccountId,

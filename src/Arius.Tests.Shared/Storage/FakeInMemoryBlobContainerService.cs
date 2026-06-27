@@ -29,6 +29,9 @@ public sealed class FakeInMemoryBlobContainerService : IBlobContainerService
     /// <summary>Listing requests, recorded as the raw blob-name prefix used for matching (separate from <see cref="RequestedBlobNames"/> so download-count assertions stay meaningful).</summary>
     public IReadOnlyCollection<string> ListedNamePrefixes => _listedNamePrefixes.ToArray();
 
+    /// <summary>The container's configured region; <c>null</c> (the default) models a container with no region metadata set.</summary>
+    public string? RegionHint { get; init; }
+
     public void ClearListedNamePrefixes()
     {
         while (_listedNamePrefixes.TryDequeue(out _))

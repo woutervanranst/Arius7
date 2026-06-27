@@ -93,14 +93,14 @@ import { DrawerStore } from '../../core/state/drawer.store';
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:2.4fr .9fr .7fr;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
-        <div>Repository</div><div>Tier</div><div>Account</div>
+      <div style="display:grid;grid-template-columns:2.4fr .9fr .9fr .7fr;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
+        <div>Repository</div><div>Tier</div><div>Region</div><div>Account</div>
       </div>
 
       @if (repos(); as list) {
         @for (repo of list; track repo.id) {
           <div class="ar-repo-row" data-testid="repo-row" (click)="openRepo(repo.id)"
-               style="display:grid;grid-template-columns:2.4fr .9fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
+               style="display:grid;grid-template-columns:2.4fr .9fr .9fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
             <div class="flex items-center gap-3">
               <div style="width:38px;height:38px;border-radius:10px;background:#eff6ff;color:#3b82f6;display:flex;align-items:center;justify-content:center">
                 <i class="ki-filled ki-folder" style="font-size:18px"></i>
@@ -111,6 +111,7 @@ import { DrawerStore } from '../../core/state/drawer.store';
               </div>
             </div>
             <div><span style="font-size:12.5px;font-weight:600;text-transform:capitalize" [style.color]="tierColor(repo.defaultTier)">{{ repo.defaultTier }}</span></div>
+            <div data-testid="repo-region" style="font-size:12.5px;color:#71717a">@if (repo.region) {{{ repo.region }}@if (repo.regionIsDefault) {<span style="color:#a1a1aa" title="Set the container's 'region' metadata for accurate pricing"> (default)</span>}} @else {<span style="color:#d4d4d8">—</span>}</div>
             <div class="ar-mono" style="font-size:12.5px;color:#71717a">{{ repo.account }}</div>
           </div>
         } @empty {

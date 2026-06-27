@@ -12,6 +12,12 @@ namespace Arius.Core.Shared.Cost;
 /// </summary>
 public interface IStorageCostEstimator
 {
+    /// <summary>
+    /// The region this estimator prices for: the container's configured region, or the provider's fallback
+    /// default when unset. Bound once to the repository's storage; the default is the provider's own concern.
+    /// </summary>
+    string Region { get; }
+
     /// <summary>Estimates the monthly storage cost per tier for this repository's storage.</summary>
     StorageCostEstimate EstimateStorageCost(IReadOnlyList<ChunkTierStatistic> storedByTier);
 

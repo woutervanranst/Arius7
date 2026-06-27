@@ -1,3 +1,4 @@
+using Arius.AzureBlob;
 using Arius.AzureBlob.Pricing;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Cost;
@@ -50,11 +51,11 @@ public class AzureBlobCostEstimatorTests
     }
 
     [Test]
-    public void EstimateStorageCost_UnsetRegion_FallsBackToFallbackRegion()
+    public void EstimateStorageCost_UnsetRegion_FallsBackToDefaultRegion()
     {
-        // A container with no 'region' metadata (null hint) prices against the fallback region with a warning.
+        // A container with no 'region' metadata (null hint) prices against the default region with a warning.
         var estimate = For(null).EstimateStorageCost([]);
-        estimate.Region.ShouldBe(AzureBlobCostEstimator.FallbackRegion);
+        estimate.Region.ShouldBe(AzureBlobContainerService.DefaultRegion);
     }
 
     [Test]

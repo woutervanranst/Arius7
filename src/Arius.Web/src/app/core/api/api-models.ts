@@ -15,6 +15,10 @@ export interface RepositoryDto {
   account: string;
   localPath: string | null;
   defaultTier: string;
+  /** Storage region the cost is priced for, resolved from the container metadata; null when it can't be read. */
+  region: string | null;
+  /** True when {@link region} is the fallback default because the container has no region metadata set. */
+  regionIsDefault: boolean;
 }
 
 export interface SnapshotDto {

@@ -10,14 +10,11 @@ namespace Arius.AzureBlob.Pricing;
 /// pricing catalog and the Azure cost model (per-tier storage; restore = archive rehydration + online-tier
 /// download retrieval/read-ops + internet egress). Azure bills per-GB values as binary GiB (2^30 bytes).
 /// Bound to one repository's container: the region is resolved once from <see cref="IBlobContainerService.RegionHint"/>
-/// (an unconfigured container falls back to <see cref="FallbackRegion"/> with a logged warning).
+/// (an unconfigured container falls back to <see cref="AzureBlobContainerService.DefaultRegion"/> with a logged warning).
 /// </summary>
 public sealed class AzureBlobCostEstimator : IStorageCostEstimator
 {
     private const double BytesPerGiB = 1024.0 * 1024.0 * 1024.0;
-
-    /// <summary>Region used to price a container whose <c>region</c> metadata is not set.</summary>
-    public const string FallbackRegion = "northeurope";
 
     private readonly string        _region;
     private readonly RegionPricing _pricing;
@@ -30,14 +27,15 @@ public sealed class AzureBlobCostEstimator : IStorageCostEstimator
         if (string.IsNullOrEmpty(regionHint))
         {
             logger.LogWarning(
-                "Container 'region' metadata is not set; pricing against {Fallback}. Set the container's 'region' " +
+                "Container 'region' metadata is not set; pricing against {Default}. Set the container's 'region' " +
                 "metadata (e.g. in Azure Storage Explorer) for accurate cost estimates.",
-                FallbackRegion);
-            regionHint = FallbackRegion;
+                AzureBlobContainerService.DefaultRegion);
         }
 
-        (_region, _pricing) = catalog.Resolve(regionHint);
+        (_region, _pricing) = catalog.Resolve(regionHint ?? AzureBlobContainerService.DefaultRegion);
     }
+
+    public string Region => _region;
 
     public StorageCostEstimate EstimateStorageCost(IReadOnlyList<ChunkTierStatistic> storedByTier)
     {
