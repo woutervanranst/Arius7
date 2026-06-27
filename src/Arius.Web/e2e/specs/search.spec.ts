@@ -1,7 +1,7 @@
 import { test, expect } from '../support/fixtures';
 import { revealFiles } from '../support/files';
 
-test('global search returns cross-repository hits and navigates to the repo', async ({ page, repo }) => {
+test('global search returns cross-repository hits and reveals the clicked file', async ({ page, repo }) => {
   test.setTimeout(120_000);
 
   // Derive a real search term from a file in the repo (data-agnostic — the repo contents may change).
@@ -16,7 +16,20 @@ test('global search returns cross-repository hits and navigates to the repo', as
   await expect(result).toContainText(repo.alias);
 
   await result.click();
-  await expect(page).toHaveURL(/\/repos\/\d+\/files/);
+
+  // Clicking a hit must navigate to the repo's Files tab AND carry the file path so the tab can
+  // reveal it (regression guard for ARI-4: previously the click reset the tab to the repo root).
+  await expect(page).toHaveURL(/\/repos\/\d+\/files\?path=/);
+
+  // The clicked file's row must be shown AND highlighted (the `.hl` class added on reveal). Read the
+  // revealed path from the URL so the assertion is data-agnostic regardless of which hit streamed first.
+  const revealedPath = new URL(page.url()).searchParams.get('path');
+  expect(revealedPath, 'navigation should include a ?path= for the clicked file').toBeTruthy();
+  const fileName = revealedPath!.split('/').pop()!;
+
+  const highlighted = page.locator('[data-testid="file-row"].hl');
+  await expect(highlighted).toBeVisible();
+  await expect(highlighted).toContainText(fileName);
 });
 
 /** Opens the repo's file list (drilling into folders as needed) and returns a distinctive substring of the first file's name. */
