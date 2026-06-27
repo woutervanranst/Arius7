@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Arius.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The Mediator source generator MUST run in this outermost assembly so it discovers
          INotificationHandler<T> implementations in BOTH Arius.Core and Arius.Api. -->
     <PackageReference Include="Mediator.SourceGenerator">

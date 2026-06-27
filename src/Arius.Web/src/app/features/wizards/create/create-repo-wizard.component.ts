@@ -5,13 +5,14 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/api/api.service';
+import { FolderPickerComponent } from '../../../shared/folder-picker/folder-picker.component';
 
 /** New repository: 2-step wizard (storage account → new container with tier + passphrase). */
 @Component({
   selector: 'arius-create-wizard',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, TitleCasePipe],
+  imports: [FormsModule, TitleCasePipe, FolderPickerComponent],
   template: `
     <div style="max-width:620px;margin:0 auto">
       <div style="font-size:13px;color:#71717a">Step <b>{{ step() }}</b> of 2 · {{ step() === 1 ? 'Storage account' : 'New container' }}</div>
@@ -34,8 +35,8 @@ import { ApiService } from '../../../core/api/api.service';
             </label>
           } @empty { <div style="color:#a1a1aa;font-size:13px">No configured accounts — add a new one.</div> }
         } @else {
-          <label class="ar-field"><span>Account name</span><input class="ar-input ar-mono" [(ngModel)]="newName" /></label>
-          <label class="ar-field"><span>Account key</span><input class="ar-input ar-mono" type="password" [(ngModel)]="newKey" /></label>
+          <label class="ar-field"><span>Account name <span class="ar-req">*</span></span><input class="ar-input ar-mono" data-testid="new-account-name" [(ngModel)]="newName" /></label>
+          <label class="ar-field"><span>Account key <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="new-account-key" [(ngModel)]="newKey" /></label>
         }
         @if (error()) { <div style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ error() }}</div> }
         <div class="flex items-center justify-end gap-2.5" style="margin-top:22px">
@@ -44,16 +45,16 @@ import { ApiService } from '../../../core/api/api.service';
         </div>
       } @else {
         <h1 class="ar-heading" style="font-size:20px;font-weight:700;margin-bottom:16px">New container</h1>
-        <label class="ar-field"><span>Friendly alias</span><input class="ar-input" data-testid="create-alias" [(ngModel)]="alias" (ngModelChange)="syncContainer()" /></label>
-        <label class="ar-field"><span>Container name (auto-generated)</span><input class="ar-input ar-mono" data-testid="create-container" [value]="container()" readonly /></label>
-        <label class="ar-field"><span>Local path</span><input class="ar-input ar-mono" [(ngModel)]="localPath" /></label>
+        <label class="ar-field"><span>Container name <span class="ar-req">*</span></span><input class="ar-input ar-mono" data-testid="create-container" [ngModel]="container()" (ngModelChange)="container.set($event)" placeholder="e.g. arius-photos" /></label>
+        <label class="ar-field"><span>Friendly alias</span><input class="ar-input" data-testid="create-alias" [(ngModel)]="alias" [placeholder]="container() || 'defaults to the container name'" /></label>
+        <div class="ar-field"><span>Local path</span><arius-folder-picker [(value)]="localPath" /></div>
         <div class="ar-field"><span>Default tier</span>
           <div class="ar-seg">
             @for (t of tiers; track t) { <button [class.on]="tier() === t" (click)="tier.set(t)">{{ t | titlecase }}</button> }
           </div>
         </div>
-        <label class="ar-field"><span>Passphrase</span><input class="ar-input ar-mono" type="password" data-testid="passphrase" [(ngModel)]="passphrase" /></label>
-        <label class="ar-field"><span>Confirm passphrase</span><input class="ar-input ar-mono" type="password" data-testid="passphrase-confirm" [(ngModel)]="passphrase2" /></label>
+        <label class="ar-field"><span>Passphrase <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="passphrase" [(ngModel)]="passphrase" /></label>
+        <label class="ar-field"><span>Confirm passphrase <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="passphrase-confirm" [(ngModel)]="passphrase2" /></label>
         <div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:10px 12px">
           <i class="ki-filled ki-information-2"></i> The passphrase encrypts every chunk and <b>cannot be recovered</b> if lost.
         </div>
@@ -78,6 +79,7 @@ import { ApiService } from '../../../core/api/api.service';
     .ar-input { width:100%;height:40px;border:1px solid #e4e4e7;border-radius:9px;padding:0 12px;font-size:13.5px;outline:none }
     .ar-input:focus { border-color:#3b82f6 }
     .ar-input[readonly] { background:#f7f7f8;color:#71717a }
+    .ar-req { color:#dc2626 }
   `],
 })
 export class CreateRepoWizardComponent {
@@ -100,15 +102,9 @@ export class CreateRepoWizardComponent {
   protected readonly tiers = ['hot', 'cool', 'cold', 'archive'];
 
   // A method (not a computed) because alias/passphrase are plain ngModel properties, not signals —
-  // OnPush re-evaluates this on each ngModel change.
+  // OnPush re-evaluates this on each ngModel change. Container is required; the friendly alias is optional.
   protected canCreate(): boolean {
-    return !!this.alias && !!this.container() && !!this.passphrase && this.passphrase === this.passphrase2;
-  }
-
-  protected syncContainer(): void {
-    const slug = (this.alias || 'repo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'repo';
-    const suffix = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, '0');
-    this.container.set(`arius-${slug}-${suffix}`);
+    return !!this.container() && !!this.passphrase && this.passphrase === this.passphrase2;
   }
 
   protected async next(): Promise<void> {
@@ -119,7 +115,6 @@ export class CreateRepoWizardComponent {
         this.selectedAccountId.set(created.id);
       }
       if (!this.selectedAccountId()) { this.error.set('Select or create an account.'); return; }
-      if (!this.container()) this.syncContainer();
       this.step.set(2);
     } catch (e: unknown) {
       this.error.set(e instanceof Error ? e.message : String(e));
@@ -131,7 +126,8 @@ export class CreateRepoWizardComponent {
     this.api.createRepository({
       accountId: this.selectedAccountId(),
       container: this.container(),
-      alias: this.alias,
+      // Friendly alias is optional — fall back to the container name when left blank.
+      alias: this.alias || this.container(),
       passphrase: this.passphrase || null,
       localPath: this.localPath || null,
       defaultTier: this.tier(),

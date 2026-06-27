@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -71,6 +72,7 @@ public sealed class RestoreCommandHandler(
     IFileTreeService fileTreeService,
     ISnapshotService snapshotSvc,
     IMediator mediator,
+    IStorageCostEstimator costEstimator,
     ILogger<RestoreCommandHandler> logger,
     string accountName,
     string containerName)
@@ -126,6 +128,10 @@ public sealed class RestoreCommandHandler(
             var  skipped                  = new StrongBox<long>(0);
             int  fileCount                = 0, availableCount       = 0, rehydratedCount       = 0, needsRehydrationCount = 0, pendingRehydrationCount = 0, largeChunks = 0, totalChunks = 0;
             long totalOriginalBytes       = 0, totalChunkBytes = 0, downloadBytes         = 0, bytesNeedingRehydration = 0, bytesPendingRehydration = 0;
+            // Per-tier breakdown of the online chunks that will be downloaded (cost differs by tier).
+            // A rehydrated archive copy is read from the Hot tier where Arius placed it.
+            int  hotDownloadChunks  = 0, coolDownloadChunks = 0, coldDownloadChunks = 0;
+            long hotDownloadBytes   = 0, coolDownloadBytes  = 0, coldDownloadBytes  = 0;
             var  chunksNeedingRehydration = new Dictionary<ChunkHash, long>();
             var  seenChunks               = new HashSet<ChunkHash>();
 
@@ -171,6 +177,18 @@ public sealed class RestoreCommandHandler(
                     case ChunkHydrationStatus.Available:
                         // NOTE: we _may_ undercount available if the StorageTierHint is not in sync with actual blob storage
                         downloadBytes += entry.ChunkSize;
+                        // Split downloads by source tier so retrieval (Cool/Cold) and read-op rates are priced
+                        // correctly. A rehydrated archive copy lives in Hot regardless of its index tier hint.
+                        if (rehydratedState.ContainsKey(chunkHash))
+                        {
+                            hotDownloadChunks++;  hotDownloadBytes += entry.ChunkSize;
+                        }
+                        else switch (entry.StorageTierHint)
+                        {
+                            case BlobTier.Cool: coolDownloadChunks++; coolDownloadBytes += entry.ChunkSize; break;
+                            case BlobTier.Cold: coldDownloadChunks++; coldDownloadBytes += entry.ChunkSize; break;
+                            default:            hotDownloadChunks++;  hotDownloadBytes  += entry.ChunkSize; break; // Hot or unknown — no retrieval charge
+                        }
                         break;
                     case ChunkHydrationStatus.NeedsRehydration:
                         bytesNeedingRehydration += entry.ChunkSize;
@@ -193,25 +211,33 @@ public sealed class RestoreCommandHandler(
             logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending} downloadSize={DownloadSize} rehydrateSize={RehydrateSize} pendingSize={PendingSize}", availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount, downloadBytes.Bytes().Humanize(), bytesNeedingRehydration.Bytes().Humanize(), bytesPendingRehydration.Bytes().Humanize());
             await mediator.Publish(new RehydrationStatusEvent(availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
 
-            // ── Stage 3: Cost estimate + confirm rehydration ──────────────────────
+            // ── Stage 3: Cost estimate + confirm ──────────────────────────────────
+            // Estimate the full restore cost (archive rehydration + online-tier download retrieval/read-ops
+            // + internet egress) and, when it is non-zero, ask the caller to approve before any cost is
+            // incurred. Archive rehydration also takes hours, so the same prompt carries the priority choice.
             var rehydratePriority = RehydratePriority.Standard;
-            if (needsRehydrationCount > 0 && opts.ConfirmRehydration is not null)
+            var costEstimate      = costEstimator.EstimateRestoreCost(new RestoreCostRequest
             {
-                logger.LogInformation("[phase] confirm-rehydration");
-                var costEstimate = new RestoreCostCalculator(pricing: null).Compute(
-                    chunksAvailable:          availableCount,
-                    chunksAlreadyRehydrated:  rehydratedCount,
-                    chunksNeedingRehydration: needsRehydrationCount,
-                    chunksPendingRehydration: pendingRehydrationCount,
-                    bytesNeedingRehydration:  bytesNeedingRehydration,
-                    bytesPendingRehydration:  bytesPendingRehydration,
-                    downloadBytes:            downloadBytes);
+                ChunksAvailable          = availableCount,
+                ChunksAlreadyRehydrated  = rehydratedCount,
+                ChunksNeedingRehydration = needsRehydrationCount,
+                ChunksPendingRehydration = pendingRehydrationCount,
+                BytesNeedingRehydration  = bytesNeedingRehydration,
+                BytesPendingRehydration  = bytesPendingRehydration,
+                DownloadBytes            = downloadBytes,
+                HotDownloadChunks        = hotDownloadChunks,  HotDownloadBytes  = hotDownloadBytes,
+                CoolDownloadChunks       = coolDownloadChunks, CoolDownloadBytes = coolDownloadBytes,
+                ColdDownloadChunks       = coldDownloadChunks, ColdDownloadBytes = coldDownloadBytes,
+            });
 
+            if (costEstimate.TotalStandard > 0 && opts.ConfirmRehydration is not null)
+            {
+                logger.LogInformation("[phase] confirm-cost");
                 var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
                 if (chosenPriority is null)
                 {
-                    // User cancelled rehydration — exit without downloading or rehydrating.
-                    logger.LogInformation("[rehydration] Confirmation cancelled: pending={Pending} rehydrateSize={RehydrateSize}", needsRehydrationCount + pendingRehydrationCount, bytesNeedingRehydration.Bytes().Humanize());
+                    // User declined — exit without downloading or rehydrating.
+                    logger.LogInformation("[restore] Cost declined: pending={Pending} rehydrateSize={RehydrateSize}", needsRehydrationCount + pendingRehydrationCount, bytesNeedingRehydration.Bytes().Humanize());
                     logger.LogInformation("[restore] Done: restored=0 skipped={Skipped} pendingRehydration={Pending}", skipped.Value, needsRehydrationCount + pendingRehydrationCount);
 
                     return new RestoreResult

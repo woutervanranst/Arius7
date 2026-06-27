@@ -1,4 +1,5 @@
 using System.IO;
+using Arius.AzureBlob;
 using Arius.Core;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
@@ -38,6 +39,7 @@ public sealed class RepositorySession(IServiceProvider rootProvider) : IReposito
             builder.Services.AddSingleton(factory);
         });
         services.AddMediator();
+        services.AddAzureBlobStorage();
         services.AddArius(blobContainer, repository.Passphrase, repository.AccountName, repository.ContainerName);
 
         serviceProvider = services.BuildServiceProvider();

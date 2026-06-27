@@ -12,4 +12,7 @@ public sealed class FakeContainer(string name, bool exists, IReadOnlyList<string
     public bool                  CreatedContainer { get; set; }
     public ETag                  MetadataEtag     { get; set; } = default;
     public ETag                  ListEtag         { get; set; } = default;
+
+    /// <summary>Container-level metadata (e.g. the <c>region</c> entry), as Azure stores per container.</summary>
+    public Dictionary<string, string> Metadata { get; } = new(StringComparer.OrdinalIgnoreCase);
 }

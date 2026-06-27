@@ -71,7 +71,7 @@ test('statistics tier breakdown lists every archived tier, in API order @write',
     await expect(rows).toHaveCount(storedByTier.length);
     for (let i = 0; i < storedByTier.length; i++) {
       await expect(rows.nth(i)).toContainText(storedByTier[i].tier);
-      await expect(rows.nth(i)).toContainText('chunks');
+      await expect(rows.nth(i).getByTestId('tier-cost')).toBeVisible();
     }
   } finally {
     await request.delete(`/api/repos/${created.id}`);

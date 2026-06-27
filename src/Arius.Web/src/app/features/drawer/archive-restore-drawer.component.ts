@@ -98,21 +98,33 @@ import { formatBytes } from '../../shared/format';
         @if (store.streamState() === 'cost' && store.cost(); as cost) {
           <div class="ar-cost-scrim" data-testid="cost-modal">
             <div class="ar-cost">
-              <div class="ar-cost-banner"><i class="ki-filled ki-information-2"></i> Rehydration required before download</div>
-              <div class="ar-statgrid" style="margin:14px 0">
-                <div><div class="ar-statk">Ready now</div><div class="ar-statv">{{ cost.chunksAvailable }}</div></div>
-                <div><div class="ar-statk">Rehydrate</div><div class="ar-statv">{{ cost.chunksNeedingRehydration }}</div></div>
-                <div><div class="ar-statk">From archive</div><div class="ar-statv">{{ formatBytes(cost.bytesNeedingRehydration) }}</div></div>
-              </div>
-              <div style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:8px">Rehydration priority</div>
-              <div class="flex gap-3">
-                <button class="ar-prio" data-testid="prio-standard" [class.on]="priority() === 'standard'" (click)="priority.set('standard')">
-                  <div style="font-weight:700">Standard</div><div style="font-size:12px;color:#71717a">~15 h · €{{ cost.totalStandard.toFixed(2) }}</div>
-                </button>
-                <button class="ar-prio" data-testid="prio-high" [class.on]="priority() === 'high'" (click)="priority.set('high')">
-                  <div style="font-weight:700">High</div><div style="font-size:12px;color:#71717a">~1 h · €{{ cost.totalHigh.toFixed(2) }}</div>
-                </button>
-              </div>
+              @if (cost.chunksNeedingRehydration > 0) {
+                <!-- Archive restore: rehydration is required, with a priority (cost vs speed) choice. -->
+                <div class="ar-cost-banner"><i class="ki-filled ki-information-2"></i> Rehydration required before download</div>
+                <div class="ar-statgrid" style="margin:14px 0">
+                  <div><div class="ar-statk">Ready now</div><div class="ar-statv">{{ cost.chunksAvailable }}</div></div>
+                  <div><div class="ar-statk">Rehydrate</div><div class="ar-statv">{{ cost.chunksNeedingRehydration }}</div></div>
+                  <div><div class="ar-statk">From archive</div><div class="ar-statv">{{ formatBytes(cost.bytesNeedingRehydration) }}</div></div>
+                </div>
+                <div style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:8px">Rehydration priority</div>
+                <div class="flex gap-3">
+                  <button class="ar-prio" data-testid="prio-standard" [class.on]="priority() === 'standard'" (click)="priority.set('standard')">
+                    <div style="font-weight:700">Standard</div><div style="font-size:12px;color:#71717a">~15 h · €{{ cost.totalStandard.toFixed(2) }}</div>
+                  </button>
+                  <button class="ar-prio" data-testid="prio-high" [class.on]="priority() === 'high'" (click)="priority.set('high')">
+                    <div style="font-weight:700">High</div><div style="font-size:12px;color:#71717a">~1 h · €{{ cost.totalHigh.toFixed(2) }}</div>
+                  </button>
+                </div>
+              } @else {
+                <!-- Online (Hot/Cool/Cold) restore: no rehydration, just the estimated cost to approve. -->
+                <div class="ar-cost-banner"><i class="ki-filled ki-information-2"></i> Estimated restore cost</div>
+                <div class="ar-statgrid" style="margin:14px 0">
+                  <div><div class="ar-statk">Chunks</div><div class="ar-statv">{{ cost.chunksAvailable }}</div></div>
+                  <div><div class="ar-statk">Download</div><div class="ar-statv">{{ formatBytes(cost.downloadBytes) }}</div></div>
+                  <div><div class="ar-statk">Est. cost</div><div class="ar-statv" data-testid="cost-total">€{{ cost.totalStandard.toFixed(2) }}</div></div>
+                </div>
+              }
+              <div style="font-size:12px;color:#71717a;margin-top:8px">Includes data retrieval, operations, and internet egress (first 100 GB/month free).</div>
               <div class="flex items-center justify-end gap-2.5" style="margin-top:18px">
                 <button class="ar-btn-outline" data-testid="cost-decline" (click)="decline()">Decline</button>
                 <button class="ar-btn-primary" data-testid="cost-approve" (click)="approve()"><i class="ki-filled ki-check"></i>Approve &amp; restore</button>

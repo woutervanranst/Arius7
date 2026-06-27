@@ -116,6 +116,15 @@ public enum BlobListPrefixKind
 /// </summary>
 public interface IBlobContainerService
 {
+    // ── Region ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The region the backing storage is configured for (e.g. <c>westeurope</c>), or <c>null</c> when not
+    /// configured. Read from the container's own metadata; best-effort and not verified against the SDK.
+    /// Used only to price cost estimates. Defaults to <c>null</c> for backends that don't expose it.
+    /// </summary>
+    string? RegionHint => null;
+
     // ── Container ─────────────────────────────────────────────────────────────
 
     /// <summary>

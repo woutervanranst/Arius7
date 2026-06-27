@@ -1,9 +1,8 @@
-using Arius.AzureBlob;
 using Arius.Cli;
 
 try
 {
-    return await CliBuilder.BuildRootCommand(blobServiceFactory: new AzureBlobServiceFactory()).Parse(args).InvokeAsync();
+    return await CliBuilder.BuildRootCommand().Parse(args).InvokeAsync();
 }
 catch (Exception ex)
 {

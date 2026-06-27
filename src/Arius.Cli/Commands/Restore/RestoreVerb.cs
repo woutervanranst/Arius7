@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console.Rendering;
@@ -228,24 +229,11 @@ internal static class RestoreVerb
                             }
                             else
                             {
+                                // Estimated total cost (incl. retrieval, operations and egress) at each rehydration priority.
                                 var costTable = new Table();
-                                costTable.AddColumn("Cost Component");
+                                costTable.AddColumn("Estimated restore cost");
                                 costTable.AddColumn(new TableColumn("Standard").RightAligned());
                                 costTable.AddColumn(new TableColumn("High Priority").RightAligned());
-
-                                costTable.AddRow("Data retrieval",
-                                    $"€ {estimate.RetrievalCostStandard:F4}",
-                                    $"€ {estimate.RetrievalCostHigh:F4}");
-                                costTable.AddRow("Read operations",
-                                    $"€ {estimate.ReadOpsCostStandard:F4}",
-                                    $"€ {estimate.ReadOpsCostHigh:F4}");
-                                costTable.AddRow("Write operations",
-                                    $"€ {estimate.WriteOpsCost:F4}",
-                                    $"€ {estimate.WriteOpsCost:F4}");
-                                costTable.AddRow("Storage (1 month)",
-                                    $"€ {estimate.StorageCost:F4}",
-                                    $"€ {estimate.StorageCost:F4}");
-                                costTable.AddEmptyRow();
                                 costTable.AddRow("[bold]Total[/]",
                                     $"[bold]€ {estimate.TotalStandard:F4}[/]",
                                     $"[bold]€ {estimate.TotalHigh:F4}[/]");

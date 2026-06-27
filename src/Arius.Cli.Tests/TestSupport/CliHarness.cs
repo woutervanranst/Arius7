@@ -43,7 +43,7 @@ internal sealed class CliHarness
         // CLI-unused snapshot/stats query handlers must be supplied too (they otherwise need a real
         // ISnapshotService the harness has no reason to wire up).
         var snapshotsHandler = Substitute.For<ICommandHandler<SnapshotsQuery, IReadOnlyList<SnapshotInfo>>>();
-        var statsHandler = Substitute.For<ICommandHandler<StatisticsQuery, RepositoryStatistics>>();
+        var statsHandler = Substitute.For<IQueryHandler<StatisticsQuery, RepositoryStatistics>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -89,7 +89,7 @@ internal sealed class CliHarness
 
         statsHandler
             .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, [])));
+            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, 0, [])));
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;

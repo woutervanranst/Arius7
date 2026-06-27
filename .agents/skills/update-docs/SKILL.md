@@ -91,10 +91,12 @@ file is the *law*. Do not restate those rules here or in the docs.
   pass (voice, cross-links, no overlap between docs).
 
 ### 5. Freeze the intent artifact into history
-- Move/copy the planning artifact (PLAN / CONVO / spec **markdown**; drop raw `.txt` transcripts, binaries,
-  UI mockups) into `docs/history/agentic-plans/<YYYY-MM-DD>-<slug>/`, and add one line to
-  `docs/history/INDEX.md` noting where its durable intent landed (the ADR/design doc). This preserves the
-  "why" without polluting the living docs. (Use the change/PR date for `<YYYY-MM-DD>`.)
+- Preserve the planning artifact **verbatim**: copy it into `docs/history/agentic-plans/<YYYY-MM-DD>-<slug>/`
+  exactly as-is — PLAN / CONVO / spec markdown **and** raw `.txt` conversation transcripts alike. Do **not**
+  condense, summarize, rewrite, or drop it: `docs/history/` is frozen archaeology (the reasoning path that
+  produced the change), not a maintained doc, so the raw transcript is the point. Then add one line to
+  `docs/history/INDEX.md` noting where its durable intent landed (the ADR/design doc) and linking the artifact
+  you preserved. (Use the change/PR date for `<YYYY-MM-DD>`.)
 
 ### 6. Verify and report
 Run the gates and fix anything they flag:

@@ -51,6 +51,7 @@ internal static class Program
             var services = new ServiceCollection();
             services.AddSingleton<ILoggerFactory>(loggerFactory);
             services.AddLogging();
+            services.AddAzureBlobStorage();
             services.AddArius(blobContainer, options.Passphrase, account, options.Container);
             await using var provider = services.BuildServiceProvider();
 

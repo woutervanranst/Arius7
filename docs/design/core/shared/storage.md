@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This is the seam between the archival domain and the blob backend. It defines three interfaces (`IBlobServiceFactory` → `IBlobService` → `IBlobContainerService`) that abstract *all* persistence, the on-blob layout of a repository (the `chunks/` / `chunks-rehydrated/` / `filetrees/` / `snapshots/` / `chunk-index/` prefixes), and the credential-resolution + preflight handshake every host runs before opening a repository. Arius.Core compiles with **no reference to `Azure.Storage.Blobs`**; the only implementation, `Arius.AzureBlob`, lives behind these interfaces.
+This is the seam between the archival domain and the blob backend. It defines three interfaces (`IBlobServiceFactory` → `IBlobService` → `IBlobContainerService`) that abstract *all* persistence, the on-blob layout of a repository (the `chunks/` / `chunks-rehydrated/` / `filetrees/` / `snapshots/` / `chunk-index/` prefixes), and the credential-resolution + preflight handshake every host runs before opening a repository. Arius.Core compiles with **no reference to `Azure.Storage.Blobs`**; the only implementation, `Arius.AzureBlob`, lives behind these interfaces. The same adapter also implements the storage **cost** port (`IStorageCostEstimator`, [cost estimation](cost.md)), so all Azure-specifics — connection, tiers, *and* pricing — sit in one place.
 
 ## How it works
 
@@ -28,7 +28,7 @@ flowchart LR
 
 - **`IBlobServiceFactory.CreateAsync(accountName, accountKey?)`** — builds an account-level client and chooses the credential (below). Returns an `IBlobService`. No network call yet.
 - **`IBlobService`** — account scope. `GetContainerNamesAsync` enumerates repository containers (a container counts as an Arius repo iff it has any blob under `snapshots/` — see `AzureBlobService.IsAriusArchive`). `OpenContainerServiceAsync(container, PreflightMode)` runs the preflight probe and, on success, returns the container-scoped service.
-- **`IBlobContainerService`** — the workhorse. One container = one repository. Exposes upload (`UploadAsync` + streaming `OpenWriteAsync`), download (`DownloadAsync` / `TryDownloadAsync`), `GetMetadataAsync` (HEAD), prefix `ListAsync`, `SetMetadataAsync`, `SetTierAsync`, server-side `CopyAsync` (rehydration), and `DeleteAsync`.
+- **`IBlobContainerService`** — the workhorse. One container = one repository. Exposes upload (`UploadAsync` + streaming `OpenWriteAsync`), download (`DownloadAsync` / `TryDownloadAsync`), `GetMetadataAsync` (HEAD), prefix `ListAsync`, `SetMetadataAsync`, `SetTierAsync`, server-side `CopyAsync` (rehydration), and `DeleteAsync`. It also carries a read-only `RegionHint` — the container's own `region` metadata (`null` when unset; `OpenContainerServiceAsync` seeds a `default` sentinel on a read/write open) — used only to price [cost estimates](cost.md), never on the data path. See [region](../../../glossary.md#region).
 
 Feature handlers don't normally hold these directly — they go through the shared services (`SnapshotService`, `FileTreeService`, `ChunkIndexService`, `ChunkStorageService`), which own the blob *protocol* on top of this raw I/O. This file documents the boundary itself; the protocol lives in those services' docs (e.g. [`chunk-storage.md`](./chunk-storage.md), [`chunk-index.md`](./chunk-index.md)).
 
