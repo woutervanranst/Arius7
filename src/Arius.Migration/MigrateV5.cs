@@ -46,6 +46,9 @@ internal sealed class MigrateV5
     // Stage 3 issues one small blob op per chunk; fan them out (matches the codebase's blob-fanout degree).
     private const int UpsertWorkers = 32;
 
+    // Stages 5/6 append staging entries via the stripe-locked writer; matches ArchiveCommandHandler.FileTreeUpdateWorkers.
+    private const int FileTreeUpdateWorkers = 16;
+
     // v5 names its state-DB blob "states/<yyyy-MM-ddTHH-mm-ss.fff>" (UTC). The migration reuses that instant
     // as the v7 snapshot timestamp, so the snapshot is named after the v5 state it was built from. The colon
     // variants accept the legacy v3 file-name style (e.g. "2025-11-26T15:27:33") used by --extra-states files.
@@ -471,20 +474,25 @@ internal sealed class MigrateV5
         await using var session   = await FileTreeStagingSession.OpenAsync(cacheRoot, cancellationToken);
         using var       writer    = new FileTreeStagingWriter(session.StagingRoot);
 
+        // The staging writer is thread-safe (stripe-locked), so pointers can be appended concurrently —
+        // mirrors the archive pipeline's filetree stage (ArchiveCommandHandler.FileTreeUpdateWorkers).
         long fileCount = 0, totalSize = 0, skipped = 0;
-        foreach (var p in pointers)
-        {
-            if (!TryToBinaryPath(p.RelativeName, out var relPath))
+        await Parallel.ForEachAsync(
+            pointers,
+            new ParallelOptions { MaxDegreeOfParallelism = FileTreeUpdateWorkers, CancellationToken = cancellationToken },
+            async (p, ct) =>
             {
-                _logger.LogWarning("Skipping pointer entry with unusable path '{Path}'.", p.RelativeName);
-                skipped++;
-                continue;
-            }
+                if (!TryToBinaryPath(p.RelativeName, out var relPath))
+                {
+                    _logger.LogWarning("Skipping pointer entry with unusable path '{Path}'.", p.RelativeName);
+                    Interlocked.Increment(ref skipped);
+                    return;
+                }
 
-            await writer.AppendFileEntryAsync(relPath, ContentHash.FromDigest(p.Hash), p.Created, p.Modified, cancellationToken);
-            fileCount++;
-            totalSize += sizeByHash.GetValueOrDefault(ToHex(p.Hash), 0);
-        }
+                await writer.AppendFileEntryAsync(relPath, ContentHash.FromDigest(p.Hash), p.Created, p.Modified, ct);
+                Interlocked.Increment(ref fileCount);
+                Interlocked.Add(ref totalSize, sizeByHash.GetValueOrDefault(ToHex(p.Hash), 0));
+            });
 
         if (skipped > 0)
             _logger.LogWarning("{Skipped} pointer entries skipped (unusable paths).", skipped);
