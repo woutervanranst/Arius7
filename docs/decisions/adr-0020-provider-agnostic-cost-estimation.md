@@ -29,7 +29,7 @@ The question for this ADR is **where storage cost estimation lives, and what con
 
 ## Decision Outcome
 
-Chosen: **a single `IStorageCostEstimator` port in `Arius.Core.Shared.Cost`, implemented by `AzureBlobCostEstimator` in `Arius.AzureBlob/Pricing`**, returning a **slim** `RestoreCostEstimate`. The Azure adapter owns the embedded region-keyed `pricing.json`, the rate model, and the cost math; Core keeps only the canonical contract (`IStorageCostEstimator` + `StorageCostEstimate` / `TierStorageCost` / `RestoreCostRequest` / `RestoreCostEstimate`, keyed on the existing canonical `BlobTier`). The estimator is passed into `AddArius(...)`, mirroring how `IBlobContainerService` is supplied.
+Chosen: **a single `IStorageCostEstimator` port in `Arius.Core.Shared.Cost`, implemented by `AzureBlobCostEstimator` in `Arius.AzureBlob/Pricing`**, returning a **slim** `RestoreCostEstimate`. The Azure adapter owns the embedded region-keyed `pricing.json`, the rate model, and the cost math; Core keeps only the canonical contract (`IStorageCostEstimator` + `StorageCostEstimate` / `TierStorageCost` / `RestoreCostRequest` / `RestoreCostEstimate`, keyed on the existing canonical `BlobTier`). The estimator is **bound to one repository's storage**: it is registered by `AddAzureBlobStorage()` (with `IBlobServiceFactory`) and reads the region from that repository's `IBlobContainerService` — so it is resolved per-repository, not passed to `AddArius` and not parameterised by region per call.
 
 Confidence: high. It is the same ports-and-adapters split the storage boundary already uses and the Architecture tests enforce; reversing it would only re-introduce Azure pricing into Core.
 
@@ -42,12 +42,15 @@ var estimate = new RestoreCostCalculator(pricing).Compute(/* loose params */);
 // AddArius(blobContainer, passphrase, account, container)
 ```
 
-After — Core depends only on the port; Azure supplies the implementation:
+After — Core depends only on the port; Azure supplies the implementation, and region is resolved from the container, not passed per call:
 
 ```csharp
-// Core handler
-var estimate = costEstimator.EstimateRestoreCost(opts.Region, new RestoreCostRequest { … });
-// AddArius(blobContainer, passphrase, account, container, costEstimator)   // estimator = AzureBlobCostEstimator
+// Core handler — no region argument; the estimator reads it from the container's metadata
+var estimate = costEstimator.EstimateRestoreCost(new RestoreCostRequest { … });
+
+// Composition root, per repository
+services.AddAzureBlobStorage();                                   // IBlobServiceFactory + IStorageCostEstimator
+services.AddArius(blobContainer, passphrase, account, container); // Core resolves the estimator from the provider
 ```
 
 ### Consequences and Tradeoffs
@@ -55,7 +58,7 @@ var estimate = costEstimator.EstimateRestoreCost(opts.Region, new RestoreCostReq
 * Good — Arius.Core contains **zero** Azure pricing data or math; the Architecture test that forbids Core internals leaking across namespaces no longer has pricing types to police.
 * Good — a new backend prices storage by implementing one interface, like it already implements `IBlobService`.
 * Good — `StatisticsQuery`/`RestoreCommand`, the SignalR cost message, and the SPA are unchanged in shape — they consume Core canonical types.
-* Bad — every `AddArius` caller (Api, CLI, Migration, Explorer, tests) must now supply an estimator (one extra argument).
+* Bad — every composition root (Api, CLI, Migration, Explorer, tests) must register a cost estimator — `AddAzureBlobStorage()` for the real one, or a `FakeStorageCostEstimator` registration in Core tests — before resolving the statistics/restore handlers.
 * Bad — the **slim** estimate hides the per-component breakdown (retrieval/ops/storage/egress) from the host, so component-level cost assertions live only in `Arius.AzureBlob.Tests`, not in an integration test. Accepted: the host only renders totals, and the components are Azure-specific.
 
 ### Confirmation

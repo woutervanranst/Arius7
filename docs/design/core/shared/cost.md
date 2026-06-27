@@ -10,19 +10,18 @@ Turns repository state into money: a per-tier **monthly storage** estimate (Stat
 
 ### The contract (Core)
 
-`IStorageCostEstimator` (`Shared/Cost/IStorageCostEstimator.cs`) is the whole provider-neutral surface. Inputs are Core domain types ([`ChunkTierStatistic`](chunk-index.md), `BlobTier`); outputs are canonical records in `Shared/Cost/Models.cs`. All amounts are in **EUR** (the only currency Arius supports):
+`IStorageCostEstimator` (`Shared/Cost/IStorageCostEstimator.cs`) is the whole provider-neutral surface. Inputs are Core domain types ([`ChunkTierStatistic`](chunk-index.md), `BlobTier`); outputs are canonical records in `Shared/Cost/Models.cs`. All amounts are in **EUR** (the only currency Arius supports). The estimator is **bound to one repository's storage** — there is no region argument, because [region](../../../glossary.md#region) is an implementation detail the adapter resolves from the container (below):
 
 | Member | Returns | Used by |
 |---|---|---|
-| `Regions` | `IReadOnlyList<string>` programmatic region names | account-region dropdown (`/pricing/regions`) |
-| `EstimateStorageCost(region, storedByTier)` | `StorageCostEstimate(Region, Tiers[], TotalPerMonth)` | [`StatisticsQuery`](../features/queries.md#statisticsquery) |
-| `EstimateRestoreCost(region, RestoreCostRequest)` | `RestoreCostEstimate` (slim) | [`RestoreCommand`](../features/restore-command.md#stage-3-cost-estimate-confirm) |
+| `EstimateStorageCost(storedByTier)` | `StorageCostEstimate(Region, Tiers[], TotalPerMonth)` | [`StatisticsQuery`](../features/queries.md#statisticsquery) |
+| `EstimateRestoreCost(RestoreCostRequest)` | `RestoreCostEstimate` (slim) | [`RestoreCommand`](../features/restore-command.md#stage-3-cost-estimate-confirm) |
 
-`RestoreCostEstimate` is **slim**: chunk counts/bytes + `TotalStandard` / `TotalHigh`. The per-component breakdown is a provider detail and is deliberately *not* on the contract (a non-archive provider sets `TotalStandard == TotalHigh`). `RestoreCostRequest` is what Arius already knows from classifying the restore: the online chunks to download split by source tier (an already-rehydrated archive copy counts as Hot) plus archive chunks needing/pending rehydration.
+`StorageCostEstimate` carries the resolved `Region` (which region's rates were applied), but the statistics path uses it only internally — `RepositoryStatistics` and the web `StatisticsDto` surface the cost figures **without** naming the region. `RestoreCostEstimate` is **slim**: chunk counts/bytes + `TotalStandard` / `TotalHigh`. The per-component breakdown is a provider detail and is deliberately *not* on the contract (a non-archive provider sets `TotalStandard == TotalHigh`). `RestoreCostRequest` is what Arius already knows from classifying the restore: the online chunks to download split by source tier (an already-rehydrated archive copy counts as Hot) plus archive chunks needing/pending rehydration.
 
 ### The Azure implementation
 
-`AzureBlobCostEstimator` (`Arius.AzureBlob/Pricing/`) loads `AzurePricingCatalog` once from the embedded **`pricing.json`** and resolves a region to its `RegionPricing` (`Resolve` — a null / "Unknown" / unknown region falls back to the default `westeurope`). Storage cost is a direct map; restore cost is computed by the internal `AzureRestoreCostCalculator` into a rich `AzureRestoreCost`, then collapsed to the slim estimate.
+`AzureBlobCostEstimator` (`Arius.AzureBlob/Pricing/`) loads `AzurePricingCatalog` once from the embedded **`pricing.json`** and is **constructed per repository**: it reads the container's [region](../../../glossary.md#region) from `IBlobContainerService.RegionHint` and resolves it to a `RegionPricing` once, in its constructor. Two independent fallbacks keep cost always estimable: an **unset** container region (`RegionHint == null`) is substituted with `AzureBlobCostEstimator.FallbackRegion` (`northeurope`) and a warning is logged; an **unrecognised** region *name* falls back to the catalog's own default (`AzurePricingCatalog.Resolve` → `westeurope`). Storage cost is a direct map; restore cost is computed by the internal `AzureRestoreCostCalculator` into a rich `AzureRestoreCost`, then collapsed to the slim estimate.
 
 **Storage cost** per tier = `storedBytes / 1024³ × storagePerGBPerMonth(region, tier)`, summed.
 
@@ -46,9 +45,10 @@ Turns repository state into money: a per-tier **monthly storage** estimate (Stat
 
 ```mermaid
 flowchart LR
-    Q[StatisticsQuery / RestoreCommandHandler] -->|region + Core types| E[IStorageCostEstimator]
+    Q[StatisticsQuery / RestoreCommandHandler] -->|Core types| E[IStorageCostEstimator]
     subgraph azure[Arius.AzureBlob/Pricing]
       E -.impl.-> AE[AzureBlobCostEstimator]
+      AE -->|RegionHint| MD[(container metadata:<br/>region)]
       AE --> PC[AzurePricingCatalog] --> J[(pricing.json)]
       AE --> RC[AzureRestoreCostCalculator]
     end
@@ -57,7 +57,8 @@ flowchart LR
 
 ## Key invariants
 
-- **Core carries no provider pricing.** `Shared/Cost` is contract + canonical DTOs only; rates, the model, and `pricing.json` live in `Arius.AzureBlob` ([ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)). The estimator is supplied to `AddArius`, like `IBlobContainerService`.
+- **Core carries no provider pricing.** `Shared/Cost` is contract + canonical DTOs only; rates, the model, and `pricing.json` live in `Arius.AzureBlob` ([ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)). The Azure estimator is registered by `AddAzureBlobStorage()` (alongside `IBlobServiceFactory`) and is **only resolvable inside a per-repository provider**, because it depends on that repository's `IBlobContainerService` to read the region — the Core handlers resolve it from their provider.
+- **Region is the container's, resolved once.** The estimator reads `IBlobContainerService.RegionHint` (the container's `region` metadata) at construction — not a per-call argument and not an app-wide setting. A repository always prices against its own container's region; an unset region prices against `northeurope`.
 - **"GB" means binary GiB (2³⁰).** Azure bills storage, retrieval, and egress per GiB; every per-GB formula divides bytes by `1024³`. (Confirmed against Microsoft's billing docs.)
 - **A region omits the tiers it doesn't offer.** `pricing.json` has no `archive` for regions without it (e.g. Belgium Central); `RegionPricing.For` returns null → the rate is 0, so a tier the provider can't hold costs nothing.
 - **Egress excludes pending bytes and the free allowance.** Only `downloadBytes + bytesNeedingRehydration` egress in a restore (pending-rehydration bytes belong to a future run); the first 100 GiB/month is free account-wide.
@@ -73,4 +74,5 @@ flowchart LR
 
 - **EUR + LRS only.** Arius prices in EUR only — `pricing.json` carries EUR rates and the whole cost stack assumes it (no currency is threaded through; the `€` symbol is hardcoded at the display points). It also assumes Locally-Redundant Storage, so an account on GRS/ZRS is under-/mis-estimated; multi-redundancy would extend the catalog and `update-pricing.py`.
 - **Rehydration target is Hot, `monthsStored` is 1.** The write-ops/storage rows assume rehydrated copies land in Hot for one month; restoring into a cheaper online tier or varying the retention would use the already-parsed Cool/Cold rates.
+- **Region is read-only to Arius, and unsurfaced.** The container's `region` metadata is seeded to a `default` sentinel on the first read/write open and is otherwise set **out-of-band** (e.g. in Azure Storage Explorer) — Arius never writes a real region, and the UI does not display which region cost was priced for. An unset/wrong region silently prices against `northeurope`, and a memoized Statistics figure does not notice an out-of-band region change (see [web host](../../hosts/web.md#statistics-cache)).
 - **No provider but Azure.** `AzureBlobCostEstimator` is the sole implementation; it is the cost-side sibling of the single `Arius.AzureBlob` storage backend.

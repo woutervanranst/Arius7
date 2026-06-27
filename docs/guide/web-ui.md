@@ -51,12 +51,10 @@ repositories use it), or **Add new account** and enter:
 - **Account name** — your Azure Storage account name.
 - **Account key** — the account key. It's stored encrypted server-side (Data-Protection) and is
   never sent back to the browser.
-- **Region** — the account's Azure region (e.g. `westeurope`), chosen from a dropdown of priced
-  regions plus **Unknown / Not in list**. It drives the storage- and restore-cost estimates;
-  *Unknown* prices against a default region. You can set or change it later from the account's edit
-  flyout (see [Managing storage accounts](#managing-storage-accounts)).
 
-Mandatory fields are marked with a red asterisk.
+Mandatory fields are marked with a red asterisk. (There is no region to pick here — the region used
+for cost estimates is read from the container's own metadata; see
+[Managing storage accounts](#managing-storage-accounts).)
 
 In the **Add existing** wizard, the button is **Connect & discover**: Arius connects with that
 account and *live-streams* the container names it finds. The **New repository** wizard uses
@@ -97,18 +95,21 @@ Click **Create repository** to land on its Files view.
 
 ## Managing storage accounts
 
-The **Overview** lists every storage account under management in its own table — name, **region**,
-and how many repositories use it. Click an account row to open its **edit flyout** (a right-hand
-drawer):
+The **Overview** lists every storage account under management in its own table — its name and how
+many repositories use it. Click an account row to open its **edit flyout** (a right-hand drawer):
 
 - **Account key** — paste a new key to rotate it (stored encrypted; leave blank to keep the current
   one). The key belongs to the *account*, so this is the one place to change it — it is no longer on
   a repository's Properties.
-- **Region** — set or change the account's Azure region from the dropdown (or **Unknown**). Changing
-  it re-prices every repository on that account.
 - **Delete account** *(danger zone)* — removes an account that has **no** repositories.
 
 New accounts are added from the **Add new account** step of either wizard (above).
+
+> **Where does the pricing region come from?** Cost estimates are priced for an Azure **region**, but
+> Arius reads that region from each **container's own metadata** — it is not chosen in the UI. Set the
+> container's `region` metadata (e.g. `westeurope`) in **Azure Storage Explorer** for an accurate
+> estimate; if it is unset, Arius prices against a default region (`northeurope`). The region is used
+> only to pick rates and is not shown in the UI.
 
 ---
 
@@ -161,8 +162,8 @@ what you would restore. **Repository storage · across all snapshots** shows **D
 (unique data before compression), **Stored size** (the actual cloud footprint after dedup +
 compression), and **Unique chunks**. Below the cards, a **Stored size by tier** breakdown shows each
 tier's share as a 100%-stacked bar and, per tier, its stored size, chunk count, and **estimated
-monthly cost**, with a grand-total monthly cost — priced for the account's region (set on the
-storage account).
+monthly cost**, with a grand-total monthly cost — priced for the repository's region (read from the
+container's metadata; see [Managing storage accounts](#managing-storage-accounts)).
 
 The two snapshot cards load immediately; the three repository-storage cards (and the cost breakdown)
 are **calculated across all snapshots** and load separately. The result is cached serverside per
@@ -174,8 +175,8 @@ snapshot.
 
 - **Friendly alias** and **Local folder** — editable (the local folder has a **[…]** server-folder
   browser); **Save changes** persists them.
-- **Storage account** and **Container** — read-only. The account **key** and **region** belong to
-  the *account*, not the repository — edit them from the account's flyout on the Overview (see
+- **Storage account** and **Container** — read-only. The account **key** belongs to the *account*,
+  not the repository — rotate it from the account's flyout on the Overview (see
   [Managing storage accounts](#managing-storage-accounts)).
 - **Passphrase** — type a new passphrase to rotate it; a **Confirm passphrase** field appears and
   must match before **Save changes** is enabled. Leaving it blank keeps the current one. Note that
@@ -231,7 +232,7 @@ charge, **Archive** chunks must be *rehydrated* first (this takes hours and is p
 downloading data out of Azure incurs egress. Whenever a restore has a non-zero estimated cost, Arius
 pauses **before downloading anything** and shows a cost-approval modal. The estimate includes data
 retrieval, operations, and internet egress (the first 100 GB/month of egress is free), priced for
-the account's region.
+the repository's region (read from the container's metadata).
 
 The modal adapts to what's being restored:
 
