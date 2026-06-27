@@ -1,84 +1,1666 @@
 {
-  "_comment": "Azure Blob Storage retail pricing — EUR, Standard general-purpose v2 block blobs, LRS redundancy, base volume tier (0-50 TB). Keyed by programmatic region name. Source: Azure Retail Prices API (prices.azure.com), products 'General Block Blob v2' + 'Bandwidth'. Last updated 2026-06. Add a region here to make it selectable and priced. Azure bills per-GB values as binary GiB (2^30 bytes). Hot has no data-retrieval charge; cool/cold/archive do. egressPerGB is internet data-transfer-out (default Microsoft-network routing, 100 GB-10 TB band); the first 100 GiB/month is free account-wide.",
+  "_comment": "Azure Blob Storage retail pricing \u2014 EUR, Standard general-purpose v2 block blobs, LRS redundancy, base volume tier (0-50 TB). Keyed by programmatic region name. Source: Azure Retail Prices API (prices.azure.com), products 'General Block Blob v2' + 'Bandwidth'. Covers all standard public commercial regions (Government/MEC/sovereign clouds excluded). Last updated 2026-06. Azure bills per-GB values as binary GiB (2^30 bytes). Hot has no data-retrieval charge; cool/cold/archive do. A tier is omitted where the region does not offer it. egressPerGB is internet data-transfer-out (default Microsoft-network routing, 100 GB-10 TB band); the first 100 GiB/month is free account-wide.",
   "regions": {
-    "westeurope": {
+    "australiacentral": {
       "currency": "EUR",
-      "egressPerGB": 0.07483,
+      "egressPerGB": 0.103212,
       "hot": {
-        "storagePerGBPerMonth": 0.016858,
-        "writeOpsPer10000":     0.046446,
-        "readOpsPer10000":      0.003698
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
       },
       "cool": {
-        "storagePerGBPerMonth": 0.008601,
-        "writeOpsPer10000":     0.086010,
-        "readOpsPer10000":      0.008601,
-        "dataRetrievalPerGB":   0.008601
+        "storagePerGBPerMonth": 0.012902,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
       },
       "cold": {
-        "storagePerGBPerMonth": 0.003870,
-        "writeOpsPer10000":     0.154819,
-        "readOpsPer10000":      0.086010,
-        "dataRetrievalPerGB":   0.025803
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
       },
       "archive": {
-        "storagePerGBPerMonth":     0.001548,
-        "writeOpsPer10000":         0.103212,
-        "readOpsPer10000":          5.160624,
-        "readOpsHighPer10000":     55.906765,
-        "dataRetrievalPerGB":       0.020642,
-        "dataRetrievalHighPerGB":   0.111814
+        "storagePerGBPerMonth": 0.002804,
+        "writeOpsPer10000": 0.140197,
+        "readOpsPer10000": 7.009848,
+        "dataRetrievalPerGB": 0.028039,
+        "readOpsHighPer10000": 62.357545,
+        "dataRetrievalHighPerGB": 0.124715
       }
     },
-    "northeurope": {
+    "australiacentral2": {
       "currency": "EUR",
-      "egressPerGB": 0.07483,
+      "egressPerGB": 0.103212,
       "hot": {
-        "storagePerGBPerMonth": 0.018922,
-        "writeOpsPer10000":     0.043005,
-        "readOpsPer10000":      0.003440
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.012902,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.004301,
+        "writeOpsPer10000": 0.140197,
+        "readOpsPer10000": 7.009848,
+        "dataRetrievalPerGB": 0.028039,
+        "readOpsHighPer10000": 62.357545,
+        "dataRetrievalHighPerGB": 0.124715
+      }
+    },
+    "australiaeast": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 62.357545,
+        "dataRetrievalHighPerGB": 0.124715
+      }
+    },
+    "australiasoutheast": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.012902,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.004335,
+        "writeOpsPer10000": 0.216746,
+        "readOpsPer10000": 0.120415,
+        "dataRetrievalPerGB": 0.036124
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.002494,
+        "writeOpsPer10000": 0.124715,
+        "readOpsPer10000": 6.235755,
+        "dataRetrievalPerGB": 0.024943,
+        "readOpsHighPer10000": 62.357545,
+        "dataRetrievalHighPerGB": 0.124715
+      }
+    },
+    "austriaeast": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
       },
       "cool": {
         "storagePerGBPerMonth": 0.008601,
-        "writeOpsPer10000":     0.086010,
-        "readOpsPer10000":      0.008601,
-        "dataRetrievalPerGB":   0.008601
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
       },
       "cold": {
-        "storagePerGBPerMonth": 0.003096,
-        "writeOpsPer10000":     0.154819,
-        "readOpsPer10000":      0.086010,
-        "dataRetrievalPerGB":   0.025803
-      },
-      "archive": {
-        "storagePerGBPerMonth":     0.000852,
-        "writeOpsPer10000":         0.094611,
-        "readOpsPer10000":          4.730572,
-        "readOpsHighPer10000":     51.606244,
-        "dataRetrievalPerGB":       0.018922,
-        "dataRetrievalHighPerGB":   0.103212
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
       }
     },
     "belgiumcentral": {
       "currency": "EUR",
-      "egressPerGB": 0.07483,
-      "_comment": "Belgium Central does not offer the Archive access tier for standard block blobs.",
+      "egressPerGB": 0.074829,
       "hot": {
         "storagePerGBPerMonth": 0.016858,
-        "writeOpsPer10000":     0.046446,
-        "readOpsPer10000":      0.003698
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
       },
       "cool": {
         "storagePerGBPerMonth": 0.008601,
-        "writeOpsPer10000":     0.086010,
-        "readOpsPer10000":      0.008601,
-        "dataRetrievalPerGB":   0.008601
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
       },
       "cold": {
-        "storagePerGBPerMonth": 0.003870,
-        "writeOpsPer10000":     0.154819,
-        "readOpsPer10000":      0.086010,
-        "dataRetrievalPerGB":   0.025803
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      }
+    },
+    "brazilsouth": {
+      "currency": "EUR",
+      "egressPerGB": 0.155679,
+      "hot": {
+        "storagePerGBPerMonth": 0.028039,
+        "writeOpsPer10000": 0.060207,
+        "readOpsPer10000": 0.004817
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.015224,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.006425,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.002752,
+        "writeOpsPer10000": 0.172021,
+        "readOpsPer10000": 6.020729,
+        "dataRetrievalPerGB": 0.024083,
+        "readOpsHighPer10000": 86.010407,
+        "dataRetrievalHighPerGB": 0.172021
+      }
+    },
+    "brazilsoutheast": {
+      "currency": "EUR",
+      "hot": {
+        "storagePerGBPerMonth": 0.036451,
+        "writeOpsPer10000": 0.078269,
+        "readOpsPer10000": 0.006262
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.023257,
+        "writeOpsPer10000": 0.111814,
+        "readOpsPer10000": 0.011181,
+        "dataRetrievalPerGB": 0.011181
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.008352,
+        "writeOpsPer10000": 0.201264,
+        "readOpsPer10000": 0.111814,
+        "dataRetrievalPerGB": 0.033544
+      }
+    },
+    "canadacentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 4.730572,
+        "dataRetrievalPerGB": 0.018922,
+        "readOpsHighPer10000": 51.606244,
+        "dataRetrievalHighPerGB": 0.103212
+      }
+    },
+    "canadaeast": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.002064,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 51.606244,
+        "dataRetrievalHighPerGB": 0.103212
+      }
+    },
+    "centralindia": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 60.207285,
+        "dataRetrievalHighPerGB": 0.120415
+      }
+    },
+    "centralus": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00381,
+        "writeOpsPer10000": 0.190083,
+        "readOpsPer10000": 0.105793,
+        "dataRetrievalPerGB": 0.031738
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 4.30052,
+        "dataRetrievalPerGB": 0.017202,
+        "readOpsHighPer10000": 53.756505,
+        "dataRetrievalHighPerGB": 0.103212
+      }
+    },
+    "chilecentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.022156,
+        "writeOpsPer10000": 0.060207,
+        "readOpsPer10000": 0.004817
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.018303,
+        "writeOpsPer10000": 0.120415,
+        "readOpsPer10000": 0.012041,
+        "dataRetrievalPerGB": 0.012041
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.004335,
+        "writeOpsPer10000": 0.216746,
+        "readOpsPer10000": 0.120415,
+        "dataRetrievalPerGB": 0.036124
+      }
+    },
+    "denmarkeast": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      }
+    },
+    "eastasia": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.020642,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.150518,
+        "readOpsPer10000": 7.525911,
+        "dataRetrievalPerGB": 0.030104,
+        "readOpsHighPer10000": 66.658066,
+        "dataRetrievalHighPerGB": 0.133316
+      }
+    },
+    "eastus": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.01789,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.013074,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.000852,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 4.30052,
+        "dataRetrievalPerGB": 0.017202,
+        "readOpsHighPer10000": 43.005204,
+        "dataRetrievalHighPerGB": 0.08601
+      }
+    },
+    "eastus2": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 4.30052,
+        "dataRetrievalPerGB": 0.017202,
+        "readOpsHighPer10000": 43.005204,
+        "dataRetrievalHighPerGB": 0.08601
+      }
+    },
+    "francecentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016514,
+        "writeOpsPer10000": 0.050746,
+        "readOpsPer10000": 0.004042
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009031,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 0.009461,
+        "dataRetrievalPerGB": 0.009461
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 4.558552,
+        "dataRetrievalPerGB": 0.018062,
+        "readOpsHighPer10000": 53.756505,
+        "dataRetrievalHighPerGB": 0.107513
+      }
+    },
+    "francesouth": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.021468,
+        "writeOpsPer10000": 0.06597,
+        "readOpsPer10000": 0.005255
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.01174,
+        "writeOpsPer10000": 0.122995,
+        "readOpsPer10000": 0.012299,
+        "dataRetrievalPerGB": 0.012299
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.005032,
+        "writeOpsPer10000": 0.201264,
+        "readOpsPer10000": 0.111814,
+        "dataRetrievalPerGB": 0.033544
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.002615,
+        "writeOpsPer10000": 0.130736,
+        "readOpsPer10000": 6.536791,
+        "dataRetrievalPerGB": 0.026147,
+        "readOpsHighPer10000": 70.098482,
+        "dataRetrievalHighPerGB": 0.140197
+      }
+    },
+    "germanynorth": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 4.623059,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "germanywestcentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 4.623059,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "indiasouthcentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      }
+    },
+    "indonesiacentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.015482,
+        "writeOpsPer10000": 0.038705,
+        "readOpsPer10000": 0.003096
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003483,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.092891,
+        "readOpsPer10000": 4.644562,
+        "dataRetrievalPerGB": 0.018578,
+        "readOpsHighPer10000": 50.316088,
+        "dataRetrievalHighPerGB": 0.100632
+      }
+    },
+    "israelcentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009496,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      }
+    },
+    "israelnorthwest": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009496,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      }
+    },
+    "italynorth": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016514,
+        "writeOpsPer10000": 0.045586,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "japaneast": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.098224,
+        "readOpsPer10000": 4.730572,
+        "dataRetrievalPerGB": 0.018922,
+        "readOpsHighPer10000": 62.357545,
+        "dataRetrievalHighPerGB": 0.124715
+      }
+    },
+    "japanwest": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.133316,
+        "readOpsPer10000": 6.665807,
+        "dataRetrievalPerGB": 0.026663,
+        "readOpsHighPer10000": 66.658066,
+        "dataRetrievalHighPerGB": 0.133316
+      }
+    },
+    "jioindiacentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 60.207285,
+        "dataRetrievalHighPerGB": 0.120415
+      }
+    },
+    "jioindiawest": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 60.207285,
+        "dataRetrievalHighPerGB": 0.120415
+      }
+    },
+    "koreacentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.093407,
+        "readOpsPer10000": 4.730572,
+        "dataRetrievalPerGB": 0.018922,
+        "readOpsHighPer10000": 58.057025,
+        "dataRetrievalHighPerGB": 0.116114
+      }
+    },
+    "koreasouth": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.012385,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.193523,
+        "readOpsPer10000": 0.107513,
+        "dataRetrievalPerGB": 0.032254
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.002322,
+        "writeOpsPer10000": 0.116114,
+        "readOpsPer10000": 5.805702,
+        "dataRetrievalPerGB": 0.023223,
+        "readOpsHighPer10000": 58.057025,
+        "dataRetrievalHighPerGB": 0.116114
+      }
+    },
+    "malaysiawest": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.015482,
+        "writeOpsPer10000": 0.038705,
+        "readOpsPer10000": 0.003096
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003483,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.092891,
+        "readOpsPer10000": 4.644562,
+        "dataRetrievalPerGB": 0.018578,
+        "readOpsHighPer10000": 50.316088,
+        "dataRetrievalHighPerGB": 0.100632
+      }
+    },
+    "mexicocentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.019679,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.014381,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 0.009461,
+        "dataRetrievalPerGB": 0.009461
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003406,
+        "writeOpsPer10000": 0.170301,
+        "readOpsPer10000": 0.094611,
+        "dataRetrievalPerGB": 0.028383
+      }
+    },
+    "newzealandnorth": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.049671,
+        "readOpsPer10000": 0.003974
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009934,
+        "writeOpsPer10000": 0.090311,
+        "readOpsPer10000": 0.009031,
+        "dataRetrievalPerGB": 0.009031
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.004064,
+        "writeOpsPer10000": 0.16256,
+        "readOpsPer10000": 0.090311,
+        "dataRetrievalPerGB": 0.027093
+      }
+    },
+    "northcentralus": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.01789,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.013074,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.000852,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 4.30052,
+        "dataRetrievalPerGB": 0.017202,
+        "readOpsHighPer10000": 51.606244,
+        "dataRetrievalHighPerGB": 0.103212
+      }
+    },
+    "northeurope": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.018922,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.000852,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 4.730572,
+        "dataRetrievalPerGB": 0.018922,
+        "readOpsHighPer10000": 51.606244,
+        "dataRetrievalHighPerGB": 0.103212
+      }
+    },
+    "norwayeast": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.018578,
+        "writeOpsPer10000": 0.05109,
+        "readOpsPer10000": 0.004068
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 0.009461,
+        "dataRetrievalPerGB": 0.009461
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00443,
+        "writeOpsPer10000": 0.221047,
+        "readOpsPer10000": 0.122995,
+        "dataRetrievalPerGB": 0.036898
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001218,
+        "writeOpsPer10000": 0.122995,
+        "readOpsPer10000": 6.149744,
+        "dataRetrievalPerGB": 0.024599,
+        "readOpsHighPer10000": 61.497441,
+        "dataRetrievalHighPerGB": 0.122995
+      }
+    },
+    "norwaywest": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.024083,
+        "writeOpsPer10000": 0.0664,
+        "readOpsPer10000": 0.00529
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.012299,
+        "writeOpsPer10000": 0.122995,
+        "readOpsPer10000": 0.012299,
+        "dataRetrievalPerGB": 0.012299
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.005754,
+        "writeOpsPer10000": 0.288135,
+        "readOpsPer10000": 0.159979,
+        "dataRetrievalPerGB": 0.047994
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001583,
+        "writeOpsPer10000": 0.159893,
+        "readOpsPer10000": 7.994667,
+        "dataRetrievalPerGB": 0.031979,
+        "readOpsHighPer10000": 79.946674,
+        "dataRetrievalHighPerGB": 0.159893
+      }
+    },
+    "polandcentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.068808,
+      "hot": {
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      }
+    },
+    "qatarcentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009496,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      }
+    },
+    "southafricanorth": {
+      "currency": "EUR",
+      "egressPerGB": 0.155679,
+      "hot": {
+        "storagePerGBPerMonth": 0.018836,
+        "writeOpsPer10000": 0.051606,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.010235,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00114,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 68.412678,
+        "dataRetrievalHighPerGB": 0.196104
+      }
+    },
+    "southafricawest": {
+      "currency": "EUR",
+      "egressPerGB": 0.155679,
+      "hot": {
+        "storagePerGBPerMonth": 0.023567,
+        "writeOpsPer10000": 0.064508,
+        "readOpsPer10000": 0.004301
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.012816,
+        "writeOpsPer10000": 0.107513,
+        "readOpsPer10000": 0.010751,
+        "dataRetrievalPerGB": 0.010751
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.005032,
+        "writeOpsPer10000": 0.201264,
+        "readOpsPer10000": 0.111814,
+        "dataRetrievalPerGB": 0.033544
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00143,
+        "writeOpsPer10000": 0.129016,
+        "readOpsPer10000": 6.450781,
+        "dataRetrievalPerGB": 0.025803,
+        "readOpsHighPer10000": 85.773879,
+        "dataRetrievalHighPerGB": 0.24427
+      }
+    },
+    "southcentralus": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003716,
+        "writeOpsPer10000": 0.185782,
+        "readOpsPer10000": 0.103212,
+        "dataRetrievalPerGB": 0.030964
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.002064,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 51.606244,
+        "dataRetrievalHighPerGB": 0.103212
+      }
+    },
+    "southeastasia": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "southindia": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.02047,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.012902,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.004679,
+        "writeOpsPer10000": 0.233948,
+        "readOpsPer10000": 0.129876,
+        "dataRetrievalPerGB": 0.038963
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00258,
+        "writeOpsPer10000": 0.129016,
+        "readOpsPer10000": 6.450781,
+        "dataRetrievalPerGB": 0.025803,
+        "readOpsHighPer10000": 64.507805,
+        "dataRetrievalHighPerGB": 0.129016
+      }
+    },
+    "spaincentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.045586,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "swedencentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.000852,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "swedensouth": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.000852,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "switzerlandnorth": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.018544,
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009461,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00443,
+        "writeOpsPer10000": 0.221047,
+        "readOpsPer10000": 0.122995,
+        "dataRetrievalPerGB": 0.036898
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001703,
+        "writeOpsPer10000": 0.113534,
+        "readOpsPer10000": 5.676687,
+        "dataRetrievalPerGB": 0.022707,
+        "readOpsHighPer10000": 61.497441,
+        "dataRetrievalHighPerGB": 0.122995
+      }
+    },
+    "switzerlandwest": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.024147,
+        "writeOpsPer10000": 0.060379,
+        "readOpsPer10000": 0.004808
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.012299,
+        "writeOpsPer10000": 0.111814,
+        "readOpsPer10000": 0.011181,
+        "dataRetrievalPerGB": 0.011181
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.005754,
+        "writeOpsPer10000": 0.288135,
+        "readOpsPer10000": 0.159979,
+        "dataRetrievalPerGB": 0.047994
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.003019,
+        "writeOpsPer10000": 0.160839,
+        "readOpsPer10000": 7.994667,
+        "dataRetrievalPerGB": 0.031979
+      }
+    },
+    "uaecentral": {
+      "currency": "EUR",
+      "egressPerGB": 0.155679,
+      "hot": {
+        "storagePerGBPerMonth": 0.021915,
+        "writeOpsPer10000": 0.060379,
+        "readOpsPer10000": 0.004808
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.011181,
+        "writeOpsPer10000": 0.111814,
+        "readOpsPer10000": 0.011181,
+        "dataRetrievalPerGB": 0.011181
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.005032,
+        "writeOpsPer10000": 0.201264,
+        "readOpsPer10000": 0.111814,
+        "dataRetrievalPerGB": 0.033544
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.002013,
+        "writeOpsPer10000": 0.122995,
+        "readOpsPer10000": 6.149744,
+        "dataRetrievalPerGB": 0.026835,
+        "readOpsHighPer10000": 79.946674,
+        "dataRetrievalHighPerGB": 0.159893
+      }
+    },
+    "uaenorth": {
+      "currency": "EUR",
+      "egressPerGB": 0.155679,
+      "hot": {
+        "storagePerGBPerMonth": 0.017439,
+        "writeOpsPer10000": 0.051606,
+        "readOpsPer10000": 0.004128
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.010321,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 0.010321,
+        "dataRetrievalPerGB": 0.010321
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 4.730572,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 61.497441,
+        "dataRetrievalHighPerGB": 0.122995
+      }
+    },
+    "uksouth": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016514,
+        "writeOpsPer10000": 0.050746,
+        "readOpsPer10000": 0.004042
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009031,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 0.009461,
+        "dataRetrievalPerGB": 0.009461
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.091171,
+        "readOpsPer10000": 4.558552,
+        "dataRetrievalPerGB": 0.01789,
+        "readOpsHighPer10000": 53.756505,
+        "dataRetrievalHighPerGB": 0.107513
+      }
+    },
+    "ukwest": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016514,
+        "writeOpsPer10000": 0.050746,
+        "readOpsPer10000": 0.004042
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009031,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 0.009461,
+        "dataRetrievalPerGB": 0.009461
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00406,
+        "writeOpsPer10000": 0.202985,
+        "readOpsPer10000": 0.112674,
+        "dataRetrievalPerGB": 0.033802
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00215,
+        "writeOpsPer10000": 0.107513,
+        "readOpsPer10000": 5.37565,
+        "dataRetrievalPerGB": 0.021503,
+        "readOpsHighPer10000": 53.756505,
+        "dataRetrievalHighPerGB": 0.107513
+      }
+    },
+    "westcentralus": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003716,
+        "writeOpsPer10000": 0.185782,
+        "readOpsPer10000": 0.103212,
+        "dataRetrievalPerGB": 0.030964
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 4.30052,
+        "dataRetrievalPerGB": 0.017202,
+        "readOpsHighPer10000": 51.606244,
+        "dataRetrievalHighPerGB": 0.103212
+      }
+    },
+    "westeurope": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.016858,
+        "writeOpsPer10000": 0.046446,
+        "readOpsPer10000": 0.003698
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.001548,
+        "writeOpsPer10000": 0.103212,
+        "readOpsPer10000": 5.160624,
+        "dataRetrievalPerGB": 0.020642,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "westindia": {
+      "currency": "EUR",
+      "egressPerGB": 0.103212,
+      "hot": {
+        "storagePerGBPerMonth": 0.017202,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.013074,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.004275,
+        "writeOpsPer10000": 0.213306,
+        "readOpsPer10000": 0.118694,
+        "dataRetrievalPerGB": 0.035608
+      }
+    },
+    "westus": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.01789,
+        "writeOpsPer10000": 0.047306,
+        "readOpsPer10000": 0.003784
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.009891,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.00387,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.00172,
+        "writeOpsPer10000": 0.094611,
+        "readOpsPer10000": 4.730572,
+        "dataRetrievalPerGB": 0.018922,
+        "readOpsHighPer10000": 55.906765,
+        "dataRetrievalHighPerGB": 0.111814
+      }
+    },
+    "westus2": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.000852,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 4.30052,
+        "dataRetrievalPerGB": 0.017202,
+        "readOpsHighPer10000": 43.005204,
+        "dataRetrievalHighPerGB": 0.08601
+      }
+    },
+    "westus3": {
+      "currency": "EUR",
+      "egressPerGB": 0.074829,
+      "hot": {
+        "storagePerGBPerMonth": 0.015826,
+        "writeOpsPer10000": 0.043005,
+        "readOpsPer10000": 0.00344
+      },
+      "cool": {
+        "storagePerGBPerMonth": 0.008601,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 0.008601,
+        "dataRetrievalPerGB": 0.008601
+      },
+      "cold": {
+        "storagePerGBPerMonth": 0.003096,
+        "writeOpsPer10000": 0.154819,
+        "readOpsPer10000": 0.08601,
+        "dataRetrievalPerGB": 0.025803
+      },
+      "archive": {
+        "storagePerGBPerMonth": 0.000852,
+        "writeOpsPer10000": 0.08601,
+        "readOpsPer10000": 4.30052,
+        "dataRetrievalPerGB": 0.017202,
+        "readOpsHighPer10000": 43.005204,
+        "dataRetrievalHighPerGB": 0.08601
       }
     }
   }
