@@ -24,6 +24,9 @@ internal sealed class RestoreCostCalculator(RegionPricing? pricing)
     // Azure bills per-GB storage and retrieval as binary GiB (2^30 bytes).
     private const double BytesPerGiB = 1024.0 * 1024.0 * 1024.0;
 
+    // The first 100 GiB of internet egress per month is free account-wide.
+    private const double FreeEgressGiB = 100.0;
+
     private readonly RegionPricing _pricing = pricing ?? PricingCatalog.LoadEmbedded().Resolve(null).Pricing;
 
     /// <summary>
@@ -57,6 +60,12 @@ internal sealed class RestoreCostCalculator(RegionPricing? pricing)
             coolDownloadBytes / BytesPerGiB * _pricing.DataRetrievalRateFor(BlobTier.Cool) +
             coldDownloadBytes / BytesPerGiB * _pricing.DataRetrievalRateFor(BlobTier.Cold);
 
+        // ── Internet egress: every restored byte leaves Azure (download now + the archive bytes we
+        //    rehydrate then download). The first 100 GiB/month is free account-wide. ──
+        var egressGiB         = (downloadBytes + bytesNeedingRehydration) / BytesPerGiB;
+        var billableEgressGiB = Math.Max(0.0, egressGiB - FreeEgressGiB);
+        var egressCost        = billableEgressGiB * _pricing.EgressPerGb;
+
         return new RestoreCostEstimate
         {
             ChunksAvailable          = chunksAvailable,
@@ -82,6 +91,9 @@ internal sealed class RestoreCostCalculator(RegionPricing? pricing)
             // Direct download from online tiers.
             DownloadReadOpsCost   = downloadReadOps,
             DownloadRetrievalCost = downloadRetrieval,
+
+            // Internet egress for the restored data (beyond the free monthly allowance).
+            EgressCost            = egressCost,
         };
     }
 }
@@ -144,11 +156,14 @@ public sealed record RestoreCostEstimate
     /// <summary>Per-GiB data-retrieval cost for chunks downloaded from the Cool and Cold tiers.</summary>
     public double DownloadRetrievalCost { get; init; }
 
+    /// <summary>Internet egress (data transfer out) cost for the restored data, beyond the free monthly allowance.</summary>
+    public double EgressCost { get; init; }
+
     // ── Computed totals ───────────────────────────────────────────────────────
 
     /// <summary>Total estimated cost at Standard priority.</summary>
-    public double TotalStandard => RetrievalCostStandard + ReadOpsCostStandard + WriteOpsCost + StorageCost + DownloadReadOpsCost + DownloadRetrievalCost;
+    public double TotalStandard => RetrievalCostStandard + ReadOpsCostStandard + WriteOpsCost + StorageCost + DownloadReadOpsCost + DownloadRetrievalCost + EgressCost;
 
     /// <summary>Total estimated cost at High priority.</summary>
-    public double TotalHigh => RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost + DownloadReadOpsCost + DownloadRetrievalCost;
+    public double TotalHigh => RetrievalCostHigh + ReadOpsCostHigh + WriteOpsCost + StorageCost + DownloadReadOpsCost + DownloadRetrievalCost + EgressCost;
 }

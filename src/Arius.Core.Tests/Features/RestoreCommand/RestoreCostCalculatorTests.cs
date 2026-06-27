@@ -8,6 +8,7 @@ public class RestoreCostCalculatorTests
     // Deterministic pricing config for all tests
     private static readonly RegionPricing _pricing = new()
     {
+        EgressPerGb = 0.08,
         Archive = new TierRates
         {
             DataRetrievalPerGb     = 1.0,
@@ -255,5 +256,48 @@ public class RestoreCostCalculatorTests
 
         estimate.DownloadRetrievalCost.ShouldBe(0.0); // Hot has no per-GiB retrieval charge
         estimate.DownloadReadOpsCost.ShouldBe(0.04, tolerance: 1e-9);
+    }
+
+    // ── Internet egress (first 100 GiB/month free) ──────────────────────────────
+
+    [Test]
+    public void EgressCost_BeyondFreeAllowance_ChargedPerGiB()
+    {
+        // 200 GiB restored → 100 GiB billable (first 100 free) × 0.08 = 8.0
+        var estimate = new RestoreCostCalculator(_pricing).Compute(
+            chunksAvailable: 0, chunksAlreadyRehydrated: 0,
+            chunksNeedingRehydration: 0, chunksPendingRehydration: 0,
+            bytesNeedingRehydration: 0, bytesPendingRehydration: 0,
+            downloadBytes: 200L * 1024 * 1024 * 1024);
+
+        estimate.EgressCost.ShouldBe(8.0, tolerance: 1e-9);
+        estimate.TotalStandard.ShouldBe(8.0, tolerance: 1e-9);
+    }
+
+    [Test]
+    public void EgressCost_WithinFreeAllowance_IsZero()
+    {
+        var estimate = new RestoreCostCalculator(_pricing).Compute(
+            chunksAvailable: 0, chunksAlreadyRehydrated: 0,
+            chunksNeedingRehydration: 0, chunksPendingRehydration: 0,
+            bytesNeedingRehydration: 0, bytesPendingRehydration: 0,
+            downloadBytes: 50L * 1024 * 1024 * 1024);
+
+        estimate.EgressCost.ShouldBe(0.0);
+    }
+
+    [Test]
+    public void EgressCost_CountsRehydratedArchiveBytes_NotPending()
+    {
+        // 80 GiB online + 60 GiB archive-to-rehydrate = 140 GiB egress → 40 GiB billable × 0.08 = 3.2.
+        // Pending bytes are excluded (not downloaded in this run).
+        var estimate = new RestoreCostCalculator(_pricing).Compute(
+            chunksAvailable: 0, chunksAlreadyRehydrated: 0,
+            chunksNeedingRehydration: 1, chunksPendingRehydration: 1,
+            bytesNeedingRehydration: 60L * 1024 * 1024 * 1024,
+            bytesPendingRehydration: 500L * 1024 * 1024 * 1024,
+            downloadBytes: 80L * 1024 * 1024 * 1024);
+
+        estimate.EgressCost.ShouldBe(3.2, tolerance: 1e-9);
     }
 }

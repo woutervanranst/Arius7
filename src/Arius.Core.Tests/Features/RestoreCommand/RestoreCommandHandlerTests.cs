@@ -169,7 +169,7 @@ public class RestoreCommandHandlerTests
         phases.ShouldBe([
             "resolve-snapshot",
             "classify",
-            "confirm-rehydration",
+            "confirm-cost",
             "rehydrate"
         ]);
         messages.ShouldContain(static message => message.StartsWith("[rehydration] Requested:", StringComparison.Ordinal));

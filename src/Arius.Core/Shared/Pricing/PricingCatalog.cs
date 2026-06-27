@@ -82,6 +82,10 @@ internal sealed record RegionPricing
     [JsonPropertyName("currency")]
     public string Currency { get; init; } = "EUR";
 
+    /// <summary>Internet egress (data transfer out) per GiB beyond the monthly free allowance; 0 if not configured.</summary>
+    [JsonPropertyName("egressPerGB")]
+    public double EgressPerGb { get; init; }
+
     [JsonPropertyName("hot")]     public TierRates? Hot     { get; init; }
     [JsonPropertyName("cool")]    public TierRates? Cool    { get; init; }
     [JsonPropertyName("cold")]    public TierRates? Cold    { get; init; }

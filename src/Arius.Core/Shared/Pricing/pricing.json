@@ -1,8 +1,9 @@
 {
-  "_comment": "Azure Blob Storage retail pricing — EUR, Standard general-purpose v2 block blobs, LRS redundancy, base volume tier (0-50 TB). Keyed by programmatic region name. Source: Azure Retail Prices API (prices.azure.com), product 'General Block Blob v2'. Last updated 2026-06. Add a region here to make it selectable and priced. Azure bills per-GB values as binary GiB (2^30 bytes). Hot has no data-retrieval charge; cool/cold/archive do.",
+  "_comment": "Azure Blob Storage retail pricing — EUR, Standard general-purpose v2 block blobs, LRS redundancy, base volume tier (0-50 TB). Keyed by programmatic region name. Source: Azure Retail Prices API (prices.azure.com), products 'General Block Blob v2' + 'Bandwidth'. Last updated 2026-06. Add a region here to make it selectable and priced. Azure bills per-GB values as binary GiB (2^30 bytes). Hot has no data-retrieval charge; cool/cold/archive do. egressPerGB is internet data-transfer-out (default Microsoft-network routing, 100 GB-10 TB band); the first 100 GiB/month is free account-wide.",
   "regions": {
     "westeurope": {
       "currency": "EUR",
+      "egressPerGB": 0.07483,
       "hot": {
         "storagePerGBPerMonth": 0.016858,
         "writeOpsPer10000":     0.046446,
@@ -31,6 +32,7 @@
     },
     "northeurope": {
       "currency": "EUR",
+      "egressPerGB": 0.07483,
       "hot": {
         "storagePerGBPerMonth": 0.018922,
         "writeOpsPer10000":     0.043005,
@@ -59,6 +61,7 @@
     },
     "belgiumcentral": {
       "currency": "EUR",
+      "egressPerGB": 0.07483,
       "_comment": "Belgium Central does not offer the Archive access tier for standard block blobs.",
       "hot": {
         "storagePerGBPerMonth": 0.016858,

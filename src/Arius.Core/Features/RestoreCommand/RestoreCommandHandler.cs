@@ -210,29 +210,32 @@ public sealed class RestoreCommandHandler(
             logger.LogInformation("[rehydration] Status: available={Available} rehydrated={Rehydrated} needsRehydration={NeedsRehydration} pending={Pending} downloadSize={DownloadSize} rehydrateSize={RehydrateSize} pendingSize={PendingSize}", availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount, downloadBytes.Bytes().Humanize(), bytesNeedingRehydration.Bytes().Humanize(), bytesPendingRehydration.Bytes().Humanize());
             await mediator.Publish(new RehydrationStatusEvent(availableCount, rehydratedCount, needsRehydrationCount, pendingRehydrationCount), cancellationToken);
 
-            // ── Stage 3: Cost estimate + confirm rehydration ──────────────────────
+            // ── Stage 3: Cost estimate + confirm ──────────────────────────────────
+            // Estimate the full restore cost (archive rehydration + online-tier download retrieval/read-ops
+            // + internet egress) and, when it is non-zero, ask the caller to approve before any cost is
+            // incurred. Archive rehydration also takes hours, so the same prompt carries the priority choice.
             var rehydratePriority = RehydratePriority.Standard;
-            if (needsRehydrationCount > 0 && opts.ConfirmRehydration is not null)
-            {
-                logger.LogInformation("[phase] confirm-rehydration");
-                var regionPricing = PricingCatalog.LoadEmbedded().Resolve(opts.Region).Pricing;
-                var costEstimate = new RestoreCostCalculator(regionPricing).Compute(
-                    chunksAvailable:          availableCount,
-                    chunksAlreadyRehydrated:  rehydratedCount,
-                    chunksNeedingRehydration: needsRehydrationCount,
-                    chunksPendingRehydration: pendingRehydrationCount,
-                    bytesNeedingRehydration:  bytesNeedingRehydration,
-                    bytesPendingRehydration:  bytesPendingRehydration,
-                    downloadBytes:            downloadBytes,
-                    hotDownloadChunks:        hotDownloadChunks,  hotDownloadBytes:  hotDownloadBytes,
-                    coolDownloadChunks:       coolDownloadChunks, coolDownloadBytes: coolDownloadBytes,
-                    coldDownloadChunks:       coldDownloadChunks, coldDownloadBytes: coldDownloadBytes);
+            var regionPricing     = PricingCatalog.LoadEmbedded().Resolve(opts.Region).Pricing;
+            var costEstimate      = new RestoreCostCalculator(regionPricing).Compute(
+                chunksAvailable:          availableCount,
+                chunksAlreadyRehydrated:  rehydratedCount,
+                chunksNeedingRehydration: needsRehydrationCount,
+                chunksPendingRehydration: pendingRehydrationCount,
+                bytesNeedingRehydration:  bytesNeedingRehydration,
+                bytesPendingRehydration:  bytesPendingRehydration,
+                downloadBytes:            downloadBytes,
+                hotDownloadChunks:        hotDownloadChunks,  hotDownloadBytes:  hotDownloadBytes,
+                coolDownloadChunks:       coolDownloadChunks, coolDownloadBytes: coolDownloadBytes,
+                coldDownloadChunks:       coldDownloadChunks, coldDownloadBytes: coldDownloadBytes);
 
+            if (costEstimate.TotalStandard > 0 && opts.ConfirmRehydration is not null)
+            {
+                logger.LogInformation("[phase] confirm-cost");
                 var chosenPriority = await opts.ConfirmRehydration(costEstimate, cancellationToken);
                 if (chosenPriority is null)
                 {
-                    // User cancelled rehydration — exit without downloading or rehydrating.
-                    logger.LogInformation("[rehydration] Confirmation cancelled: pending={Pending} rehydrateSize={RehydrateSize}", needsRehydrationCount + pendingRehydrationCount, bytesNeedingRehydration.Bytes().Humanize());
+                    // User declined — exit without downloading or rehydrating.
+                    logger.LogInformation("[restore] Cost declined: pending={Pending} rehydrateSize={RehydrateSize}", needsRehydrationCount + pendingRehydrationCount, bytesNeedingRehydration.Bytes().Humanize());
                     logger.LogInformation("[restore] Done: restored=0 skipped={Skipped} pendingRehydration={Pending}", skipped.Value, needsRehydrationCount + pendingRehydrationCount);
 
                     return new RestoreResult
