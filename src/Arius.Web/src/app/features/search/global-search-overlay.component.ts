@@ -61,6 +61,10 @@ export class GlobalSearchOverlayComponent {
 
   protected openHit(hit: SearchHitDto): void {
     this.store.close();
-    this.router.navigate(['/repos', hit.repoId, 'files']);
+    // Carry the file's path so the Files tab opens the right repo, expands the tree
+    // to the containing folder, and highlights the file.
+    this.router.navigate(['/repos', hit.repoId, 'files'], {
+      queryParams: { path: hit.entry.relativePath },
+    });
   }
 }

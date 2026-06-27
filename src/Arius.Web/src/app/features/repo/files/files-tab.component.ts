@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { toArray } from 'rxjs/operators';
@@ -82,7 +82,7 @@ const byName = (a: EntryDto, b: EntryDto) => a.name.localeCompare(b.name, undefi
               </div>
             } @else {
               @for (f of shownFiles(); track f.relativePath) {
-                <div class="ar-file-row" data-testid="file-row" (click)="toggleCollect(f)"
+                <div class="ar-file-row" data-testid="file-row" (click)="toggleCollect(f)" [attr.data-rel]="f.relativePath"
                      style="display:grid;grid-template-columns:34px 2fr 1.2fr .7fr .7fr .9fr;align-items:center;font-size:13px"
                      [style.height.px]="46" [style.background]="collected().has(f.relativePath) ? '#f7f9ff' : ''">
                   <div style="display:flex;justify-content:center">
@@ -130,8 +130,11 @@ export class FilesTabComponent {
   private readonly realtime = inject(RealtimeService);
   private readonly drawer = inject(DrawerStore);
   private readonly snap = inject(SnapshotStore);
+  private readonly host = inject(ElementRef<HTMLElement>);
 
   readonly repoId = input.required<string>();
+  /** Optional full relativePath of a file to reveal (set by global search via the `path` query param). */
+  readonly path = input<string>();
 
   protected readonly selectedFolder = signal('');
   protected readonly fileFilter = signal('');
@@ -156,20 +159,53 @@ export class FilesTabComponent {
       const id = +this.repoId();
       untracked(() => this.api.getRepository(id).subscribe(r => { this.alias.set(r.alias); this.container.set(r.container); }));
     });
-    // Reload the explorer whenever the repo or the selected snapshot (shared, from the bar) changes.
+    // Reload the explorer whenever the repo, the selected snapshot (shared, from the bar),
+    // or the file-to-reveal (global-search `path` query param) changes.
     effect(() => {
       this.repoId();
       this.snap.version();
-      untracked(() => this.resetToRoot());
+      const path = this.path();
+      untracked(() => void this.resetAndReveal(path));
     });
   }
 
-  private resetToRoot(): void {
+  private async resetAndReveal(path: string | undefined): Promise<void> {
     this.selectedFolder.set('');
+    this.fileFilter.set('');
     this.expanded.set(new Set());
     this.dirCache.set(new Map());
-    void this.loadChildren('');
-    void this.loadFiles('');
+    await this.loadChildren('');
+    if (path) await this.revealPath(path);
+    else await this.loadFiles('');
+  }
+
+  /** Expand the tree to the file's folder, open it, then check (collect) the file so it joins the collector. */
+  private async revealPath(filePath: string): Promise<void> {
+    const folder = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
+    if (folder) {
+      let acc = '';
+      for (const seg of folder.split('/')) {
+        await this.loadChildren(acc);          // load the parent's dirs so this segment's row exists
+        acc = acc ? `${acc}/${seg}` : seg;
+        this.expanded.update(s => new Set(s).add(acc));
+      }
+      await this.loadChildren(folder);          // load the target folder's subfolders (for its chevron)
+    }
+    this.selectedFolder.set(folder);
+    await this.loadFiles(folder);
+    // Check the file's box: the row turns blue and it's added to the collector.
+    const entry = this.files().find(f => f.relativePath === filePath);
+    if (entry && !this.collected().has(entry.relativePath)) {
+      this.collected.update(m => new Map(m).set(entry.relativePath, entry.originalSize ?? 0));
+    }
+    this.scrollRevealedIntoView(filePath);
+  }
+
+  private scrollRevealedIntoView(filePath: string): void {
+    setTimeout(() => {
+      const el = this.host.nativeElement.querySelector(`.ar-file-row[data-rel="${CSS.escape(filePath)}"]`) as HTMLElement | null;
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 60);
   }
 
   // ── Tree ────────────────────────────────────────────────────────────────
