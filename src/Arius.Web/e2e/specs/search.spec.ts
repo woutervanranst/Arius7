@@ -27,7 +27,9 @@ test('global search returns cross-repository hits and reveals the clicked file',
   const revealedPath = new URL(page.url()).searchParams.get('path');
   expect(revealedPath, 'navigation should include a ?path= for the clicked file').toBeTruthy();
 
-  const revealedRow = page.locator(`[data-testid="file-row"][data-rel="${revealedPath}"]`);
+  // JSON.stringify yields a safely-escaped, quoted string (valid CSS attr-value syntax) so the
+  // selector stays valid even if the path contains quotes or other special characters.
+  const revealedRow = page.locator(`[data-testid="file-row"][data-rel=${JSON.stringify(revealedPath)}]`);
   await expect(revealedRow).toBeVisible();
   await expect(revealedRow.locator('.ar-check.on')).toBeVisible();   // box is checked
   await expect(page.getByTestId('collected-bar')).toBeVisible();      // and it joined the collector
