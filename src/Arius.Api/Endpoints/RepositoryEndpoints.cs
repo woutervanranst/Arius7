@@ -16,11 +16,12 @@ internal static class RepositoryEndpoints
 
         group.MapGet("/", async (AppDatabase db, RepositoryProviderRegistry registry, CancellationToken ct) =>
         {
-            // The region is derived from the container (the source of truth) via Core's StorageAccountInfoQuery,
-            // resolved per repo and concurrently so one slow/unreachable container can't stall the list.
+            // Region resolves through a DB-backed read-through cache: repos with a known (configured) region are
+            // served straight from the DB, the rest resolve live (concurrently, best-effort) and get cached.
             var repositories = db.ListRepositories();
-            var infos        = await Task.WhenAll(repositories.Select(r => TryGetAccountInfoAsync(registry, r.Id, ct)));
-            return repositories.Zip(infos, (r, info) => ToDto(db, r, info)).ToList();
+            var dtos = await Task.WhenAll(repositories.Select(r =>
+                ResolveRegionDtoAsync(db, r, (id, c) => TryGetAccountInfoAsync(registry, id, c), ct)));
+            return dtos.ToList();
         });
 
         group.MapGet("/{id:long}", async (long id, AppDatabase db, RepositoryProviderRegistry registry, CancellationToken ct) =>
@@ -28,8 +29,7 @@ internal static class RepositoryEndpoints
             var repository = db.GetRepository(id);
             if (repository is null)
                 return Results.NotFound();
-            var info = await TryGetAccountInfoAsync(registry, id, ct);
-            return Results.Ok(ToDto(db, repository, info));
+            return Results.Ok(await ResolveRegionDtoAsync(db, repository, (rid, c) => TryGetAccountInfoAsync(registry, rid, c), ct));
         });
 
         group.MapPost("/", (CreateRepositoryRequest request, AppDatabase db, SecretProtector secrets) =>
@@ -46,8 +46,8 @@ internal static class RepositoryEndpoints
                 secrets.Protect(request.Passphrase));
 
             // Region is left unresolved here (the container may not exist yet); the client refetches the list,
-            // which resolves it. Building a read provider for a brand-new repo would only cache a failed open.
-            return Results.Created($"/repos/{id}", ToDto(db, db.GetRepository(id)!, info: null));
+            // which resolves and caches it.
+            return Results.Created($"/repos/{id}", ToDto(db, db.GetRepository(id)!, region: null, regionIsDefault: false));
         });
 
         group.MapPatch("/{id:long}", (long id, UpdateRepositoryRequest request, AppDatabase db, SecretProtector secrets, RepositoryProviderRegistry registry) =>
@@ -62,13 +62,13 @@ internal static class RepositoryEndpoints
                 request.DefaultTier is null ? null : NormalizeTier(request.DefaultTier),
                 secrets.Protect(request.Passphrase));
 
-            // Connection material may have changed — drop the cached read provider so it rebuilds,
-            // and discard any memoized statistics (they may have been computed against a different target).
+            // Connection material may have changed — drop the cached read provider so it rebuilds, discard any
+            // memoized statistics, and invalidate the region cache so it re-resolves against the (possibly new) target.
             registry.Evict(id);
             db.ClearStatisticsCache(id);
-            // Region is left unresolved here; the client refetches the list, which resolves it against the
-            // (now evicted) provider.
-            return Results.Ok(ToDto(db, db.GetRepository(id)!, info: null));
+            db.SetRepositoryRegionHint(id, null);
+            // Region is left unresolved here; the client refetches the list, which re-resolves and caches it.
+            return Results.Ok(ToDto(db, db.GetRepository(id)!, region: null, regionIsDefault: false));
         });
 
         group.MapDelete("/{id:long}", (long id, AppDatabase db, RepositoryProviderRegistry registry) =>
@@ -80,6 +80,27 @@ internal static class RepositoryEndpoints
             registry.Remove(id); // repo is gone for good → also dispose its rolling-log factory, not just Evict the provider
             return Results.NoContent();
         });
+    }
+
+    /// <summary>
+    /// Builds a repository DTO, resolving its region through a DB-backed read-through cache. A cached
+    /// (non-null) <see cref="RepositoryRecord.RegionHint"/> is an immutable, configured region and is served
+    /// without opening the container (no provider build); otherwise the region is resolved live via
+    /// <paramref name="resolveLive"/> and a configured (non-default) result is persisted for next time.
+    /// </summary>
+    internal static async Task<RepositoryDto> ResolveRegionDtoAsync(
+        AppDatabase db,
+        RepositoryRecord repository,
+        Func<long, CancellationToken, Task<StorageAccountInfo?>> resolveLive,
+        CancellationToken ct)
+    {
+        if (repository.RegionHint is not null)
+            return ToDto(db, repository, repository.RegionHint, regionIsDefault: false);
+
+        var info = await resolveLive(repository.Id, ct);
+        if (info is { RegionIsDefault: false })
+            db.SetRepositoryRegionHint(repository.Id, info.Region); // cache only a configured region (immutable); leave unset ones to re-resolve
+        return ToDto(db, repository, info?.Region, info?.RegionIsDefault ?? false);
     }
 
     /// <summary>
@@ -101,14 +122,14 @@ internal static class RepositoryEndpoints
         }
     }
 
-    private static RepositoryDto ToDto(AppDatabase db, RepositoryRecord repository, StorageAccountInfo? info)
+    private static RepositoryDto ToDto(AppDatabase db, RepositoryRecord repository, string? region, bool regionIsDefault)
     {
         var accountName = db.GetAccount(repository.AccountId)?.Name ?? "";
         return new RepositoryDto(
             repository.Id, repository.Alias, repository.Container, repository.AccountId, accountName,
             repository.LocalPath, repository.DefaultTier,
-            Region:          info?.Region,
-            RegionIsDefault: info?.RegionIsDefault ?? false);
+            Region:          region,
+            RegionIsDefault: regionIsDefault);
     }
 
     private static string NormalizeTier(string? tier)

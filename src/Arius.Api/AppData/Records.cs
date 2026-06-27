@@ -6,6 +6,10 @@ namespace Arius.Api.AppData;
 public sealed record AccountRecord(long Id, string Name, string? EncryptedAccountKey, DateTimeOffset CreatedAt);
 
 /// <summary>A managed repository (one blob container). <see cref="EncryptedPassphrase"/> is Data-Protection ciphertext.</summary>
+/// <param name="RegionHint">
+/// Cached copy of the container's configured region (the metadata is the source of truth). Non-null = a known,
+/// configured region (immutable once set); <c>null</c> = not cached yet or unset, so it is re-resolved live.
+/// </param>
 public sealed record RepositoryRecord(
     long            Id,
     string          Alias,
@@ -13,6 +17,7 @@ public sealed record RepositoryRecord(
     long            AccountId,
     string?         LocalPath,
     string          DefaultTier,
+    string?         RegionHint,
     string?         EncryptedPassphrase,
     DateTimeOffset  CreatedAt);
 

@@ -51,6 +51,11 @@ public sealed class AppDatabase
                 account_id   INTEGER NOT NULL REFERENCES storage_accounts(id),
                 local_path   TEXT,
                 default_tier TEXT NOT NULL DEFAULT 'archive',
+                -- Cache of the container's configured region (IBlobContainerService.RegionHint). The container
+                -- metadata is the source of truth; this only memoizes a *configured* (non-null) region — which is
+                -- immutable once set — so the overview can list regions without opening every container. Left NULL
+                -- when unknown/unset, so it keeps re-resolving live until a region is configured.
+                region_hint  TEXT,
                 passphrase   TEXT,
                 created_at   TEXT NOT NULL,
                 UNIQUE(account_id, container)
@@ -93,6 +98,25 @@ public sealed class AppDatabase
             );
             """;
         create.ExecuteNonQuery();
+
+        // Additive migration for databases created before region_hint existed (CREATE TABLE IF NOT EXISTS
+        // won't add a column to an existing table). Idempotent: no-op once the column is present.
+        EnsureColumn(connection, table: "repositories", column: "region_hint", type: "TEXT");
+    }
+
+    /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it is not already present. Names are
+    /// compile-time constants (never user input), so the interpolated DDL is safe.</summary>
+    private static void EnsureColumn(SqliteConnection connection, string table, string column, string type)
+    {
+        using var probe = connection.CreateCommand();
+        probe.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $column;";
+        probe.Parameters.AddWithValue("$column", column);
+        if (Convert.ToInt64(probe.ExecuteScalar()) > 0)
+            return;
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type};";
+        alter.ExecuteNonQuery();
     }
 
     private SqliteConnection OpenConnection()
@@ -196,7 +220,7 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, passphrase, created_at FROM repositories ORDER BY alias;";
+        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, region_hint, passphrase, created_at FROM repositories ORDER BY alias;";
         using var reader = command.ExecuteReader();
         var result = new List<RepositoryRecord>();
         while (reader.Read())
@@ -208,7 +232,7 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, passphrase, created_at FROM repositories WHERE id = $id;";
+        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, region_hint, passphrase, created_at FROM repositories WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadRepository(reader) : null;
@@ -254,6 +278,21 @@ public sealed class AppDatabase
         command.Parameters.AddWithValue("$localPath", (object?)localPath ?? DBNull.Value);
         command.Parameters.AddWithValue("$defaultTier", (object?)defaultTier ?? DBNull.Value);
         command.Parameters.AddWithValue("$passphrase", (object?)encryptedPassphrase ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Caches a repository's configured region (<see cref="RepositoryRecord.RegionHint"/>). Pass a non-null,
+    /// configured region to memoize it (it's immutable once set, so the overview can serve it without opening
+    /// the container); pass <c>null</c> to invalidate the cache so the region is re-resolved live on next read.
+    /// </summary>
+    public void SetRepositoryRegionHint(long id, string? regionHint)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE repositories SET region_hint = $regionHint WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$regionHint", (object?)regionHint ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 
@@ -477,6 +516,7 @@ public sealed class AppDatabase
         reader.GetInt64(3),
         reader.IsDBNull(4) ? null : reader.GetString(4),
         reader.GetString(5),
-        reader.IsDBNull(6) ? null : reader.GetString(6),
-        DateTimeOffset.Parse(reader.GetString(7)));
+        reader.IsDBNull(6) ? null : reader.GetString(6),  // region_hint (cached configured region)
+        reader.IsDBNull(7) ? null : reader.GetString(7),  // passphrase
+        DateTimeOffset.Parse(reader.GetString(8)));
 }
