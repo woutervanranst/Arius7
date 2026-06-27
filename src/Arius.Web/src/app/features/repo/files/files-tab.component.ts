@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { toArray } from 'rxjs/operators';
@@ -83,8 +83,9 @@ const byName = (a: EntryDto, b: EntryDto) => a.name.localeCompare(b.name, undefi
             } @else {
               @for (f of shownFiles(); track f.relativePath) {
                 <div class="ar-file-row" data-testid="file-row" (click)="toggleCollect(f)"
+                     [class.hl]="highlighted() === f.relativePath"
                      style="display:grid;grid-template-columns:34px 2fr 1.2fr .7fr .7fr .9fr;align-items:center;font-size:13px"
-                     [style.height.px]="46" [style.background]="collected().has(f.relativePath) ? '#f7f9ff' : ''">
+                     [style.height.px]="46" [style.background]="rowBg(f)">
                   <div style="display:flex;justify-content:center">
                     <span class="ar-check" [class.on]="collected().has(f.relativePath)"><i class="ki-filled ki-check"></i></span>
                   </div>
@@ -123,6 +124,7 @@ const byName = (a: EntryDto, b: EntryDto) => a.name.localeCompare(b.name, undefi
     .ar-tree-row.sel { background:#eff6ff }
     .ar-check { width:18px;height:18px;border-radius:5px;border:1.5px solid #d4d4d8;display:flex;align-items:center;justify-content:center;color:transparent;font-size:11px }
     .ar-check.on { background:#3b82f6;border-color:#3b82f6;color:#fff }
+    .ar-file-row.hl { box-shadow:inset 3px 0 0 #f59e0b }
   `],
 })
 export class FilesTabComponent {
@@ -130,12 +132,17 @@ export class FilesTabComponent {
   private readonly realtime = inject(RealtimeService);
   private readonly drawer = inject(DrawerStore);
   private readonly snap = inject(SnapshotStore);
+  private readonly host = inject(ElementRef<HTMLElement>);
 
   readonly repoId = input.required<string>();
+  /** Optional full relativePath of a file to reveal (set by global search via the `path` query param). */
+  readonly path = input<string>();
 
   protected readonly selectedFolder = signal('');
   protected readonly fileFilter = signal('');
   protected readonly collected = signal<Map<string, number>>(new Map());
+  /** relativePath of the file to highlight after a reveal-from-search navigation. */
+  protected readonly highlighted = signal<string | null>(null);
 
   protected readonly expanded = signal<Set<string>>(new Set());
   protected readonly dirCache = signal<Map<string, EntryDto[]>>(new Map());
@@ -156,20 +163,50 @@ export class FilesTabComponent {
       const id = +this.repoId();
       untracked(() => this.api.getRepository(id).subscribe(r => { this.alias.set(r.alias); this.container.set(r.container); }));
     });
-    // Reload the explorer whenever the repo or the selected snapshot (shared, from the bar) changes.
+    // Reload the explorer whenever the repo, the selected snapshot (shared, from the bar),
+    // or the file-to-reveal (global-search `path` query param) changes.
     effect(() => {
       this.repoId();
       this.snap.version();
-      untracked(() => this.resetToRoot());
+      const path = this.path();
+      untracked(() => void this.resetAndReveal(path));
     });
   }
 
-  private resetToRoot(): void {
+  private async resetAndReveal(path: string | undefined): Promise<void> {
     this.selectedFolder.set('');
+    this.fileFilter.set('');
     this.expanded.set(new Set());
     this.dirCache.set(new Map());
-    void this.loadChildren('');
-    void this.loadFiles('');
+    this.highlighted.set(null);
+    await this.loadChildren('');
+    if (path) await this.revealPath(path);
+    else await this.loadFiles('');
+  }
+
+  /** Expand the tree down to the file's folder, open that folder, and highlight the file row. */
+  private async revealPath(filePath: string): Promise<void> {
+    const folder = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
+    if (folder) {
+      let acc = '';
+      for (const seg of folder.split('/')) {
+        await this.loadChildren(acc);          // load the parent's dirs so this segment's row exists
+        acc = acc ? `${acc}/${seg}` : seg;
+        this.expanded.update(s => new Set(s).add(acc));
+      }
+      await this.loadChildren(folder);          // load the target folder's subfolders (for its chevron)
+    }
+    this.selectedFolder.set(folder);
+    await this.loadFiles(folder);
+    this.highlighted.set(filePath);
+    this.scrollHighlightedIntoView();
+  }
+
+  private scrollHighlightedIntoView(): void {
+    setTimeout(() => {
+      const el = this.host.nativeElement.querySelector('.ar-file-row.hl') as HTMLElement | null;
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 60);
   }
 
   // ── Tree ────────────────────────────────────────────────────────────────
@@ -197,6 +234,7 @@ export class FilesTabComponent {
   }
 
   protected selectFolder(path: string): void {
+    this.highlighted.set(null);
     this.selectedFolder.set(path);
     void this.loadFiles(path);
   }
@@ -252,9 +290,17 @@ export class FilesTabComponent {
 
   // ── Filter ────────────────────────────────────────────────────────────────
   protected onFilter(value: string): void {
+    this.highlighted.set(null);
     this.fileFilter.set(value);
     clearTimeout(this.filterTimer);
     this.filterTimer = setTimeout(() => this.loadFiles(this.selectedFolder()), 250);
+  }
+
+  /** Row background: revealed file wins over a collected row. */
+  protected rowBg(f: EntryDto): string {
+    if (this.highlighted() === f.relativePath) return '#fff7ed';
+    if (this.collected().has(f.relativePath)) return '#f7f9ff';
+    return '';
   }
 
   protected readonly shownFiles = computed(() => this.files());
