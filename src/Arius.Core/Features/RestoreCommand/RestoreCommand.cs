@@ -37,12 +37,6 @@ public sealed record RestoreOptions
     public bool NoPointers { get; init; } = false;
 
     /// <summary>
-    /// Programmatic Azure region of the account (e.g. <c>westeurope</c>), used to price the restore cost
-    /// estimate. <c>null</c> falls back to the pricing catalog's default region.
-    /// </summary>
-    public string? Region { get; init; }
-
-    /// <summary>
     /// Optional callback invoked with the cost estimate before downloads begin when archive-tier chunks need rehydration.
     /// Return the desired <see cref="RehydratePriority"/> to continue, or <c>null</c> to cancel before files are written.
     /// When this callback is <c>null</c>, archive-tier chunks are rehydrated using Standard priority without confirmation.

@@ -42,12 +42,6 @@ import { FolderPickerComponent } from '../../../shared/folder-picker/folder-pick
         } @else {
           <label class="ar-field"><span>Account name <span class="ar-req">*</span></span><input class="ar-input ar-mono" data-testid="new-account-name" [(ngModel)]="newName" /></label>
           <label class="ar-field"><span>Account key <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="new-account-key" [(ngModel)]="newKey" /></label>
-          <label class="ar-field"><span>Region</span>
-            <select class="ar-input" data-testid="new-account-region" [ngModel]="newRegion()" (ngModelChange)="newRegion.set($event)">
-              <option value="">Unknown / Not in list</option>
-              @for (r of regions(); track r) { <option [value]="r">{{ r }}</option> }
-            </select>
-          </label>
         }
 
         <div class="ar-note" style="margin-top:6px">Arius reads the existing manifest and snapshots — no files are uploaded.</div>
@@ -103,13 +97,11 @@ export class AddRepoWizardComponent {
   private readonly router = inject(Router);
 
   protected readonly accounts = toSignal(this.api.listAccounts(), { initialValue: [] });
-  protected readonly regions = toSignal(this.api.getRegions(), { initialValue: [] as string[] });
   protected readonly step = signal<1 | 2>(1);
   protected readonly mode = signal<'select' | 'new'>('select');
   protected readonly selectedAccountId = signal(0);
   protected newName = '';
   protected newKey = '';
-  protected readonly newRegion = signal('');
   protected readonly containers = signal<string[]>([]);
   protected readonly selectedContainer = signal('');
   protected alias = '';
@@ -124,7 +116,7 @@ export class AddRepoWizardComponent {
     try {
       let accountId = this.selectedAccountId();
       if (this.mode() === 'new') {
-        const created = await firstValueFrom(this.api.createAccount(this.newName, this.newKey, this.newRegion() || null));
+        const created = await firstValueFrom(this.api.createAccount(this.newName, this.newKey));
         accountId = created.id;
         this.selectedAccountId.set(accountId);
       }

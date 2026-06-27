@@ -5,8 +5,6 @@ export interface AccountDto {
   name: string;
   repositories: number;
   hasKey: boolean;
-  /** Programmatic Azure region (e.g. "westeurope"), or null when unknown. */
-  region: string | null;
 }
 
 export interface RepositoryDto {
@@ -31,7 +29,7 @@ export interface StatisticsDto {
   deduplicatedSize: number;
   storedSize: number;
   uniqueChunks: number;
-  /** Region the storage cost was priced for (the account's region, or the catalog default). */
+  /** Region the storage cost was priced for (from the container's metadata, or the fallback when unset). */
   region: string;
   /** Estimated total monthly storage cost across all tiers, in EUR. */
   totalStorageCostPerMonth: number;

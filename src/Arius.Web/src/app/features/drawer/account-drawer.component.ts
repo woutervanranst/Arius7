@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { DrawerStore } from '../../core/state/drawer.store';
 import { ApiService } from '../../core/api/api.service';
 import { AccountDto } from '../../core/api/api-models';
 
-/** Right slide-over to edit a storage account: rotate the account key and set its Azure region. */
+/** Right slide-over to edit a storage account: rotate the account key. (The storage region lives in the container's own metadata, set in Azure Storage Explorer.) */
 @Component({
   selector: 'arius-account-drawer',
   standalone: true,
@@ -37,17 +36,6 @@ import { AccountDto } from '../../core/api/api-models';
                      [placeholder]="a.hasKey ? '•••••••• (stored encrypted — replace to rotate)' : 'Paste the account key'"
                      [(ngModel)]="key" />
               <small>Stored encrypted in the Arius.Api SQLite. Leave blank to keep the current key.</small>
-            </label>
-
-            <label class="ar-field">
-              <span>Region</span>
-              <select class="ar-input" data-testid="account-region" [ngModel]="region()" (ngModelChange)="region.set($event)">
-                <option value="">Unknown / Not in list</option>
-                @for (r of regions(); track r) {
-                  <option [value]="r">{{ r }}</option>
-                }
-              </select>
-              <small>Drives the storage-cost estimate. "Unknown" prices against the default region.</small>
             </label>
 
             <div class="flex items-center justify-end gap-2.5" style="margin-top:18px">
@@ -99,11 +87,9 @@ export class AccountDrawerComponent {
   private readonly api = inject(ApiService);
 
   protected readonly open = computed(() => this.store.type() === 'account');
-  protected readonly regions = toSignal(this.api.getRegions(), { initialValue: [] as string[] });
 
   protected readonly account = signal<AccountDto | null>(null);
   protected key = '';
-  protected readonly region = signal('');
   protected readonly saved = signal(false);
   protected readonly saveError = signal<string | null>(null);
   protected readonly deleteError = signal<string | null>(null);
@@ -120,14 +106,14 @@ export class AccountDrawerComponent {
       this.saveError.set(null);
       this.deleteError.set(null);
       this.confirmingDelete.set(false);
-      const sub = this.api.getAccount(id).subscribe(a => { this.account.set(a); this.region.set(a.region ?? ''); });
+      const sub = this.api.getAccount(id).subscribe(a => this.account.set(a));
       onCleanup(() => sub.unsubscribe());
     });
   }
 
   protected save(a: AccountDto): void {
     this.saveError.set(null);
-    this.api.updateAccount(a.id, { accountKey: this.key || null, region: this.region() || null }).subscribe({
+    this.api.updateAccount(a.id, { accountKey: this.key || null }).subscribe({
       next: updated => { this.account.set(updated); this.key = ''; this.saved.set(true); this.store.bumpAccounts(); },
       error: () => this.saveError.set('Could not save changes — please try again.'),
     });

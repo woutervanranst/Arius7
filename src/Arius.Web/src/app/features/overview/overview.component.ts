@@ -51,14 +51,14 @@ import { DrawerStore } from '../../core/state/drawer.store';
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:2.4fr .9fr .7fr;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
-        <div>Account</div><div>Region</div><div>Repositories</div>
+      <div style="display:grid;grid-template-columns:2.4fr .7fr;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
+        <div>Account</div><div>Repositories</div>
       </div>
 
       @if (accounts(); as list) {
         @for (account of list; track account.id) {
           <div class="ar-repo-row" data-testid="account-row" (click)="editAccount(account.id)"
-               style="display:grid;grid-template-columns:2.4fr .9fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
+               style="display:grid;grid-template-columns:2.4fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
             <div class="flex items-center gap-3">
               <div style="width:38px;height:38px;border-radius:10px;background:#f5f3ff;color:#6d28d9;display:flex;align-items:center;justify-content:center">
                 <i class="ki-filled ki-cloud" style="font-size:18px"></i>
@@ -68,7 +68,6 @@ import { DrawerStore } from '../../core/state/drawer.store';
                 <div style="font-size:12px;color:#a1a1aa">{{ account.hasKey ? 'Key configured' : 'No key' }}</div>
               </div>
             </div>
-            <div class="ar-mono" style="font-size:12.5px;color:#71717a">{{ account.region ?? 'Unknown' }}</div>
             <div style="font-size:12.5px;color:#71717a">{{ account.repositories }}</div>
           </div>
         } @empty {

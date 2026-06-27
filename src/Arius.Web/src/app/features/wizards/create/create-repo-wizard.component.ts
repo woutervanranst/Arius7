@@ -37,12 +37,6 @@ import { FolderPickerComponent } from '../../../shared/folder-picker/folder-pick
         } @else {
           <label class="ar-field"><span>Account name <span class="ar-req">*</span></span><input class="ar-input ar-mono" data-testid="new-account-name" [(ngModel)]="newName" /></label>
           <label class="ar-field"><span>Account key <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="new-account-key" [(ngModel)]="newKey" /></label>
-          <label class="ar-field"><span>Region</span>
-            <select class="ar-input" data-testid="new-account-region" [ngModel]="newRegion()" (ngModelChange)="newRegion.set($event)">
-              <option value="">Unknown / Not in list</option>
-              @for (r of regions(); track r) { <option [value]="r">{{ r }}</option> }
-            </select>
-          </label>
         }
         @if (error()) { <div style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ error() }}</div> }
         <div class="flex items-center justify-end gap-2.5" style="margin-top:22px">
@@ -93,13 +87,11 @@ export class CreateRepoWizardComponent {
   private readonly router = inject(Router);
 
   protected readonly accounts = toSignal(this.api.listAccounts(), { initialValue: [] });
-  protected readonly regions = toSignal(this.api.getRegions(), { initialValue: [] as string[] });
   protected readonly step = signal<1 | 2>(1);
   protected readonly mode = signal<'select' | 'new'>('select');
   protected readonly selectedAccountId = signal(0);
   protected newName = '';
   protected newKey = '';
-  protected readonly newRegion = signal('');
   protected alias = '';
   protected readonly container = signal('');
   protected localPath = '';
@@ -119,7 +111,7 @@ export class CreateRepoWizardComponent {
     this.error.set(null);
     try {
       if (this.mode() === 'new') {
-        const created = await firstValueFrom(this.api.createAccount(this.newName, this.newKey, this.newRegion() || null));
+        const created = await firstValueFrom(this.api.createAccount(this.newName, this.newKey));
         this.selectedAccountId.set(created.id);
       }
       if (!this.selectedAccountId()) { this.error.set('Select or create an account.'); return; }

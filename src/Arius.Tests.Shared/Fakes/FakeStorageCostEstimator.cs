@@ -13,7 +13,8 @@ public sealed class FakeStorageCostEstimator : IStorageCostEstimator
 {
     private const double GiB = 1024.0 * 1024.0 * 1024.0;
 
-    public IReadOnlyList<string> Regions { get; } = ["westeurope", "northeurope"];
+    /// <summary>The region this estimator reports as having priced (the estimator is bound to one container).</summary>
+    public string Region { get; init; } = "westeurope";
 
     /// <summary>Flat per-GiB-month storage rate per tier (test-controlled, deterministic).</summary>
     public double StorageRate(BlobTier tier) => tier switch
@@ -25,16 +26,15 @@ public sealed class FakeStorageCostEstimator : IStorageCostEstimator
         _                => 0.0,
     };
 
-    public StorageCostEstimate EstimateStorageCost(string? region, IReadOnlyList<ChunkTierStatistic> storedByTier)
+    public StorageCostEstimate EstimateStorageCost(IReadOnlyList<ChunkTierStatistic> storedByTier)
     {
-        var name = string.IsNullOrWhiteSpace(region) ? "westeurope" : region;
         var tiers = storedByTier
             .Select(t => new TierStorageCost(t.Tier, t.UniqueChunks, t.StoredSize, t.StoredSize / GiB * StorageRate(t.Tier)))
             .ToList();
-        return new StorageCostEstimate(name, tiers, tiers.Sum(t => t.CostPerMonth));
+        return new StorageCostEstimate(Region, tiers, tiers.Sum(t => t.CostPerMonth));
     }
 
-    public RestoreCostEstimate EstimateRestoreCost(string? region, RestoreCostRequest request)
+    public RestoreCostEstimate EstimateRestoreCost(RestoreCostRequest request)
     {
         var restoredGiB = (request.DownloadBytes + request.BytesNeedingRehydration) / GiB;
         var rehydrateGiB = request.BytesNeedingRehydration / GiB;

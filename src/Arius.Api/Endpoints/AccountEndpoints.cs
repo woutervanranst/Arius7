@@ -22,34 +22,25 @@ internal static class AccountEndpoints
 
         group.MapPost("/", (CreateAccountRequest request, AppDatabase db, SecretProtector secrets) =>
         {
-            var id = db.InsertAccount(request.Name, secrets.Protect(request.AccountKey), NormalizeRegion(request.Region));
+            var id = db.InsertAccount(request.Name, secrets.Protect(request.AccountKey));
             var account = db.GetAccount(id)!;
             return Results.Created($"/accounts/{id}", ToDto(db, account));
         });
 
-        // Account-flyout edit: rotate the key and/or change the region. A null key in the request leaves
-        // the stored key unchanged. Rotating the key invalidates cached providers; changing the region
-        // invalidates memoized statistics (whose cost figures are region-priced) for this account's repos.
+        // Account-flyout edit: rotate the key. A null key in the request leaves the stored key unchanged;
+        // rotating it invalidates cached providers so the new key takes effect on rebuild.
         group.MapPatch("/{id:long}", (long id, UpdateAccountRequest request, AppDatabase db, SecretProtector secrets, RepositoryProviderRegistry registry) =>
         {
-            var existing = db.GetAccount(id);
-            if (existing is null)
+            if (db.GetAccount(id) is null)
                 return Results.NotFound();
 
-            var newRegion = NormalizeRegion(request.Region);
-            var keyChanged    = request.AccountKey is not null;
-            var regionChanged = !string.Equals(existing.Region, newRegion, StringComparison.Ordinal);
+            var keyChanged = request.AccountKey is not null;
 
-            db.UpdateAccount(id, secrets.Protect(request.AccountKey), newRegion);
+            db.UpdateAccount(id, secrets.Protect(request.AccountKey));
 
-            if (keyChanged || regionChanged)
-            {
+            if (keyChanged)
                 foreach (var repoId in db.ListRepositoryIdsForAccount(id))
-                {
-                    if (keyChanged) registry.Evict(repoId);          // new key takes effect on rebuild
-                    if (regionChanged) db.ClearStatisticsCache(repoId); // cost is region-priced → recompute
-                }
-            }
+                    registry.Evict(repoId);
 
             return Results.Ok(ToDto(db, db.GetAccount(id)!));
         });
@@ -66,12 +57,6 @@ internal static class AccountEndpoints
         });
     }
 
-    /// <summary>Treat blank / "unknown" as no region.</summary>
-    private static string? NormalizeRegion(string? region)
-        => string.IsNullOrWhiteSpace(region) || region.Equals("unknown", StringComparison.OrdinalIgnoreCase)
-            ? null
-            : region.Trim();
-
     private static AccountDto ToDto(AppDatabase db, AccountRecord account)
-        => new(account.Id, account.Name, db.CountRepositoriesForAccount(account.Id), account.EncryptedAccountKey is not null, account.Region);
+        => new(account.Id, account.Name, db.CountRepositoriesForAccount(account.Id), account.EncryptedAccountKey is not null);
 }

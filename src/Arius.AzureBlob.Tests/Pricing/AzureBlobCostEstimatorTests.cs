@@ -2,21 +2,25 @@ using Arius.AzureBlob.Pricing;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Arius.AzureBlob.Tests.Pricing;
 
 public class AzureBlobCostEstimatorTests
 {
     private const double GiB = 1024.0 * 1024.0 * 1024.0;
-    private static readonly AzureBlobCostEstimator _estimator = new();
     private static readonly AzurePricingCatalog _catalog = AzurePricingCatalog.LoadEmbedded();
 
-    // ── Regions ─────────────────────────────────────────────────────────────────
+    /// <summary>Builds an estimator bound to <paramref name="regionHint"/> (null = container metadata not set).</summary>
+    private static AzureBlobCostEstimator For(string? regionHint)
+        => new(_catalog, regionHint, NullLogger<AzureBlobCostEstimator>.Instance);
+
+    // ── Catalog regions ─────────────────────────────────────────────────────────
 
     [Test]
-    public void Regions_CoverStandardPublicRegions_AndExcludeNonCommercialClouds()
+    public void Catalog_CoversStandardPublicRegions_AndExcludesNonCommercialClouds()
     {
-        var regions = _estimator.Regions;
+        var regions = _catalog.RegionNames;
         regions.ShouldContain("westeurope");
         regions.ShouldContain("northeurope");
         regions.ShouldContain("belgiumcentral");
@@ -35,9 +39,9 @@ public class AzureBlobCostEstimatorTests
             new(BlobTier.Cool, UniqueChunks: 2, StoredSize: 40),
             new(BlobTier.Archive, UniqueChunks: 1, StoredSize: 60),
         };
-        var pricing = _catalog.Resolve(null).Pricing; // westeurope
+        var pricing = _catalog.Resolve("westeurope").Pricing;
 
-        var estimate = _estimator.EstimateStorageCost(null, byTier);
+        var estimate = For("westeurope").EstimateStorageCost(byTier);
 
         estimate.Region.ShouldBe("westeurope");
         estimate.Tiers[0].CostPerMonth.ShouldBe(40 / GiB * pricing.StorageRateFor(BlobTier.Cool), tolerance: 1e-18);
@@ -46,9 +50,18 @@ public class AzureBlobCostEstimatorTests
     }
 
     [Test]
-    public void EstimateStorageCost_UnknownRegion_FallsBackToDefault()
+    public void EstimateStorageCost_UnsetRegion_FallsBackToFallbackRegion()
     {
-        var estimate = _estimator.EstimateStorageCost("not-a-region", []);
+        // A container with no 'region' metadata (null hint) prices against the fallback region with a warning.
+        var estimate = For(null).EstimateStorageCost([]);
+        estimate.Region.ShouldBe(AzureBlobCostEstimator.FallbackRegion);
+    }
+
+    [Test]
+    public void EstimateStorageCost_UnknownRegion_FallsBackToCatalogDefault()
+    {
+        // A non-empty but unpriced region falls back to the catalog's own default.
+        var estimate = For("not-a-region").EstimateStorageCost([]);
         estimate.Region.ShouldBe("westeurope");
     }
 
@@ -56,7 +69,7 @@ public class AzureBlobCostEstimatorTests
     public void EstimateStorageCost_RegionWithoutArchive_PricesArchiveAtZero()
     {
         // Belgium Central offers no Archive tier — its archive storage rate is therefore 0.
-        var estimate = _estimator.EstimateStorageCost("belgiumcentral",
+        var estimate = For("belgiumcentral").EstimateStorageCost(
             [new ChunkTierStatistic(BlobTier.Archive, UniqueChunks: 1, StoredSize: 1_000_000_000)]);
         estimate.Region.ShouldBe("belgiumcentral");
         estimate.Tiers[0].CostPerMonth.ShouldBe(0.0);
@@ -66,8 +79,8 @@ public class AzureBlobCostEstimatorTests
     public void EstimateStorageCost_RegionRatesDiffer()
     {
         var byTier = new List<ChunkTierStatistic> { new(BlobTier.Hot, 1, 1_000_000_000_000) };
-        var we = _estimator.EstimateStorageCost("westeurope", byTier).TotalPerMonth;
-        var au = _estimator.EstimateStorageCost("australiaeast", byTier).TotalPerMonth;
+        var we = For("westeurope").EstimateStorageCost(byTier).TotalPerMonth;
+        var au = For("australiaeast").EstimateStorageCost(byTier).TotalPerMonth;
         au.ShouldNotBe(we); // per-region Hot storage rates differ
     }
 
@@ -76,7 +89,7 @@ public class AzureBlobCostEstimatorTests
     [Test]
     public void EstimateRestoreCost_ReturnsCountsAndPositiveTotals_ForArchive()
     {
-        var estimate = _estimator.EstimateRestoreCost(null, new RestoreCostRequest
+        var estimate = For("westeurope").EstimateRestoreCost(new RestoreCostRequest
         {
             ChunksNeedingRehydration = 3,
             BytesNeedingRehydration  = 5L * 1024 * 1024 * 1024,

@@ -1,4 +1,3 @@
-using Arius.AzureBlob.Pricing;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
@@ -12,6 +11,7 @@ using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared.Fakes;
 using Arius.Tests.Shared.Storage;
 using Mediator;
 using Microsoft.Data.Sqlite;
@@ -214,8 +214,8 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// <summary>Repository container name used for cache paths and service wiring.</summary>
     public required string ContainerName { get; init; }
 
-    /// <summary>Cost estimator used by the restore/statistics handlers; defaults to the real Azure estimator.</summary>
-    public IStorageCostEstimator CostEstimator { get; init; } = new AzureBlobCostEstimator();
+    /// <summary>Cost estimator used by the restore/statistics handlers; defaults to the deterministic fake estimator.</summary>
+    public IStorageCostEstimator CostEstimator { get; init; } = new FakeStorageCostEstimator();
 
     public FakeLogCollector ArchiveLogs => _archiveLogger.Collector;
 

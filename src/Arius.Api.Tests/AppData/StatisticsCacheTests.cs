@@ -16,7 +16,7 @@ public sealed class StatisticsCacheTests
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
         var database = new AppDatabase(path);
-        var accountId = database.InsertAccount("acc", encryptedAccountKey: null, region: null);
+        var accountId = database.InsertAccount("acc", encryptedAccountKey: null);
         var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
         return (database, repositoryId, path);
     }
@@ -95,7 +95,7 @@ public sealed class StatisticsCacheTests
     public async Task Prune_DoesNotAffectOtherRepositories()
     {
         var (database, repositoryId, _) = NewDatabase();
-        var otherAccountId = database.InsertAccount("acc2", null, null);
+        var otherAccountId = database.InsertAccount("acc2", null);
         var otherRepositoryId = database.InsertRepository("alias2", "container2", otherAccountId, null, "archive", null);
 
         database.UpsertCachedStatistics(otherRepositoryId, version: "", full: true, fingerprint: "v1", payload: "OTHER");

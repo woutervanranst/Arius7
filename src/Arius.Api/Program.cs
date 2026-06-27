@@ -71,7 +71,6 @@ try
     api.MapRepositoryEndpoints();
     api.MapBrowseEndpoints();
     api.MapJobEndpoints();
-    api.MapPricingEndpoints();
     api.MapFilesystemEndpoints();
     app.MapHub<JobsHub>("/hubs/arius");
 

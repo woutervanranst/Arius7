@@ -1,6 +1,7 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.AzureBlob.Pricing;
 
@@ -8,33 +9,49 @@ namespace Arius.AzureBlob.Pricing;
 /// Azure Blob Storage implementation of <see cref="IStorageCostEstimator"/>. Owns the embedded region-keyed
 /// pricing catalog and the Azure cost model (per-tier storage; restore = archive rehydration + online-tier
 /// download retrieval/read-ops + internet egress). Azure bills per-GB values as binary GiB (2^30 bytes).
+/// Bound to one repository's container: the region is resolved once from <see cref="IBlobContainerService.RegionHint"/>
+/// (an unconfigured container falls back to <see cref="FallbackRegion"/> with a logged warning).
 /// </summary>
 public sealed class AzureBlobCostEstimator : IStorageCostEstimator
 {
     private const double BytesPerGiB = 1024.0 * 1024.0 * 1024.0;
 
-    private readonly AzurePricingCatalog _catalog;
+    /// <summary>Region used to price a container whose <c>region</c> metadata is not set.</summary>
+    public const string FallbackRegion = "northeurope";
 
-    public AzureBlobCostEstimator() : this(AzurePricingCatalog.LoadEmbedded()) { }
+    private readonly string        _region;
+    private readonly RegionPricing _pricing;
 
-    internal AzureBlobCostEstimator(AzurePricingCatalog catalog) => _catalog = catalog;
+    public AzureBlobCostEstimator(IBlobContainerService container, ILogger<AzureBlobCostEstimator> logger)
+        : this(AzurePricingCatalog.LoadEmbedded(), container.RegionHint, logger) { }
 
-    public IReadOnlyList<string> Regions => _catalog.RegionNames;
-
-    public StorageCostEstimate EstimateStorageCost(string? region, IReadOnlyList<ChunkTierStatistic> storedByTier)
+    internal AzureBlobCostEstimator(AzurePricingCatalog catalog, string? regionHint, ILogger<AzureBlobCostEstimator> logger)
     {
-        var (name, pricing) = _catalog.Resolve(region);
+        if (string.IsNullOrEmpty(regionHint))
+        {
+            logger.LogWarning(
+                "Container 'region' metadata is not set; pricing against {Fallback}. Set the container's 'region' " +
+                "metadata (e.g. in Azure Storage Explorer) for accurate cost estimates.",
+                FallbackRegion);
+            regionHint = FallbackRegion;
+        }
+
+        (_region, _pricing) = catalog.Resolve(regionHint);
+    }
+
+    public StorageCostEstimate EstimateStorageCost(IReadOnlyList<ChunkTierStatistic> storedByTier)
+    {
         var tiers = storedByTier
             .Select(t => new TierStorageCost(
                 t.Tier, t.UniqueChunks, t.StoredSize,
-                CostPerMonth: t.StoredSize / BytesPerGiB * pricing.StorageRateFor(t.Tier)))
+                CostPerMonth: t.StoredSize / BytesPerGiB * _pricing.StorageRateFor(t.Tier)))
             .ToList();
-        return new StorageCostEstimate(name, tiers, tiers.Sum(t => t.CostPerMonth));
+        return new StorageCostEstimate(_region, tiers, tiers.Sum(t => t.CostPerMonth));
     }
 
-    public RestoreCostEstimate EstimateRestoreCost(string? region, RestoreCostRequest request)
+    public RestoreCostEstimate EstimateRestoreCost(RestoreCostRequest request)
     {
-        var (_, pricing) = _catalog.Resolve(region);
+        var pricing = _pricing;
         var cost = AzureRestoreCostCalculator.Compute(pricing, request); // rich Azure breakdown → slim canonical estimate
 
         return new RestoreCostEstimate

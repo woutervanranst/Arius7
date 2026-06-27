@@ -216,7 +216,7 @@ public sealed class RestoreCommandHandler(
             // + internet egress) and, when it is non-zero, ask the caller to approve before any cost is
             // incurred. Archive rehydration also takes hours, so the same prompt carries the priority choice.
             var rehydratePriority = RehydratePriority.Standard;
-            var costEstimate      = costEstimator.EstimateRestoreCost(opts.Region, new RestoreCostRequest
+            var costEstimate      = costEstimator.EstimateRestoreCost(new RestoreCostRequest
             {
                 ChunksAvailable          = availableCount,
                 ChunksAlreadyRehydrated  = rehydratedCount,

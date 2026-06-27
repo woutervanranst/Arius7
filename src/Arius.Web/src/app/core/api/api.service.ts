@@ -16,22 +16,17 @@ export class ApiService {
     return this.http.get<AccountDto>(`/api/accounts/${id}`);
   }
 
-  createAccount(name: string, accountKey: string | null, region: string | null = null): Observable<AccountDto> {
-    return this.http.post<AccountDto>('/api/accounts', { name, accountKey, region });
+  createAccount(name: string, accountKey: string | null): Observable<AccountDto> {
+    return this.http.post<AccountDto>('/api/accounts', { name, accountKey });
   }
 
-  /** Edit-account flyout: rotate the key (omit/null to keep the stored one) and/or change the region. */
-  updateAccount(id: number, body: { accountKey?: string | null; region: string | null }): Observable<AccountDto> {
+  /** Edit-account flyout: rotate the key (omit/null to keep the stored one). */
+  updateAccount(id: number, body: { accountKey?: string | null }): Observable<AccountDto> {
     return this.http.patch<AccountDto>(`/api/accounts/${id}`, body);
   }
 
   deleteAccount(id: number): Observable<void> {
     return this.http.delete<void>(`/api/accounts/${id}`);
-  }
-
-  /** Programmatic Azure regions that have pricing (for the account-region dropdown). */
-  getRegions(): Observable<string[]> {
-    return this.http.get<string[]>('/api/pricing/regions');
   }
 
   /** Lists directories as the Arius.Api host/container sees them (server-side local-path picker). */

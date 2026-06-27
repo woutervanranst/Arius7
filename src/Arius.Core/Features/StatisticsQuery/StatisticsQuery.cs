@@ -17,11 +17,7 @@ namespace Arius.Core.Features.StatisticsQuery;
 /// figures, so they are complete rather than reflecting only browsed coverage. Slower (downloads the
 /// whole index, etag-cached on repeat); the caller lazy-loads the storage section behind this.
 /// </param>
-/// <param name="Region">
-/// Programmatic Azure region (e.g. <c>westeurope</c>) used to price the per-tier storage cost. <c>null</c>,
-/// "Unknown", or an unknown region falls back to the pricing catalog's default region.
-/// </param>
-public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCoverage = false, string? Region = null) : IQuery<RepositoryStatistics>;
+public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCoverage = false) : IQuery<RepositoryStatistics>;
 
 // --- RESULT
 
@@ -42,7 +38,7 @@ public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCove
 /// and compressed (from the chunk index; repository-wide across all snapshots).
 /// </param>
 /// <param name="UniqueChunks">Number of distinct chunks (from the chunk index; repository-wide).</param>
-/// <param name="Region">The region actually used to price storage (the requested region, or the catalog default).</param>
+/// <param name="Region">The region the storage cost was priced for (from the container's metadata, or the fallback when unset).</param>
 /// <param name="TotalStorageCostPerMonth">Estimated total monthly storage cost across all tiers, in EUR.</param>
 /// <param name="StoredByTier">Distinct-chunk count, stored size, and estimated monthly cost split by storage tier (repository-wide).</param>
 /// <remarks>
@@ -81,7 +77,7 @@ public sealed class StatisticsQueryHandler(
         if (snapshot is null)
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
-            var emptyCost = costEstimator.EstimateStorageCost(query.Region, []);
+            var emptyCost = costEstimator.EstimateStorageCost([]);
             return new RepositoryStatistics(0, 0, 0, 0, 0, emptyCost.Region, 0, emptyCost.Tiers);
         }
 
@@ -93,8 +89,8 @@ public sealed class StatisticsQueryHandler(
         var chunkStats = chunkIndex.GetStatistics();
         var byTier     = chunkStats.ByTier;
 
-        // ── Stage 3: price the per-tier stored size for the account's region ──
-        var cost = costEstimator.EstimateStorageCost(query.Region, byTier);
+        // ── Stage 3: price the per-tier stored size for the container's region ──
+        var cost = costEstimator.EstimateStorageCost(byTier);
 
         return new RepositoryStatistics(
             Files:                    snapshot.FileCount,
