@@ -14,6 +14,9 @@ import { formatBytes } from '../../../shared/format';
 
 interface TreeRow { path: string; name: string; depth: number; expandable: boolean; expanded: boolean; }
 
+/** Natural, case-insensitive name sort so "file2" sorts before "file10". */
+const byName = (a: EntryDto, b: EntryDto) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+
 /** Files tab: snapshot time-travel bar + Explorer (folder tree + file detail with state rings + collect). */
 @Component({
   selector: 'arius-files-tab',
@@ -62,7 +65,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
               <i class="ki-filled ki-down" style="font-size:11px;color:#a1a1aa;transition:transform .12s"
                  [style.transform]="row.expanded ? 'rotate(0)' : 'rotate(-90deg)'" [style.visibility]="row.expandable ? 'visible' : 'hidden'"></i>
               <i class="ki-filled ki-folder" style="color:#fbbf24;font-size:15px"></i>
-              <span style="color:#3f3f46;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.name }}</span>
+              <span [title]="row.name" style="color:#3f3f46;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.name }}</span>
             </button>
           }
         </div>
@@ -87,7 +90,7 @@ interface TreeRow { path: string; name: string; depth: number; expandable: boole
                   </div>
                   <div class="flex items-center gap-2.5" style="min-width:0;padding-right:8px">
                     <i class="ki-outline ki-document" style="color:#a1a1aa;font-size:16px"></i>
-                    <span data-testid="file-name" style="color:#27272a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
+                    <span data-testid="file-name" [title]="f.name" style="color:#27272a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
                   </div>
                   <div class="flex items-center gap-2">
                     <arius-state-ring [state]="f.state" [size]="19" />
@@ -209,7 +212,7 @@ export class FilesTabComponent {
     if (this.dirCache().has(path)) return;
     try {
       const entries = await this.fetch(path, null);
-      const dirs = entries.filter(e => e.kind === 'dir');
+      const dirs = entries.filter(e => e.kind === 'dir').sort(byName);
       const next = new Map(this.dirCache());
       next.set(path, dirs);
       this.dirCache.set(next);
@@ -226,7 +229,7 @@ export class FilesTabComponent {
     this.files.set([]);
     try {
       const entries = await this.fetch(path, this.fileFilter() || null);
-      this.files.set(entries.filter(e => e.kind === 'file'));
+      this.files.set(entries.filter(e => e.kind === 'file').sort(byName));
     } catch (err: unknown) {
       this.filesError.set(err instanceof Error ? err.message : String(err));
     } finally {
@@ -240,7 +243,9 @@ export class FilesTabComponent {
         version: this.snap.version(),
         prefix: prefix || null,
         filter,
-        includeLocal: true,
+        // Only overlay the local file system on the live working state; a historical snapshot
+        // shows the archive's contents as they were, without the current local folder.
+        includeLocal: this.snap.version() === null,
       }).pipe(toArray()),
     );
   }
