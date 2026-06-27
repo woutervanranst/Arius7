@@ -32,23 +32,24 @@ public static class ServiceCollectionExtensions
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
-    /// <param name="costEstimator">The provider's cost estimator (e.g. Azure) used by the statistics and restore handlers.</param>
     /// <param name="configuration">
     /// Optional host configuration layered on top of Arius.Core's embedded defaults. When it contains an
     /// <c>Arius:Exclusions</c> section, those values override the central defaults for file/folder exclusions;
     /// otherwise the embedded defaults apply. Pass <c>null</c> (the default) to use the central defaults only.
     /// </param>
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
+    /// <remarks>
+    /// The statistics and restore handlers resolve <see cref="IStorageCostEstimator"/> from the provider, so a
+    /// provider's cost estimator must be registered separately (e.g. via <c>AddAzureBlobStorage()</c>) before use.
+    /// </remarks>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
         IBlobContainerService     blobContainer,
         string?                 passphrase,
         string                  accountName,
         string                  containerName,
-        IStorageCostEstimator   costEstimator,
         IConfiguration?         configuration = null)
     {
-        services.AddSingleton(costEstimator);
         // Storage
         services.AddSingleton(blobContainer);
         if (services.All(service => service.ServiceType != typeof(IBlobServiceFactory)))

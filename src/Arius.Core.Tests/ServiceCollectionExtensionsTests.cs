@@ -1,5 +1,6 @@
 using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared.Cost;
 using Arius.Tests.Shared.Fakes;
 using Arius.Tests.Shared.Storage;
 using Microsoft.Extensions.Configuration;
@@ -13,7 +14,8 @@ public class ServiceCollectionExtensionsTests
     private static ServiceProvider BuildProvider(IConfiguration? configuration = null)
     {
         var services = new ServiceCollection();
-        services.AddArius(new FakeInMemoryBlobContainerService(), passphrase: null, "acct", "ctr", new FakeStorageCostEstimator(), configuration);
+        services.AddSingleton<IStorageCostEstimator>(new FakeStorageCostEstimator());
+        services.AddArius(new FakeInMemoryBlobContainerService(), passphrase: null, "acct", "ctr", configuration);
         return services.BuildServiceProvider();
     }
 

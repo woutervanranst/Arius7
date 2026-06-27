@@ -1,8 +1,8 @@
 using Arius.Api.AppData;
 using Arius.Api.Jobs;
+using Arius.AzureBlob;
 using Arius.Core;
 using Arius.Core.Shared;
-using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -32,7 +32,6 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private readonly AppDatabase         _database;
     private readonly SecretProtector     _secrets;
     private readonly IBlobServiceFactory _blobServiceFactory;
-    private readonly IStorageCostEstimator _costEstimator;
     private readonly ILoggerFactory      _loggerFactory;
     private readonly ILogger<RepositoryProviderRegistry> _logger;
 
@@ -49,13 +48,11 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         AppDatabase database,
         SecretProtector secrets,
         IBlobServiceFactory blobServiceFactory,
-        IStorageCostEstimator costEstimator,
         ILoggerFactory loggerFactory)
     {
         _database           = database;
         _secrets            = secrets;
         _blobServiceFactory = blobServiceFactory;
-        _costEstimator      = costEstimator;
         _loggerFactory      = loggerFactory;
         _logger             = loggerFactory.CreateLogger<RepositoryProviderRegistry>();
     }
@@ -137,7 +134,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
         // AddMediator() (generated in this assembly) must run here, not inside AddArius.
         services.AddMediator();
-        services.AddArius(blobContainer, connection.Passphrase, connection.AccountName, connection.Container, _costEstimator);
+        services.AddAzureBlobStorage();
+        services.AddArius(blobContainer, connection.Passphrase, connection.AccountName, connection.Container);
 
         _logger.LogInformation("Built {Mode} provider for repository {RepositoryId} ({Account}/{Container})", mode, repositoryId, connection.AccountName, connection.Container);
         return services.BuildServiceProvider();

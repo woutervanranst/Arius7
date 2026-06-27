@@ -1,5 +1,5 @@
 using System.IO;
-using Arius.Core.Shared.Storage;
+using Arius.AzureBlob;
 using Arius.Explorer.ChooseRepository;
 using Arius.Explorer.Infrastructure;
 using Arius.Explorer.RepositoryExplorer;
@@ -77,7 +77,7 @@ internal static class Program
                 // Register services
                 services.AddTransient<IDialogService, DialogService>();
                 services.AddSingleton<IRepositorySession, RepositorySession>();
-                services.AddSingleton<IBlobServiceFactory, global::Arius.AzureBlob.AzureBlobServiceFactory>();
+                services.AddAzureBlobStorage();
 
                 // Register windows and viewmodels
                 services.AddTransient<RepositoryExplorerWindow>();

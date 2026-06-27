@@ -4,7 +4,6 @@ using Arius.Api.Endpoints;
 using Arius.Api.Hubs;
 using Arius.AzureBlob;
 using Arius.Core.Shared;
-using Arius.Core.Shared.Storage;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
 using System.Text.Json;
@@ -32,8 +31,7 @@ try
     builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
     builder.Services.AddSingleton(new AppDatabase(dbPath));
     builder.Services.AddSingleton<SecretProtector>();
-    builder.Services.AddSingleton<IBlobServiceFactory, AzureBlobServiceFactory>();
-    builder.Services.AddSingleton<Arius.Core.Shared.Cost.IStorageCostEstimator, Arius.AzureBlob.Pricing.AzureBlobCostEstimator>();
+    builder.Services.AddAzureBlobStorage();
     builder.Services.AddSingleton<RepositoryProviderRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
