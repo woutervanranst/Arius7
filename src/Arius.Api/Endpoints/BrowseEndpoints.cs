@@ -53,7 +53,7 @@ internal static class BrowseEndpoints
             var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag), ct);
             var dto = new StatisticsDto(
                 statistics.Files, statistics.OriginalSize, statistics.DeduplicatedSize, statistics.StoredSize, statistics.UniqueChunks,
-                statistics.Region, statistics.TotalStorageCostPerMonth,
+                statistics.TotalStorageCostPerMonth,
                 statistics.StoredByTier.Select(t => new TierStatisticsDto(t.Tier.ToString(), t.UniqueChunks, t.StoredSize, t.CostPerMonth)).ToList());
 
             database.UpsertCachedStatistics(id, versionKey, fullFlag, fingerprint, JsonSerializer.Serialize(dto));

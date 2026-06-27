@@ -38,7 +38,6 @@ public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCove
 /// and compressed (from the chunk index; repository-wide across all snapshots).
 /// </param>
 /// <param name="UniqueChunks">Number of distinct chunks (from the chunk index; repository-wide).</param>
-/// <param name="Region">The region the storage cost was priced for (from the container's metadata, or the fallback when unset).</param>
 /// <param name="TotalStorageCostPerMonth">Estimated total monthly storage cost across all tiers, in EUR.</param>
 /// <param name="StoredByTier">Distinct-chunk count, stored size, and estimated monthly cost split by storage tier (repository-wide).</param>
 /// <remarks>
@@ -53,7 +52,6 @@ public sealed record RepositoryStatistics(
     long DeduplicatedSize,
     long StoredSize,
     long UniqueChunks,
-    string Region,
     double TotalStorageCostPerMonth,
     IReadOnlyList<TierStorageCost> StoredByTier);
 
@@ -78,7 +76,7 @@ public sealed class StatisticsQueryHandler(
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
             var emptyCost = costEstimator.EstimateStorageCost([]);
-            return new RepositoryStatistics(0, 0, 0, 0, 0, emptyCost.Region, 0, emptyCost.Tiers);
+            return new RepositoryStatistics(0, 0, 0, 0, 0, 0, emptyCost.Tiers);
         }
 
         // ── Stage 2: chunk-index aggregate (deduplicated original size + distinct chunks by tier) ──
@@ -98,7 +96,6 @@ public sealed class StatisticsQueryHandler(
             DeduplicatedSize:         chunkStats.DeduplicatedOriginalSize,
             StoredSize:               byTier.Sum(t => t.StoredSize),
             UniqueChunks:             byTier.Sum(t => t.UniqueChunks),
-            Region:                   cost.Region,
             TotalStorageCostPerMonth: cost.TotalPerMonth,
             StoredByTier:             cost.Tiers);
     }

@@ -29,8 +29,6 @@ export interface StatisticsDto {
   deduplicatedSize: number;
   storedSize: number;
   uniqueChunks: number;
-  /** Region the storage cost was priced for (from the container's metadata, or the fallback when unset). */
-  region: string;
   /** Estimated total monthly storage cost across all tiers, in EUR. */
   totalStorageCostPerMonth: number;
   storedByTier: TierStatisticsDto[];

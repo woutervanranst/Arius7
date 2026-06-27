@@ -47,7 +47,6 @@ public sealed record StatisticsDto(
     long DeduplicatedSize,
     long StoredSize,
     long UniqueChunks,
-    string Region,
     double TotalStorageCostPerMonth,
     IReadOnlyList<TierStatisticsDto> StoredByTier);
 
