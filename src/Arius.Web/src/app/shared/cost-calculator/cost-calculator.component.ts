@@ -22,23 +22,13 @@ import { formatBytes, formatCount, formatCurrency } from '../format';
         </div>
 
         <!-- Hero 100%-stacked bar -->
-        <div style="display:flex;height:34px;border-radius:8px;overflow:hidden;margin:14px 0 8px">
+        <div style="display:flex;height:34px;border-radius:8px;overflow:hidden;margin:14px 0 20px">
           @for (r of rows(); track r.tier) {
             <div [style.width.%]="r.pct" [style.background]="r.color"
                  style="display:flex;align-items:center;justify-content:center">
               @if (r.showLabel) {
                 <span style="color:#fff;font-size:11px;font-weight:600">{{ r.pctLabel }}</span>
               }
-            </div>
-          }
-        </div>
-
-        <!-- Legend -->
-        <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-          @for (r of rows(); track r.tier) {
-            <div class="flex items-center" style="gap:6px">
-              <span style="width:9px;height:9px;border-radius:2px" [style.background]="r.color"></span>
-              <span style="font-size:11px;color:#71717a">{{ r.tier }}</span>
             </div>
           }
         </div>
