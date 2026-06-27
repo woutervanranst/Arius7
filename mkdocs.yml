@@ -49,6 +49,9 @@ markdown_extensions:
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
 
+extra_css:
+  - stylesheets/extra.css
+
 # Build-quality gates. `mkdocs build --strict` (used in CI) turns warnings into
 # errors, so broken in-tree links and anchors fail the build.
 validation:
