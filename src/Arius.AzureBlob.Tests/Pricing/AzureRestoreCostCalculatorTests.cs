@@ -101,6 +101,41 @@ public class AzureRestoreCostCalculatorTests
         cost.TotalHigh.ShouldBeGreaterThanOrEqualTo(cost.TotalStandard);
     }
 
+    [Test]
+    public void Archive_MissingHighPriorityRates_FallBackToStandard_SoHighIsNotBelowStandard()
+    {
+        // A region whose Archive block has standard rates but omits the *High* fields (e.g. switzerlandwest,
+        // for which Azure publishes no Priority archive meter). The high-priority rate must fall back to the
+        // standard rate so High is never estimated cheaper than Standard.
+        var pricing = new RegionPricing
+        {
+            EgressPerGb = 0.08,
+            Archive     = new TierRates { DataRetrievalPerGb = 1.0, ReadOpsPer10k = 2.0 }, // no *High* fields
+            Hot         = new TierRates { WriteOpsPer10k = 0.1, StoragePerGbMonth = 0.5 },
+        };
+        var cost = AzureRestoreCostCalculator.Compute(pricing, new RestoreCostRequest
+        {
+            ChunksNeedingRehydration = 1, BytesNeedingRehydration = OneGBBytes,
+        });
+        cost.RetrievalCostHigh.ShouldBe(cost.RetrievalCostStandard, tolerance: 1e-9);
+        cost.ReadOpsCostHigh.ShouldBe(cost.ReadOpsCostStandard, tolerance: 1e-9);
+        cost.TotalHigh.ShouldBe(cost.TotalStandard, tolerance: 1e-9);
+    }
+
+    [Test]
+    public void EmbeddedCatalog_SwitzerlandWest_HighNotBelowStandard()
+    {
+        // switzerlandwest's archive omits the high-priority fields in pricing.json; via the rate fallback the
+        // restore estimate must still keep TotalHigh >= TotalStandard rather than dropping the archive charges.
+        var pricing = AzurePricingCatalog.LoadEmbedded().Resolve("switzerlandwest").Pricing;
+        var cost = AzureRestoreCostCalculator.Compute(pricing, new RestoreCostRequest
+        {
+            ChunksNeedingRehydration = 1, BytesNeedingRehydration = OneGBBytes,
+        });
+        cost.RetrievalCostStandard.ShouldBeGreaterThan(0);
+        cost.TotalHigh.ShouldBeGreaterThanOrEqualTo(cost.TotalStandard);
+    }
+
     // ── Online download (read ops per tier + Cool/Cold retrieval) ────────────────
 
     [Test]

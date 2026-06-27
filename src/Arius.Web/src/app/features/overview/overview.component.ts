@@ -1,8 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { switchMap } from 'rxjs/operators';
+import { of } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
 import { ApiService } from '../../core/api/api.service';
+import { AccountDto } from '../../core/api/api-models';
 import { DrawerStore } from '../../core/state/drawer.store';
 
 /** Overview: KPI cards + the repositories table. Cross-repo size/dedup totals arrive with the jobs DB. */
@@ -132,8 +134,11 @@ export class OverviewComponent {
   protected readonly repoCount = computed(() => this.repos()?.length ?? 0);
 
   // Re-fetch whenever an account is added/edited/deleted via the wizard or the edit flyout.
+  // catchError lives inside the switchMap so a failed fetch yields an empty list instead of killing the
+  // outer revision stream — otherwise a single error would freeze the table on "Loading…" until a reload.
   protected readonly accounts = toSignal(
-    toObservable(this.drawer.accountsRevision).pipe(switchMap(() => this.api.listAccounts())));
+    toObservable(this.drawer.accountsRevision).pipe(
+      switchMap(() => this.api.listAccounts().pipe(catchError(() => of([] as AccountDto[]))))));
 
   protected readonly kpis = computed(() => [
     { label: 'Repositories', value: String(this.repoCount()), icon: 'ki-folder', chipBg: '#eff6ff', chipFg: '#3b82f6' },
