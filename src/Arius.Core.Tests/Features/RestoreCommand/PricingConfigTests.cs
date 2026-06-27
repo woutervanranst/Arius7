@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Pricing;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
@@ -27,7 +28,7 @@ public class PricingConfigTests
     [Test]
     public void JsonRoundTrip_MalformedJson_ThrowsJsonException()
     {
-        Should.Throw<JsonException>(() => JsonSerializer.Deserialize<PricingConfig>("{ not valid json !!!"));
+        Should.Throw<JsonException>(() => JsonSerializer.Deserialize<RegionPricing>("{ not valid json !!!"));
     }
 
     [Test]
@@ -83,7 +84,7 @@ public class PricingConfigTests
 
     private static readonly long OneGBBytes = 1L * 1024 * 1024 * 1024;
 
-    private static PricingConfig CreatePricingConfig(
+    private static RegionPricing CreatePricingConfig(
         double retrievalPerGb = 1.0,
         double retrievalHighPerGb = 5.0,
         double readOpsPer10000 = 2.0,
@@ -91,7 +92,7 @@ public class PricingConfigTests
         double hotWriteOpsPer10000 = 0.1,
         double hotStoragePerGbPerMonth = 0.02)
     {
-        return new PricingConfig
+        return new RegionPricing
         {
             Archive = new ArchivePricingTier
             {

@@ -72,6 +72,8 @@ try
     api.MapRepositoryEndpoints();
     api.MapBrowseEndpoints();
     api.MapJobEndpoints();
+    api.MapPricingEndpoints();
+    api.MapFilesystemEndpoints();
     app.MapHub<JobsHub>("/hubs/arius");
 
     // SPA fallback: client-side routes (/overview, /repos/…) serve index.html (only when present).

@@ -1,0 +1,28 @@
+{
+  "_comment": "Azure Blob Storage pricing, keyed by programmatic region name. Source: https://azure.microsoft.com/en-us/pricing/details/storage/blobs/ — add a region here to make it selectable in the UI and priced.",
+  "regions": {
+    "westeurope": {
+      "currency": "EUR",
+      "_comment": "West Europe. Last updated: 2026-03.",
+      "hot": {
+        "writeOpsPer10000":         0.0560,
+        "storagePerGBPerMonth":     0.0190
+      },
+      "cool": {
+        "writeOpsPer10000":         0.1119,
+        "storagePerGBPerMonth":     0.00861
+      },
+      "cold": {
+        "writeOpsPer10000":         0.2013,
+        "storagePerGBPerMonth":     0.00310
+      },
+      "archive": {
+        "retrievalPerGB":           0.0204,
+        "retrievalHighPerGB":       0.1102,
+        "readOpsPer10000":          6.6094,
+        "readOpsHighPer10000":     71.6011,
+        "storagePerGBPerMonth":     0.00086
+      }
+    }
+  }
+}

@@ -1,11 +1,12 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Pricing;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
 public class RestoreCostCalculatorTests
 {
     // Deterministic pricing config for all tests
-    private static readonly PricingConfig _pricing = new()
+    private static readonly RegionPricing _pricing = new()
     {
         Archive = new ArchivePricingTier
         {

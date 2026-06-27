@@ -41,6 +41,7 @@ public sealed class AppDatabase
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 name        TEXT NOT NULL UNIQUE,
                 account_key TEXT,
+                location    TEXT,
                 created_at  TEXT NOT NULL
             );
 
@@ -93,6 +94,29 @@ public sealed class AppDatabase
             );
             """;
         create.ExecuteNonQuery();
+
+        // Additive migrations for databases created before a column existed. SQLite has no
+        // "ADD COLUMN IF NOT EXISTS", so guard with a column-presence check (CREATE above already
+        // includes these columns for fresh databases).
+        EnsureColumn(connection, "storage_accounts", "location", "TEXT");
+    }
+
+    /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it is not already present.</summary>
+    private static void EnsureColumn(SqliteConnection connection, string table, string column, string typeAndConstraints)
+    {
+        using var info = connection.CreateCommand();
+        info.CommandText = $"PRAGMA table_info({table});";
+        using var reader = info.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                return; // already present
+        }
+        reader.Close();
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {typeAndConstraints};";
+        alter.ExecuteNonQuery();
     }
 
     private SqliteConnection OpenConnection()
@@ -108,7 +132,7 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, name, account_key, created_at FROM storage_accounts ORDER BY name;";
+        command.CommandText = "SELECT id, name, account_key, location, created_at FROM storage_accounts ORDER BY name;";
         using var reader = command.ExecuteReader();
         var result = new List<AccountRecord>();
         while (reader.Read())
@@ -120,24 +144,55 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, name, account_key, created_at FROM storage_accounts WHERE id = $id;";
+        command.CommandText = "SELECT id, name, account_key, location, created_at FROM storage_accounts WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadAccount(reader) : null;
     }
 
-    public long InsertAccount(string name, string? encryptedAccountKey)
+    public long InsertAccount(string name, string? encryptedAccountKey, string? location)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO storage_accounts(name, account_key, created_at) VALUES ($name, $key, $createdAt);
+            INSERT INTO storage_accounts(name, account_key, location, created_at) VALUES ($name, $key, $location, $createdAt);
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$name", name);
         command.Parameters.AddWithValue("$key", (object?)encryptedAccountKey ?? DBNull.Value);
+        command.Parameters.AddWithValue("$location", (object?)location ?? DBNull.Value);
         command.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
         return (long)command.ExecuteScalar()!;
+    }
+
+    /// <summary>
+    /// Updates an account's connection material. A <c>null</c> <paramref name="encryptedAccountKey"/> leaves the
+    /// stored key unchanged (so the key need not be resupplied when only the region changes). <paramref name="location"/>
+    /// is always written (pass the current value to leave it; <c>null</c> clears it to "unknown").
+    /// </summary>
+    public void UpdateAccount(long id, string? encryptedAccountKey, string? location)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE storage_accounts SET
+                account_key = COALESCE($key, account_key),
+                location    = $location
+            WHERE id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$key", (object?)encryptedAccountKey ?? DBNull.Value);
+        command.Parameters.AddWithValue("$location", (object?)location ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
+    public void DeleteAccount(long id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM storage_accounts WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.ExecuteNonQuery();
     }
 
     public int CountRepositoriesForAccount(long accountId)
@@ -147,6 +202,20 @@ public sealed class AppDatabase
         command.CommandText = "SELECT COUNT(*) FROM repositories WHERE account_id = $accountId;";
         command.Parameters.AddWithValue("$accountId", accountId);
         return (int)(long)command.ExecuteScalar()!;
+    }
+
+    /// <summary>Repository ids belonging to an account — used to evict providers / clear stats caches after an account change.</summary>
+    public IReadOnlyList<long> ListRepositoryIdsForAccount(long accountId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM repositories WHERE account_id = $accountId;";
+        command.Parameters.AddWithValue("$accountId", accountId);
+        using var reader = command.ExecuteReader();
+        var result = new List<long>();
+        while (reader.Read())
+            result.Add(reader.GetInt64(0));
+        return result;
     }
 
     // ── Repositories ──────────────────────────────────────────────────────────
@@ -427,7 +496,8 @@ public sealed class AppDatabase
         reader.GetInt64(0),
         reader.GetString(1),
         reader.IsDBNull(2) ? null : reader.GetString(2),
-        DateTimeOffset.Parse(reader.GetString(3)));
+        reader.IsDBNull(3) ? null : reader.GetString(3),
+        DateTimeOffset.Parse(reader.GetString(4)));
 
     private static RepositoryRecord ReadRepository(SqliteDataReader reader) => new(
         reader.GetInt64(0),

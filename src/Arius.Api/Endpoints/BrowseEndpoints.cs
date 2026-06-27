@@ -50,10 +50,16 @@ internal static class BrowseEndpoints
             var snapshotBlobs   = await snapshotService.ListBlobNamesAsync(ct);
             var fingerprint     = snapshotBlobs.Count == 0 ? string.Empty : snapshotService.GetVersion(snapshotBlobs[^1]);
 
-            var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag), ct);
+            // The per-tier storage cost is priced for the account's region; a region change invalidates this
+            // cache (see AccountEndpoints PATCH), so the cached payload's cost always matches the current region.
+            var repository = database.GetRepository(id);
+            var region     = repository is null ? null : database.GetAccount(repository.AccountId)?.Location;
+
+            var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag, region), ct);
             var dto = new StatisticsDto(
                 statistics.Files, statistics.OriginalSize, statistics.DeduplicatedSize, statistics.StoredSize, statistics.UniqueChunks,
-                statistics.StoredByTier.Select(t => new TierStatisticsDto(t.Tier.ToString(), t.UniqueChunks, t.StoredSize)).ToList());
+                statistics.Currency, statistics.Region, statistics.TotalStorageCostPerMonth,
+                statistics.StoredByTier.Select(t => new TierStatisticsDto(t.Tier.ToString(), t.UniqueChunks, t.StoredSize, t.CostPerMonth)).ToList());
 
             database.UpsertCachedStatistics(id, versionKey, fullFlag, fingerprint, JsonSerializer.Serialize(dto));
             return dto;

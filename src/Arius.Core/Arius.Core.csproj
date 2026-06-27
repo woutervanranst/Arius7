@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Features\RestoreCommand\pricing.json" />
+    <EmbeddedResource Include="Shared\Pricing\pricing.json" />
     <EmbeddedResource Include="appsettings.json" />
   </ItemGroup>
 

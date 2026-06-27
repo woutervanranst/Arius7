@@ -1,6 +1,7 @@
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Compression;
+using Arius.Core.Shared.Pricing;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
@@ -34,7 +35,7 @@ public class StatisticsQueryHandlerTests
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("b"), FakeChunkHash('a'), OriginalSize: 200, ChunkSize: 40, BlobTier.Cool));
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("c"), FakeChunkHash('b'), OriginalSize: 300, ChunkSize: 50, BlobTier.Cool));
 
-        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, new StorageCostCalculator(), NullLogger<StatisticsQueryHandler>.Instance);
         var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.Files.ShouldBe(3);
@@ -70,7 +71,7 @@ public class StatisticsQueryHandlerTests
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("a"), FakeChunkHash('a'), OriginalSize: 100, ChunkSize: 40, BlobTier.Cool));
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("b"), FakeChunkHash('b'), OriginalSize: 400, ChunkSize: 60, BlobTier.Archive));
 
-        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, new StorageCostCalculator(), NullLogger<StatisticsQueryHandler>.Instance);
         var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.UniqueChunks.ShouldBe(2);
@@ -83,6 +84,17 @@ public class StatisticsQueryHandlerTests
         stats.StoredByTier[0].StoredSize.ShouldBe(40);
         stats.StoredByTier[1].Tier.ShouldBe(BlobTier.Archive);
         stats.StoredByTier[1].StoredSize.ShouldBe(60);
+
+        // Cost: no region requested → default region (westeurope/EUR) from the embedded pricing catalog.
+        // Each tier's cost = storedSize / 1024³ × that tier's storagePerGBPerMonth. Rates are read back from
+        // the catalog so the assertion stays correct if the published rates in pricing.json are updated.
+        const double giB = 1024.0 * 1024.0 * 1024.0;
+        var pricing = PricingCatalog.LoadEmbedded().Resolve(null).Pricing;
+        stats.Currency.ShouldBe("EUR");
+        stats.Region.ShouldBe("westeurope");
+        stats.StoredByTier[0].CostPerMonth.ShouldBe(40 / giB * pricing.StorageRateFor(BlobTier.Cool), tolerance: 1e-18);
+        stats.StoredByTier[1].CostPerMonth.ShouldBe(60 / giB * pricing.StorageRateFor(BlobTier.Archive), tolerance: 1e-18);
+        stats.TotalStorageCostPerMonth.ShouldBe(stats.StoredByTier.Sum(t => t.CostPerMonth), tolerance: 1e-18);
     }
 
     [Test]
@@ -91,7 +103,7 @@ public class StatisticsQueryHandlerTests
         var blobs = new FakeSeededBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-stats-empty", "ctr-stats-empty", IEncryptionService.PlaintextInstance);
 
-        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, new StorageCostCalculator(), NullLogger<StatisticsQueryHandler>.Instance);
         var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.Files.ShouldBe(0);
@@ -99,5 +111,11 @@ public class StatisticsQueryHandlerTests
         stats.DeduplicatedSize.ShouldBe(0);
         stats.UniqueChunks.ShouldBe(0);
         stats.StoredSize.ShouldBe(0);
+
+        // Even with no snapshot, the region/currency resolve and the total cost is zero.
+        stats.Currency.ShouldBe("EUR");
+        stats.Region.ShouldBe("westeurope");
+        stats.TotalStorageCostPerMonth.ShouldBe(0);
+        stats.StoredByTier.ShouldBeEmpty();
     }
 }

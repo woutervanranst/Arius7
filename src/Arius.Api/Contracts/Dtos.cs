@@ -2,10 +2,13 @@ namespace Arius.Api.Contracts;
 
 // ── Accounts ────────────────────────────────────────────────────────────────
 
-/// <summary>A storage account as shown to the client. The account key is never returned.</summary>
-public sealed record AccountDto(long Id, string Name, int Repositories, bool HasKey);
+/// <summary>A storage account as shown to the client. The account key is never returned. <see cref="Location"/> is the programmatic Azure region (e.g. <c>westeurope</c>) or <c>null</c> when unknown.</summary>
+public sealed record AccountDto(long Id, string Name, int Repositories, bool HasKey, string? Location);
 
-public sealed record CreateAccountRequest(string Name, string? AccountKey);
+public sealed record CreateAccountRequest(string Name, string? AccountKey, string? Location);
+
+/// <summary>Account-flyout update. A <c>null</c> <see cref="AccountKey"/> leaves the stored key unchanged; <see cref="Location"/> is written as given (<c>null</c> = unknown).</summary>
+public sealed record UpdateAccountRequest(string? AccountKey, string? Location);
 
 // ── Repositories ──────────────────────────────────────────────────────────────
 
@@ -38,10 +41,19 @@ public sealed record UpdateRepositoryRequest(
 
 public sealed record SnapshotDto(string Version, DateTimeOffset Timestamp, long FileCount);
 
-public sealed record StatisticsDto(long Files, long OriginalSize, long DeduplicatedSize, long StoredSize, long UniqueChunks, IReadOnlyList<TierStatisticsDto> StoredByTier);
+public sealed record StatisticsDto(
+    long Files,
+    long OriginalSize,
+    long DeduplicatedSize,
+    long StoredSize,
+    long UniqueChunks,
+    string Currency,
+    string Region,
+    double TotalStorageCostPerMonth,
+    IReadOnlyList<TierStatisticsDto> StoredByTier);
 
-/// <summary>Stored size and distinct-chunk count for one storage tier (Hot/Cool/Cold/Archive).</summary>
-public sealed record TierStatisticsDto(string Tier, long UniqueChunks, long StoredSize);
+/// <summary>Stored size, distinct-chunk count, and estimated monthly storage cost for one storage tier (Hot/Cool/Cold/Archive).</summary>
+public sealed record TierStatisticsDto(string Tier, long UniqueChunks, long StoredSize, double CostPerMonth);
 
 // ── Jobs / schedules ──────────────────────────────────────────────────────────
 
@@ -60,3 +72,11 @@ public sealed record JobDto(
 public sealed record ScheduleDto(long Id, long RepoId, string Cron, string Kind, bool Enabled, DateTimeOffset? NextRun);
 
 public sealed record CreateScheduleRequest(string Cron, string? Kind);
+
+// ── Filesystem browse (local-path picker) ─────────────────────────────────────
+
+/// <summary>A directory as the Arius.Api host/container sees it.</summary>
+public sealed record FsEntryDto(string Name, string Path);
+
+/// <summary>A directory listing: the resolved path, its parent (null at the root), and immediate subdirectories.</summary>
+public sealed record FsListDto(string Path, string? Parent, IReadOnlyList<FsEntryDto> Entries);

@@ -11,6 +11,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.Pricing;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -174,10 +175,14 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<SnapshotsQueryHandler>>()));
 
-        services.AddSingleton<ICommandHandler<StatisticsQuery, RepositoryStatistics>>(sp =>
+        // Shared, region-aware storage pricing (owns the embedded pricing.json catalog).
+        services.AddSingleton<StorageCostCalculator>(_ => new StorageCostCalculator());
+
+        services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>>(sp =>
             new StatisticsQueryHandler(
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IChunkIndexService>(),
+                sp.GetRequiredService<StorageCostCalculator>(),
                 sp.GetRequiredService<ILogger<StatisticsQueryHandler>>()));
 
         return services;

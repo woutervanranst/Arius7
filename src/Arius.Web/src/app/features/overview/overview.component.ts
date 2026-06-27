@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+import { switchMap } from 'rxjs/operators';
 import { ApiService } from '../../core/api/api.service';
+import { DrawerStore } from '../../core/state/drawer.store';
 
 /** Overview: KPI cards + the repositories table. Cross-repo size/dedup totals arrive with the jobs DB. */
 @Component({
@@ -19,8 +21,6 @@ import { ApiService } from '../../core/api/api.service';
       </div>
       <div class="flex items-center gap-2.5">
         <button class="ar-btn-outline" (click)="refresh()"><i class="ki-filled ki-arrows-circle"></i>Refresh</button>
-        <button class="ar-btn-outline" (click)="go('/repos/add')"><i class="ki-filled ki-data"></i>Add existing</button>
-        <button class="ar-btn-primary" (click)="go('/repos/create')"><i class="ki-filled ki-plus"></i>New repository</button>
       </div>
     </div>
 
@@ -40,12 +40,55 @@ import { ApiService } from '../../core/api/api.service';
       }
     </div>
 
+    <!-- Storage accounts table -->
+    <div class="ar-card" style="margin-top:18px;padding:0;overflow:hidden">
+      <div class="flex items-center justify-between" style="padding:18px 20px;border-bottom:1px solid #f0f0f2">
+        <div>
+          <div style="font-size:15.5px;font-weight:600;color:#18181b">Storage accounts</div>
+          <div style="font-size:12.5px;color:#a1a1aa">Azure storage accounts under management</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2.4fr .9fr .7fr;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
+        <div>Account</div><div>Region</div><div>Repositories</div>
+      </div>
+
+      @if (accounts(); as list) {
+        @for (account of list; track account.id) {
+          <div class="ar-repo-row" data-testid="account-row" (click)="editAccount(account.id)"
+               style="display:grid;grid-template-columns:2.4fr .9fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
+            <div class="flex items-center gap-3">
+              <div style="width:38px;height:38px;border-radius:10px;background:#f5f3ff;color:#6d28d9;display:flex;align-items:center;justify-content:center">
+                <i class="ki-filled ki-cloud" style="font-size:18px"></i>
+              </div>
+              <div>
+                <div class="ar-mono" style="font-size:14px;font-weight:600;color:#27272a">{{ account.name }}</div>
+                <div style="font-size:12px;color:#a1a1aa">{{ account.hasKey ? 'Key configured' : 'No key' }}</div>
+              </div>
+            </div>
+            <div class="ar-mono" style="font-size:12.5px;color:#71717a">{{ account.location ?? 'Unknown' }}</div>
+            <div style="font-size:12.5px;color:#71717a">{{ account.repositories }}</div>
+          </div>
+        } @empty {
+          <div style="padding:28px 20px;text-align:center;color:#a1a1aa;font-size:13px">
+            No storage accounts yet — add one when creating a repository.
+          </div>
+        }
+      } @else {
+        <div style="padding:28px 20px;text-align:center;color:#a1a1aa;font-size:13px">Loading…</div>
+      }
+    </div>
+
     <!-- Repositories table -->
     <div class="ar-card" style="margin-top:18px;padding:0;overflow:hidden">
       <div class="flex items-center justify-between" style="padding:18px 20px;border-bottom:1px solid #f0f0f2">
         <div>
           <div style="font-size:15.5px;font-weight:600;color:#18181b">Repositories</div>
           <div style="font-size:12.5px;color:#a1a1aa">Blob containers under management</div>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <button class="ar-btn-outline" data-testid="add-existing" (click)="go('/repos/add')"><i class="ki-filled ki-data"></i>Add existing</button>
+          <button class="ar-btn-primary" data-testid="new-repository" (click)="go('/repos/create')"><i class="ki-filled ki-plus"></i>New repository</button>
         </div>
       </div>
 
@@ -83,9 +126,14 @@ import { ApiService } from '../../core/api/api.service';
 export class OverviewComponent {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
+  private readonly drawer = inject(DrawerStore);
 
   protected readonly repos = toSignal(this.api.listRepositories());
   protected readonly repoCount = computed(() => this.repos()?.length ?? 0);
+
+  // Re-fetch whenever an account is added/edited/deleted via the wizard or the edit flyout.
+  protected readonly accounts = toSignal(
+    toObservable(this.drawer.accountsRevision).pipe(switchMap(() => this.api.listAccounts())));
 
   protected readonly kpis = computed(() => [
     { label: 'Repositories', value: String(this.repoCount()), icon: 'ki-folder', chipBg: '#eff6ff', chipFg: '#3b82f6' },
@@ -104,4 +152,5 @@ export class OverviewComponent {
   protected refresh(): void { location.reload(); }
   protected go(path: string): void { this.router.navigateByUrl(path); }
   protected openRepo(id: number): void { this.router.navigate(['/repos', id, 'files']); }
+  protected editAccount(id: number): void { this.drawer.openAccount(id); }
 }
