@@ -44,10 +44,10 @@ internal sealed class MigrateV5
     private const string PointerSuffix = ".pointer.arius";
 
     // Stage 3 issues one small blob op per chunk; fan them out (matches the codebase's blob-fanout degree).
-    private const int UpsertWorkers = 32;
+    private const int UpsertWorkers = 64;
 
     // Stages 5/6 append staging entries via the stripe-locked writer; matches ArchiveCommandHandler.FileTreeUpdateWorkers.
-    private const int FileTreeUpdateWorkers = 16;
+    private const int FileTreeUpdateWorkers = 32;
 
     // v5 names its state-DB blob "states/<yyyy-MM-ddTHH-mm-ss.fff>" (UTC). The migration reuses that instant
     // as the v7 snapshot timestamp, so the snapshot is named after the v5 state it was built from. The colon
