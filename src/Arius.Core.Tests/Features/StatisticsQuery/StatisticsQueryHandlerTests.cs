@@ -92,7 +92,6 @@ public class StatisticsQueryHandlerTests
         // Cost: the handler passes per-tier sizes to the (fake) estimator and surfaces its result —
         // each tier's cost = storedSize / 1024³ × the estimator's per-tier rate.
         const double giB = 1024.0 * 1024.0 * 1024.0;
-        stats.Currency.ShouldBe("EUR");
         stats.Region.ShouldBe("westeurope");
         stats.StoredByTier[0].CostPerMonth.ShouldBe(40 / giB * _estimator.StorageRate(BlobTier.Cool), tolerance: 1e-18);
         stats.StoredByTier[1].CostPerMonth.ShouldBe(60 / giB * _estimator.StorageRate(BlobTier.Archive), tolerance: 1e-18);
@@ -114,8 +113,7 @@ public class StatisticsQueryHandlerTests
         stats.UniqueChunks.ShouldBe(0);
         stats.StoredSize.ShouldBe(0);
 
-        // Even with no snapshot, the region/currency resolve and the total cost is zero.
-        stats.Currency.ShouldBe("EUR");
+        // Even with no snapshot, the region resolves and the total cost is zero.
         stats.Region.ShouldBe("westeurope");
         stats.TotalStorageCostPerMonth.ShouldBe(0);
         stats.StoredByTier.ShouldBeEmpty();

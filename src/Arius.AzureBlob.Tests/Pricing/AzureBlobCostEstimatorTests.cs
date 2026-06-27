@@ -39,7 +39,6 @@ public class AzureBlobCostEstimatorTests
 
         var estimate = _estimator.EstimateStorageCost(null, byTier);
 
-        estimate.Currency.ShouldBe("EUR");
         estimate.Region.ShouldBe("westeurope");
         estimate.Tiers[0].CostPerMonth.ShouldBe(40 / GiB * pricing.StorageRateFor(BlobTier.Cool), tolerance: 1e-18);
         estimate.Tiers[1].CostPerMonth.ShouldBe(60 / GiB * pricing.StorageRateFor(BlobTier.Archive), tolerance: 1e-18);
@@ -51,7 +50,6 @@ public class AzureBlobCostEstimatorTests
     {
         var estimate = _estimator.EstimateStorageCost("not-a-region", []);
         estimate.Region.ShouldBe("westeurope");
-        estimate.Currency.ShouldBe("EUR");
     }
 
     [Test]
@@ -84,7 +82,6 @@ public class AzureBlobCostEstimatorTests
             BytesNeedingRehydration  = 5L * 1024 * 1024 * 1024,
             DownloadBytes            = 5L * 1024 * 1024 * 1024,
         });
-        estimate.Currency.ShouldBe("EUR");
         estimate.ChunksNeedingRehydration.ShouldBe(3);
         estimate.TotalStandard.ShouldBeGreaterThan(0);
         estimate.TotalHigh.ShouldBeGreaterThan(estimate.TotalStandard);

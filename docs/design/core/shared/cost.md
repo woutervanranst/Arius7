@@ -10,15 +10,15 @@ Turns repository state into money: a per-tier **monthly storage** estimate (Stat
 
 ### The contract (Core)
 
-`IStorageCostEstimator` (`Shared/Cost/IStorageCostEstimator.cs`) is the whole provider-neutral surface. Inputs are Core domain types ([`ChunkTierStatistic`](chunk-index.md), `BlobTier`); outputs are canonical records in `Shared/Cost/CostModels.cs`:
+`IStorageCostEstimator` (`Shared/Cost/IStorageCostEstimator.cs`) is the whole provider-neutral surface. Inputs are Core domain types ([`ChunkTierStatistic`](chunk-index.md), `BlobTier`); outputs are canonical records in `Shared/Cost/Models.cs`. All amounts are in **EUR** (the only currency Arius supports):
 
 | Member | Returns | Used by |
 |---|---|---|
 | `Regions` | `IReadOnlyList<string>` programmatic region names | account-region dropdown (`/pricing/regions`) |
-| `EstimateStorageCost(region, storedByTier)` | `StorageCostEstimate(Region, Currency, Tiers[], TotalPerMonth)` | [`StatisticsQuery`](../features/queries.md#statisticsquery) |
+| `EstimateStorageCost(region, storedByTier)` | `StorageCostEstimate(Region, Tiers[], TotalPerMonth)` | [`StatisticsQuery`](../features/queries.md#statisticsquery) |
 | `EstimateRestoreCost(region, RestoreCostRequest)` | `RestoreCostEstimate` (slim) | [`RestoreCommand`](../features/restore-command.md#stage-3-cost-estimate-confirm) |
 
-`RestoreCostEstimate` is **slim**: chunk counts/bytes + `Currency` + `TotalStandard` / `TotalHigh`. The per-component breakdown is a provider detail and is deliberately *not* on the contract (a non-archive provider sets `TotalStandard == TotalHigh`). `RestoreCostRequest` is what Arius already knows from classifying the restore: the online chunks to download split by source tier (an already-rehydrated archive copy counts as Hot) plus archive chunks needing/pending rehydration.
+`RestoreCostEstimate` is **slim**: chunk counts/bytes + `TotalStandard` / `TotalHigh`. The per-component breakdown is a provider detail and is deliberately *not* on the contract (a non-archive provider sets `TotalStandard == TotalHigh`). `RestoreCostRequest` is what Arius already knows from classifying the restore: the online chunks to download split by source tier (an already-rehydrated archive copy counts as Hot) plus archive chunks needing/pending rehydration.
 
 ### The Azure implementation
 
@@ -71,6 +71,6 @@ flowchart LR
 
 ## Open seams / future
 
-- **EUR + LRS only.** `pricing.json` is single-currency and assumes Locally-Redundant Storage; an account on GRS/ZRS or billed in another currency is under-/mis-estimated. Multi-redundancy or multi-currency would extend the catalog and `update-pricing.py`.
+- **EUR + LRS only.** Arius prices in EUR only — `pricing.json` carries EUR rates and the whole cost stack assumes it (no currency is threaded through; the `€` symbol is hardcoded at the display points). It also assumes Locally-Redundant Storage, so an account on GRS/ZRS is under-/mis-estimated; multi-redundancy would extend the catalog and `update-pricing.py`.
 - **Rehydration target is Hot, `monthsStored` is 1.** The write-ops/storage rows assume rehydrated copies land in Hot for one month; restoring into a cheaper online tier or varying the retention would use the already-parsed Cool/Cold rates.
 - **No provider but Azure.** `AzureBlobCostEstimator` is the sole implementation; it is the cost-side sibling of the single `Arius.AzureBlob` storage backend.

@@ -4,10 +4,9 @@ namespace Arius.Core.Shared.Cost;
 
 // ── Storage cost (Statistics tab) ─────────────────────────────────────────────
 
-/// <summary>Per-tier monthly storage cost breakdown for one region.</summary>
+/// <summary>Per-tier monthly storage cost breakdown for one region (amounts in EUR).</summary>
 public sealed record StorageCostEstimate(
     string Region,
-    string Currency,
     IReadOnlyList<TierStorageCost> Tiers,
     double TotalPerMonth);
 
@@ -40,8 +39,8 @@ public sealed record RestoreCostRequest
 }
 
 /// <summary>
-/// Restore cost estimate shown before downloads or rehydration begin. Provider-neutral: chunk counts/bytes,
-/// the currency, and the total at the two rehydration priorities (for providers without priority tiers,
+/// Restore cost estimate shown before downloads or rehydration begin. Provider-neutral: chunk counts/bytes
+/// and the total (in EUR) at the two rehydration priorities (for providers without priority tiers,
 /// <see cref="TotalStandard"/> == <see cref="TotalHigh"/>). The detailed per-component breakdown is a
 /// provider implementation detail and is not part of this contract.
 /// </summary>
@@ -54,9 +53,6 @@ public sealed record RestoreCostEstimate
     public required long BytesNeedingRehydration  { get; init; }
     public required long BytesPendingRehydration  { get; init; }
     public required long DownloadBytes            { get; init; }
-
-    /// <summary>Currency the totals are expressed in (from the provider's pricing, e.g. EUR).</summary>
-    public required string Currency { get; init; }
 
     /// <summary>Total estimated cost at Standard rehydration priority.</summary>
     public required double TotalStandard { get; init; }

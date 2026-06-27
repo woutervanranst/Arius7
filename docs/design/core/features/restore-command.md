@@ -82,7 +82,7 @@ Restore is the only feature that reasons about money, but the **model lives in t
 - **Counts/bytes are per-distinct-chunk, sized by [chunk size](../../../glossary.md#chunk-size)** (the full stored blob), deduped on `seenChunks` — not a per-file share of a tar.
 - **Downloads are split by source tier** so Cool/Cold retrieval is priced; an already-rehydrated archive copy is counted as Hot (it is read from `chunks-rehydrated/`). The region comes from `RestoreOptions.Region` (the account's region), so the same restore costs differently per region.
 
-The returned `RestoreCostEstimate` is **slim** — counts + currency + `TotalStandard`/`TotalHigh`; the per-component breakdown is an Azure implementation detail ([ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)).
+The returned `RestoreCostEstimate` is **slim** — counts + `TotalStandard`/`TotalHigh` (in EUR); the per-component breakdown is an Azure implementation detail ([ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)).
 
 ### Stage 4 — Download (walk #2)
 
@@ -123,6 +123,6 @@ Only when `totalPending == 0` (everything restorable was restored) **and** `opts
 
 ## Open seams / future
 
-- **Provider cost seams live in the estimator.** Rehydration-to-Hot, the fixed `monthsStored = 1`, EUR/LRS-only rates, and the regeneratable catalog are documented in [cost estimation](../../core/shared/cost.md) — restore just supplies the `RestoreCostRequest` and the region.
+- **Provider cost seams live in the estimator.** Rehydration-to-Hot, the fixed `monthsStored = 1`, EUR-only / LRS-only rates, and the regeneratable catalog are documented in [cost estimation](../../core/shared/cost.md) — restore just supplies the `RestoreCostRequest` and the region.
 - **Duplicate large files re-download.** The grouper enqueues one `ChunkToRestore` per large-chunk occurrence (`// TODO if we restore a duplicate large file - can we optimize?`); two local paths backed by the same large chunk download it twice. Tar duplicates are already handled (one download, `fs.CopyFile` for extra members).
 - **Cost-affecting re-routes are not re-confirmed.** A `BlobArchivedException` re-route adds rehydration cost after the user already confirmed; it is logged ("extra cost-effect") but the user is not re-prompted.

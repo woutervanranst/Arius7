@@ -29,7 +29,7 @@ public sealed class AzureBlobCostEstimator : IStorageCostEstimator
                 t.Tier, t.UniqueChunks, t.StoredSize,
                 CostPerMonth: t.StoredSize / BytesPerGiB * pricing.StorageRateFor(t.Tier)))
             .ToList();
-        return new StorageCostEstimate(name, pricing.Currency, tiers, tiers.Sum(t => t.CostPerMonth));
+        return new StorageCostEstimate(name, tiers, tiers.Sum(t => t.CostPerMonth));
     }
 
     public RestoreCostEstimate EstimateRestoreCost(string? region, RestoreCostRequest request)
@@ -46,7 +46,6 @@ public sealed class AzureBlobCostEstimator : IStorageCostEstimator
             BytesNeedingRehydration  = request.BytesNeedingRehydration,
             BytesPendingRehydration  = request.BytesPendingRehydration,
             DownloadBytes            = request.DownloadBytes,
-            Currency                 = pricing.Currency,
             TotalStandard            = cost.TotalStandard,
             TotalHigh                = cost.TotalHigh,
         };

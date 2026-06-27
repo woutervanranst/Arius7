@@ -75,11 +75,7 @@ internal sealed class AzurePricingCatalog
 /// </summary>
 internal sealed record RegionPricing
 {
-    /// <summary>ISO currency code the rates are expressed in (e.g. <c>EUR</c>).</summary>
-    [JsonPropertyName("currency")]
-    public string Currency { get; init; } = "EUR";
-
-    /// <summary>Internet egress (data transfer out) per GiB beyond the monthly free allowance; 0 if not configured.</summary>
+    /// <summary>Internet egress (data transfer out) per GiB beyond the monthly free allowance; 0 if not configured. All rates are in EUR.</summary>
     [JsonPropertyName("egressPerGB")]
     public double EgressPerGb { get; init; }
 
@@ -98,14 +94,14 @@ internal sealed record RegionPricing
         _                => null,
     };
 
-    /// <summary>Storage rate (currency per GiB per month) for a tier; 0 when the tier is unavailable.</summary>
+    /// <summary>Storage rate (EUR per GiB per month) for a tier; 0 when the tier is unavailable.</summary>
     public double StorageRateFor(BlobTier tier) => For(tier)?.StoragePerGbMonth ?? 0.0;
 
-    /// <summary>Write-operations rate (currency per 10,000) for a tier; 0 when unavailable.</summary>
+    /// <summary>Write-operations rate (EUR per 10,000) for a tier; 0 when unavailable.</summary>
     public double WriteOpsRateFor(BlobTier tier) => For(tier)?.WriteOpsPer10k ?? 0.0;
 
     /// <summary>
-    /// Read-operations rate (currency per 10,000) for a tier; the high-priority rate applies only to Archive.
+    /// Read-operations rate (EUR per 10,000) for a tier; the high-priority rate applies only to Archive.
     /// Falls back to the standard rate when a region omits the high-priority field (some regions, e.g.
     /// switzerlandwest, publish no Priority archive meter) — Azure never prices high priority below standard,
     /// so this keeps a missing rate from making High cheaper than Standard. 0 when the tier is unavailable.
@@ -116,7 +112,7 @@ internal sealed record RegionPricing
             : 0.0;
 
     /// <summary>
-    /// Data-retrieval rate (currency per GiB) charged when reading from a tier; 0 for Hot and unavailable tiers.
+    /// Data-retrieval rate (EUR per GiB) charged when reading from a tier; 0 for Hot and unavailable tiers.
     /// High priority applies only to Archive and falls back to the standard rate when the region omits it,
     /// so High is never priced below Standard.
     /// </summary>

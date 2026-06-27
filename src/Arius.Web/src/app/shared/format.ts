@@ -24,16 +24,12 @@ export function formatCount(n: number | null | undefined): string {
   return n == null ? '—' : n.toLocaleString('en-US');
 }
 
-const CURRENCY_SYMBOLS: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' };
-
 /**
- * Money → display string. Whole units at/above 10 (e.g. €182), two decimals below (e.g. €8.14),
- * matching the cost-breakdown design. Falls back to a "CODE " prefix for unknown currencies.
+ * Money → display string in EUR (the only currency Arius supports). Whole units at/above 10
+ * (e.g. €182), two decimals below (e.g. €8.14), matching the cost-breakdown design.
  */
-export function formatCurrency(amount: number | null | undefined, currency: string | null | undefined = 'EUR'): string {
+export function formatCurrency(amount: number | null | undefined): string {
   if (amount == null) return '—';
-  const code = currency || 'EUR';
-  const symbol = CURRENCY_SYMBOLS[code] ?? `${code} `;
   const digits = amount >= 10 ? 0 : 2;
-  return symbol + amount.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return '€' + amount.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }

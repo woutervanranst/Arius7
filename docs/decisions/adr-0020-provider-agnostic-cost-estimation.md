@@ -24,7 +24,7 @@ The question for this ADR is **where storage cost estimation lives, and what con
 
 * **Keep cost in Core** (status quo) — pricing.json + calculators in `Arius.Core/Shared/Pricing`.
 * **Interface in Core, implementation in the Azure adapter** — mirror the storage port/adapter split.
-* For the restore estimate shape: **rich** (per-component breakdown in the Core contract) vs **slim** (counts + currency + Standard/High totals; components private to the provider).
+* For the restore estimate shape: **rich** (per-component breakdown in the Core contract) vs **slim** (counts + Standard/High totals; components private to the provider).
 * For the surface: a **single** `IStorageCostEstimator` vs **split** interfaces (regions / storage / restore).
 
 ## Decision Outcome

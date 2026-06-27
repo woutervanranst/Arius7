@@ -31,11 +31,9 @@ export interface StatisticsDto {
   deduplicatedSize: number;
   storedSize: number;
   uniqueChunks: number;
-  /** ISO currency code the cost figures are in (e.g. "EUR"). */
-  currency: string;
   /** Region the storage cost was priced for (the account's region, or the catalog default). */
   region: string;
-  /** Estimated total monthly storage cost across all tiers, in `currency`. */
+  /** Estimated total monthly storage cost across all tiers, in EUR. */
   totalStorageCostPerMonth: number;
   storedByTier: TierStatisticsDto[];
 }
@@ -44,7 +42,7 @@ export interface TierStatisticsDto {
   tier: string;
   uniqueChunks: number;
   storedSize: number;
-  /** Estimated monthly storage cost for this tier, in the StatisticsDto's `currency`. */
+  /** Estimated monthly storage cost for this tier, in EUR. */
   costPerMonth: number;
 }
 

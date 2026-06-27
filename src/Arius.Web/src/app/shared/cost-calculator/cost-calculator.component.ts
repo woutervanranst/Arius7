@@ -101,7 +101,7 @@ export class CostCalculatorComponent {
         color: CostCalculatorComponent.TIER_COLORS[t.tier] ?? '#a1a1aa',
         size: formatBytes(t.storedSize),
         chunks: formatCount(t.uniqueChunks),
-        cost: formatCurrency(t.costPerMonth, s?.currency),
+        cost: formatCurrency(t.costPerMonth),
         pct,
         showLabel: pct >= CostCalculatorComponent.LABEL_MIN_PCT,
         pctLabel: `${Math.round(pct)}%`,
@@ -111,5 +111,5 @@ export class CostCalculatorComponent {
 
   protected readonly totalStoredLabel = computed(() => formatBytes(this.totalStored()));
   protected readonly totalCostLabel = computed(() =>
-    formatCurrency(this.stats()?.totalStorageCostPerMonth ?? 0, this.stats()?.currency));
+    formatCurrency(this.stats()?.totalStorageCostPerMonth ?? 0));
 }

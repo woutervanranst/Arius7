@@ -42,9 +42,8 @@ public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCove
 /// and compressed (from the chunk index; repository-wide across all snapshots).
 /// </param>
 /// <param name="UniqueChunks">Number of distinct chunks (from the chunk index; repository-wide).</param>
-/// <param name="Currency">ISO currency code the cost figures are expressed in (from the pricing catalog, e.g. <c>EUR</c>).</param>
 /// <param name="Region">The region actually used to price storage (the requested region, or the catalog default).</param>
-/// <param name="TotalStorageCostPerMonth">Estimated total monthly storage cost across all tiers, in <see cref="Currency"/>.</param>
+/// <param name="TotalStorageCostPerMonth">Estimated total monthly storage cost across all tiers, in EUR.</param>
 /// <param name="StoredByTier">Distinct-chunk count, stored size, and estimated monthly cost split by storage tier (repository-wide).</param>
 /// <remarks>
 /// An empty repository (no snapshot yet) reports all-zero figures. <see cref="Files"/> and
@@ -58,7 +57,6 @@ public sealed record RepositoryStatistics(
     long DeduplicatedSize,
     long StoredSize,
     long UniqueChunks,
-    string Currency,
     string Region,
     double TotalStorageCostPerMonth,
     IReadOnlyList<TierStorageCost> StoredByTier);
@@ -84,7 +82,7 @@ public sealed class StatisticsQueryHandler(
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
             var emptyCost = costEstimator.EstimateStorageCost(query.Region, []);
-            return new RepositoryStatistics(0, 0, 0, 0, 0, emptyCost.Currency, emptyCost.Region, 0, emptyCost.Tiers);
+            return new RepositoryStatistics(0, 0, 0, 0, 0, emptyCost.Region, 0, emptyCost.Tiers);
         }
 
         // ── Stage 2: chunk-index aggregate (deduplicated original size + distinct chunks by tier) ──
@@ -104,7 +102,6 @@ public sealed class StatisticsQueryHandler(
             DeduplicatedSize:         chunkStats.DeduplicatedOriginalSize,
             StoredSize:               byTier.Sum(t => t.StoredSize),
             UniqueChunks:             byTier.Sum(t => t.UniqueChunks),
-            Currency:                 cost.Currency,
             Region:                   cost.Region,
             TotalStorageCostPerMonth: cost.TotalPerMonth,
             StoredByTier:             cost.Tiers);

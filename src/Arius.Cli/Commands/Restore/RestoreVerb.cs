@@ -235,8 +235,8 @@ internal static class RestoreVerb
                                 costTable.AddColumn(new TableColumn("Standard").RightAligned());
                                 costTable.AddColumn(new TableColumn("High Priority").RightAligned());
                                 costTable.AddRow("[bold]Total[/]",
-                                    $"[bold]{estimate.Currency} {estimate.TotalStandard:F4}[/]",
-                                    $"[bold]{estimate.Currency} {estimate.TotalHigh:F4}[/]");
+                                    $"[bold]€ {estimate.TotalStandard:F4}[/]",
+                                    $"[bold]€ {estimate.TotalHigh:F4}[/]");
                                 AnsiConsole.Write(costTable);
 
                                 var choice = AnsiConsole.Prompt(

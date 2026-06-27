@@ -89,7 +89,7 @@ internal sealed class CliHarness
 
         statsHandler
             .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, "", "", 0, [])));
+            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, "", 0, [])));
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;

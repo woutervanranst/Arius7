@@ -15,8 +15,6 @@ public sealed class FakeStorageCostEstimator : IStorageCostEstimator
 
     public IReadOnlyList<string> Regions { get; } = ["westeurope", "northeurope"];
 
-    public string Currency { get; init; } = "EUR";
-
     /// <summary>Flat per-GiB-month storage rate per tier (test-controlled, deterministic).</summary>
     public double StorageRate(BlobTier tier) => tier switch
     {
@@ -33,7 +31,7 @@ public sealed class FakeStorageCostEstimator : IStorageCostEstimator
         var tiers = storedByTier
             .Select(t => new TierStorageCost(t.Tier, t.UniqueChunks, t.StoredSize, t.StoredSize / GiB * StorageRate(t.Tier)))
             .ToList();
-        return new StorageCostEstimate(name, Currency, tiers, tiers.Sum(t => t.CostPerMonth));
+        return new StorageCostEstimate(name, tiers, tiers.Sum(t => t.CostPerMonth));
     }
 
     public RestoreCostEstimate EstimateRestoreCost(string? region, RestoreCostRequest request)
@@ -49,7 +47,6 @@ public sealed class FakeStorageCostEstimator : IStorageCostEstimator
             BytesNeedingRehydration  = request.BytesNeedingRehydration,
             BytesPendingRehydration  = request.BytesPendingRehydration,
             DownloadBytes            = request.DownloadBytes,
-            Currency                 = Currency,
             TotalStandard            = restoredGiB,
             TotalHigh                = restoredGiB + rehydrateGiB,
         };
