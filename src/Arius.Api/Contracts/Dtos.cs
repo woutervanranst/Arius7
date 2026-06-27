@@ -2,7 +2,7 @@ namespace Arius.Api.Contracts;
 
 // ── Accounts ────────────────────────────────────────────────────────────────
 
-/// <summary>A storage account as shown to the client. The account key is never returned. The storage region lives in the blob container's metadata (set in Azure Storage Explorer), not on the account.</summary>
+/// <summary>A storage account as shown to the client. The account key is never returned.</summary>
 public sealed record AccountDto(long Id, string Name, int Repositories, bool HasKey);
 
 public sealed record CreateAccountRequest(string Name, string? AccountKey);
