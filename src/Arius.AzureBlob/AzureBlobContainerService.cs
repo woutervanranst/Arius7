@@ -20,20 +20,19 @@ public sealed class AzureBlobContainerService : IBlobContainerService
     public const string DefaultRegion = "northeurope"; // Fallback region for pricing and display when the container's metadata is not set (i.e. RegionHint is null).
 
     private readonly BlobContainerClient _container;
-    private readonly string? _regionHint;
 
     public AzureBlobContainerService(BlobContainerClient container, string? regionMetadata = null)
     {
         ArgumentNullException.ThrowIfNull(container);
         _container = container;
         // Normalize the raw metadata value: blank/absent or the "default" sentinel mean "not configured".
-        _regionHint = string.IsNullOrWhiteSpace(regionMetadata)
+        RegionHint = string.IsNullOrWhiteSpace(regionMetadata)
                       || regionMetadata.Trim().Equals(UnsetRegionSentinel, StringComparison.OrdinalIgnoreCase)
             ? null
             : regionMetadata.Trim();
     }
 
-    public string? RegionHint => _regionHint;
+    public string? RegionHint { get; }
 
     // ── Container ─────────────────────────────────────────────────────────────
 
