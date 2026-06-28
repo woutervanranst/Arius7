@@ -24,15 +24,18 @@ public sealed class AzureBlobCostEstimator : IStorageCostEstimator
 
     internal AzureBlobCostEstimator(AzurePricingCatalog catalog, string? regionHint, ILogger<AzureBlobCostEstimator> logger)
     {
-        if (string.IsNullOrEmpty(regionHint))
+        // A blank hint means the container carries no region metadata: price against the provider's own
+        // default (not the catalog's internal default, which differs) and warn so it can be configured.
+        if (string.IsNullOrWhiteSpace(regionHint))
         {
             logger.LogWarning(
                 "Container 'region' metadata is not set; pricing against {Default}. Set the container's 'region' " +
                 "metadata (e.g. in Azure Storage Explorer) for accurate cost estimates.",
                 AzureBlobContainerService.DefaultRegion);
+            regionHint = AzureBlobContainerService.DefaultRegion;
         }
 
-        (_region, _pricing) = catalog.Resolve(regionHint ?? AzureBlobContainerService.DefaultRegion);
+        (_region, _pricing) = catalog.Resolve(regionHint);
     }
 
     public string Region => _region;

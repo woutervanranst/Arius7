@@ -30,7 +30,7 @@ public sealed record StorageAccountInfo(string Region, bool RegionIsDefault);
 
 /// <summary>
 /// Resolves the region entirely through Core abstractions: the cost estimator reports the resolved region
-/// (the provider default stays sealed inside the storage adapter), and a <c>null</c>
+/// (the provider default stays sealed inside the storage adapter), and a null/blank
 /// <see cref="IBlobContainerService.RegionHint"/> means the container carries no region metadata.
 /// </summary>
 public sealed class StorageAccountInfoQueryHandler(
@@ -41,5 +41,5 @@ public sealed class StorageAccountInfoQueryHandler(
     public ValueTask<StorageAccountInfo> Handle(StorageAccountInfoQuery query, CancellationToken cancellationToken)
         => ValueTask.FromResult(new StorageAccountInfo(
             Region:          costEstimator.Region,
-            RegionIsDefault: container.RegionHint is null));
+            RegionIsDefault: string.IsNullOrWhiteSpace(container.RegionHint)));
 }
