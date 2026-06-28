@@ -60,8 +60,14 @@ internal sealed class FileTreeStagingWriter : IDisposable
     {
         var currentPath = RelativePath.Root;
 
-        foreach (var segment in filePath.Segments.Take(filePath.Segments.Count() - 1))
+        // Materialize once: RelativePath.Segments re-splits and re-parses the path on every
+        // enumeration, so Take(Segments.Count() - 1) would parse the whole path twice on this hot
+        // staging path. Iterate the segments by index instead, skipping the trailing file segment.
+        var segments = filePath.Segments.ToArray();
+
+        for (var i = 0; i < segments.Length - 1; i++)
         {
+            var segment = segments[i];
             var parentPath = currentPath;
             currentPath = currentPath / segment;
             var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
