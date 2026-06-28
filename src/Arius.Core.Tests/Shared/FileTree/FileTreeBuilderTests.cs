@@ -299,6 +299,43 @@ public class FileTreeBuilderTests
     }
 
     [Test]
+    public async Task SynchronizeAsync_ManyIdenticalSiblingSubtrees_UploadsEachHashOnce_AndDoesNotThrow()
+    {
+        // Regression for the duplicate-hash store race: identical sibling directories are
+        // content-addressed to the same filetree blob, so the 32 synchronize workers are handed many
+        // nodes with the SAME hash concurrently. Without per-hash store coalescing, several workers
+        // upload the same blob and race two File.Replace calls onto one cache path (throws on Windows).
+        var accountName   = $"acc-dup-siblings-{Guid.NewGuid():N}";
+        var containerName = $"con-dup-siblings-{Guid.NewGuid():N}";
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(new CountingGatedFileTreeUploadBlobContainerService(), accountName, containerName, IEncryptionService.PlaintextInstance);
+
+        var now = new DateTimeOffset(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
+
+        // 24 sibling directories, each holding an identical file → 24 child nodes that hash identically.
+        var files = Enumerable.Range(0, 24)
+            .Select(i => ($"dir{i:D2}/a.jpg", FakeContentHash('c'), now, now))
+            .ToArray();
+        await using var stagingSession = (await CreateStagingAsync(fixture, files)).Session;
+
+        var blobs   = (CountingGatedFileTreeUploadBlobContainerService)fixture.BlobContainer;
+        var builder = new FileTreeBuilder(IEncryptionService.PlaintextInstance, fixture.FileTreeService);
+        await fixture.FileTreeService.ValidateAsync();
+
+        var syncTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
+
+        // Uploads are gated, so all racing same-hash writers are held in flight simultaneously. With
+        // coalescing, only one writer per hash uploads, so no blob is ever uploaded a second time.
+        (await blobs.WaitForDuplicateFileTreeUploadAsync(TimeSpan.FromSeconds(2))).ShouldBeFalse();
+        blobs.ReleaseUploads();
+
+        var root = await syncTask;
+
+        root.ShouldNotBeNull();
+        blobs.UploadCounts.Values.ShouldAllBe(count => count == 1); // each hash uploaded exactly once
+        blobs.UploadCounts.Count.ShouldBe(2);                       // the shared child hash + the distinct root
+    }
+
+    [Test]
     public async Task SynchronizeAsync_CalculatesSiblingNodes_WhileUploadsAreBlocked()
     {
         const string accountName = "unittest-acc-blocked-uploads";

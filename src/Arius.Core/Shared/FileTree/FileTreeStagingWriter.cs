@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Arius.Core.Shared.FileTree;
 
 [SharedWithinAssembly]
@@ -8,6 +10,14 @@ internal sealed class FileTreeStagingWriter : IDisposable
     private readonly SemaphoreSlim[] _lockStripes;
     private readonly RelativeFileSystem _stagingFileSystem;
     private          bool            _disposed;
+
+    // A directory id is globally unique to its full path, so its parent→child edge line is identical
+    // no matter which descendant file triggers it. Emit each edge once: without this, a deep tree
+    // re-appends every ancestor edge for every file (the root node once per file), which both dominates
+    // the staging I/O and funnels all writers onto the root node's single stripe lock. The reader
+    // (FileTreeBuilder.ReadNodeEntriesAsync) already collapses duplicate directory entries, so writing
+    // each once is behaviourally identical. Bounded by directory count and released with the writer.
+    private readonly ConcurrentDictionary<PathSegment, bool> _emittedDirectories = new();
 
     public FileTreeStagingWriter(LocalDirectory stagingRoot)
     {
@@ -55,6 +65,12 @@ internal sealed class FileTreeStagingWriter : IDisposable
             var parentPath = currentPath;
             currentPath = currentPath / segment;
             var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
+
+            // Skip the append (but keep descending) when this directory edge was already emitted.
+            // TryAdd is atomic: exactly one writer wins and writes the edge.
+            if (!_emittedDirectories.TryAdd(directoryId, true))
+                continue;
+
             var nodePath = FileTreePaths.GetStagingNodePath(FileTreePaths.GetStagingDirectoryId(parentPath));
 
             await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId.ToString(), segment), cancellationToken);
