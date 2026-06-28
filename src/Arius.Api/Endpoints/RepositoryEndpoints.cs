@@ -3,7 +3,6 @@ using Arius.Api.Contracts;
 using Arius.Api.AppData;
 using Arius.Core.Features.StorageAccountInfoQuery;
 using Mediator;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Endpoints;
 

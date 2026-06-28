@@ -1,6 +1,5 @@
 using Arius.AzureBlob.Pricing;
 using Arius.Core.Shared.Cost;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.AzureBlob.Tests.Pricing;
 

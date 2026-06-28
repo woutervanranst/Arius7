@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Arius.Core.Shared.Storage;
 
 namespace Arius.AzureBlob.Pricing;
 

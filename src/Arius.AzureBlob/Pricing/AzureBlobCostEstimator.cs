@@ -1,6 +1,5 @@
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Cost;
-using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Arius.AzureBlob.Pricing;

@@ -4,11 +4,9 @@ using Arius.AzureBlob;
 using Arius.Core;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
 using Serilog.Templates;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Arius.Api.Composition;
 

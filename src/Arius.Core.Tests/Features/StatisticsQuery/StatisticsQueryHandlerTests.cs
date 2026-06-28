@@ -2,7 +2,6 @@ using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Snapshot;
-using Arius.Core.Shared.Storage;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fakes;

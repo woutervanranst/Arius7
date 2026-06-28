@@ -1,4 +1,3 @@
-using Arius.Core.Features.ArchiveCommand;
 using Microsoft.Extensions.Configuration;
 
 namespace Arius.Core.Tests.Features.ArchiveCommand;
