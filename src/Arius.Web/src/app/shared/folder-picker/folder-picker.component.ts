@@ -80,6 +80,10 @@ export class FolderPickerComponent {
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
 
+  // Monotonic id of the in-flight browse: a slower earlier response is ignored so rapid
+  // click-through can't let a stale folder listing overwrite a newer one.
+  private browseSeq = 0;
+
   protected toggle(): void {
     if (this.open()) { this.open.set(false); return; }
     this.open.set(true);
@@ -87,11 +91,18 @@ export class FolderPickerComponent {
   }
 
   protected browse(path: string | null): void {
+    const seq = ++this.browseSeq;
     this.loading.set(true);
     this.error.set(null);
     this.api.listDirectories(path).subscribe({
-      next: r => { this.browsePath.set(r.path); this.parent.set(r.parent); this.entries.set(r.entries); this.loading.set(false); },
-      error: () => { this.error.set('Could not read that folder on the Arius.Api host.'); this.loading.set(false); },
+      next: r => {
+        if (seq !== this.browseSeq) return; // a newer browse has superseded this response
+        this.browsePath.set(r.path); this.parent.set(r.parent); this.entries.set(r.entries); this.loading.set(false);
+      },
+      error: () => {
+        if (seq !== this.browseSeq) return;
+        this.error.set('Could not read that folder on the Arius.Api host.'); this.loading.set(false);
+      },
     });
   }
 
