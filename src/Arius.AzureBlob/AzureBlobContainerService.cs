@@ -14,17 +14,10 @@ namespace Arius.AzureBlob;
 /// </summary>
 public sealed class AzureBlobContainerService : IBlobContainerService
 {
-    /// <summary>Container-metadata key holding the storage region (e.g. <c>westeurope</c>) used for cost estimates.</summary>
     public const string RegionMetadataKey = "region";
-
-    /// <summary>Sentinel written into <see cref="RegionMetadataKey"/> on first write so it is visible/overridable in
-    /// Azure Storage Explorer; treated as "not configured" when read.</summary>
-    public const string UnsetRegionSentinel = "default";
-
-    /// <summary>The single source of truth for the fallback region: used to price and display a container whose
-    /// <see cref="RegionMetadataKey"/> metadata is not set (i.e. <see cref="RegionHint"/> is <c>null</c>).
-    /// Consumers of <see cref="RegionHint"/> resolve it with <c>RegionHint ?? DefaultRegion</c>.</summary>
-    public const string DefaultRegion = "northeurope";
+    internal const string UnsetRegionSentinel = "default"; // Sentinel written to RegionMetadataKey on first write (so it is visible/overridable by user); treated as "not configured" when read.
+    
+    public const string DefaultRegion = "northeurope"; // Fallback region for pricing and display when the container's metadata is not set (i.e. RegionHint is null).
 
     private readonly BlobContainerClient _container;
     private readonly string? _regionHint;
