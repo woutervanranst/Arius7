@@ -109,7 +109,8 @@ New accounts are added from the **Add new account** step of either wizard (above
 > Arius reads that region from each **container's own metadata** — it is not chosen in the UI. Set the
 > container's `region` metadata (e.g. `westeurope`) in **Azure Storage Explorer** for an accurate
 > estimate; if it is unset, Arius prices against a default region (`northeurope`). The region is used
-> only to pick rates and is not shown in the UI.
+> only to pick rates; the resolved region is shown (read-only) in the repository list, flagged
+> `(default)` when the container's metadata is unset.
 
 ---
 

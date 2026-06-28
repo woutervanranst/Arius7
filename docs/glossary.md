@@ -238,7 +238,7 @@ typed by `BlobTier` enum in `src/Arius.Core/Shared/Storage/IBlobContainerService
 
 ### region
 
-**region** — the Azure region a repository's container is priced against for [cost estimates](design/core/shared/cost.md). It is **not** an account property: it lives in the container's own metadata (`region` key), seeded to a `default` sentinel on the first open and otherwise set out-of-band (e.g. in Azure Storage Explorer). Read into Core as `IBlobContainerService.RegionHint`; an unset region prices against a default (`northeurope`). It affects cost figures only — never the data path — and is not surfaced in the UI.
+**region** — the Azure region a repository's container is priced against for [cost estimates](design/core/shared/cost.md). It is **not** an account property: it lives in the container's own metadata (`region` key), seeded to a `default` sentinel on the first open and otherwise set out-of-band (e.g. in Azure Storage Explorer). Read into Core as `IBlobContainerService.RegionHint`; an unset region prices against a default (`northeurope`). It affects cost figures only — never the data path. Arius does not write it, but the resolved region is shown (read-only) in the web UI's repository list, flagged `(default)` when the container's metadata is unset.
 *Code:* `AzureBlobContainerService.RegionMetadataKey` / `RegionHint`
 (`src/Arius.AzureBlob/AzureBlobContainerService.cs`); fallback `AzureBlobContainerService.DefaultRegion`.
 
