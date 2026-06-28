@@ -40,6 +40,8 @@ internal sealed class FileTreeService : IFileTreeService
 
     private readonly ConcurrentDictionary<FileTreeHash, TaskCompletionSource<IReadOnlyList<FileTreeEntry>>> _inFlightReads = [];
 
+    private readonly ConcurrentDictionary<FileTreeHash, TaskCompletionSource> _inFlightStores = [];
+
     /// <param name="blobs">Blob storage backend.</param>
     /// <param name="encryption">Encryption/hashing service.</param>
     /// <param name="accountName">Used to derive the local cache directory.</param>
@@ -165,8 +167,41 @@ internal sealed class FileTreeService : IFileTreeService
 
     public async Task EnsureStoredAsync((FileTreeHash Hash, ReadOnlyMemory<byte> Plaintext) payload, CancellationToken cancellationToken = default)
     {
-        if (!ExistsInRemote(payload.Hash))
-            await WriteAsync(payload, cancellationToken);
+        if (ExistsInRemote(payload.Hash))
+            return;
+
+        // Identical sibling subtrees are content-addressed to the same hash, so the synchronize
+        // workers can hand us the same node concurrently. Coalesce stores per hash (mirrors the
+        // _inFlightReads pattern): storing twice both wastes an upload and races two writers into
+        // ReplaceFileAtomically on the same cache path, which throws on Windows. The
+        // TaskCompletionSource is passed to GetOrAdd as a value (not a factory), so the
+        // ReferenceEquals check guarantees exactly one caller performs the write.
+        var pendingStore = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var inFlightStore = _inFlightStores.GetOrAdd(payload.Hash, pendingStore);
+
+        if (ReferenceEquals(inFlightStore, pendingStore))
+        {
+            try
+            {
+                // Pass the caller's token through (unlike ReadAsync's shared download): SynchronizeAsync's
+                // upload workers all share one linked token, and it relies on cancelling that token to
+                // interrupt in-flight uploads when a sibling upload faults — otherwise the bounded-channel
+                // producer/consumer deadlocks. A shared token means cancelling the winner also cancels
+                // every waiter, so this can't spuriously fault an unrelated caller.
+                await WriteAsync(payload, cancellationToken);
+                inFlightStore.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                inFlightStore.TrySetException(ex);
+            }
+            finally
+            {
+                _inFlightStores.TryRemove(new KeyValuePair<FileTreeHash, TaskCompletionSource>(payload.Hash, inFlightStore));
+            }
+        }
+
+        await inFlightStore.Task.WaitAsync(cancellationToken);
     }
 
     /// <summary>
