@@ -16,8 +16,6 @@ internal static class RepositoryEndpoints
 
         group.MapGet("/", async (AppDatabase db, RepositoryProviderRegistry registry, CancellationToken ct) =>
         {
-            // Region resolves through a DB-backed read-through cache: repos with a known (configured) region are
-            // served straight from the DB, the rest resolve live (concurrently, best-effort) and get cached.
             var repositories = db.ListRepositories();
             var dtos = await Task.WhenAll(repositories.Select(r =>
                 ResolveRegionDtoAsync(db, r, (id, c) => TryGetAccountInfoAsync(registry, id, c), ct)));
@@ -45,8 +43,7 @@ internal static class RepositoryEndpoints
                 NormalizeTier(request.DefaultTier),
                 secrets.Protect(request.Passphrase));
 
-            // Region is left unresolved here (the container may not exist yet); the client refetches the list,
-            // which resolves and caches it.
+            // Region is left unresolved here (the container may not exist yet); the client refetches the list, which resolves and caches it.
             return Results.Created($"/repos/{id}", ToDto(db, db.GetRepository(id)!, region: null, regionIsDefault: false));
         });
 
@@ -83,10 +80,7 @@ internal static class RepositoryEndpoints
     }
 
     /// <summary>
-    /// Builds a repository DTO, resolving its region through a DB-backed read-through cache. A cached
-    /// (non-null) <see cref="RepositoryRecord.RegionHint"/> is an immutable, configured region and is served
-    /// without opening the container (no provider build); otherwise the region is resolved live via
-    /// <paramref name="resolveLive"/> and a configured (non-default) result is persisted for next time.
+    /// Builds a repository DTO, resolving its region through a DB-backed read-through cache.
     /// </summary>
     internal static async Task<RepositoryDto> ResolveRegionDtoAsync(
         AppDatabase db,
