@@ -1,12 +1,12 @@
-using Arius.Api.Composition;
+using System.Text.Json;
 using Arius.Api.AppData;
+using Arius.Api.Composition;
 using Arius.Api.Endpoints;
 using Arius.Api.Hubs;
 using Arius.AzureBlob;
 using Arius.Core.Shared;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
-using System.Text.Json;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()

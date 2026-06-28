@@ -1,6 +1,6 @@
+using Arius.Api.AppData;
 using Arius.Api.Composition;
 using Arius.Api.Contracts;
-using Arius.Api.AppData;
 
 namespace Arius.Api.Endpoints;
 
