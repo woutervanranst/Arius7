@@ -53,8 +53,13 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
         // 3. Force that existing chunk into archive tier.
         await MoveChunksToArchiveAsync(azureBlobContainer, targetChunk.ChunkHash, cancellationToken);
 
-        // 4. First restore run: verify that archive-tier restore prompts for rehydration and
-        // does not restore the chosen target while the chunk is still archived.
+        // 4. First restore run: this step deliberately exercises the out-of-sync path — SetTierAsync moved
+        // the blob to archive without updating the chunk index, so its StorageTierHint is still online. The
+        // pre-flight estimate therefore prices the chunk as an ordinary online download (0 chunks needing
+        // rehydration); the archive tier is only discovered at download time, which re-routes to rehydration
+        // (verified below via initialResult and the "out of sync with StorageTierHint" warning).
+        // The confirmation callback is a general cost gate: it fires for any non-zero estimated cost, so here
+        // it sees the download cost rather than an up-front rehydration request.
         var firstEstimateCaptured = false;
         var initialResult = await state.Fixture.CreateRestoreHandler()
             .Handle(new RestoreCommand(new RestoreOptions
@@ -65,8 +70,8 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
                 ConfirmRehydration = (estimate, _) =>
                 {
                     firstEstimateCaptured = true;
-                    (estimate.ChunksNeedingRehydration + estimate.ChunksPendingRehydration)
-                        .ShouldBeGreaterThan(0, $"{Name}: pending archive-tier restore should request rehydration.");
+                    estimate.DownloadBytes
+                        .ShouldBeGreaterThan(0, $"{Name}: pending archive-tier restore should surface a non-zero cost estimate to confirm.");
                     return Task.FromResult<RehydratePriority?>(RehydratePriority.Standard);
                 },
             }), cancellationToken).AsTask();
