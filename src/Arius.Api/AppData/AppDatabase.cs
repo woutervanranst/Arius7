@@ -98,6 +98,35 @@ public sealed class AppDatabase
         // Additive migration for databases created before region_hint existed (CREATE TABLE IF NOT EXISTS
         // won't add a column to an existing table). Idempotent: no-op once the column is present.
         EnsureColumn(connection, table: "repositories", column: "region_hint", type: "TEXT");
+
+        EnsureCachePayloadVersion(connection);
+    }
+
+    /// <summary>
+    /// The serialization version of the <c>statistics_cache</c> <c>payload</c> (the <c>StatisticsDto</c> shape).
+    /// Bump whenever the payload gains/loses fields so stale rows written by an older build are discarded rather
+    /// than silently deserialized with default values. v2 added per-tier and total storage-cost fields.
+    /// </summary>
+    private const long CachePayloadVersion = 2;
+
+    /// <summary>
+    /// One-time invalidation of <c>statistics_cache</c> rows whose payload predates <see cref="CachePayloadVersion"/>.
+    /// Tracked in <c>PRAGMA user_version</c>: an older build's rows would otherwise deserialize new fields (e.g. the
+    /// storage-cost figures) as 0 and keep serving them — the fingerprint guard only refreshes on a snapshot change,
+    /// which may never come for a dormant repository. A fresh database has an empty cache, so the clear is a no-op.
+    /// </summary>
+    private static void EnsureCachePayloadVersion(SqliteConnection connection)
+    {
+        using var read = connection.CreateCommand();
+        read.CommandText = "PRAGMA user_version;";
+        var current = Convert.ToInt64(read.ExecuteScalar());
+        if (current >= CachePayloadVersion)
+            return;
+
+        using var migrate = connection.CreateCommand();
+        // PRAGMA does not accept parameters; the version is a compile-time integer constant, so this is safe.
+        migrate.CommandText = $"DELETE FROM statistics_cache; PRAGMA user_version = {CachePayloadVersion};";
+        migrate.ExecuteNonQuery();
     }
 
     /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it is not already present. Names are
