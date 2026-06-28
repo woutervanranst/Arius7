@@ -232,8 +232,8 @@ Restoring can cost money: reading from the **Cool** or **Cold** tiers incurs a p
 charge, **Archive** chunks must be *rehydrated* first (this takes hours and is pricier), and
 downloading data out of Azure incurs egress. Whenever a restore has a non-zero estimated cost, Arius
 pauses **before downloading anything** and shows a cost-approval modal. The estimate includes data
-retrieval, operations, and internet egress (the first 100 GB/month of egress is free), priced for
-the repository's region (read from the container's metadata).
+retrieval, operations, and internet egress (under Azure pricing the first 100 GiB/month of egress is
+free), priced for the repository's region (read from the container's metadata).
 
 The modal adapts to what's being restored:
 
