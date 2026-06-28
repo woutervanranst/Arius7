@@ -10,7 +10,7 @@ Turns repository state into money: a per-tier **monthly storage** estimate (Stat
 
 ### The contract (Core)
 
-`IStorageCostEstimator` (`Shared/Cost/IStorageCostEstimator.cs`) is the whole provider-neutral surface. Inputs are Core domain types ([`ChunkTierStatistic`](chunk-index.md), `BlobTier`); outputs are canonical records in `Shared/Cost/Models.cs`. All amounts are in **EUR** (the only currency Arius supports). The estimator is **bound to one repository's storage** — there is no region argument, because [region](../../../glossary.md#region) is an implementation detail the adapter resolves from the container (below):
+`IStorageCostEstimator` (`Shared/Cost/IStorageCostEstimator.cs`) is the whole provider-neutral surface. Inputs are Core domain types ([`ChunkTierStatistic`](chunk-index.md), `BlobTier`); outputs are canonical records (`StorageCostEstimate`, `TierStorageCost`, `RestoreCostRequest`, `RestoreCostEstimate`) declared alongside the interface in `Shared/Cost/IStorageCostEstimator.cs`. All amounts are in **EUR** (the only currency Arius supports). The estimator is **bound to one repository's storage** — there is no region argument, because [region](../../../glossary.md#region) is an implementation detail the adapter resolves from the container (below):
 
 | Member | Returns | Used by |
 |---|---|---|
