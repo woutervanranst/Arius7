@@ -51,10 +51,6 @@ public sealed class AppDatabase
                 account_id   INTEGER NOT NULL REFERENCES storage_accounts(id),
                 local_path   TEXT,
                 default_tier TEXT NOT NULL DEFAULT 'archive',
-                -- Cache of the container's configured region (IBlobContainerService.RegionHint). The container
-                -- metadata is the source of truth; this only memoizes a *configured* (non-null) region — which is
-                -- immutable once set — so the overview can list regions without opening every container. Left NULL
-                -- when unknown/unset, so it keeps re-resolving live until a region is configured.
                 region_hint  TEXT,
                 passphrase   TEXT,
                 created_at   TEXT NOT NULL,
