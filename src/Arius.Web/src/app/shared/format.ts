@@ -23,3 +23,13 @@ export function tierColor(tier: string | null | undefined): string {
 export function formatCount(n: number | null | undefined): string {
   return n == null ? '—' : n.toLocaleString('en-US');
 }
+
+/**
+ * Money → display string in EUR (the only currency Arius supports). Whole units at/above 10
+ * (e.g. €182), two decimals below (e.g. €8.14), matching the cost-breakdown design.
+ */
+export function formatCurrency(amount: number | null | undefined): string {
+  if (amount == null) return '—';
+  const digits = amount >= 10 ? 0 : 2;
+  return '€' + amount.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}

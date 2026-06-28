@@ -1,4 +1,5 @@
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fixtures;
 
@@ -47,17 +48,10 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         // The estimate should have been captured (archive-tier chunks trigger the callback)
         capturedEstimate.ShouldNotBeNull();
 
-        // 5.1: all 4 cost components should be non-zero for archive-tier restore
-        capturedEstimate!.RetrievalCostStandard.ShouldBeGreaterThan(0,
-            "Retrieval cost should be non-zero for archive-tier chunks");
-        capturedEstimate.ReadOpsCostStandard.ShouldBeGreaterThan(0,
-            "Read ops cost should be non-zero for archive-tier chunks");
-        capturedEstimate.WriteOpsCost.ShouldBeGreaterThan(0,
-            "Write ops cost should be non-zero for archive-tier chunks");
-        capturedEstimate.StorageCost.ShouldBeGreaterThan(0,
-            "Storage cost should be non-zero for archive-tier chunks");
-
-        // High priority should always cost more than Standard
+        // 5.1: archive-tier restore has a non-zero estimated cost, and High priority costs more than Standard.
+        // (The detailed per-component breakdown is an Azure implementation detail, asserted in Arius.AzureBlob.Tests.)
+        capturedEstimate!.ChunksNeedingRehydration.ShouldBeGreaterThan(0);
+        capturedEstimate.TotalStandard.ShouldBeGreaterThan(0, "Archive-tier restore should have a non-zero cost");
         capturedEstimate.TotalHigh.ShouldBeGreaterThan(capturedEstimate.TotalStandard);
     }
 
@@ -93,21 +87,13 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
         var result = await fix.CreateRestoreHandler().Handle(new RestoreCommand(restoreOpts), CancellationToken.None);
         result.Success.ShouldBeTrue(result.ErrorMessage);
 
-        // 5.2: For Hot-tier chunks, ConfirmRehydration should not be invoked at all
-        // (no archive-tier chunks). The callback is only called when there are chunks needing rehydration.
-        // Verify that either:
-        //   (a) the callback was never invoked (typical path), OR
-        //   (b) if it was invoked, all rehydration-related costs are zero
+        // 5.2: A Hot-tier restore needs no rehydration. If the cost prompt fires (the estimate carries a
+        // small read-op cost), there must be nothing to rehydrate and Standard == High (no priority premium).
         if (capturedEstimate is not null)
         {
             capturedEstimate.ChunksNeedingRehydration.ShouldBe(0);
             capturedEstimate.ChunksPendingRehydration.ShouldBe(0);
-            capturedEstimate.RetrievalCostStandard.ShouldBe(0.0);
-            capturedEstimate.RetrievalCostHigh.ShouldBe(0.0);
-            capturedEstimate.ReadOpsCostStandard.ShouldBe(0.0);
-            capturedEstimate.ReadOpsCostHigh.ShouldBe(0.0);
-            capturedEstimate.WriteOpsCost.ShouldBe(0.0);
-            capturedEstimate.StorageCost.ShouldBe(0.0);
+            capturedEstimate.TotalHigh.ShouldBe(capturedEstimate.TotalStandard);
         }
     }
 }

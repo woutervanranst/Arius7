@@ -92,6 +92,7 @@ nav:
           - design/core/shared/filetree.md
           - design/core/shared/snapshot.md
           - design/core/shared/storage.md
+          - design/core/shared/cost.md
           - design/core/shared/encryption.md
           - design/core/shared/compression.md
           - design/core/shared/filesystem.md
@@ -129,5 +130,6 @@ nav:
       - decisions/adr-0017-idempotent-non-distributed-recovery.md
       - decisions/adr-0018-archive-tier-metadata-sidecar.md
       - decisions/adr-0019-central-file-exclusion-configuration.md
+      - decisions/adr-0020-provider-agnostic-cost-estimation.md
   - Glossary: glossary.md
   - History: history/INDEX.md

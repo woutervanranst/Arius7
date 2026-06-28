@@ -140,6 +140,41 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
                 inner: ex);
         }
 
-        return new AzureBlobContainerService(containerClient);
-    }
+        var regionMetadata = await GetRegionMetadataAsync();
+
+        return new AzureBlobContainerService(containerClient, regionMetadata);
+
+
+        async Task<string?> GetRegionMetadataAsync()
+        {
+            // Region lives in the container's own metadata
+            // Read it here, and on a read/write open seed the "default" sentinel when absent so it is visible to edit.
+            // Best-effort: metadata is used only to price cost estimates, so a failure here never fails the open.
+            string? regionMetadata = null;
+
+            try
+            {
+                var properties = await containerClient.GetPropertiesAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                var metadata   = properties.Value.Metadata;
+                metadata.TryGetValue(AzureBlobContainerService.RegionMetadataKey, out regionMetadata);
+
+                if (preflightMode == PreflightMode.ReadWrite && string.IsNullOrEmpty(regionMetadata))
+                {
+                    var seeded = new Dictionary<string, string>(metadata)
+                    {
+                        [AzureBlobContainerService.RegionMetadataKey] = AzureBlobContainerService.UnsetRegionSentinel,
+                    };
+
+                    await containerClient.SetMetadataAsync(seeded, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    regionMetadata = AzureBlobContainerService.UnsetRegionSentinel;
+                }
+            }
+            catch (RequestFailedException)
+            {
+                // Ignore — region metadata is a best-effort pricing hint, not required to open the container.
+            }
+
+            return regionMetadata;
+        }
+}
 }

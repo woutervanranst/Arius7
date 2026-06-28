@@ -51,6 +51,7 @@ public sealed class AppDatabase
                 account_id   INTEGER NOT NULL REFERENCES storage_accounts(id),
                 local_path   TEXT,
                 default_tier TEXT NOT NULL DEFAULT 'archive',
+                region_hint  TEXT,
                 passphrase   TEXT,
                 created_at   TEXT NOT NULL,
                 UNIQUE(account_id, container)
@@ -93,6 +94,54 @@ public sealed class AppDatabase
             );
             """;
         create.ExecuteNonQuery();
+
+        // Additive migration for databases created before region_hint existed (CREATE TABLE IF NOT EXISTS
+        // won't add a column to an existing table). Idempotent: no-op once the column is present.
+        EnsureColumn(connection, table: "repositories", column: "region_hint", type: "TEXT");
+
+        EnsureCachePayloadVersion(connection);
+    }
+
+    /// <summary>
+    /// The serialization version of the <c>statistics_cache</c> <c>payload</c> (the <c>StatisticsDto</c> shape).
+    /// Bump whenever the payload gains/loses fields so stale rows written by an older build are discarded rather
+    /// than silently deserialized with default values. v2 added per-tier and total storage-cost fields.
+    /// </summary>
+    private const long CachePayloadVersion = 2;
+
+    /// <summary>
+    /// One-time invalidation of <c>statistics_cache</c> rows whose payload predates <see cref="CachePayloadVersion"/>.
+    /// Tracked in <c>PRAGMA user_version</c>: an older build's rows would otherwise deserialize new fields (e.g. the
+    /// storage-cost figures) as 0 and keep serving them — the fingerprint guard only refreshes on a snapshot change,
+    /// which may never come for a dormant repository. A fresh database has an empty cache, so the clear is a no-op.
+    /// </summary>
+    private static void EnsureCachePayloadVersion(SqliteConnection connection)
+    {
+        using var read = connection.CreateCommand();
+        read.CommandText = "PRAGMA user_version;";
+        var current = Convert.ToInt64(read.ExecuteScalar());
+        if (current >= CachePayloadVersion)
+            return;
+
+        using var migrate = connection.CreateCommand();
+        // PRAGMA does not accept parameters; the version is a compile-time integer constant, so this is safe.
+        migrate.CommandText = $"DELETE FROM statistics_cache; PRAGMA user_version = {CachePayloadVersion};";
+        migrate.ExecuteNonQuery();
+    }
+
+    /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it is not already present. Names are
+    /// compile-time constants (never user input), so the interpolated DDL is safe.</summary>
+    private static void EnsureColumn(SqliteConnection connection, string table, string column, string type)
+    {
+        using var probe = connection.CreateCommand();
+        probe.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $column;";
+        probe.Parameters.AddWithValue("$column", column);
+        if (Convert.ToInt64(probe.ExecuteScalar()) > 0)
+            return;
+
+        using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type};";
+        alter.ExecuteNonQuery();
     }
 
     private SqliteConnection OpenConnection()
@@ -140,6 +189,33 @@ public sealed class AppDatabase
         return (long)command.ExecuteScalar()!;
     }
 
+    /// <summary>
+    /// Updates an account's connection material. A <c>null</c> <paramref name="encryptedAccountKey"/> leaves the
+    /// stored key unchanged (so the key need not be resupplied for an unrelated edit).
+    /// </summary>
+    public void UpdateAccount(long id, string? encryptedAccountKey)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE storage_accounts SET
+                account_key = COALESCE($key, account_key)
+            WHERE id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$key", (object?)encryptedAccountKey ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
+    public void DeleteAccount(long id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM storage_accounts WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.ExecuteNonQuery();
+    }
+
     public int CountRepositoriesForAccount(long accountId)
     {
         using var connection = OpenConnection();
@@ -149,13 +225,27 @@ public sealed class AppDatabase
         return (int)(long)command.ExecuteScalar()!;
     }
 
+    /// <summary>Repository ids belonging to an account — used to evict providers / clear stats caches after an account change.</summary>
+    public IReadOnlyList<long> ListRepositoryIdsForAccount(long accountId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM repositories WHERE account_id = $accountId;";
+        command.Parameters.AddWithValue("$accountId", accountId);
+        using var reader = command.ExecuteReader();
+        var result = new List<long>();
+        while (reader.Read())
+            result.Add(reader.GetInt64(0));
+        return result;
+    }
+
     // ── Repositories ──────────────────────────────────────────────────────────
 
     public IReadOnlyList<RepositoryRecord> ListRepositories()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, passphrase, created_at FROM repositories ORDER BY alias;";
+        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, region_hint, passphrase, created_at FROM repositories ORDER BY alias;";
         using var reader = command.ExecuteReader();
         var result = new List<RepositoryRecord>();
         while (reader.Read())
@@ -167,7 +257,7 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, passphrase, created_at FROM repositories WHERE id = $id;";
+        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, region_hint, passphrase, created_at FROM repositories WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadRepository(reader) : null;
@@ -213,6 +303,21 @@ public sealed class AppDatabase
         command.Parameters.AddWithValue("$localPath", (object?)localPath ?? DBNull.Value);
         command.Parameters.AddWithValue("$defaultTier", (object?)defaultTier ?? DBNull.Value);
         command.Parameters.AddWithValue("$passphrase", (object?)encryptedPassphrase ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Caches a repository's configured region (<see cref="RepositoryRecord.RegionHint"/>). Pass a non-null,
+    /// configured region to memoize it (it's immutable once set, so the overview can serve it without opening
+    /// the container); pass <c>null</c> to invalidate the cache so the region is re-resolved live on next read.
+    /// </summary>
+    public void SetRepositoryRegionHint(long id, string? regionHint)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE repositories SET region_hint = $regionHint WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$regionHint", (object?)regionHint ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 
@@ -436,6 +541,7 @@ public sealed class AppDatabase
         reader.GetInt64(3),
         reader.IsDBNull(4) ? null : reader.GetString(4),
         reader.GetString(5),
-        reader.IsDBNull(6) ? null : reader.GetString(6),
-        DateTimeOffset.Parse(reader.GetString(7)));
+        reader.IsDBNull(6) ? null : reader.GetString(6),  // region_hint (cached configured region)
+        reader.IsDBNull(7) ? null : reader.GetString(7),  // passphrase
+        DateTimeOffset.Parse(reader.GetString(8)));
 }

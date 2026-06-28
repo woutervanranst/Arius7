@@ -6,6 +6,7 @@ using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Features.SnapshotsQuery;
 using Arius.Core.Features.StatisticsQuery;
+using Arius.Core.Features.StorageAccountInfoQuery;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -43,7 +44,8 @@ internal sealed class CliHarness
         // CLI-unused snapshot/stats query handlers must be supplied too (they otherwise need a real
         // ISnapshotService the harness has no reason to wire up).
         var snapshotsHandler = Substitute.For<ICommandHandler<SnapshotsQuery, IReadOnlyList<SnapshotInfo>>>();
-        var statsHandler = Substitute.For<ICommandHandler<StatisticsQuery, RepositoryStatistics>>();
+        var statsHandler = Substitute.For<IQueryHandler<StatisticsQuery, RepositoryStatistics>>();
+        var storageInfoHandler = Substitute.For<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -89,7 +91,11 @@ internal sealed class CliHarness
 
         statsHandler
             .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, [])));
+            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, 0, [])));
+
+        storageInfoHandler
+            .Handle(Arg.Any<StorageAccountInfoQuery>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<StorageAccountInfo>(new StorageAccountInfo("test", RegionIsDefault: false)));
 
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;
@@ -112,6 +118,7 @@ internal sealed class CliHarness
             services.AddSingleton(hydrationHandler);
             services.AddSingleton(snapshotsHandler);
             services.AddSingleton(statsHandler);
+            services.AddSingleton(storageInfoHandler);
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
     }

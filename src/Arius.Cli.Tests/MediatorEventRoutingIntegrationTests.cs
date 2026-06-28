@@ -1,7 +1,9 @@
 using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
+using Arius.Tests.Shared.Fakes;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -27,6 +29,7 @@ public class MediatorEventRoutingIntegrationTests
         services.AddMediator();
 
         // Provide stub Core services so the source-generated Mediator can initialize.
+        services.AddSingleton<IStorageCostEstimator>(new FakeStorageCostEstimator());
         services.AddArius(
             blobContainer: Substitute.For<IBlobContainerService>(),
             passphrase: null,

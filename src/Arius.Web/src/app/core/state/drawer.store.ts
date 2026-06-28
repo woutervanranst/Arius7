@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { RealtimeService } from '../api/realtime.service';
 import { CostEstimateMsg, LogLine } from '../api/api-models';
 
-export type DrawerType = 'archive' | 'restore' | 'properties' | null;
+export type DrawerType = 'archive' | 'restore' | 'properties' | 'account' | null;
 export type StreamState = 'idle' | 'running' | 'cost' | 'done';
 
 /**
@@ -16,8 +16,13 @@ export class DrawerStore {
 
   readonly type = signal<DrawerType>(null);
   readonly repoId = signal(0);
+  readonly accountId = signal(0);
   readonly version = signal<string | null>(null);
   readonly collectedPaths = signal<string[]>([]);
+
+  /** Bumped whenever an account is created/edited/deleted, so account lists (e.g. Overview) can re-fetch. */
+  readonly accountsRevision = signal(0);
+  bumpAccounts(): void { this.accountsRevision.update(n => n + 1); }
 
   readonly streamState = signal<StreamState>('idle');
   readonly lines = signal<LogLine[]>([]);
@@ -46,6 +51,12 @@ export class DrawerStore {
     this.resetStream();
     this.type.set('properties');
     this.repoId.set(repoId);
+  }
+
+  openAccount(accountId: number): void {
+    this.resetStream();
+    this.type.set('account');
+    this.accountId.set(accountId);
   }
 
   openArchive(repoId: number, tier: string): void {

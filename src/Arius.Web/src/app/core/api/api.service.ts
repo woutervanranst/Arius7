@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import { AccountDto, CreateRepositoryRequest, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
+import { AccountDto, CreateRepositoryRequest, FsListDto, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
 @Injectable({ providedIn: 'root' })
@@ -12,8 +12,27 @@ export class ApiService {
     return this.http.get<AccountDto[]>('/api/accounts');
   }
 
+  getAccount(id: number): Observable<AccountDto> {
+    return this.http.get<AccountDto>(`/api/accounts/${id}`);
+  }
+
   createAccount(name: string, accountKey: string | null): Observable<AccountDto> {
     return this.http.post<AccountDto>('/api/accounts', { name, accountKey });
+  }
+
+  /** Edit-account flyout: rotate the key (omit/null to keep the stored one). */
+  updateAccount(id: number, body: { accountKey?: string | null }): Observable<AccountDto> {
+    return this.http.patch<AccountDto>(`/api/accounts/${id}`, body);
+  }
+
+  deleteAccount(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/accounts/${id}`);
+  }
+
+  /** Lists directories as the Arius.Api host/container sees them (server-side local-path picker). */
+  listDirectories(path?: string | null): Observable<FsListDto> {
+    const query = path ? `?path=${encodeURIComponent(path)}` : '';
+    return this.http.get<FsListDto>(`/api/fs/list${query}`);
   }
 
   listRepositories(): Observable<RepositoryDto[]> {

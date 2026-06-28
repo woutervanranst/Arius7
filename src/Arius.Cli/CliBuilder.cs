@@ -3,6 +3,7 @@ using Arius.Cli.Commands.Ls;
 using Arius.Cli.Commands.Repair;
 using Arius.Cli.Commands.Restore;
 using Arius.Cli.Commands.Update;
+using Arius.AzureBlob;
 using Arius.Core;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
@@ -60,15 +61,9 @@ public static class CliBuilder
     /// </summary>
     /// <param name="serviceProviderFactory">Optional factory; if null, production services are used.</param>
     public static RootCommand BuildRootCommand(
-        IBlobServiceFactory? blobServiceFactory = null,
         Func<string, string?, string?, string, PreflightMode, Task<IServiceProvider>>? serviceProviderFactory = null)
     {
-        if (serviceProviderFactory is null)
-        {
-            ArgumentNullException.ThrowIfNull(blobServiceFactory);
-            serviceProviderFactory = (accountName, accountKey, passphrase, containerName, preflightMode) =>
-                BuildProductionServices(blobServiceFactory, accountName, accountKey, passphrase, containerName, preflightMode);
-        }
+        serviceProviderFactory ??= BuildProductionServices;
 
         var rootCommand = new RootCommand("Arius — content-addressable archival to Azure Blob Storage");
         rootCommand.Subcommands.Add(ArchiveVerb.Build(serviceProviderFactory));
@@ -114,13 +109,15 @@ public static class CliBuilder
     // ── Production DI ─────────────────────────────────────────────────────────
 
     private static async Task<IServiceProvider> BuildProductionServices(
-        IBlobServiceFactory blobServiceFactory,
         string        accountName,
         string?       accountKey,
         string?       passphrase,
         string        containerName,
         PreflightMode preflightMode)
     {
+        // The container must be opened before the DI graph is built, so the factory is created here
+        // for that bootstrap step; AddAzureBlobStorage() registers it (and the cost estimator) for DI.
+        var blobServiceFactory = new AzureBlobServiceFactory();
         var blobService = await blobServiceFactory.CreateAsync(accountName, accountKey).ConfigureAwait(false);
         var blobContainer = await blobService.OpenContainerServiceAsync(containerName, preflightMode).ConfigureAwait(false);
 
@@ -134,11 +131,8 @@ public static class CliBuilder
         // both Arius.Core and Arius.Cli.
         services.AddMediator();
 
-        services.AddArius(
-            blobContainer,
-            passphrase,
-            accountName,
-            containerName);
+        services.AddAzureBlobStorage();
+        services.AddArius(blobContainer, passphrase, accountName, containerName);
 
         return services.BuildServiceProvider();
     }

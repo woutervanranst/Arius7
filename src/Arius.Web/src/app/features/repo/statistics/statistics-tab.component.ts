@@ -3,6 +3,7 @@ import { ApiService } from '../../../core/api/api.service';
 import { SnapshotStore } from '../../../core/state/snapshot.store';
 import { StatisticsDto } from '../../../core/api/api-models';
 import { formatBytes, formatCount } from '../../../shared/format';
+import { CostCalculatorComponent } from '../../../shared/cost-calculator/cost-calculator.component';
 
 /**
  * Statistics tab. Two scopes are shown separately because they answer different questions:
@@ -15,6 +16,7 @@ import { formatBytes, formatCount } from '../../../shared/format';
   selector: 'arius-statistics-tab',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [CostCalculatorComponent],
   template: `
     <!-- Section labels aligned over the unified card row (2 snapshot + 3 storage columns). -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:10px">
@@ -58,21 +60,9 @@ import { formatBytes, formatCount } from '../../../shared/format';
       }
     </div>
 
-    @if (!storageLoading() && tiers().length) {
-      <div class="ar-card" data-testid="tier-breakdown" style="margin-top:18px;padding:18px 20px">
-        <div style="font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:14px">Stored size by tier</div>
-        <div style="display:flex;flex-direction:column;gap:11px">
-          @for (t of tiers(); track t.tier) {
-            <div class="flex items-center gap-3" data-testid="tier-row">
-              <span style="width:62px;font-size:12.5px;font-weight:600" [style.color]="t.color">{{ t.tier }}</span>
-              <div style="flex:1;height:8px;border-radius:5px;background:#f1f1f4;overflow:hidden">
-                <div style="height:100%;border-radius:5px" [style.width.%]="t.pct" [style.background]="t.color"></div>
-              </div>
-              <span style="width:84px;text-align:right;font-size:13px;color:#27272a;font-weight:600">{{ t.size }}</span>
-              <span style="width:96px;text-align:right;font-size:12px;color:#a1a1aa">{{ t.chunks }} chunks</span>
-            </div>
-          }
-        </div>
+    @if (!storageLoading() && (storageStats()?.storedByTier?.length ?? 0)) {
+      <div style="margin-top:18px">
+        <arius-cost-calculator [stats]="storageStats()" />
       </div>
     }
 
@@ -145,20 +135,4 @@ export class StatisticsTabComponent {
     ];
   }
 
-  // Warmer → cooler colours so the access-tier story reads at a glance (Archive = coldest = slowest to restore).
-  private static readonly TIER_COLORS: Record<string, string> = {
-    Hot: '#ef4444', Cool: '#3b82f6', Cold: '#0ea5e9', Archive: '#64748b',
-  };
-
-  protected tiers() {
-    const rows = this.storageStats()?.storedByTier ?? [];
-    const max = Math.max(1, ...rows.map(t => t.storedSize));
-    return rows.map(t => ({
-      tier: t.tier,
-      size: formatBytes(t.storedSize),
-      chunks: formatCount(t.uniqueChunks),
-      pct: (t.storedSize / max) * 100,
-      color: StatisticsTabComponent.TIER_COLORS[t.tier] ?? '#a1a1aa',
-    }));
-  }
 }

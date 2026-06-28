@@ -4,13 +4,14 @@ import { DatePipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/api/api.service';
 import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
+import { FolderPickerComponent } from '../../../shared/folder-picker/folder-picker.component';
 
-/** Properties tab: friendly alias, read-only account/container, account key, encryption passphrase (rotate), local folder, schedules, and repository delete. */
+/** Properties tab: friendly alias, read-only account/container, passphrase (rotate), local folder, schedules, and repository delete. The account key belongs to the storage account (edit it from the Overview), not the repository. */
 @Component({
   selector: 'arius-properties-tab',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, FolderPickerComponent],
   template: `
     @if (repo(); as r) {
       <div class="ar-card" style="max-width:680px;padding:24px">
@@ -23,12 +24,7 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
           <label class="ar-field"><span>Container</span><input class="ar-input ar-mono" data-testid="prop-container" [value]="r.container" readonly /></label>
         </div>
         <label class="ar-field">
-          <span>Account key</span>
-          <input class="ar-input ar-mono" type="password" placeholder="•••••••• (stored encrypted — replace to rotate)" [(ngModel)]="accountKey" />
-          <small>Stored encrypted in the Arius.Api SQLite. Replace to rotate the key.</small>
-        </label>
-        <label class="ar-field">
-          <span>Encryption passphrase</span>
+          <span>Passphrase</span>
           <input class="ar-input ar-mono" type="password" data-testid="prop-passphrase" placeholder="•••••••• (replace to rotate)" [(ngModel)]="passphrase" />
           <small>Encrypts your data in the archive. Replace to rotate; existing snapshots stay readable with the old passphrase.</small>
         </label>
@@ -39,11 +35,11 @@ import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
             @if (passphraseMismatch()) { <small style="color:#dc2626">Passphrases don't match.</small> }
           </label>
         }
-        <label class="ar-field">
+        <div class="ar-field">
           <span>Local folder</span>
-          <input class="ar-input ar-mono" [(ngModel)]="localPath" />
+          <arius-folder-picker [(value)]="localPath" testid="prop-localpath" />
           <small>Folder the Files view overlays against the archive, and the default source for archive runs.</small>
-        </label>
+        </div>
         <div class="flex items-center justify-end gap-2.5" style="margin-top:18px">
           <button class="ar-btn-outline" (click)="reset(r)">Discard</button>
           <button class="ar-btn-primary" [disabled]="passphraseMismatch()" (click)="save()"><i class="ki-filled ki-check"></i>Save changes</button>
@@ -109,7 +105,6 @@ export class PropertiesTabComponent {
 
   protected readonly repo = signal<RepositoryDto | null>(null);
   protected alias = '';
-  protected accountKey = '';
   protected passphrase = '';
   protected passphraseConfirm = '';
   protected localPath = '';
@@ -160,7 +155,6 @@ export class PropertiesTabComponent {
   protected reset(r: RepositoryDto): void {
     this.alias = r.alias;
     this.localPath = r.localPath ?? '';
-    this.accountKey = '';
     this.passphrase = '';
     this.passphraseConfirm = '';
     this.saved.set(false);

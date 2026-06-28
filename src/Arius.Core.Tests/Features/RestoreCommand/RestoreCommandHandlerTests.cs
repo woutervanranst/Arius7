@@ -2,12 +2,14 @@ using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Fakes;
 using Arius.Tests.Shared.Fixtures;
 using Arius.Tests.Shared.Storage;
 using Mediator;
@@ -169,7 +171,7 @@ public class RestoreCommandHandlerTests
         phases.ShouldBe([
             "resolve-snapshot",
             "classify",
-            "confirm-rehydration",
+            "confirm-cost",
             "rehydrate"
         ]);
         messages.ShouldContain(static message => message.StartsWith("[rehydration] Requested:", StringComparison.Ordinal));
@@ -192,7 +194,7 @@ public class RestoreCommandHandlerTests
             var       mediator        = Substitute.For<IMediator>();
             var       logger          = new FakeLogger<RestoreCommandHandler>();
 
-            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, new FakeStorageCostEstimator(), logger, accountName, containerName);
 
             var result = await handler.Handle(
                 new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
@@ -387,7 +389,7 @@ public class RestoreCommandHandlerTests
             blobs.AddBlob(BlobPaths.ChunkPath(chunkHash),               await CompressAsync("healthy"u8.ToArray()));
             blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
 
-            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
+            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, new FakeStorageCostEstimator(), new FakeLogger<RestoreCommandHandler>(), accountName, containerName);
 
             var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
 
@@ -442,7 +444,7 @@ public class RestoreCommandHandlerTests
             blobs.AddBlob(BlobPaths.FileTreePath(rootHash), await CompressAsync(fileTreePayload));
             blobs.AddBlob(BlobPaths.SnapshotPath(snapshot.Timestamp), await SnapshotSerializer.SerializeAsync(snapshot, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
 
-            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, new FakeStorageCostEstimator(), logger, accountName, containerName);
 
             var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
 
@@ -1054,7 +1056,7 @@ public class RestoreCommandHandlerTests
             if (beforeHandle is not null)
                 await beforeHandle(RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName), CancellationToken.None);
 
-            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, logger, accountName, containerName);
+            var handler = new RestoreCommandHandler(IEncryptionService.PlaintextInstance, index, new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), fileTreeService, snapshotSvc, mediator, new FakeStorageCostEstimator(), logger, accountName, containerName);
 
             var result = await handler.Handle(new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions { RootDirectory = restoreRootDirectory.ToString(), Overwrite = true }), CancellationToken.None);
 
