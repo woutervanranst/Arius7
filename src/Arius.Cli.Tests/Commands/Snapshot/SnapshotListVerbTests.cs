@@ -1,4 +1,5 @@
 using Arius.Core.Features.SnapshotsListQuery;
+using Arius.Core.Shared.Encryption;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -45,6 +46,27 @@ public class SnapshotListVerbTests
 
         exitCode.ShouldBe(1);
         output.ShouldContain("No account provided");
+    }
+
+    [Test]
+    public async Task SnapshotList_RepositoryEncryptionError_ReturnsFriendlyErrorNotCrash()
+    {
+        var mediator = Substitute.For<IMediator>();
+        mediator.CreateStream(Arg.Any<SnapshotsListQuery>(), Arg.Any<CancellationToken>())
+            .Returns<IAsyncEnumerable<SnapshotInfo>>(_ => throw new RepositoryEncryptionException(passphraseProvided: false, new InvalidDataException("Unrecognized compression format")));
+
+        var rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (_, _, _, _, _) =>
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(mediator);
+            return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
+        });
+
+        var (exitCode, output) = await CaptureOutputAsync(() => rootCommand.Parse("snapshot list -a acct -k key -c ctr").InvokeAsync());
+
+        exitCode.ShouldBe(1);
+        output.ShouldContain("passphrase");          // actionable, not the raw decompression error
+        output.ShouldNotContain("Unhandled exception");
     }
 
     private static async Task<(int ExitCode, string Output)> CaptureOutputAsync(Func<Task<int>> invokeAsync)

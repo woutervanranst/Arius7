@@ -1,4 +1,5 @@
 using Arius.Core.Features.ListQuery;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -161,6 +162,12 @@ internal static class LsVerb
                             $"{LsStateFormatter.ToMarkup(file.State)}   {Markup.Escape(size),12}  {created,-16}  {modified,-16}  {Markup.Escape(file.RelativePath.ToString())}");
                         fileCount++;
                     }
+                }
+                catch (RepositoryEncryptionException ex)
+                {
+                    Log.Error(ex, "ls failed: repository passphrase/encryption mismatch");
+                    AnsiConsole.MarkupLine(CliBuilder.FormatRepositoryEncryptionError(ex));
+                    return 1;
                 }
                 catch (Exception ex)
                 {

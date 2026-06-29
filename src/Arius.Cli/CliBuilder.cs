@@ -7,6 +7,7 @@ using Arius.Cli.Commands.Snapshot;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.Shared;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -180,6 +181,19 @@ public static class CliBuilder
             : ex.Message;
 
         return $"[red]Error:[/] {Markup.Escape(message)}";
+    }
+
+    /// <summary>
+    /// Formats a repository encryption/passphrase failure into a friendly, actionable CLI message
+    /// (the Core message is host-agnostic; this adds the CLI's <c>--passphrase</c> / <c>-p</c> hint).
+    /// </summary>
+    internal static string FormatRepositoryEncryptionError(RepositoryEncryptionException ex)
+    {
+        var hint = ex.PassphraseProvided
+            ? "Check the passphrase, or omit --passphrase / -p if the repository is not encrypted."
+            : "Re-run with the passphrase: --passphrase / -p.";
+
+        return $"[red]Error:[/] {Markup.Escape(ex.Message)} {hint}";
     }
 
     /// <summary>
