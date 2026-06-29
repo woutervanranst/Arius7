@@ -4,6 +4,7 @@ using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Features.SnapshotDiffQuery;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Features.StorageAccountInfoQuery;
@@ -185,6 +186,12 @@ public static class ServiceCollectionExtensions
             new SnapshotsListQueryHandler(
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<SnapshotsListQueryHandler>>()));
+
+        services.AddSingleton<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>(sp =>
+            new SnapshotDiffQueryHandler(
+                sp.GetRequiredService<ISnapshotService>(),
+                sp.GetRequiredService<IFileTreeService>(),
+                sp.GetRequiredService<ILogger<SnapshotDiffQueryHandler>>()));
 
         services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>>(sp =>
             new StatisticsQueryHandler(
