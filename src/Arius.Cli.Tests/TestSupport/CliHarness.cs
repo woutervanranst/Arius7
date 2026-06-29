@@ -4,6 +4,7 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Features.SnapshotDiffQuery;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Features.StorageAccountInfoQuery;
@@ -44,6 +45,7 @@ internal sealed class CliHarness
         // CLI-unused snapshot/stats query handlers must be supplied too (they otherwise need a real
         // ISnapshotService the harness has no reason to wire up).
         var snapshotsHandler = Substitute.For<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
+        var snapshotDiffHandler = Substitute.For<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>();
         var statsHandler = Substitute.For<IQueryHandler<StatisticsQuery, RepositoryStatistics>>();
         var storageInfoHandler = Substitute.For<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
 
@@ -89,6 +91,10 @@ internal sealed class CliHarness
             .Handle(Arg.Any<SnapshotsListQuery>(), Arg.Any<CancellationToken>())
             .Returns(AsyncEnumerable.Empty<SnapshotInfo>());
 
+        snapshotDiffHandler
+            .Handle(Arg.Any<SnapshotDiffQuery>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<SnapshotDiffEntry>());
+
         statsHandler
             .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, 0, [])));
@@ -117,6 +123,7 @@ internal sealed class CliHarness
             services.AddSingleton(listQueryHandler);
             services.AddSingleton(hydrationHandler);
             services.AddSingleton(snapshotsHandler);
+            services.AddSingleton(snapshotDiffHandler);
             services.AddSingleton(statsHandler);
             services.AddSingleton(storageInfoHandler);
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
