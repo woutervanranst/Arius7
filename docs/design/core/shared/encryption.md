@@ -88,6 +88,10 @@ The repo-root `recover-chunk.py` is the canonical worst-case recovery tool and m
 
 The one-time decisions — *why* GCM over CBC, *why* a hand-rolled chunked AEAD instead of a streaming-AEAD library, *why* PBKDF2 at 100k iterations rather than Argon2id, and *why* the blob must be recoverable without Arius — are all recorded in [ADR-0014](../../../decisions/adr-0014-encryption-format-and-recoverability.md) with the alternatives and tradeoffs. In short: GCM adds the authenticated integrity and truncation detection that CBC lacks (critical for blobs sitting untouched on the Azure archive tier for years), the chunked envelope streams in bounded memory using only BCL `AesGcm` with no external crypto dependency, PBKDF2 keeps per-chunk key derivation in the low-millisecond range (Argon2id's ~1 s per chunk is prohibitive), and the documented byte format plus pure-Python recovery script makes the archive outlive the application. Compression codec choice (zstd, gzip legacy) is the separate concern of ADR-0012.
 
+## Hashcache interaction
+
+Under `--fast-hash`, a verified-unchanged file's content hash is served directly from the [hashcache](hashcache.md) and `ComputeHashAsync` is **not called** for that file. The `IEncryptionService.ComputeHashAsync` seam is bypassed for the ctime-match and size+fingerprint-match fast lanes. The passphrase's role in hash derivation (`SHA256(passphrase_bytes ‖ data_bytes)`) is therefore only exercised at full-hash time — on cold-cache misses, first-time files, and changed files. The cached hash was produced by the correct implementation when it was first recorded, so the encryption invariant is preserved.
+
 ## Open seams / future
 
 - **KDF strengthening without a format bump.** The PBKDF2 iteration count is header-encoded and the reader accepts any value in `1 .. 10_000_000`, so a future write path can raise `GcmPbkdf2Iter` and old blobs still decrypt. Argon2id would still require an `ArGCM2` and a recovery-script update.
