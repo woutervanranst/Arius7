@@ -33,7 +33,8 @@ public class SnapshotDiffQueryHandlerTests
             File("new.txt",   ContentHashOf("new"),   s_t1, s_t1),   // added
             File("touch.txt", ContentHashOf("same"),  s_t1, s_t2));  // modified-time only
 
-        var handler = await BuildHandlerAsync("acct-diff-1", "ctr-diff-1", rootA, rootB);
+        await using var fixture = await OpenFixtureAsync("acct-diff-1", "ctr-diff-1", rootA, rootB);
+        var handler = Handler(fixture);
 
         var results = await handler.Handle(new SnapshotDiffQueryType(VersionOf(s_tsA), VersionOf(s_tsB)), CancellationToken.None).ToListAsync();
 
@@ -60,7 +61,8 @@ public class SnapshotDiffQueryHandlerTests
         var blobs = new FakeSeededBlobContainerService();
         await SeedTreeAsync(blobs, subA);
         await SeedTreeAsync(blobs, subB);
-        var handler = await BuildHandlerAsync("acct-diff-2", "ctr-diff-2", rootA, rootB, blobs);
+        await using var fixture = await OpenFixtureAsync("acct-diff-2", "ctr-diff-2", rootA, rootB, blobs);
+        var handler = Handler(fixture);
 
         var results = await handler.Handle(new SnapshotDiffQueryType(VersionOf(s_tsA), VersionOf(s_tsB)), CancellationToken.None).ToListAsync();
 
@@ -77,7 +79,8 @@ public class SnapshotDiffQueryHandlerTests
         var rootA = Entries(Dir("static", sharedHash), File("a.txt", ContentHashOf("a"), s_t1, s_t1));
         var rootB = Entries(Dir("static", sharedHash), File("a.txt", ContentHashOf("a"), s_t1, s_t1));
 
-        var handler = await BuildHandlerAsync("acct-diff-3", "ctr-diff-3", rootA, rootB);
+        await using var fixture = await OpenFixtureAsync("acct-diff-3", "ctr-diff-3", rootA, rootB);
+        var handler = Handler(fixture);
 
         var results = await handler.Handle(new SnapshotDiffQueryType(VersionOf(s_tsA), VersionOf(s_tsB)), CancellationToken.None).ToListAsync();
 
@@ -88,7 +91,8 @@ public class SnapshotDiffQueryHandlerTests
     public async Task Handle_MissingSnapshot_Throws()
     {
         var rootA = Entries(File("x.txt", ContentHashOf("x"), s_t1, s_t1));
-        var handler = await BuildHandlerAsync("acct-diff-4", "ctr-diff-4", rootA, rootA);
+        await using var fixture = await OpenFixtureAsync("acct-diff-4", "ctr-diff-4", rootA, rootA);
+        var handler = Handler(fixture);
 
         await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
@@ -102,7 +106,8 @@ public class SnapshotDiffQueryHandlerTests
         var rootA = Entries(File("x.txt", ContentHashOf("x1"), s_t1, s_t1));
         var rootB = Entries(File("x.txt", ContentHashOf("x2"), s_t1, s_t1));
         var logger = new FakeLogger<SnapshotDiffQueryHandler>();
-        var handler = await BuildHandlerAsync("acct-diff-5", "ctr-diff-5", rootA, rootB, ariusVersionA: "v1", ariusVersionB: "v2", logger: logger);
+        await using var fixture = await OpenFixtureAsync("acct-diff-5", "ctr-diff-5", rootA, rootB, ariusVersionA: "v1", ariusVersionB: "v2");
+        var handler = Handler(fixture, logger);
 
         await handler.Handle(new SnapshotDiffQueryType(VersionOf(s_tsA), VersionOf(s_tsB)), CancellationToken.None).ToListAsync();
 
@@ -128,12 +133,11 @@ public class SnapshotDiffQueryHandlerTests
         Name = PathSegment.Parse(name), FileTreeHash = hash
     };
 
-    private static async Task<SnapshotDiffQueryHandler> BuildHandlerAsync(
+    private static async Task<RepositoryTestFixture> OpenFixtureAsync(
         string account, string container,
         IReadOnlyList<FileTreeEntry> rootA, IReadOnlyList<FileTreeEntry> rootB,
         FakeSeededBlobContainerService? blobs = null,
-        string ariusVersionA = "test", string ariusVersionB = "test",
-        ILogger<SnapshotDiffQueryHandler>? logger = null)
+        string ariusVersionA = "test", string ariusVersionB = "test")
     {
         blobs ??= new FakeSeededBlobContainerService();
         var rootAHash = await SeedTreeAsync(blobs, rootA);
@@ -141,9 +145,11 @@ public class SnapshotDiffQueryHandlerTests
         await SeedSnapshotAsync(blobs, s_tsA, rootAHash, ariusVersionA);
         await SeedSnapshotAsync(blobs, s_tsB, rootBHash, ariusVersionB);
 
-        var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, account, container, IEncryptionService.PlaintextInstance);
-        return new SnapshotDiffQueryHandler(fixture.Snapshot, fixture.FileTreeService, logger ?? NullLogger<SnapshotDiffQueryHandler>.Instance);
+        return await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, account, container, IEncryptionService.PlaintextInstance);
     }
+
+    private static SnapshotDiffQueryHandler Handler(RepositoryTestFixture fixture, ILogger<SnapshotDiffQueryHandler>? logger = null)
+        => new(fixture.Snapshot, fixture.FileTreeService, logger ?? NullLogger<SnapshotDiffQueryHandler>.Instance);
 
     private static async Task<FileTreeHash> SeedTreeAsync(FakeSeededBlobContainerService blobs, IReadOnlyList<FileTreeEntry> entries)
     {
