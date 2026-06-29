@@ -43,7 +43,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 ///    - **6b. Flush chunk index** — `_chunkIndex.FlushAsync`; runs concurrently with 6c (`Task.WhenAll`).
 ///    - **6c. Build file tree** — `FileTreeBuilder.SynchronizeAsync`; runs concurrently with 6b and yields the snapshot root hash.
 ///    - **6d. Create snapshot** (×1) — create + promote a snapshot for the root hash (skipped if unchanged).
-///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (unless `--no-pointers`); runs concurrently with 6f (`Task.WhenAll`).
+///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (binary-present files only when `--write-pointers` or `--remove-local`; legacy pointer upgrades always); runs concurrently with 6f (`Task.WhenAll`).
 ///    - **6f. Remove local** (×N) — delete `pendingDeletes` in parallel (only if `--remove-local`); runs concurrently with 6e. Disjoint paths from 6e (pointer sidecar vs binary).
 ///
 /// ```
@@ -187,29 +187,15 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     {
         var opts = command.CommandOptions;
 
+        // --remove-local implies writing pointers: you cannot remove the binary and leave no local record.
+        var writePointers = opts.WritePointers || opts.RemoveLocal;
+
         // ── Operation start marker (task 3.10) ───────────────────────────────
-        _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} noPointers={NoPointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.NoPointers);
+        _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} writePointers={WritePointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.WritePointers);
 
         // ── Ensure container exists ───────────────────────────────────────────
         _logger.LogInformation("[phase] ensure-container");
         await _blobs.CreateContainerIfNotExistsAsync(cancellationToken);
-
-        // Validate options (task 8.13)
-        if (opts is { RemoveLocal: true, NoPointers: true })
-            return new ArchiveResult
-            {
-                Success               = false,
-                FilesScanned          = 0,
-                EntriesExcluded        = 0,
-                FilesUploaded         = 0,
-                FilesDeduped          = 0,
-                OriginalSize          = 0,
-                IncrementalSize       = 0,
-                IncrementalStoredSize = 0,
-                RootHash              = null,
-                SnapshotTime          = DateTimeOffset.UtcNow,
-                ErrorMessage          = "--remove-local cannot be combined with --no-pointers"
-            };
 
         // ── Shared state ──────────────────────────────────────────────────────
 
@@ -670,7 +656,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     // We (re)write a pointer for every file with a local binary (keeps it fresh), AND for a
                     // pointer-only file whose on-disk pointer is a legacy v5 JSON pointer — upgrading it to the
                     // current format in place. The hash and timestamps are unchanged, so the snapshot stays stable.
-                    if (!opts.NoPointers && (pair.Binary is not null || (pair.Pointer?.IsLegacyFormat ?? false)))
+                    // A pointer-only legacy (v5) file is always upgraded — it is the sole local record, regardless of the flag.
+                    if ((writePointers && pair.Binary is not null) || (pair.Pointer?.IsLegacyFormat ?? false))
                         pendingPointers.Add(new PendingPointerWrite(pair.RelativePath, entry.ContentHash, entry.Created, entry.Modified));
 
                     if (opts.RemoveLocal && pair.Binary is not null)
@@ -738,8 +725,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }
 
             // ── Stage 6e: Write pointer files ×N in parallel (concurrent w/ 6f) ──────────────────
+            // pendingPointers is populated only with items that must be written: binary-present files when
+            // writePointers is on, plus legacy (v5) pointer-only upgrades regardless of the flag. So iterate
+            // it unconditionally — it is empty when there is nothing to write.
             _logger.LogInformation("[phase] write-pointers");
-            var writePointersTask = opts.NoPointers
+            var writePointersTask = pendingPointers.IsEmpty
                 ? Task.CompletedTask
                 : Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {

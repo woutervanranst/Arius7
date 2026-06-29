@@ -26,7 +26,7 @@ internal sealed record AssertConflictBehaviorStep(string Name, WorkflowRestoreTa
             state.Fixture,
             state,
             ExpectedVersion,
-            useNoPointers: !ExpectPointers,
+            useWritePointers: ExpectPointers,
             result,
             preserveConflictBytes: !Overwrite);
     }

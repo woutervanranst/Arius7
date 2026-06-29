@@ -25,7 +25,7 @@ internal static class Helpers
         E2EFixture fixture,
         RepresentativeWorkflowState state,
         SyntheticRepositoryVersion expectedVersion,
-        bool useNoPointers,
+        bool useWritePointers,
         RestoreResult restoreResult,
         bool preserveConflictBytes)
     {
@@ -44,7 +44,7 @@ internal static class Helpers
 
         await SyntheticRepositoryStateAssertions.AssertMatchesDiskTreeAsync(expectedState, fixture.RestoreDirectory, fixture.Encryption, includePointerFiles: false);
 
-        if (!useNoPointers)
+        if (useWritePointers)
         {
             foreach (var relativePath in expectedState.Files.Keys)
                 fixture.RestoreFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue($"Expected pointer file for {relativePath}");

@@ -3,7 +3,7 @@ using Arius.Core.Shared.Snapshot;
 
 namespace Arius.E2E.Tests.Workflows.Steps;
 
-internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.Hot, bool NoPointers = false, bool RemoveLocal = false, bool CaptureNoOpPreCounts = false) : IRepresentativeWorkflowStep
+internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.Hot, bool WritePointers = true, bool RemoveLocal = false, bool CaptureNoOpPreCounts = false) : IRepresentativeWorkflowStep
 {
     public async Task ExecuteAsync(RepresentativeWorkflowState state, CancellationToken cancellationToken)
     {
@@ -20,7 +20,7 @@ internal sealed record ArchiveStep(string Name, BlobTier UploadTier = BlobTier.H
         {
             RootDirectory = state.Fixture.LocalDirectory.ToString(),
             UploadTier    = UploadTier,
-            NoPointers    = NoPointers,
+            WritePointers = WritePointers,
             RemoveLocal   = RemoveLocal,
         };
 

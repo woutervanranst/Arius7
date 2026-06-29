@@ -470,15 +470,20 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
-    public async Task Archive_RemoveLocalAndNoPointers_ReturnsValidationFailure()
+    public async Task Archive_RemoveLocalImpliesPointers_EvenWhenWritePointersOff()
     {
+        // --remove-local + --write-pointers off is no longer rejected: removing the binary implies a
+        // pointer must be written (it becomes the sole local record). The binary is removed and a
+        // .pointer.arius sidecar is left behind.
         await using var fixture = await CreateArchiveFixtureAsync();
-        await WriteRandomFileAsync(fixture, RelativePath.Parse("docs/readme.txt"), 128);
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        await WriteRandomFileAsync(fixture, relativePath, 128);
 
-        var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, noPointers: true);
+        var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, writePointers: false);
 
-        result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldBe("--remove-local cannot be combined with --no-pointers");
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        fixture.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();
+        fixture.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
     }
 
     [Test]
@@ -649,7 +654,7 @@ public class ArchiveRecoveryTests
     private static async Task<ArchiveResult> ArchiveAsync(RepositoryTestFixture fixture,
         BlobTier uploadTier,
         bool removeLocal = false,
-        bool noPointers = false,
+        bool writePointers = true,
         long? smallFileThreshold = null,
         Func<ChunkHash, long, IProgress<long>>? createUploadProgress = null,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
@@ -666,7 +671,7 @@ public class ArchiveRecoveryTests
                 UploadTier = uploadTier,
                 SmallFileThreshold = smallFileThreshold ?? 1024 * 1024,
                 RemoveLocal = removeLocal,
-                NoPointers = noPointers,
+                WritePointers = writePointers,
                 CreateUploadProgress = createUploadProgress,
             }),
             cancellationToken);

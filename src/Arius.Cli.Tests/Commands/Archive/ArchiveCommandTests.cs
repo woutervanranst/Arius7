@@ -20,7 +20,7 @@ public class ArchiveCommandTests
         var cmd = (ArchiveCommand)call.GetArguments()[0]!;
         cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Hot);
         cmd.CommandOptions.RemoveLocal.ShouldBeTrue();
-        cmd.CommandOptions.NoPointers.ShouldBeFalse();
+        cmd.CommandOptions.WritePointers.ShouldBeFalse();
     }
 
     [Test]
@@ -35,17 +35,35 @@ public class ArchiveCommandTests
         var cmd = (ArchiveCommand)call.GetArguments()[0]!;
         cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Archive);
         cmd.CommandOptions.RemoveLocal.ShouldBeFalse();
-        cmd.CommandOptions.NoPointers.ShouldBeFalse();
+        cmd.CommandOptions.WritePointers.ShouldBeFalse();
     }
 
     [Test]
-    public async Task Archive_RemoveLocalPlusNoPointers_ReturnsExitCode1()
+    public async Task Archive_WritePointers_SetsWritePointersTrue()
     {
         var harness = new CliHarness();
-        var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr --remove-local --no-pointers");
+        var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr --write-pointers");
 
-        exitCode.ShouldBe(1);
-        harness.ArchiveHandler.ReceivedCalls().ShouldBeEmpty();
+        exitCode.ShouldBe(0);
+
+        var call = harness.ArchiveHandler.ReceivedCalls().Single();
+        var cmd = (ArchiveCommand)call.GetArguments()[0]!;
+        cmd.CommandOptions.WritePointers.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Archive_RemoveLocal_ParsesAndSucceeds()
+    {
+        // --remove-local no longer conflicts with the pointer flag; it now implies pointers in the handler.
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr --remove-local");
+
+        exitCode.ShouldBe(0);
+
+        var call = harness.ArchiveHandler.ReceivedCalls().Single();
+        var cmd = (ArchiveCommand)call.GetArguments()[0]!;
+        cmd.CommandOptions.RemoveLocal.ShouldBeTrue();
+        cmd.CommandOptions.WritePointers.ShouldBeFalse();
     }
 
     [Test]

@@ -28,7 +28,7 @@ internal static class RepresentativeWorkflowCatalog
                 new ArchiveStep("archive-v2-noop", CaptureNoOpPreCounts: true),
                 new AssertRemoteStateStep("assert-noop-archive", RemoteAssertionKind.NoOpArchive),
 
-                new ArchiveStep("archive-no-pointers", NoPointers: true),
+                new ArchiveStep("archive-no-pointers", WritePointers: false),
                 new RestoreStep("restore-no-pointers", WorkflowRestoreTarget.Latest, SyntheticRepositoryVersion.V2, ExpectPointers: false),
 
                 new ArchiveStep("archive-remove-local", RemoveLocal: true),

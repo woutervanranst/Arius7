@@ -34,8 +34,8 @@ public sealed record ArchiveCommandOptions
     /// <summary>If <c>true</c>, delete local binary files after a successful snapshot.</summary>
     public bool RemoveLocal { get; init; } = false;
 
-    /// <summary>If <c>true</c>, do not create or update <c>.pointer.arius</c> files.</summary>
-    public bool NoPointers { get; init; } = false;
+    /// <summary>If <c>true</c>, write <c>.pointer.arius</c> sidecars for binary-present files. Default off.</summary>
+    public bool WritePointers { get; init; } = false;
 
     /// <summary>If <c>true</c>, skip re-reading a binary whose content the hashcache verifies as unchanged.</summary>
     public bool FastHash { get; init; } = false;
