@@ -76,6 +76,7 @@ public static class CliBuilder
 
         var snapshot = new Command("snapshot", "Inspect snapshots");
         snapshot.Subcommands.Add(SnapshotListVerb.Build(serviceProviderFactory));
+        snapshot.Subcommands.Add(SnapshotDiffVerb.Build(serviceProviderFactory));
         rootCommand.Subcommands.Add(snapshot);
 
         return rootCommand;
