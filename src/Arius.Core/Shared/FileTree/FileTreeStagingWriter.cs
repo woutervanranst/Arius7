@@ -60,20 +60,37 @@ internal sealed class FileTreeStagingWriter : IDisposable
     {
         var currentPath = RelativePath.Root;
 
-        foreach (var segment in filePath.Segments.Take(filePath.Segments.Count() - 1))
+        // Materialize once: RelativePath.Segments re-splits and re-parses the path on every
+        // enumeration, so Take(Segments.Count() - 1) would parse the whole path twice on this hot
+        // staging path. Iterate the segments by index instead, skipping the trailing file segment.
+        var segments = filePath.Segments.ToArray();
+
+        for (var i = 0; i < segments.Length - 1; i++)
         {
+            var segment = segments[i];
             var parentPath = currentPath;
             currentPath = currentPath / segment;
             var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
 
-            // Skip the append (but keep descending) when this directory edge was already emitted.
-            // TryAdd is atomic: exactly one writer wins and writes the edge.
+            // Claim the edge (but keep descending) so concurrent writers don't double-emit it.
+            // TryAdd is atomic: exactly one writer wins the claim and writes the edge.
             if (!_emittedDirectories.TryAdd(directoryId, true))
                 continue;
 
             var nodePath = FileTreePaths.GetStagingNodePath(FileTreePaths.GetStagingDirectoryId(parentPath));
 
-            await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId.ToString(), segment), cancellationToken);
+            try
+            {
+                await AppendLineAsync(nodePath, FileTreeSerializer.SerializePersistedDirectoryEntryLine(directoryId.ToString(), segment), cancellationToken);
+            }
+            catch
+            {
+                // The claim must reflect a committed edge: if the append fails (I/O error or
+                // cancellation), release it so a later writer can re-emit. Otherwise the parent→child
+                // edge is permanently skipped and its subtree orphaned.
+                _emittedDirectories.TryRemove(directoryId, out _);
+                throw;
+            }
         }
     }
 

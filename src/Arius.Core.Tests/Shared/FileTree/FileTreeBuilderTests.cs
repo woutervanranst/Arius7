@@ -323,12 +323,20 @@ public class FileTreeBuilderTests
 
         var syncTask = builder.SynchronizeAsync(stagingSession.StagingRoot);
 
-        // Uploads are gated, so all racing same-hash writers are held in flight simultaneously. With
-        // coalescing, only one writer per hash uploads, so no blob is ever uploaded a second time.
-        (await blobs.WaitForDuplicateFileTreeUploadAsync(TimeSpan.FromSeconds(2))).ShouldBeFalse();
-        blobs.ReleaseUploads();
+        try
+        {
+            // Uploads are gated, so all racing same-hash writers are held in flight simultaneously. With
+            // coalescing, only one writer per hash uploads, so no blob is ever uploaded a second time.
+            (await blobs.WaitForDuplicateFileTreeUploadAsync(TimeSpan.FromSeconds(2))).ShouldBeFalse();
+        }
+        finally
+        {
+            // Release in finally so a failed assertion can't leave the background syncTask gated forever.
+            blobs.ReleaseUploads();
+        }
 
-        var root = await syncTask;
+        // Bound the await so a regression that deadlocks the sync fails fast instead of hanging CI.
+        var root = await syncTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         root.ShouldNotBeNull();
         blobs.UploadCounts.Values.ShouldAllBe(count => count == 1); // each hash uploaded exactly once
