@@ -244,6 +244,8 @@ Shows what changed between two snapshots. Each argument is either an index from 
     arius snapshot diff 5 6                                  -a <account> -c <container>
     arius snapshot diff 2024-04-02T13:09:54 2024-12-30T16:17:32 -a <account> -c <container>
 
+An argument made entirely of digits is always read as a `snapshot list` index, never a version prefix — so to select a whole year, give a prefix that isn't purely numeric (e.g. `2024-`), not a bare `2024`.
+
 Output is git `--name-status`-style — `A` added, `D` removed, `M` modified (content changed), `T` timestamp-only — followed by a summary line. The command is read-only. A warning is logged when the two snapshots were written by different Arius versions, because a cross-platform line-ending change can make identical content appear changed.
 
 ---
