@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Spec:** `docs/superpowers/specs/2026-06-29-snapshot-list-and-diff-design.md`.
+- **Spec:** `docs/history/superpowers/2026-06-29-snapshot-list-and-diff-design.md`.
 - **`AddMediator()` is never called in `AddArius`** — only in the outermost assembly (CLI/Api/test). Register per-repository handlers as explicit singleton factories in `src/Arius.Core/ServiceCollectionExtensions.cs`.
 - **Code style:** `internal` by default; one top-level type per file; prefer local methods over private statics for single-method helpers. Match surrounding style.
 - **Typed hashes stay distinct** (`ContentHash`/`ChunkHash`/`FileTreeHash`) — no collapsing, no implicit conversions. Compare hashes as typed values; stringify only at boundaries.
@@ -1232,7 +1232,9 @@ In `docs/design/core/features/queries.md`:
 1. In the `> **Code:**` header line, change `SnapshotsQuery` to `SnapshotsListQuery` and add `SnapshotDiffQuery` to the path list.
 2. Rename the `### SnapshotsQuery` section to `### SnapshotsListQuery` and update its body so it reads as a stream query. Replace its first sentence with:
 
-> `SnapshotsListQuery()` is an `IStreamQuery<SnapshotInfo>` streaming `SnapshotInfo(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker, the CLI `snapshot list`, and `arius snapshot diff` argument resolution. It streams (one blob per snapshot, resolved oldest→newest) so callers render rows as each manifest resolves. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped.
+```markdown
+`SnapshotsListQuery()` is an `IStreamQuery<SnapshotInfo>` streaming `SnapshotInfo(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker, the CLI `snapshot list`, and `arius snapshot diff` argument resolution. It streams (one blob per snapshot, resolved oldest→newest) so callers render rows as each manifest resolves. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped.
+```
 
 3. Add a new section after it:
 
@@ -1288,7 +1290,7 @@ Run:
 ```bash
 gh issue create \
   --title "snapshot diff: chunk-index-backed repo-wide 'new bytes' summary" \
-  --body "Follow-up to the snapshot diff command (spec: docs/superpowers/specs/2026-06-29-snapshot-list-and-diff-design.md).
+  --body "Follow-up to the snapshot diff command (spec: docs/history/superpowers/2026-06-29-snapshot-list-and-diff-design.md).
 
 The v1 \`arius snapshot diff\` is purely structural (Added/Removed/Modified/TimestampChanged from the filetree, zero storage reads). 'Net-new content' was deliberately dropped because, under Merkle pruning, snapshot A's unchanged subtrees are never walked — so 'content absent from A' is not soundly computable. The chunk index answers the different, weaker question 'absent from the whole repository, ever'.
 
