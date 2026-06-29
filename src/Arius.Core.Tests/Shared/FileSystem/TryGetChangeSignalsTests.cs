@@ -31,6 +31,7 @@ public class TryGetChangeSignalsTests
         Thread.Sleep(20);
         fs.WriteAllBytes(path, [4, 5, 6, 7]);
         var after = fs.TryGetChangeSignals(path);
+        after.ShouldNotBeNull();
         after!.Value.CtimeTicks.ShouldBeGreaterThan(before.Value.CtimeTicks);
     }
 

@@ -339,7 +339,10 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     /// unsupported filesystems or any failure — in which case fast-hash uses the sparse-fingerprint floor.
     /// </summary>
     public FileChangeSignals? TryGetChangeSignals(RelativePath path)
-        => NativeFileSignals.TryGet(root.Resolve(path));
+    {
+        try { return NativeFileSignals.TryGet(root.Resolve(path)); }
+        catch { return null; }
+    }
 
     /// <summary>
     /// Sets creation and last-write timestamps for a file within the rooted directory.
