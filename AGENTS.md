@@ -102,7 +102,6 @@ Specialist agents
 
 ## Way of Working
 
-- Arius is pre-release with no production repositories: breaking changes to persisted formats (shard line format, SQLite cache schema, blob layout) are acceptable without migrations or legacy parsing — confirm first, then prefer the clean break.
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
 - Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the relevant tests:
