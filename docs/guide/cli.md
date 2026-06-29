@@ -12,10 +12,12 @@ worked example for each.
 ## At a glance
 
 ```
-arius archive      <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
-arius restore      <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
-arius ls           [path] -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
-arius repair-index        -a <account> -c <container> [-k <key>] [-p <passphrase>]
+arius archive         <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
+arius restore         <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
+arius ls              [path] -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
+arius snapshot list          -a <account> -c <container> [-k <key>] [-p <passphrase>]
+arius snapshot diff <from> <to> -a <account> -c <container> [-k <key>] [-p <passphrase>]
+arius repair-index            -a <account> -c <container> [-k <key>] [-p <passphrase>]
 arius update
 ```
 
@@ -230,6 +232,27 @@ arius ls ./photos \
   --prefix 2024/ \
   -f invoice
 ```
+
+---
+
+## Inspecting snapshots
+
+### `arius snapshot list`
+
+Lists every snapshot, oldest first, with a 1-based index, the version id, creation time, and file count:
+
+    arius snapshot list -a <account> -c <container>
+
+The index is a convenience for `snapshot diff` — index 1 is the oldest snapshot, the highest index the latest.
+
+### `arius snapshot diff <from> <to>`
+
+Shows what changed between two snapshots. Each argument is either an index from `snapshot list` or a version/timestamp prefix:
+
+    arius snapshot diff 5 6                                  -a <account> -c <container>
+    arius snapshot diff 2024-04-02T13:09:54 2024-12-30T16:17:32 -a <account> -c <container>
+
+Output is git `--name-status`-style — `A` added, `D` removed, `M` modified (content changed), `T` timestamp-only — followed by a summary line. The command is read-only. A warning is logged when the two snapshots were written by different Arius versions, because a cross-platform line-ending change can make identical content appear changed.
 
 ---
 
