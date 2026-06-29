@@ -39,7 +39,9 @@ none of them — it talks only to GitHub.)
 ¹ `--account` may be omitted on the command line if you set the `ARIUS_ACCOUNT` environment
 variable instead. One of the two must be present.
 ² The passphrase is not stored anywhere. It must be supplied (and identical) on every command
-that touches an encrypted repository — there is no way to recover data if it is lost.
+that touches an encrypted repository — there is no way to recover data if it is lost. If it is
+missing or wrong, the command stops with a clear error telling you to provide `--passphrase` / `-p`,
+rather than a cryptic decompression failure.
 
 **Logging — `ARIUS_LOG_LEVEL`.** A single environment variable controls log verbosity across every
 Arius host (CLI, API/Web, Explorer), using Serilog's level names (case-insensitive): `Verbose`,
