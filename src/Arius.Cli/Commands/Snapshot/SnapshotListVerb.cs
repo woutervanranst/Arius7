@@ -47,6 +47,7 @@ internal static class SnapshotListVerb
                 catch (PreflightException ex)
                 {
                     AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+                    Log.Error(ex, "Preflight check failed");
                     return 1;
                 }
 
@@ -62,6 +63,7 @@ internal static class SnapshotListVerb
                 }
 
                 AnsiConsole.MarkupLine(index == 0 ? "[dim]No snapshots found.[/]" : $"[dim]{index} snapshot(s)[/]");
+                Log.Information("snapshot list completed: {Count} snapshot(s)", index);
                 return 0;
             }
             finally
