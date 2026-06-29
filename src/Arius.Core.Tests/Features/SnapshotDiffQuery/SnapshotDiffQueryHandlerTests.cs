@@ -71,6 +71,30 @@ public class SnapshotDiffQueryHandlerTests
     }
 
     [Test]
+    public async Task Handle_FileReplacedByDirectory_RemovesFileAndAddsDirectoryContents()
+    {
+        // `foo` is a FILE in A but a DIRECTORY (with one file) in B. The diff is leaf-based, so this
+        // surfaces as the file `foo` Removed plus the new leaf `foo/inner.txt` Added — directories are
+        // not emitted as entries, and `foo` vs `foo/inner.txt` are distinct paths, so it stays MECE.
+        var subB     = Entries(File("inner.txt", ContentHashOf("inner"), s_t1, s_t1));
+        var subBHash = FileTreeBuilder.ComputeHash(subB, IEncryptionService.PlaintextInstance);
+
+        var rootA = Entries(File("foo", ContentHashOf("foo-as-file"), s_t1, s_t1));
+        var rootB = Entries(Dir("foo", subBHash));
+
+        var blobs = new FakeSeededBlobContainerService();
+        await SeedTreeAsync(blobs, subB);
+        await using var fixture = await OpenFixtureAsync("acct-diff-6", "ctr-diff-6", rootA, rootB, blobs);
+        var handler = Handler(fixture);
+
+        var results = await handler.Handle(new SnapshotDiffQueryType(VersionOf(s_tsA), VersionOf(s_tsB)), CancellationToken.None).ToListAsync();
+
+        Single(results, ChangeType.Removed).Path.ToString().ShouldBe("foo");
+        Single(results, ChangeType.Added).Path.ToString().ShouldBe("foo/inner.txt");
+        results.Count.ShouldBe(2);
+    }
+
+    [Test]
     public async Task Handle_IdenticalSubtree_IsPrunedAndNotRead()
     {
         // Both sides reference the SAME directory hash that is deliberately NOT seeded as a blob.
