@@ -55,11 +55,13 @@ internal static class SnapshotListVerb
                 var mediator = services.GetRequiredService<IMediator>();
 
                 var index = 0;
-                AnsiConsole.MarkupLine($"[bold]{"#",4}  {"Version",-24}  {"Created",-19}  Files[/]");
+                AnsiConsole.MarkupLine($"[bold]{"#",4}  {"Version",-24}  {"Created (UTC)",-19}  Files[/]");
                 await foreach (var snapshot in mediator.CreateStream(new SnapshotsListQuery(), ct))
                 {
                     index++;
-                    var created = snapshot.Timestamp.ToString("yyyy-MM-dd HH:mm:ss");
+                    // UTC, consistent with the Version column and `snapshot diff` / `ls` timestamps —
+                    // a local-time "Created" next to a UTC Version would appear to disagree.
+                    var created = snapshot.Timestamp.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss");
                     AnsiConsole.MarkupLine($"{index,4}  {Markup.Escape(snapshot.Version),-24}  {created,-19}  {snapshot.FileCount}");
                 }
 
