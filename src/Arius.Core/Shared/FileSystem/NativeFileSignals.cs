@@ -2,7 +2,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using Arius.Core.Shared.HashCache;
-using Mono.Unix.Native;
 
 namespace Arius.Core.Shared.FileSystem;
 
@@ -11,7 +10,13 @@ namespace Arius.Core.Shared.FileSystem;
 /// (SMB/CIFS/NFS) and anywhere the signals can't be trusted, so the caller falls back to the
 /// sparse-fingerprint floor. See the spec's "Platform signal mapping".
 /// </summary>
-internal static class NativeFileSignals
+/// <remarks>
+/// The POSIX path uses hand-rolled <see cref="LibraryImportAttribute"/> interop against libc instead of
+/// a third-party wrapper. Native struct layouts are reproduced with explicit field offsets — a wrong
+/// offset would yield a silently-wrong signal, so only the fields actually read are mapped, and the
+/// architecture-specific layouts are guarded by <see cref="RuntimeInformation.ProcessArchitecture"/>.
+/// </remarks>
+internal static partial class NativeFileSignals
 {
     public static FileChangeSignals? TryGet(string fullPath)
     {
@@ -19,8 +24,10 @@ internal static class NativeFileSignals
         {
             if (OperatingSystem.IsWindows())
                 return TryGetWindows(fullPath);
-            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-                return TryGetPosix(fullPath);
+            if (OperatingSystem.IsLinux())
+                return TryGetLinux(fullPath);
+            if (OperatingSystem.IsMacOS())
+                return TryGetMacOs(fullPath);
             return null;
         }
         catch
@@ -29,45 +36,205 @@ internal static class NativeFileSignals
         }
     }
 
-    // ---- POSIX (Linux/macOS) via Mono.Posix ---------------------------------
+    // =====================================================================================
+    // Linux: statx (kernel-stable layout) with a stat fallback for kernels < 4.11.
+    // =====================================================================================
 
-    private static FileChangeSignals? TryGetPosix(string fullPath)
+    private static FileChangeSignals? TryGetLinux(string fullPath)
     {
-        if (IsPosixNetworkFs(fullPath))
+        if (IsLinuxNetworkFs(fullPath))
             return null;
 
-        if (Syscall.stat(fullPath, out var st) != 0)
-            return null;
+        return TryGetViaStatx(fullPath) ?? TryGetViaStat(fullPath);
+    }
 
-        // st_ctime is whole seconds; add nanoseconds when the platform exposes them.
-        var ctimeTicks = DateTimeOffset.FromUnixTimeSeconds(st.st_ctime).UtcTicks
-                         + st.st_ctime_nsec / 100; // 100 ns per tick
+    /// <summary>
+    /// Captures signals via <c>statx</c>. The <c>struct statx</c> layout is architecture-stable
+    /// (identical on x86_64 / arm64), so this is preferred over <c>stat</c>. Returns <c>null</c>
+    /// when <c>statx</c> is unavailable (ENOSYS on kernel &lt; 4.11) or fails for any other reason,
+    /// in which case the caller falls back to <see cref="TryGetViaStat"/>.
+    /// </summary>
+    private static FileChangeSignals? TryGetViaStatx(string fullPath)
+    {
+        var buf = default(StatxBuf);
+        var rc  = statx(AT_FDCWD, fullPath, 0, STATX_BASIC_STATS, ref buf);
+        if (rc != 0)
+            return null; // ENOSYS (kernel < 4.11) or any other error → fall back to stat
+
+        var ctimeTicks = ToUtcTicks(buf.CtimeSeconds, buf.CtimeNanos);
         return new FileChangeSignals(
             CtimeTicks: ctimeTicks,
-            Inode:      st.st_ino.ToString(),
-            Dev:        st.st_dev.ToString(),
+            Inode:      buf.Ino.ToString(),
+            Dev:        $"{buf.DevMajor}:{buf.DevMinor}",
             SignalSet:  SignalSets.Posix);
     }
 
     /// <summary>
-    /// Best-effort network-filesystem detection for the POSIX path. Returns <c>true</c> when the path
-    /// can't be trusted as a local filesystem (so the caller falls back to the sparse-fingerprint floor).
+    /// Captures signals via the classic <c>stat</c> syscall, used as the fallback when <c>statx</c>
+    /// is unavailable (Synology DS918+ runs a 4.4 kernel). The <c>struct stat</c> layout is
+    /// architecture-specific; only the x86_64 layout is implemented, so this returns <c>null</c> on
+    /// any other architecture rather than risk reading a wrong layout.
     /// </summary>
-    /// <remarks>
-    /// The intended check is Linux <c>statfs.f_type</c> against the SMB/CIFS/NFS magic numbers, but the
-    /// installed <c>Mono.Posix.NETStandard</c> 1.0.0 exposes neither <c>Syscall.statfs</c> nor a
-    /// <c>Statfs.f_type</c> field — only the POSIX <c>statvfs</c>, whose <c>Statvfs</c> struct carries no
-    /// filesystem-type magic. With no portable way to <i>classify</i> the filesystem, this can only verify
-    /// the path is statvfs-reachable: a path we can't <c>statvfs</c> is not trusted. The documented stance
-    /// is that network filesystems are not a fast-hash target, and the Windows path still rejects
-    /// <c>DRIVE_REMOTE</c>. A network mount that <i>is</i> reachable is therefore treated as local here,
-    /// which is still safe — the verdict ladder only uses signals when (dev, inode, ctime) are unchanged,
-    /// and any divergence falls back to the always-correct sparse-fingerprint floor.
-    /// </remarks>
-    private static bool IsPosixNetworkFs(string fullPath)
-        => Syscall.statvfs(fullPath, out _) != 0;
+    private static FileChangeSignals? TryGetViaStat(string fullPath)
+    {
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            return null; // only the x86_64 struct stat layout is implemented
 
-    // ---- Windows via GetFileInformationByHandleEx ---------------------------
+        var buf = default(LinuxStatBuf);
+        if (stat(fullPath, ref buf) != 0)
+            return null;
+
+        var ctimeTicks = ToUtcTicks(buf.CtimeSeconds, buf.CtimeNanos);
+        return new FileChangeSignals(
+            CtimeTicks: ctimeTicks,
+            Inode:      buf.Ino.ToString(),
+            Dev:        DecodeLinuxDev(buf.Dev), // matches the statx "major:minor" format
+            SignalSet:  SignalSets.Posix);
+    }
+
+    /// <summary>
+    /// Decodes a glibc raw <c>dev_t</c> to the <c>"major:minor"</c> string so a <c>stat</c>-sourced
+    /// dev compares equal to a <c>statx</c>-sourced dev for the same file on the same machine.
+    /// Uses the glibc <c>gnu_dev_major</c>/<c>gnu_dev_minor</c> bit layout.
+    /// </summary>
+    private static string DecodeLinuxDev(ulong dev)
+    {
+        var major = (uint)(((dev >> 8) & 0xfff) | ((dev >> 32) & ~0xfffUL));
+        var minor = (uint)((dev & 0xff) | ((dev >> 12) & ~0xffUL));
+        return $"{major}:{minor}";
+    }
+
+    /// <summary>
+    /// Best-effort network-filesystem detection via <c>statfs</c>. Returns <c>true</c> only when the
+    /// filesystem magic identifies SMB/CIFS/NFS. If <c>statfs</c> fails we trust the path as local
+    /// (safe: the hashcache is local and the verdict ladder re-validates), and it never throws.
+    /// </summary>
+    private static bool IsLinuxNetworkFs(string fullPath)
+    {
+        try
+        {
+            var buf = default(StatfsBuf);
+            if (statfs(fullPath, ref buf) != 0)
+                return false; // can't classify → trust as local (safe)
+
+            return buf.Type is CIFS_MAGIC or SMB2_MAGIC or NFS_MAGIC;
+        }
+        catch
+        {
+            return false; // best-effort only; never fault on network detection
+        }
+    }
+
+    // ---- Linux libc imports -------------------------------------------------
+
+    private const int  AT_FDCWD          = -100;       // operate relative to the current working dir
+    private const uint STATX_BASIC_STATS = 0x000007ffu; // request the basic stat fields
+
+    private const long CIFS_MAGIC = 0xFF534D42L; // CIFS
+    private const long SMB2_MAGIC = unchecked((long)0xFE534D42UL); // SMB2 / SMB3
+    private const long NFS_MAGIC  = 0x6969L;     // NFS
+
+    [LibraryImport("libc", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int statx(int dirfd, string pathname, int flags, uint mask, ref StatxBuf buf);
+
+    [LibraryImport("libc", EntryPoint = "stat", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int stat(string pathname, ref LinuxStatBuf buf);
+
+    [LibraryImport("libc", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int statfs(string path, ref StatfsBuf buf);
+
+    /// <summary>
+    /// Subset of <c>struct statx</c> (256 bytes, architecture-stable). Only the fields read here are
+    /// mapped at their documented byte offsets.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 256)]
+    private struct StatxBuf
+    {
+        [FieldOffset(32)]  public ulong Ino;          // stx_ino
+        [FieldOffset(96)]  public long  CtimeSeconds; // stx_ctime.tv_sec
+        [FieldOffset(104)] public uint  CtimeNanos;   // stx_ctime.tv_nsec
+        [FieldOffset(136)] public uint  DevMajor;     // stx_dev_major
+        [FieldOffset(140)] public uint  DevMinor;     // stx_dev_minor
+    }
+
+    /// <summary>
+    /// Subset of the x86_64 glibc <c>struct stat</c> (144 bytes). Only the fields read here are
+    /// mapped at their x86_64 byte offsets — guarded to x64 by the caller.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 144)]
+    private struct LinuxStatBuf
+    {
+        [FieldOffset(0)]   public ulong Dev;          // st_dev
+        [FieldOffset(8)]   public ulong Ino;          // st_ino
+        [FieldOffset(104)] public long  CtimeSeconds; // st_ctim.tv_sec
+        [FieldOffset(112)] public long  CtimeNanos;   // st_ctim.tv_nsec
+    }
+
+    /// <summary>
+    /// Subset of the x86_64 glibc <c>struct statfs</c>. <c>f_type</c> is the first field (8 bytes on
+    /// x86_64). A generous <c>Size</c> keeps the marshaller from reading past the buffer.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 120)]
+    private struct StatfsBuf
+    {
+        [FieldOffset(0)] public long Type; // f_type
+    }
+
+    // =====================================================================================
+    // macOS (Darwin): stat with the 64-bit-inode struct (the default symbol on modern macOS).
+    // =====================================================================================
+
+    private static FileChangeSignals? TryGetMacOs(string fullPath)
+    {
+        // The target volume is local; macOS network detection is intentionally skipped.
+        var buf = default(DarwinStatBuf);
+        if (darwin_stat(fullPath, ref buf) != 0)
+            return null;
+
+        var ctimeTicks = ToUtcTicks(buf.CtimeSeconds, buf.CtimeNanos);
+        return new FileChangeSignals(
+            CtimeTicks: ctimeTicks,
+            Inode:      buf.Ino.ToString(),
+            Dev:        buf.Dev.ToString(),
+            SignalSet:  SignalSets.Posix);
+    }
+
+    [LibraryImport("libc", EntryPoint = "stat", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int darwin_stat(string pathname, ref DarwinStatBuf buf);
+
+    /// <summary>
+    /// Subset of the Darwin (arm64/x64) 64-bit-inode <c>struct stat</c>. Only the fields read here are
+    /// mapped at their byte offsets; <c>Size</c> is generous to cover the full struct.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 144)]
+    private struct DarwinStatBuf
+    {
+        [FieldOffset(0)]  public int   Dev;          // st_dev (dev_t = int32)
+        [FieldOffset(8)]  public ulong Ino;          // st_ino (64-bit)
+        [FieldOffset(64)] public long  CtimeSeconds; // st_ctimespec.tv_sec
+        [FieldOffset(72)] public long  CtimeNanos;   // st_ctimespec.tv_nsec
+    }
+
+    // =====================================================================================
+    // Shared helpers.
+    // =====================================================================================
+
+    /// <summary>Converts a POSIX (seconds, nanoseconds) ctime to UTC ticks (1 tick = 100 ns).</summary>
+    private static long ToUtcTicks(long tvSec, long tvNsec)
+        => DateTimeOffset.FromUnixTimeSeconds(tvSec).UtcTicks + tvNsec / 100;
+
+    // =====================================================================================
+    // Internal test seams: force a specific Linux capture path so the x86_64 stat-fallback
+    // layout can be cross-validated against the kernel-stable statx layout on a modern kernel.
+    // =====================================================================================
+
+    internal static FileChangeSignals? TryGetViaStatxForTest(string fullPath) => TryGetViaStatx(fullPath);
+
+    internal static FileChangeSignals? TryGetViaStatForTest(string fullPath) => TryGetViaStat(fullPath);
+
+    // =====================================================================================
+    // Windows via GetFileInformationByHandleEx (unchanged — no Mono dependency).
+    // =====================================================================================
 
     private static FileChangeSignals? TryGetWindows(string fullPath)
     {
