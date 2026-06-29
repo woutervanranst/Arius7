@@ -59,7 +59,7 @@ internal static class SnapshotListVerb
                 await foreach (var snapshot in mediator.CreateStream(new SnapshotsListQuery(), ct))
                 {
                     index++;
-                    var created = snapshot.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+                    var created = snapshot.Timestamp.ToString("yyyy-MM-dd HH:mm:ss");
                     AnsiConsole.MarkupLine($"{index,4}  {Markup.Escape(snapshot.Version),-24}  {created,-19}  {snapshot.FileCount}");
                 }
 
