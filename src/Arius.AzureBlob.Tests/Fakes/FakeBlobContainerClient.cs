@@ -99,5 +99,38 @@ public sealed class FakeBlobContainerClient(FakeContainer container) : BlobConta
         return AsyncPageable<BlobItem>.FromPages([Page<BlobItem>.FromValues(items, continuationToken: null, FakeResponse.Instance)]);
     }
 
+    public override Task<Response<BlobContainerProperties>> GetPropertiesAsync(
+        BlobRequestConditions conditions = null!,
+        CancellationToken cancellationToken = default)
+    {
+        if (!container.Exists)
+        {
+            throw new RequestFailedException(404, "Container not found");
+        }
+
+        return Task.FromResult(Response.FromValue(
+            BlobsModelFactory.BlobContainerProperties(
+                lastModified: DateTimeOffset.UtcNow,
+                eTag: container.MetadataEtag,
+                metadata: new Dictionary<string, string>(container.Metadata)),
+            FakeResponse.Instance));
+    }
+
+    public override Task<Response<BlobContainerInfo>> SetMetadataAsync(
+        IDictionary<string, string> metadata,
+        BlobRequestConditions conditions = null!,
+        CancellationToken cancellationToken = default)
+    {
+        container.Metadata.Clear();
+        foreach (var (key, value) in metadata)
+        {
+            container.Metadata[key] = value;
+        }
+
+        return Task.FromResult(Response.FromValue(
+            BlobsModelFactory.BlobContainerInfo(new ETag("\"etag-metadata\""), DateTimeOffset.UtcNow),
+            FakeResponse.Instance));
+    }
+
     public override BlobClient GetBlobClient(string blobName) => new FakeBlobClient(container, blobName);
 }

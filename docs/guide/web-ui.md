@@ -23,8 +23,8 @@ A narrow icon rail on the left switches between the four top-level areas:
 
 | Rail item | What it is |
 |---|---|
-| **Overview** | KPI cards and the table of all repositories under management. Your home screen. |
-| **Repos** | The repositories list — same data, plus the **Add existing** / **New repository** wizards. |
+| **Overview** | KPI cards, a **Storage accounts** table, and the **Repositories** table — whose header carries the **Add existing** / **New repository** buttons. Your home screen. |
+| **Repos** | The repositories list — same data. |
 | **Jobs** | Every archive/restore run (one-off and scheduled) with a live output console. |
 | **Settings** | Placeholder for now. |
 
@@ -35,8 +35,9 @@ The top bar shows a breadcrumb and — on every screen except Overview — a glo
 
 ## First run — add a repository
 
-Open the app, go to **Overview** (or **Repos**), and choose one of the two buttons. Both are
-two-step wizards; the difference is whether the container already exists.
+Open the app, go to **Overview** (or **Repos**), and choose one of the two buttons in the
+**Repositories** card header. Both are two-step wizards; the difference is whether the container
+already exists.
 
 - **Add existing** — point at a container that already holds an Arius archive. Arius reads the
   existing manifest and snapshots; **no files are uploaded**.
@@ -51,6 +52,10 @@ repositories use it), or **Add new account** and enter:
 - **Account key** — the account key. It's stored encrypted server-side (Data-Protection) and is
   never sent back to the browser.
 
+Mandatory fields are marked with a red asterisk. (There is no region to pick here — the region used
+for cost estimates is read from the container's own metadata; see
+[Managing storage accounts](#managing-storage-accounts).)
+
 In the **Add existing** wizard, the button is **Connect & discover**: Arius connects with that
 account and *live-streams* the container names it finds. The **New repository** wizard uses
 **Continue** (it doesn't need to list containers — it's making a new one).
@@ -60,28 +65,52 @@ account and *live-streams* the container names it finds. The **New repository** 
 You'll see the discovered containers as a radio list. Select the one holding your archive, then fill
 in:
 
-- **Friendly alias** *(required)* — the display name used throughout the UI.
+- **Friendly alias** *(optional)* — the display name used throughout the UI; leave it blank to
+  default to the container name.
 - **Passphrase** — the repository passphrase (needed to read/write encrypted chunks).
 - **Local path** *(optional)* — a folder on the **server** that the Files view overlays against the
   archive (and the default source folder for archive runs). It must resolve on the machine running
-  Arius.Api — in Docker that means a folder you've mounted into the container. See
+  Arius.Api — in Docker that means a folder you've mounted into the container. Click the **[…]**
+  button to browse the folders the server can see, or type the path. See
   [deployment](./deployment.md) for how the mounts work.
 
 Click **Add repository** — you land on the repository's Files view.
 
 ### Step 2b — New repository: create the container
 
-- **Friendly alias** — as you type, a **container name** is auto-generated (`arius-<slug>-<hex>`,
-  read-only). One container per repository.
-- **Local path** *(optional)* — same meaning as above.
+- **Container name** *(required)* — the blob container to create, typed by you (e.g.
+  `arius-photos`). One container per repository. It's the first field you fill.
+- **Friendly alias** *(optional)* — display name; defaults to the container name when left blank.
+- **Local path** *(optional)* — same meaning as above, with the same **[…]** server-folder browser.
 - **Default tier** — `Hot`, `Cool`, `Cold`, or `Archive`. This is the tier preselected for archive
   runs; you can still override per run. `Archive` is the cheapest to store and the slowest/most
   expensive to read back (it requires rehydration — see below).
 - **Passphrase** + **Confirm passphrase** — must match. The form won't enable **Create repository**
-  until the alias, passphrase, and confirmation are all filled and matching. A warning reminds you
-  the passphrase cannot be recovered.
+  until the container name, passphrase, and confirmation are all filled and matching. Mandatory
+  fields are marked with a red asterisk, and a warning reminds you the passphrase cannot be recovered.
 
 Click **Create repository** to land on its Files view.
+
+---
+
+## Managing storage accounts
+
+The **Overview** lists every storage account under management in its own table — its name and how
+many repositories use it. Click an account row to open its **edit flyout** (a right-hand drawer):
+
+- **Account key** — paste a new key to rotate it (stored encrypted; leave blank to keep the current
+  one). The key belongs to the *account*, so this is the one place to change it — it is no longer on
+  a repository's Properties.
+- **Delete account** *(danger zone)* — removes an account that has **no** repositories.
+
+New accounts are added from the **Add new account** step of either wizard (above).
+
+> **Where does the pricing region come from?** Cost estimates are priced for an Azure **region**, but
+> Arius reads that region from each **container's own metadata** — it is not chosen in the UI. Set the
+> container's `region` metadata (e.g. `westeurope`) in **Azure Storage Explorer** for an accurate
+> estimate; if it is unset, Arius prices against a default region (`northeurope`). The region is used
+> only to pick rates; the resolved region is shown (read-only) in the repository list, flagged
+> `(default)` when the container's metadata is unset.
 
 ---
 
@@ -132,22 +161,28 @@ Five KPI cards in one row, in two scoped sections. **This snapshot** (follows th
 shows **Files** and **Original size** — the logical, uncompressed size of the selected snapshot,
 what you would restore. **Repository storage · across all snapshots** shows **Deduplicated size**
 (unique data before compression), **Stored size** (the actual cloud footprint after dedup +
-compression), and **Unique chunks**. A **Stored size by tier** breakdown bar follows.
+compression), and **Unique chunks**. Below the cards, a **Stored size by tier** breakdown shows each
+tier's share as a 100%-stacked bar and, per tier, its stored size, chunk count, and **estimated
+monthly cost**, with a grand-total monthly cost — priced for the repository's region (read from the
+container's metadata; see [Managing storage accounts](#managing-storage-accounts)).
 
-The two snapshot cards load immediately; the three repository-storage cards are **calculated across
-all snapshots** and load separately. The result is cached serverside per snapshot.
+The two snapshot cards load immediately; the three repository-storage cards (and the cost breakdown)
+are **calculated across all snapshots** and load separately. The result is cached serverside per
+snapshot.
 
 ### Properties
 
 **Properties** is a right-hand drawer, opened from the button in the repository header.
 
-- **Friendly alias** and **Local folder** — editable; **Save changes** persists them.
-- **Storage account** and **Container** — read-only.
-- **Account key** — type a new value to rotate it (stored encrypted; left blank means unchanged).
-- **Encryption passphrase** — type a new passphrase to rotate it; a **Confirm passphrase** field
-  appears and must match before **Save changes** is enabled. Leaving it blank keeps the current one.
-  Note that existing snapshots stay readable with the passphrase they were written with — rotating
-  affects future writes, it does not re-encrypt the archive.
+- **Friendly alias** and **Local folder** — editable (the local folder has a **[…]** server-folder
+  browser); **Save changes** persists them.
+- **Storage account** and **Container** — read-only. The account **key** belongs to the *account*,
+  not the repository — rotate it from the account's flyout on the Overview (see
+  [Managing storage accounts](#managing-storage-accounts)).
+- **Passphrase** — type a new passphrase to rotate it; a **Confirm passphrase** field appears and
+  must match before **Save changes** is enabled. Leaving it blank keeps the current one. Note that
+  existing snapshots stay readable with the passphrase they were written with — rotating affects
+  future writes, it does not re-encrypt the archive.
 - **Scheduled archives** — add a cron expression (e.g. `0 2 * * *`, interpreted in **UTC**) to fire
   archive runs automatically. Existing schedules show their next run time and a trash button to
   delete them.
@@ -191,21 +226,26 @@ options:
 
 Click **Start restore**.
 
-### The rehydration cost confirmation
+### The restore cost confirmation
 
-Chunks in the **Archive** tier are offline and must be *rehydrated* before they can be downloaded —
-this takes hours and costs money. If your restore touches any archive-tier chunks, Arius pauses
-**before downloading anything** and shows a cost-approval modal:
+Restoring can cost money: reading from the **Cool** or **Cold** tiers incurs a per-GB data-retrieval
+charge, **Archive** chunks must be *rehydrated* first (this takes hours and is pricier), and
+downloading data out of Azure incurs egress. Whenever a restore has a non-zero estimated cost, Arius
+pauses **before downloading anything** and shows a cost-approval modal. The estimate includes data
+retrieval, operations, and internet egress (under Azure pricing the first 100 GiB/month of egress is
+free), priced for the repository's region (read from the container's metadata).
 
-- **Ready now** — chunks already online.
-- **Rehydrate** — how many chunks must be rehydrated, and the total size from archive.
-- **Rehydration priority** — choose **Standard** (~15 h, cheaper) or **High** (~1 h, pricier). Each
-  shows its estimated cost.
+The modal adapts to what's being restored:
 
-Click **Approve & restore** to start rehydration with your chosen priority, or **Decline** to
-cancel. Closing the drawer (or losing the connection — e.g. closing the tab) while the modal is up
-also declines and cancels the restore. Restores that touch only online chunks skip this modal
-entirely.
+- **Archive restore** — shows how many chunks must be rehydrated and the size from archive, and asks
+  you to choose a **rehydration priority**: **Standard** (~15 h, cheaper) or **High** (~1 h,
+  pricier), each with its estimated total.
+- **Online restore** (Hot/Cool/Cold only) — no rehydration; shows the chunk count, download size,
+  and a single estimated total.
+
+Click **Approve & restore** to proceed, or **Decline** to cancel. Closing the drawer (or losing the
+connection — e.g. closing the tab) while the modal is up also declines and cancels the restore. A
+genuinely free restore skips the modal entirely.
 
 ---
 

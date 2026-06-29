@@ -4,6 +4,7 @@ using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Fakes;
 using Arius.Tests.Shared.Fixtures;
 using Microsoft.Extensions.Logging.Abstractions;
 using StatisticsQueryType = Arius.Core.Features.StatisticsQuery.StatisticsQuery;
@@ -12,6 +13,9 @@ namespace Arius.Core.Tests.Features.StatisticsQuery;
 
 public class StatisticsQueryHandlerTests
 {
+    // Deterministic cost estimator — this is a Core unit test, independent of any provider's real rates.
+    private static readonly FakeStorageCostEstimator _estimator = new();
+
     [Test]
     public async Task Handle_AggregatesManifestTotalsAndDistinctChunks()
     {
@@ -34,7 +38,7 @@ public class StatisticsQueryHandlerTests
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("b"), FakeChunkHash('a'), OriginalSize: 200, ChunkSize: 40, BlobTier.Cool));
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("c"), FakeChunkHash('b'), OriginalSize: 300, ChunkSize: 50, BlobTier.Cool));
 
-        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, _estimator, NullLogger<StatisticsQueryHandler>.Instance);
         var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.Files.ShouldBe(3);
@@ -70,7 +74,7 @@ public class StatisticsQueryHandlerTests
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("a"), FakeChunkHash('a'), OriginalSize: 100, ChunkSize: 40, BlobTier.Cool));
         fixture.Index.AddEntry(new ShardEntry(ContentHashOf("b"), FakeChunkHash('b'), OriginalSize: 400, ChunkSize: 60, BlobTier.Archive));
 
-        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, _estimator, NullLogger<StatisticsQueryHandler>.Instance);
         var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.UniqueChunks.ShouldBe(2);
@@ -83,6 +87,13 @@ public class StatisticsQueryHandlerTests
         stats.StoredByTier[0].StoredSize.ShouldBe(40);
         stats.StoredByTier[1].Tier.ShouldBe(BlobTier.Archive);
         stats.StoredByTier[1].StoredSize.ShouldBe(60);
+
+        // Cost: the handler passes per-tier sizes to the (fake) estimator and surfaces its result —
+        // each tier's cost = storedSize / 1024³ × the estimator's per-tier rate.
+        const double giB = 1024.0 * 1024.0 * 1024.0;
+        stats.StoredByTier[0].CostPerMonth.ShouldBe(40 / giB * _estimator.StorageRate(BlobTier.Cool), tolerance: 1e-18);
+        stats.StoredByTier[1].CostPerMonth.ShouldBe(60 / giB * _estimator.StorageRate(BlobTier.Archive), tolerance: 1e-18);
+        stats.TotalStorageCostPerMonth.ShouldBe(stats.StoredByTier.Sum(t => t.CostPerMonth), tolerance: 1e-18);
     }
 
     [Test]
@@ -91,7 +102,7 @@ public class StatisticsQueryHandlerTests
         var blobs = new FakeSeededBlobContainerService();
         await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-stats-empty", "ctr-stats-empty", IEncryptionService.PlaintextInstance);
 
-        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, NullLogger<StatisticsQueryHandler>.Instance);
+        var handler = new StatisticsQueryHandler(fixture.Snapshot, fixture.Index, _estimator, NullLogger<StatisticsQueryHandler>.Instance);
         var stats = await handler.Handle(new StatisticsQueryType(), CancellationToken.None);
 
         stats.Files.ShouldBe(0);
@@ -99,5 +110,9 @@ public class StatisticsQueryHandlerTests
         stats.DeduplicatedSize.ShouldBe(0);
         stats.UniqueChunks.ShouldBe(0);
         stats.StoredSize.ShouldBe(0);
+
+        // Even with no snapshot, the total cost is zero.
+        stats.TotalStorageCostPerMonth.ShouldBe(0);
+        stats.StoredByTier.ShouldBeEmpty();
     }
 }

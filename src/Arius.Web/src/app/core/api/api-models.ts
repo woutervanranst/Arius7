@@ -15,6 +15,10 @@ export interface RepositoryDto {
   account: string;
   localPath: string | null;
   defaultTier: string;
+  /** Storage region the cost is priced for, resolved from the container metadata; null when it can't be read. */
+  region: string | null;
+  /** True when {@link region} is the fallback default because the container has no region metadata set. */
+  regionIsDefault: boolean;
 }
 
 export interface SnapshotDto {
@@ -29,6 +33,8 @@ export interface StatisticsDto {
   deduplicatedSize: number;
   storedSize: number;
   uniqueChunks: number;
+  /** Estimated total monthly storage cost across all tiers, in EUR. */
+  totalStorageCostPerMonth: number;
   storedByTier: TierStatisticsDto[];
 }
 
@@ -36,6 +42,8 @@ export interface TierStatisticsDto {
   tier: string;
   uniqueChunks: number;
   storedSize: number;
+  /** Estimated monthly storage cost for this tier, in EUR. */
+  costPerMonth: number;
 }
 
 export interface StateFlagsDto {
@@ -130,4 +138,19 @@ export interface CreateRepositoryRequest {
   passphrase: string | null;
   localPath: string | null;
   defaultTier: string | null;
+}
+
+// ── Filesystem browse (local-path picker) ─────────────────────────────────────
+
+/** A directory as the Arius.Api host/container sees it. */
+export interface FsEntryDto {
+  name: string;
+  path: string;
+}
+
+/** A directory listing: the resolved path, its parent (null at the root), and immediate subdirectories. */
+export interface FsListDto {
+  path: string;
+  parent: string | null;
+  entries: FsEntryDto[];
 }

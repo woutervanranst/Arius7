@@ -31,6 +31,10 @@ test('restore writes files to an empty destination, and skips them when already 
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-restore').click();
     await page.getByTestId('drawer-start').click();
+    // An online (Hot-tier) restore now surfaces an estimated-cost approval modal before downloading;
+    // approve it to let the download proceed. (No rehydration here, so there is no priority choice.)
+    await expect(page.getByTestId('cost-modal')).toBeVisible({ timeout: 120_000 });
+    await page.getByTestId('cost-approve').click();
     await expect(page.getByTestId('live-console')).toContainText('hello.txt', { timeout: 150_000 });   // a file was downloaded
     await expect(page.getByText('Restore complete.')).toBeVisible();
     await page.getByRole('button', { name: 'Close' }).click();

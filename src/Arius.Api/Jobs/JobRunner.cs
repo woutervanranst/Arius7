@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using Arius.Api.Composition;
 using Arius.Api.AppData;
+using Arius.Api.Composition;
 using Arius.Api.Hubs;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
@@ -125,7 +125,9 @@ public sealed class JobRunner(
                     NoPointers    = noPointers,
                     ConfirmRehydration = async (estimate, ct) =>
                     {
-                        sink.Log("⚠ archive-tier chunks need rehydration — awaiting approval", "warn");
+                        sink.Log(estimate.ChunksNeedingRehydration > 0
+                            ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
+                            : "Estimated restore cost — awaiting approval", "warn");
                         sink.Cost(new
                         {
                             chunksAvailable          = estimate.ChunksAvailable + estimate.ChunksAlreadyRehydrated,

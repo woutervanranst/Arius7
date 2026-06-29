@@ -1,4 +1,5 @@
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -8,7 +9,7 @@ namespace Arius.Core.Features.StatisticsQuery;
 // --- QUERY
 
 /// <summary>
-/// Mediator command: aggregate repository statistics for the Statistics view.
+/// Mediator query: aggregate repository statistics (incl. region-aware per-tier storage cost) for the Statistics view.
 /// </summary>
 /// <param name="Version">Snapshot version (partial match). <c>null</c> = latest.</param>
 /// <param name="EnsureFullCoverage">
@@ -16,7 +17,7 @@ namespace Arius.Core.Features.StatisticsQuery;
 /// figures, so they are complete rather than reflecting only browsed coverage. Slower (downloads the
 /// whole index, etag-cached on repeat); the caller lazy-loads the storage section behind this.
 /// </param>
-public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCoverage = false) : ICommand<RepositoryStatistics>;
+public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCoverage = false) : IQuery<RepositoryStatistics>;
 
 // --- RESULT
 
@@ -37,7 +38,8 @@ public sealed record StatisticsQuery(string? Version = null, bool EnsureFullCove
 /// and compressed (from the chunk index; repository-wide across all snapshots).
 /// </param>
 /// <param name="UniqueChunks">Number of distinct chunks (from the chunk index; repository-wide).</param>
-/// <param name="StoredByTier">Distinct-chunk count and stored size split by storage tier (repository-wide).</param>
+/// <param name="TotalStorageCostPerMonth">Estimated total monthly storage cost across all tiers, in EUR.</param>
+/// <param name="StoredByTier">Distinct-chunk count, stored size, and estimated monthly cost split by storage tier (repository-wide).</param>
 /// <remarks>
 /// An empty repository (no snapshot yet) reports all-zero figures. <see cref="Files"/> and
 /// <see cref="OriginalSize"/> are scoped to the resolved snapshot; the deduplicated/stored/chunk figures
@@ -50,7 +52,8 @@ public sealed record RepositoryStatistics(
     long DeduplicatedSize,
     long StoredSize,
     long UniqueChunks,
-    IReadOnlyList<ChunkTierStatistic> StoredByTier);
+    double TotalStorageCostPerMonth,
+    IReadOnlyList<TierStorageCost> StoredByTier);
 
 // --- HANDLER
 
@@ -61,8 +64,9 @@ public sealed record RepositoryStatistics(
 public sealed class StatisticsQueryHandler(
     ISnapshotService          snapshots,
     IChunkIndexService        chunkIndex,
+    IStorageCostEstimator     costEstimator,
     ILogger<StatisticsQueryHandler> logger)
-    : ICommandHandler<StatisticsQuery, RepositoryStatistics>
+    : IQueryHandler<StatisticsQuery, RepositoryStatistics>
 {
     public async ValueTask<RepositoryStatistics> Handle(StatisticsQuery query, CancellationToken cancellationToken)
     {
@@ -71,7 +75,8 @@ public sealed class StatisticsQueryHandler(
         if (snapshot is null)
         {
             logger.LogDebug("[stats] no snapshot for version {Version}; returning empty stats", query.Version ?? "<latest>");
-            return new RepositoryStatistics(0, 0, 0, 0, 0, []);
+            var emptyCost = costEstimator.EstimateStorageCost([]);
+            return new RepositoryStatistics(0, 0, 0, 0, 0, 0, emptyCost.Tiers);
         }
 
         // ── Stage 2: chunk-index aggregate (deduplicated original size + distinct chunks by tier) ──
@@ -82,12 +87,16 @@ public sealed class StatisticsQueryHandler(
         var chunkStats = chunkIndex.GetStatistics();
         var byTier     = chunkStats.ByTier;
 
+        // ── Stage 3: price the per-tier stored size for the container's region ──
+        var cost = costEstimator.EstimateStorageCost(byTier);
+
         return new RepositoryStatistics(
-            Files:            snapshot.FileCount,
-            OriginalSize:     snapshot.OriginalSize,
-            DeduplicatedSize: chunkStats.DeduplicatedOriginalSize,
-            StoredSize:       byTier.Sum(t => t.StoredSize),
-            UniqueChunks:     byTier.Sum(t => t.UniqueChunks),
-            StoredByTier:     byTier);
+            Files:                    snapshot.FileCount,
+            OriginalSize:             snapshot.OriginalSize,
+            DeduplicatedSize:         chunkStats.DeduplicatedOriginalSize,
+            StoredSize:               byTier.Sum(t => t.StoredSize),
+            UniqueChunks:             byTier.Sum(t => t.UniqueChunks),
+            TotalStorageCostPerMonth: cost.TotalPerMonth,
+            StoredByTier:             cost.Tiers);
     }
 }

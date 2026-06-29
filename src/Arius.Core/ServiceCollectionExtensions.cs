@@ -6,9 +6,11 @@ using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Features.SnapshotsQuery;
 using Arius.Core.Features.StatisticsQuery;
+using Arius.Core.Features.StorageAccountInfoQuery;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
@@ -37,6 +39,10 @@ public static class ServiceCollectionExtensions
     /// otherwise the embedded defaults apply. Pass <c>null</c> (the default) to use the central defaults only.
     /// </param>
     /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
+    /// <remarks>
+    /// The statistics and restore handlers resolve <see cref="IStorageCostEstimator"/> from the provider, so a
+    /// provider's cost estimator must be registered separately (e.g. via <c>AddAzureBlobStorage()</c>) before use.
+    /// </remarks>
     public static IServiceCollection AddArius(
         this IServiceCollection services,
         IBlobContainerService     blobContainer,
@@ -138,6 +144,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),
+                sp.GetRequiredService<IStorageCostEstimator>(),
                 sp.GetRequiredService<ILogger<RestoreCommandHandler>>(),
                 accountName,
                 containerName));
@@ -174,11 +181,17 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<ILogger<SnapshotsQueryHandler>>()));
 
-        services.AddSingleton<ICommandHandler<StatisticsQuery, RepositoryStatistics>>(sp =>
+        services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>>(sp =>
             new StatisticsQueryHandler(
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IChunkIndexService>(),
+                sp.GetRequiredService<IStorageCostEstimator>(),
                 sp.GetRequiredService<ILogger<StatisticsQueryHandler>>()));
+
+        services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>(sp =>
+            new StorageAccountInfoQueryHandler(
+                sp.GetRequiredService<IBlobContainerService>(),
+                sp.GetRequiredService<IStorageCostEstimator>()));
 
         return services;
     }

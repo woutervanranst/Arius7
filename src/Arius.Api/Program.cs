@@ -1,13 +1,12 @@
-using Arius.Api.Composition;
+using System.Text.Json;
 using Arius.Api.AppData;
+using Arius.Api.Composition;
 using Arius.Api.Endpoints;
 using Arius.Api.Hubs;
 using Arius.AzureBlob;
 using Arius.Core.Shared;
-using Arius.Core.Shared.Storage;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
-using System.Text.Json;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -32,7 +31,7 @@ try
     builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
     builder.Services.AddSingleton(new AppDatabase(dbPath));
     builder.Services.AddSingleton<SecretProtector>();
-    builder.Services.AddSingleton<IBlobServiceFactory, AzureBlobServiceFactory>();
+    builder.Services.AddAzureBlobStorage();
     builder.Services.AddSingleton<RepositoryProviderRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
@@ -72,6 +71,7 @@ try
     api.MapRepositoryEndpoints();
     api.MapBrowseEndpoints();
     api.MapJobEndpoints();
+    api.MapFilesystemEndpoints();
     app.MapHub<JobsHub>("/hubs/arius");
 
     // SPA fallback: client-side routes (/overview, /repos/…) serve index.html (only when present).

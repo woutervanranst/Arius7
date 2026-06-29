@@ -1,10 +1,10 @@
 # Restore command
 
-> **Code:** `src/Arius.Core/Features/RestoreCommand/`  ·  **Decisions:** [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md)  ·  **Terms:** [snapshot](../../../glossary.md#snapshot) · [filetree](../../../glossary.md#filetree) · [chunk size](../../../glossary.md#chunk-size) · [storage tier hint](../../../glossary.md#storage-tier-hint) · [large chunk](../../../glossary.md#large-chunk) · [tar chunk](../../../glossary.md#tar-chunk) · [chunk index](../../../glossary.md#chunk-index)
+> **Code:** `src/Arius.Core/Features/RestoreCommand/`  ·  **Decisions:** [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md) · [ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)  ·  **Terms:** [snapshot](../../../glossary.md#snapshot) · [filetree](../../../glossary.md#filetree) · [chunk size](../../../glossary.md#chunk-size) · [storage tier hint](../../../glossary.md#storage-tier-hint) · [large chunk](../../../glossary.md#large-chunk) · [tar chunk](../../../glossary.md#tar-chunk) · [chunk index](../../../glossary.md#chunk-index)
 
 ## Purpose
 
-Materializes the files of a repository [snapshot](../../../glossary.md#snapshot) into a local directory: resolve the snapshot, walk its [filetree](../../../glossary.md#filetree), classify which chunks are downloadable now versus stuck in the archive tier, surface the **rehydration cost** so the user can confirm before any money is spent, then stream the available chunks to disk and kick off rehydration for the rest. The command is **idempotent** ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md)) — each run is a self-contained scan-and-act cycle with no local progress state, so re-running after rehydration completes simply picks up where the last run left off.
+Materializes the files of a repository [snapshot](../../../glossary.md#snapshot) into a local directory: resolve the snapshot, walk its [filetree](../../../glossary.md#filetree), classify which chunks are downloadable now versus stuck in the archive tier, surface the **estimated restore cost** so the user can confirm before any money is spent, then stream the available chunks to disk and kick off rehydration for the rest. The command is **idempotent** ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md)) — each run is a self-contained scan-and-act cycle with no local progress state, so re-running after rehydration completes simply picks up where the last run left off.
 
 ## How it works
 
@@ -14,10 +14,10 @@ Materializes the files of a repository [snapshot](../../../glossary.md#snapshot)
 flowchart TD
     S1[Stage 1 · Resolve snapshot<br/>SnapshotService.ResolveAsync] --> S2
     S2[Stage 2 · Classify · walk #1<br/>Walk → Route → Resolve → fold counters] --> S3
-    S3{Stage 3 · needsRehydration > 0<br/>and ConfirmRehydration set?}
+    S3{Stage 3 · estimate.TotalStandard > 0<br/>and ConfirmRehydration set?}
     S3 -- "callback returns null" --> X[exit · Success, restored=0,<br/>report pending]
     S3 -- "priority chosen / no callback" --> S4
-    S3 -- "no chunks needing rehydration" --> S4
+    S3 -- "zero estimated cost" --> S4
     S4[Stage 4 · Download · walk #2<br/>Grouper → bounded chunkChannel → 4 workers] --> S5
     S5[Stage 5 · Rehydrate<br/>StartRehydrationAsync per archived chunk] --> S6
     S6{Stage 6 · totalPending == 0<br/>and ConfirmCleanup set?}
@@ -73,26 +73,16 @@ stateDiagram-v2
 
 ### Stage 3 — Cost estimate + confirm
 
-If `needsRehydrationCount > 0` **and** `opts.ConfirmRehydration` is supplied, the handler computes a `RestoreCostEstimate` via `RestoreCostCalculator` and invokes the callback. Returning `null` cancels: the handler exits with `Success = true`, `FilesRestored = 0`, and `ChunksPendingRehydration` set — **nothing is downloaded or rehydrated**. Returning a `RehydratePriority` continues. When the callback is `null`, archive chunks are rehydrated at `Standard` priority with no prompt. When nothing needs rehydration, this stage is skipped entirely (downloads can proceed without a cost gate).
+The handler assembles the classified counts into a `RestoreCostRequest` and delegates to `IStorageCostEstimator.EstimateRestoreCost(request)` — the provider cost port, which prices against the container's own [region](../../../glossary.md#region) (it has no region parameter; the Azure implementation and the formulas live in [cost estimation](../../core/shared/cost.md); [ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)). If the estimate's `TotalStandard > 0` **and** `opts.ConfirmRehydration` is supplied, the callback is invoked. Returning `null` cancels: the handler exits with `Success = true`, `FilesRestored = 0`, and `ChunksPendingRehydration` set — **nothing is downloaded or rehydrated**. Returning a `RehydratePriority` continues (priority only matters when archive chunks are rehydrated; for an online-only restore `Standard == High`). When the callback is `null`, restore proceeds at `Standard` with no prompt; a genuinely free restore (zero estimated cost) skips the gate. Note the gate is now **any non-zero cost** — a Cool/Cold restore with retrieval + egress prompts too, not only archive rehydration.
 
-### The cost model (documentation gap — surfaced here)
+### The cost model
 
-`RestoreCostCalculator.Compute` turns classified counts and byte totals into a `RestoreCostEstimate` with four cost components, each split Standard vs High priority where Azure prices them differently. The model is the **only** code in the system that reasons about money, and it is easy to misread, so the actual formulas:
+Restore is the only feature that **prompts** before incurring cost (the [statistics](queries.md#statisticsquery) screen also estimates money, via `IStorageCostEstimator.EstimateStorageCost`, but only displays it), and the **model lives in the provider adapter**, not here: the handler only builds a `RestoreCostRequest` and hands it to `IStorageCostEstimator`. The Azure formulas — archive retrieval/read-ops at Standard/High, the Hot copy + storage of rehydrated blobs, Cool/Cold download retrieval, and internet egress — and the rates are documented in [cost estimation](../../core/shared/cost.md). Two things the **request** must get right, because the estimate is only as good as its inputs:
 
-| Component | Formula | Driver |
-|---|---|---|
-| Archive retrieval | `totalGB × archive.retrieval[High]PerGB` | bytes of chunks **needing a new** rehydration request |
-| Archive read ops | `(numberOfBlobs / 10_000) × archive.readOps[High]Per10000` | count of chunks needing rehydration |
-| Write ops (to Hot) | `(numberOfBlobs / 10_000) × hot.writeOpsPer10000` | same count (one Hot write per rehydrated copy) |
-| Storage (Hot, `monthsStored`=1) | `totalGB × hot.storagePerGBPerMonth × monthsStored` | same GB held in `chunks-rehydrated/` |
+- **Counts/bytes are per-distinct-chunk, sized by [chunk size](../../../glossary.md#chunk-size)** (the full stored blob), deduped on `seenChunks` — not a per-file share of a tar.
+- **Downloads are split by source tier** so Cool/Cold retrieval is priced; an already-rehydrated archive copy is counted as Hot (it is read from `chunks-rehydrated/`). The request carries no region: the estimator prices against the container's own [region](../../../glossary.md#region) metadata, so the same restore costs differently per repository.
 
-`TotalStandard` / `TotalHigh` sum their four components. Three things a reader must not assume:
-
-- **`totalGB` and `numberOfBlobs` are driven by `chunksNeedingRehydration` / `bytesNeedingRehydration` only.** Chunks already pending (`bytesPendingRehydration`) and chunks available for direct download (`downloadBytes`) are carried on the estimate for display but **cost nothing** in the model — they have already been paid for or are not archive retrievals.
-- **`opsUnits = numberOfBlobs / 10_000.0` is not rounded up.** Azure bills per operation; the calculator deliberately uses a fractional ratio of the per-10 000 rate rather than the `ceil(N/10000)` the older spec described. For a 200-chunk restore that is `0.02 × readOpsPer10000`, not one full batch.
-- **The target tier is hard-coded to Hot.** Rehydrated copies land in `chunks-rehydrated/` (Hot), so the write-ops and storage rows always read `_pricing.Hot`, even though `PricingConfig` also parses `cool` and `cold` rates (currently unused by restore).
-
-Rates load from the **embedded** `pricing.json` (`PricingConfig.LoadEmbedded`, EUR / West Europe, dated in the file's `_comment`). The handler constructs the calculator as `new RestoreCostCalculator(pricing: null)`, and the `pricing` parameter is the only override seam — **there is no working-directory or `~/.arius/pricing.json` file lookup** despite what an earlier OpenSpec restore-pipeline spec once required. Overriding rates today means passing a `PricingConfig` into the constructor in code; the file-override path is an open seam, not a feature.
+The returned `RestoreCostEstimate` is **slim** — counts + `TotalStandard`/`TotalHigh` (in EUR); the per-component breakdown is an Azure implementation detail ([ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md)).
 
 ### Stage 4 — Download (walk #2)
 
@@ -128,13 +118,11 @@ Only when `totalPending == 0` (everything restorable was restored) **and** `opts
 
 - **Idempotent, stateless re-run instead of persisted progress** — see [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md). Restore keeps no local checkpoint; correctness comes from hashing local files (skip already-restored), recognizing the `RehydrationPending` state (no duplicate requests), and downloading whatever has since rehydrated. This is why a restore against archive-tier data is naturally a multi-run sequence: request rehydration, wait ~hours, re-run to download.
 - **Walk twice, don't buffer** — the classify pass must produce exact pre-download counts for the cost prompt, and buffering every `ResolvedFile` for a large snapshot is unbounded memory. A second cache-backed walk is the cheaper, memory-bounded alternative; the type-level doc comment on `RestoreCommandHandler` records this trade-off.
-- **Cost model is a deliberate, embedded approximation** — the four-component model exists so the user sees an order-of-magnitude bill before committing to archive retrieval (which is the expensive, slow operation). It is intentionally simple (Hot target tier, `monthsStored = 1`, fractional op-units) rather than a precise Azure invoice simulator.
+- **Cost is a deliberate approximation, owned by the provider adapter** — the user sees an order-of-magnitude bill before committing (archive retrieval is the expensive, slow part). The model is intentionally simple (Hot rehydration target, `monthsStored = 1`, fractional op-units) and lives behind `IStorageCostEstimator` so Core stays cloud-agnostic — see [cost estimation](../../core/shared/cost.md) and [ADR-0020](../../../decisions/adr-0020-provider-agnostic-cost-estimation.md).
 - **Tar grouping after the walk** — tar members are scattered across the filetree, so the grouper must see the whole walk before it knows the full member set of any tar; only then can it download each tar exactly once.
 
 ## Open seams / future
 
-- **Pricing override is unimplemented.** `RestoreCostCalculator(PricingConfig?)` is the only override point and the handler always passes `null` → embedded `pricing.json`. The historical working-dir / `~/.arius/pricing.json` lookup (specified by an earlier OpenSpec restore-pipeline spec) does not exist; wiring it would go through `RestoreOptions` into the handler's calculator construction.
-- **`cool`/`cold` pricing tiers are parsed but unused.** Rehydrated copies are hard-coded to the Hot tier; restoring into a cheaper target tier would let the cost model use the already-loaded `Cool`/`Cold` rates.
+- **Provider cost seams live in the estimator.** Rehydration-to-Hot, the fixed `monthsStored = 1`, EUR-only / LRS-only rates, and the regeneratable catalog are documented in [cost estimation](../../core/shared/cost.md) — restore just supplies the `RestoreCostRequest` and the region.
 - **Duplicate large files re-download.** The grouper enqueues one `ChunkToRestore` per large-chunk occurrence (`// TODO if we restore a duplicate large file - can we optimize?`); two local paths backed by the same large chunk download it twice. Tar duplicates are already handled (one download, `fs.CopyFile` for extra members).
 - **Cost-affecting re-routes are not re-confirmed.** A `BlobArchivedException` re-route adds rehydration cost after the user already confirmed; it is logged ("extra cost-effect") but the user is not re-prompted.
-- **`monthsStored` is fixed at 1.** The parameter exists on `Compute` but no caller varies it; surfacing it would let the estimate reflect how long the user expects to keep rehydrated copies before cleanup.

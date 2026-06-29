@@ -11,6 +11,7 @@ public sealed record RepositoryRecord(
     long            AccountId,
     string?         LocalPath,
     string          DefaultTier,
+    string?         RegionHint,
     string?         EncryptedPassphrase,
     DateTimeOffset  CreatedAt);
 

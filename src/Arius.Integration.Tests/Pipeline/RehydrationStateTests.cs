@@ -82,6 +82,7 @@ public class RehydrationStateTests(AzuriteFixture azurite)
             new FileTreeService(sim, fix.Encryption, ICompressionService.ZtdInstance, Account, fix.Container.Name),
             snapshot,
             Substitute.For<IMediator>(),
+            new Arius.Tests.Shared.Fakes.FakeStorageCostEstimator(),
             logger,
             Account, fix.Container.Name);
     }

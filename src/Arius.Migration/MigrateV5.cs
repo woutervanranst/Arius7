@@ -1,4 +1,3 @@
-using System.Formats.Tar;
 using System.Globalization;
 using System.Text;
 using Arius.Core.Shared;

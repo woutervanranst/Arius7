@@ -6,13 +6,14 @@ import { firstValueFrom } from 'rxjs';
 import { toArray } from 'rxjs/operators';
 import { ApiService } from '../../../core/api/api.service';
 import { RealtimeService } from '../../../core/api/realtime.service';
+import { FolderPickerComponent } from '../../../shared/folder-picker/folder-picker.component';
 
 /** Add-existing repository: 2-step wizard (storage account → container + details). */
 @Component({
   selector: 'arius-add-wizard',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule],
+  imports: [FormsModule, FolderPickerComponent],
   template: `
     <div style="max-width:620px;margin:0 auto">
       <div style="font-size:13px;color:#71717a">Step <b>{{ step() }}</b> of 2 · {{ step() === 1 ? 'Storage account' : 'Repository' }}</div>
@@ -39,8 +40,8 @@ import { RealtimeService } from '../../../core/api/realtime.service';
             <div style="color:#a1a1aa;font-size:13px">No configured accounts — add a new one.</div>
           }
         } @else {
-          <label class="ar-field"><span>Account name</span><input class="ar-input ar-mono" [(ngModel)]="newName" /></label>
-          <label class="ar-field"><span>Account key</span><input class="ar-input ar-mono" type="password" [(ngModel)]="newKey" /></label>
+          <label class="ar-field"><span>Account name <span class="ar-req">*</span></span><input class="ar-input ar-mono" data-testid="new-account-name" [(ngModel)]="newName" /></label>
+          <label class="ar-field"><span>Account key <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="new-account-key" [(ngModel)]="newKey" /></label>
         }
 
         <div class="ar-note" style="margin-top:6px">Arius reads the existing manifest and snapshots — no files are uploaded.</div>
@@ -53,7 +54,7 @@ import { RealtimeService } from '../../../core/api/realtime.service';
         </div>
       } @else {
         <h1 class="ar-heading" style="font-size:20px;font-weight:700;margin-bottom:16px">Repository</h1>
-        <div class="ar-field"><span>Select container</span>
+        <div class="ar-field"><span>Select container <span class="ar-req">*</span></span>
           @for (c of containers(); track c) {
             <label class="ar-radio" data-testid="container-radio" [class.on]="selectedContainer() === c" (click)="selectedContainer.set(c)">
               <span class="ar-dot"></span><span class="ar-mono">{{ c }}</span>
@@ -62,13 +63,13 @@ import { RealtimeService } from '../../../core/api/realtime.service';
             <div style="color:#a1a1aa;font-size:13px">No containers found in this account.</div>
           }
         </div>
-        <label class="ar-field"><span>Friendly alias</span><input class="ar-input" [(ngModel)]="alias" /></label>
+        <label class="ar-field"><span>Friendly alias</span><input class="ar-input" [(ngModel)]="alias" [placeholder]="selectedContainer() || 'defaults to the container name'" /></label>
         <label class="ar-field"><span>Passphrase</span><input class="ar-input ar-mono" type="password" [(ngModel)]="passphrase" /></label>
-        <label class="ar-field"><span>Local path</span><input class="ar-input ar-mono" [(ngModel)]="localPath" /><small>Folder the Files view overlays against the archive.</small></label>
+        <div class="ar-field"><span>Local path</span><arius-folder-picker [(value)]="localPath" /><small>Folder the Files view overlays against the archive.</small></div>
         @if (error()) { <div style="color:#dc2626;font-size:12.5px">{{ error() }}</div> }
         <div class="flex items-center justify-end gap-2.5" style="margin-top:22px">
           <button class="ar-btn-outline" (click)="step.set(1)">Back</button>
-          <button class="ar-btn-primary" [disabled]="!selectedContainer() || !alias" (click)="add()"><i class="ki-filled ki-check"></i>Add repository</button>
+          <button class="ar-btn-primary" data-testid="btn-add" [disabled]="!selectedContainer()" (click)="add()"><i class="ki-filled ki-check"></i>Add repository</button>
         </div>
       }
     </div>
@@ -86,6 +87,7 @@ import { RealtimeService } from '../../../core/api/realtime.service';
     .ar-field > small { display:block;font-size:11.5px;color:#a1a1aa;margin-top:5px }
     .ar-input { width:100%;height:40px;border:1px solid #e4e4e7;border-radius:9px;padding:0 12px;font-size:13.5px;outline:none }
     .ar-input:focus { border-color:#3b82f6 }
+    .ar-req { color:#dc2626 }
     .ar-note { font-size:12px;color:#71717a;background:#f7f9ff;border:1px solid #dbeafe;border-radius:9px;padding:10px 12px }
   `],
 })
@@ -134,7 +136,8 @@ export class AddRepoWizardComponent {
     this.api.createRepository({
       accountId: this.selectedAccountId(),
       container: this.selectedContainer(),
-      alias: this.alias,
+      // Friendly alias is optional — fall back to the container name when left blank.
+      alias: this.alias || this.selectedContainer(),
       passphrase: this.passphrase || null,
       localPath: this.localPath || null,
       defaultTier: null,

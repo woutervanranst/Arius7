@@ -14,13 +14,25 @@ namespace Arius.AzureBlob;
 /// </summary>
 public sealed class AzureBlobContainerService : IBlobContainerService
 {
+    public const string RegionMetadataKey = "region";
+    internal const string UnsetRegionSentinel = "default"; // Sentinel written to RegionMetadataKey on first write (so it is visible/overridable by user); treated as "not configured" when read.
+    
+    public const string DefaultRegion = "northeurope"; // Fallback region for pricing and display when the container's metadata is not set (i.e. RegionHint is null).
+
     private readonly BlobContainerClient _container;
 
-    public AzureBlobContainerService(BlobContainerClient container)
+    public AzureBlobContainerService(BlobContainerClient container, string? regionMetadata = null)
     {
         ArgumentNullException.ThrowIfNull(container);
         _container = container;
+        // Normalize the raw metadata value: blank/absent or the "default" sentinel mean "not configured".
+        RegionHint = string.IsNullOrWhiteSpace(regionMetadata)
+                      || regionMetadata.Trim().Equals(UnsetRegionSentinel, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : regionMetadata.Trim();
     }
+
+    public string? RegionHint { get; }
 
     // ── Container ─────────────────────────────────────────────────────────────
 
