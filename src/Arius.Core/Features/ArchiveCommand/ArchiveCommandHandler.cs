@@ -191,7 +191,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         var writePointers = opts.WritePointers || opts.RemoveLocal;
 
         // ── Operation start marker (task 3.10) ───────────────────────────────
-        _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} writePointers={WritePointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, opts.WritePointers);
+        _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} writePointers={WritePointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, writePointers);
 
         // ── Ensure container exists ───────────────────────────────────────────
         _logger.LogInformation("[phase] ensure-container");
