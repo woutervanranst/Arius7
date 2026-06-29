@@ -85,7 +85,10 @@ archive (Stage 2: Hash workers ×4)
 - **`HashCacheLocalStore`** — sole owner of the SQLite schema/connections/transactions; writes
   serialize on a gate + busy-retry, exactly like `ChunkIndexLocalStore`.
 - **`RelativeFileSystem.TryGetChangeSignals`** — new IO-boundary method returning the
-  platform's cheap change signals, or `null` when unavailable (then the floor applies).
+  platform's cheap change signals, or `null` when unavailable (then the floor applies). It
+  returns `null` on **network filesystems** by design (`GetDriveType()==DRIVE_REMOTE` / UNC on
+  Windows; CIFS/NFS `f_type` on Linux), because a redirector's `ChangeTime`/file-id can be
+  cached or unstable — see "Behaviour on network filesystems" below.
 
 ### The hashcache (SQLite)
 
@@ -157,22 +160,57 @@ else:
 **Safety argument.** A misprediction toward "changed" only causes a wasted full re-hash (safe).
 The only unsafe misprediction is "unchanged when actually changed"; every signal added to the
 "declare unchanged" gate can only *add* reasons to say "changed", so it never increases the
-unsafe direction. The residual unsafe cases are: (a) `ctime` preserved across a real content
-change — requires defeating the kernel (privileged), and (b) a content change confined entirely
-between sampled fingerprint regions with identical size — low-probability for real edits. Both
-are accepted only under the opt-in `--fast-hash` and are documented in the ADR.
+unsafe direction.
+
+The two unsafe failure modes are **per-path, not conjunctive** — a file reaches "unchanged" via
+exactly one path and is exposed to exactly one mode:
+- **ctime fast-lane** failure **(a)**: `ctime` unchanged despite a content change. On a native
+  local filesystem the kernel bumps `ctime` on *any* content write, so this **cannot happen by
+  accident** — it requires privilege (backdating the clock around the write) or raw
+  block-device writes. The fast-lane is therefore watertight against accidental corruption.
+- **sparse-fingerprint floor** failure **(b)**: a content change that keeps identical size *and*
+  misses every sampled region. This is the real residual, but narrow — it applies only to files
+  that were *touched* (so they fell off the fast-lane) yet kept identical size, and it shrinks
+  as `K` grows with size. The in-place fixed-size-record edit is its archetype; the file-type /
+  audit seam is its mitigation.
+
+Both modes are accepted only under the opt-in `--fast-hash` and are documented in the ADR.
+
+### Behaviour on network filesystems (SMB/CIFS/NFS)
+
+Not a supported target (an archive runs *on* the machine holding the files — see Invariants),
+but it must degrade safely rather than be undefined. Over SMB a redirector exposes
+`ChangeTime`/file-id values that may be cached or unstable across reconnects, so trusting them
+risks a false "unchanged". Therefore `TryGetChangeSignals` returns `null` on network mounts and
+the verdict falls to the **sparse-fingerprint floor**: `size` + a few ranged reads per file.
+The result is "works, just slower" — still far cheaper than full-hash (≤ ~16 MiB read per file
+vs the whole file), with the zero-read `ctime` lane disabled and no correctness asterisk.
 
 ### Sparse fingerprint
 
-- Sample deterministic regions sized from the file: head block, interior blocks at evenly
-  spaced offsets, tail block. Proposed defaults: block `B = 256 KiB`, `K = 4` regions (head,
-  ⅓, ⅔, tail) → ≤ 1 MiB read per file. Final `B`/`K` are tuned by benchmark.
+- **Size-scaled sampling** (not a fixed block count): block `B = 256 KiB`; number of regions
+  `K = clamp(ceil(size / stride), 4, 64)` with `stride ≈ 1 GiB`. So bytes read grow with size
+  but stay bounded: **1 MiB for small files … 16 MiB for very large files** (a 3 TB file →
+  capped at 64 blocks = 16 MiB, regardless of size). Final `B`/`stride`/`Kmax` are tuned by
+  benchmark.
+- Regions are at **deterministic offsets** from size: head at `0`, tail at `size - B`, and the
+  rest evenly spaced — `offset_i = floor(i · (size - B) / (K - 1))`, `i = 0..K-1`. Determinism
+  is what lets the same regions be re-sampled each run (size is the precondition for comparing).
 - Files `≤ K·B` are read **whole** (sampling degenerates to the full small file — cheap per
-  file, a genuine content check).
+  file, a genuine content check, and one sequential read with no seeks).
 - `sparse_fp = SHA256(size ‖ region-bytes)` — a **single combined** 32-byte fingerprint (not
   per-region; any mismatch ⇒ full-hash, so which region changed is irrelevant).
-- Versioned by `fp_algo`; changing `B`/`K`/offset scheme bumps it and invalidates old rows
-  safely.
+- Versioned by `fp_algo`; changing `B`/`stride`/`Kmax`/offset scheme bumps it and invalidates
+  old rows safely.
+- **Reads the raw file directly** via the seekable `FileStream` (`fs.OpenRead`) — *not* through
+  the compress/encrypt wrappers. On local disk the head/interior/tail seeks are cheap random
+  reads; on a network FS each region is one ranged read (a round-trip), and small files avoid
+  per-region round-trips by being read whole. A file that shrank between `stat` and read yields
+  a short tail read → treated as changed → full-hash (safe).
+- **Coverage limit (documented):** for genuinely enormous in-place-mutating files (VM images,
+  large databases) even 16 MiB across 64 points is sparse, so a constant-size mid-file edit can
+  be missed. Such files are poor `--fast-hash` candidates; the mitigation is the file-type /
+  `last_verified` audit-escalation **seam** — full-hash by type or age — not denser sampling.
 
 ### Cache population on normal (non-`--fast-hash`) runs
 
@@ -239,7 +277,7 @@ The radio makes invalid combinations unrepresentable, so the mutual-exclusion no
 - `RepositoryLocalStatePaths.GetHashCacheRoot`; `HashCacheLocalStore` (schema, single-writer);
   `HashCacheService` (verdict ladder + sparse fingerprint).
 - `RelativeFileSystem.TryGetChangeSignals` (Linux/macOS `stat`/`statx`, Windows
-  `GetFileInformationByHandleEx`; `null` fallback).
+  `GetFileInformationByHandleEx`; `null` fallback, incl. network-FS detection).
 - `--fast-hash` option wired through `ArchiveCommand` → `ArchiveVerb`; Stage 2 integration;
   inline cache population on normal runs; logging.
 
@@ -250,9 +288,9 @@ The radio makes invalid combinations unrepresentable, so the mutual-exclusion no
 
 **Documented seams (not built)**
 - Cold-start cache seeding from the snapshot (mtime-trust) — declined for now.
-- `last_verified`-driven age/audit re-verification and file-type escalation policy.
+- `last_verified`-driven age/audit re-verification and file-type escalation policy (also the
+  mitigation for enormous in-place-mutating files the sparse fingerprint under-covers).
 - mtime-only ultra-fast tier (schema already stores mtime).
-- file-identity/ctime on non-native filesystems.
 
 ---
 
@@ -276,10 +314,11 @@ The radio makes invalid combinations unrepresentable, so the mutual-exclusion no
 
 - **Unit** — each ladder branch: cache miss, provenance/`signal_set`/`dev` mismatch, `fp_algo`
   bump, `inode`/`dev` change, size change, `ctime` match (skip reads), `ctime` moved + fp match,
-  fp differ. Sparse-fp determinism and small-file whole-read degeneration. Provenance guard.
+  fp differ. Sparse-fp determinism, deterministic offsets, size-scaled `K` (small whole-read;
+  large file capped at `Kmax`), and short-tail-read-on-shrink → changed. Provenance guard.
 - **Cross-platform** — the size+sparse-fp verdict is OS-independent by construction (assert
-  identical decisions Linux/Windows); `TryGetChangeSignals` returns sane values on native FS and
-  `null` on unsupported FS.
+  identical decisions Linux/Windows); `TryGetChangeSignals` returns sane values on native FS,
+  `null` on network/unsupported FS (→ floor, asserted on a CIFS/NFS-like mount).
 - **Integration / E2E** — warm cache skips re-read (assert via hash/read events); cache deletion
   forces full re-hash; `--fast-hash` off = today's behaviour; `--write-pointers` default off;
   `--remove-local` still writes pointers; a file edited preserving size but changing a sampled
