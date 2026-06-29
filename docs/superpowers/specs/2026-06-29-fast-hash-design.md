@@ -103,14 +103,30 @@ Schema (one row per binary-present path):
 | `path` | TEXT PK | repository-relative canonical path |
 | `size` | INTEGER | bytes |
 | `mtime` | INTEGER | UTC ticks — diagnostics only, **not** in the verdict |
-| `ctime` | INTEGER NULL | inode change time (UTC ticks) when available |
-| `inode` | INTEGER NULL | inode / Windows FileId |
-| `dev` | TEXT NULL | device id / Windows VolumeSerialNumber |
+| `ctime` | INTEGER NULL | inode change time / Windows `ChangeTime` (UTC ticks) when available |
+| `inode` | TEXT NULL | inode (POSIX, 64-bit) / Windows `FileId` (**128-bit** on ReFS) — stored as text for width-uniformity, like `dev` |
+| `dev` | TEXT NULL | device id / Windows `VolumeSerialNumber` |
 | `signal_set` | INTEGER | provenance tag: which signals this row was captured with (platform/capability) |
 | `sparse_fp` | BLOB | combined fingerprint (32 bytes) |
 | `fp_algo` | INTEGER | fingerprint-scheme version |
 | `content_hash` | TEXT | cached `ContentHash` (hex) |
 | `last_verified` | INTEGER | UTC ticks — seam for future age/audit policy |
+
+### Platform signal mapping
+
+`TryGetChangeSignals` returns the same abstract triple on every platform; only the source API
+differs. To be recorded in the ADR:
+
+| Abstract signal | POSIX (Linux/macOS) | Windows |
+|---|---|---|
+| `ctime` | `statx`/`stat` `st_ctim` (inode change time) | `FILE_BASIC_INFO.ChangeTime` |
+| `inode` | `st_ino` (64-bit) | `FILE_ID_INFO.FileId` (`FILE_ID_128`; 64-bit NTFS, 128-bit ReFS) |
+| `dev` | `st_dev` | `FILE_ID_INFO.VolumeSerialNumber` |
+
+`ChangeTime` is **not** settable via the documented `SetFileTime` (only Creation/Access/Write
+are) — moving it requires the native `NtSetInformationFile`, the same deliberate/abnormal-API
+class as backdating POSIX `ctime`. The 128-bit `FileId` makes ID reuse even less likely than a
+POSIX 64-bit inode, strengthening the inode-change guard.
 
 **Provenance guard:** two different mismatches, two different fallbacks, so we never compare
 incomparable values:
@@ -165,9 +181,12 @@ unsafe direction.
 The two unsafe failure modes are **per-path, not conjunctive** — a file reaches "unchanged" via
 exactly one path and is exposed to exactly one mode:
 - **ctime fast-lane** failure **(a)**: `ctime` unchanged despite a content change. On a native
-  local filesystem the kernel bumps `ctime` on *any* content write, so this **cannot happen by
-  accident** — it requires privilege (backdating the clock around the write) or raw
-  block-device writes. The fast-lane is therefore watertight against accidental corruption.
+  local filesystem the kernel bumps `ctime`/`ChangeTime` on *any* content write, so this
+  **cannot happen by accident** — defeating it is deliberate timestomping: POSIX needs a clock
+  backdate (privileged) or raw block-device write; Windows needs the native
+  `NtSetInformationFile` (the documented `SetFileTime` can't touch `ChangeTime`). Either way it
+  is abnormal, never a side effect of a normal write. The fast-lane is therefore watertight
+  against accidental corruption.
 - **sparse-fingerprint floor** failure **(b)**: a content change that keeps identical size *and*
   misses every sampled region. This is the real residual, but narrow — it applies only to files
   that were *touched* (so they fell off the fast-lane) yet kept identical size, and it shrinks
@@ -327,7 +346,9 @@ The radio makes invalid combinations unrepresentable, so the mutual-exclusion no
 ## Docs to update
 
 - **New ADR** (ADR-0021): opt-in change-detection heuristic, the sparse-fingerprint gap, the
-  disposable-local-cache + not-concurrently-multi-platform invariant.
+  disposable-local-cache + not-concurrently-multi-platform invariant, and the **platform signal
+  mapping** (POSIX `st_ctim`/`st_ino`/`st_dev` ↔ Windows `ChangeTime`/128-bit `FileId`/
+  `VolumeSerialNumber`, incl. the `SetFileTime`-can't-set-`ChangeTime` caveat).
 - **`docs/design/`** — new `core/shared/hashcache.md`; update `archive-command.md` (Stage 2) and
   `encryption.md` (hashing seam).
 - **`docs/glossary.md`** — `hashcache`, `sparse fingerprint`, `fast-hash`.
