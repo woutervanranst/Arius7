@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Four thin Mediator read slices that back UI/host views. Each is a single query record + result + handler with no mutation: hydration status of files, Arius-container discovery in an account, the snapshot list, and aggregate repository statistics. They are grouped here because none carries enough intent to warrant its own page.
+Five thin Mediator read slices that back UI/host views. Each is a single query record + result + handler with no mutation: hydration status of files, Arius-container discovery in an account, the snapshot list, the diff between two snapshots, and aggregate repository statistics. They are grouped here because none carries enough intent to warrant its own page.
 
 ## How it works
 

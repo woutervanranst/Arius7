@@ -26,7 +26,7 @@ to the audit log — see [Where state lives](#where-state-lives)).
 
 ## Global options
 
-These four options apply to `archive`, `restore`, `ls`, and `repair-index`. (`update` takes
+These four options apply to `archive`, `restore`, `ls`, `snapshot list`, `snapshot diff`, and `repair-index`. (`update` takes
 none of them — it talks only to GitHub.)
 
 | Option | Alias | Type | Required | Meaning |
