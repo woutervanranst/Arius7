@@ -40,6 +40,15 @@ internal sealed class HashCacheLocalStore
 
     internal string ConnectionString => _connectionString;
 
+    /// <summary>Test seam: reads PRAGMA synchronous on a store-produced connection (3=EXTRA,2=FULL,1=NORMAL,0=OFF).</summary>
+    internal int QuerySynchronous()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA synchronous;";
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
     public HashCacheEntry? Find(RelativePath path)
     {
         using var connection = OpenConnection();
@@ -114,11 +123,6 @@ internal sealed class HashCacheLocalStore
         using (var pragma = connection.CreateCommand())
         {
             pragma.CommandText = "PRAGMA journal_mode = wal;";
-            pragma.ExecuteNonQuery();
-        }
-        using (var pragma = connection.CreateCommand())
-        {
-            pragma.CommandText = "PRAGMA synchronous = normal;";
             pragma.ExecuteNonQuery();
         }
 
