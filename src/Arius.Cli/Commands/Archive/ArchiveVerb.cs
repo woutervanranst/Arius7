@@ -34,6 +34,10 @@ internal static class ArchiveVerb
         {
             Description = "Skip pointer file creation",
         };
+        var fastHashOption = new Option<bool>("--fast-hash")
+        {
+            Description = "Skip re-reading files the local hashcache verifies as unchanged",
+        };
 
         var cmd = new Command("archive", "Archive a local directory to Azure Blob Storage");
         cmd.Options.Add(accountOption);
@@ -44,6 +48,7 @@ internal static class ArchiveVerb
         cmd.Options.Add(tierOption);
         cmd.Options.Add(removeLocalOption);
         cmd.Options.Add(noPointersOption);
+        cmd.Options.Add(fastHashOption);
 
         cmd.SetAction(async (parseResult, ct) =>
         {
@@ -55,6 +60,7 @@ internal static class ArchiveVerb
             var tier        = parseResult.GetValue(tierOption);
             var removeLocal = parseResult.GetValue(removeLocalOption);
             var noPointers  = parseResult.GetValue(noPointersOption);
+            var fastHash    = parseResult.GetValue(fastHashOption);
 
             // Reject --remove-local + --no-pointers
             if (removeLocal && noPointers)
@@ -123,6 +129,7 @@ internal static class ArchiveVerb
                     UploadTier         = tier,
                     RemoveLocal        = removeLocal,
                     NoPointers         = noPointers,
+                    FastHash           = fastHash,
                     SmallFileThreshold = 1024 * 1024L,
                     TarTargetSize      = 64L * 1024 * 1024,
 
