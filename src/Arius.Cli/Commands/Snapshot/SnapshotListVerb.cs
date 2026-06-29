@@ -1,4 +1,5 @@
 using Arius.Core.Features.SnapshotsListQuery;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -65,6 +66,18 @@ internal static class SnapshotListVerb
                 AnsiConsole.MarkupLine(index == 0 ? "[dim]No snapshots found.[/]" : $"[dim]{index} snapshot(s)[/]");
                 Log.Information("snapshot list completed: {Count} snapshot(s)", index);
                 return 0;
+            }
+            catch (RepositoryEncryptionException ex)
+            {
+                AnsiConsole.MarkupLine(CliBuilder.FormatRepositoryEncryptionError(ex));
+                Log.Error(ex, "snapshot list failed: repository passphrase/encryption mismatch");
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Snapshot list failed:[/] {Markup.Escape(ex.Message)}");
+                Log.Error(ex, "snapshot list failed");
+                return 1;
             }
             finally
             {

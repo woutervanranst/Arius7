@@ -1,5 +1,6 @@
 using Arius.Core.Features.SnapshotDiffQuery;
 using Arius.Core.Features.SnapshotsListQuery;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -69,6 +70,22 @@ public class SnapshotDiffVerbTests
 
         exitCode.ShouldBe(1);
         output.ShouldContain("Snapshot not found");
+    }
+
+    [Test]
+    public async Task SnapshotDiff_RepositoryEncryptionError_ReturnsFriendlyErrorNotCrash()
+    {
+        var mediator = Substitute.For<IMediator>();
+        mediator.CreateStream(Arg.Any<SnapshotDiffQuery>(), Arg.Any<CancellationToken>())
+            .Returns<IAsyncEnumerable<SnapshotDiffEntry>>(_ => throw new RepositoryEncryptionException(passphraseProvided: false, new InvalidDataException("Unrecognized compression format")));
+
+        var rootCommand = BuildRoot(mediator);
+        // Timestamp-prefix args take the no-list-fetch path; the diff query itself raises the encryption error.
+        var (exitCode, output) = await CaptureOutputAsync(() => rootCommand.Parse("snapshot diff 2024-01 2024-02 -a acct -k key -c ctr").InvokeAsync());
+
+        exitCode.ShouldBe(1);
+        output.ShouldContain("passphrase");
+        output.ShouldNotContain("Unhandled exception");
     }
 
     private static FileEntry MakeFile(string name) => new()

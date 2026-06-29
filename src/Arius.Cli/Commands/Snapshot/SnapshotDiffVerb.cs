@@ -1,5 +1,6 @@
 using Arius.Core.Features.SnapshotDiffQuery;
 using Arius.Core.Features.SnapshotsListQuery;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -105,6 +106,18 @@ internal static class SnapshotDiffVerb
                     counts.GetValueOrDefault(ChangeType.Modified),
                     counts.GetValueOrDefault(ChangeType.TimestampChanged));
                 return 0;
+            }
+            catch (RepositoryEncryptionException ex)
+            {
+                AnsiConsole.MarkupLine(CliBuilder.FormatRepositoryEncryptionError(ex));
+                Log.Error(ex, "snapshot diff failed: repository passphrase/encryption mismatch");
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Snapshot diff failed:[/] {Markup.Escape(ex.Message)}");
+                Log.Error(ex, "snapshot diff failed");
+                return 1;
             }
             finally
             {
