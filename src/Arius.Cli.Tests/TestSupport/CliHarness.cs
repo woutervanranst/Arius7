@@ -4,7 +4,7 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Features.SnapshotsQuery;
+using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Features.StorageAccountInfoQuery;
 using Mediator;
@@ -43,7 +43,7 @@ internal sealed class CliHarness
         // Mediator's source generator resolves every command handler when a command is sent, so the
         // CLI-unused snapshot/stats query handlers must be supplied too (they otherwise need a real
         // ISnapshotService the harness has no reason to wire up).
-        var snapshotsHandler = Substitute.For<ICommandHandler<SnapshotsQuery, IReadOnlyList<SnapshotInfo>>>();
+        var snapshotsHandler = Substitute.For<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
         var statsHandler = Substitute.For<IQueryHandler<StatisticsQuery, RepositoryStatistics>>();
         var storageInfoHandler = Substitute.For<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
 
@@ -88,8 +88,8 @@ internal sealed class CliHarness
             .Returns(AsyncEnumerable.Empty<ChunkHydrationStatusResult>());
 
         snapshotsHandler
-            .Handle(Arg.Any<SnapshotsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<IReadOnlyList<SnapshotInfo>>([]));
+            .Handle(Arg.Any<SnapshotsListQuery>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<SnapshotInfo>());
 
         statsHandler
             .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
