@@ -4,7 +4,7 @@
 
 ## Purpose
 
-The `arius` command-line host. It owns nothing of the backup model: each verb (`archive`, `restore`, `ls`, `repair-index`, `update`) parses flags, builds a **per-repository** `IServiceProvider`, drives Arius.Core through `IMediator`, and turns the events Core publishes during a run into a live terminal display. Maintainer-facing — for user/operator usage see [guide/cli.md](../../guide/cli.md).
+The `arius` command-line host. It owns nothing of the backup model: each verb (`archive`, `restore`, `ls`, `snapshot list`/`snapshot diff`, `repair-index`, `update`) parses flags, builds a **per-repository** `IServiceProvider`, drives Arius.Core through `IMediator`, and turns the events Core publishes during a run into a live terminal display. Maintainer-facing — for user/operator usage see [guide/cli.md](../../guide/cli.md).
 
 ## How it works
 
@@ -16,7 +16,7 @@ There is no long-lived application container. `Program.cs` builds the `RootComma
 - `AddMediator()` is called **in the CLI assembly, not inside `AddArius`**, on purpose: the `Mediator.SourceGenerator` must run in `Arius.Cli` so it discovers `INotificationHandler<T>` implementations in *both* Core and the CLI (the progress handlers in `Commands/Archive/ArchiveProgressHandlers.cs` etc. live here).
 - `AddArius(blobContainer, passphrase, accountName, containerName)` registers the Core feature handlers.
 
-`PreflightMode` (`ReadWrite` for archive/repair, `ReadOnly` for restore/ls) is threaded into the factory so the container open fails fast; verbs catch `PreflightException` and translate its structured fields (`ErrorKind`, `AuthMode`, account/container names) into actionable console messages — the long `switch` in each verb is the same shape across `ArchiveVerb`, `RestoreVerb`, `LsVerb`.
+`PreflightMode` (`ReadWrite` for archive/repair, `ReadOnly` for restore/ls) is threaded into the factory so the container open fails fast; verbs catch `PreflightException` and translate its structured fields (`ErrorKind`, `AuthMode`, account/container names) into actionable console messages — the long `switch` in each verb is the same shape across `ArchiveVerb`, `RestoreVerb`, `LsVerb`. The read verbs additionally catch the Core `RepositoryEncryptionException` (a missing or incorrect passphrase) and render it through the shared `CliBuilder.FormatRepositoryEncryptionError` helper — an actionable `--passphrase`/`-p` hint instead of a raw decompression/crypto error.
 
 ### Driving Core and consuming its events
 
@@ -87,9 +87,10 @@ When stdout is not interactive (`!Console.Profile.Capabilities.Interactive`, e.g
 
 Restore is the one verb that must *ask the user a question mid-pipeline* (rehydration cost confirmation, cleanup confirmation) — but the prompt and the pipeline run on different threads. `RestoreVerb` bridges them with `TaskCompletionSource` pairs: Core's `ConfirmRehydration` / `ConfirmCleanup` option delegates set a "question" TCS and `await` an "answer" TCS; the CLI's outer loop watches the question TCSs alongside the pipeline task (`Task.WhenAny(pipelineTask, questionTcs.Task, cleanupQuestionTcs.Task, Task.Delay(100))`), tears down the Live display when a question fires, renders the cost table / `SelectionPrompt`, and posts the answer back through the answer TCS. The numbered `// ── Phase N ──` comments in `RestoreVerb` mark this: resolve → rehydration question → download (a second Live loop) → cleanup question.
 
-### `ls`, `repair-index`, `update`
+### `ls`, `snapshot list` / `snapshot diff`, `repair-index`, `update`
 
 - **`ls`** does *not* use a Live display or a recorder. It streams entries via `mediator.CreateStream(new ListQuery(...))` and writes each row as it arrives (`AnsiConsole.MarkupLine` per `RepositoryFileEntry`), so memory stays bounded for million-entry repositories. The 4-char state cell (`PBRH`-style: local Pointer / local Binary / in Repository / tier H·A·~·?) is formatted by `LsStateFormatter`, whose colors mirror Arius.Explorer.
+- **`snapshot list` / `snapshot diff`** form the CLI's first **nested** verb group (a `snapshot` parent under the root). Both stream like `ls` (no Live display): `list` streams `SnapshotsListQuery` and numbers rows with a 1-based oldest-first display ordinal; `diff <from> <to>` streams `SnapshotDiffQuery` as git `--name-status` lines (`A`/`D`/`M`/`T`) plus a summary. Each `<from>`/`<to>` is resolved **CLI-side** by `SnapshotArgumentResolver` — a bare integer is the `list` index (the snapshot list is only fetched when an index is used), anything else a version/timestamp prefix (colons stripped). The convenience index is a display ordinal only; Core sees version strings.
 - **`repair-index`** is a fire-and-forget command (`RepairChunkIndexCommand`) with a recorder-captured single summary line.
 - **`update`** is self-contained — no Core, no DI. It queries the GitHub releases API, maps the `RuntimeIdentifier` to a release asset, downloads it under a `Progress` bar, and replaces the running executable (on Windows via the embedded `WindowsUpdateAfterExit.ps1` helper that waits for the process to exit; on Unix via copy-overwrite + `chmod`).
 

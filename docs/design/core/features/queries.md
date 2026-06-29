@@ -1,10 +1,10 @@
 # Read queries
 
-> **Code:** `src/Arius.Core/Features/{ChunkHydrationStatusQuery,ContainerNamesQuery,SnapshotsQuery,StatisticsQuery}/*.cs`  ·  **Terms:** [snapshot](../../../glossary.md#snapshot) · [storage tier hint](../../../glossary.md#storage-tier-hint)
+> **Code:** `src/Arius.Core/Features/{ChunkHydrationStatusQuery,ContainerNamesQuery,SnapshotsListQuery,SnapshotDiffQuery,StatisticsQuery}/*.cs`  ·  **Terms:** [snapshot](../../../glossary.md#snapshot) · [storage tier hint](../../../glossary.md#storage-tier-hint)
 
 ## Purpose
 
-Four thin Mediator read slices that back UI/host views. Each is a single query record + result + handler with no mutation: hydration status of files, Arius-container discovery in an account, the snapshot list, and aggregate repository statistics. They are grouped here because none carries enough intent to warrant its own page.
+Five thin Mediator read slices that back UI/host views. Each is a single query record + result + handler with no mutation: hydration status of files, Arius-container discovery in an account, the snapshot list, the diff between two snapshots, and aggregate repository statistics. They are grouped here because none carries enough intent to warrant its own page.
 
 ## How it works
 
@@ -22,9 +22,13 @@ The handler keeps only files in the repository with a content hash, batches one 
 
 Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a container is an Arius repository iff it has at least one blob under the `snapshots/` prefix (`BlobPaths.SnapshotsPrefix`). The probe is one listing per container with `pageSizeHint: 1`, and the prefix blob itself is excluded so an empty `snapshots/` marker is not mistaken for a real repository. This filters out non-Arius containers (e.g. `$logs`, `$web`).
 
-### SnapshotsQuery
+### SnapshotsListQuery
 
-`SnapshotsQuery()` is an `ICommand` returning a materialized `IReadOnlyList<SnapshotInfo>(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker. The set is materialized (not streamed) because there is one blob per snapshot and the whole set renders at once. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped. `Version` is the snapshot blob filename, exactly what `ListQueryOptions.Version` / `RestoreOptions.Version` are `StartsWith`-matched against, so the UI can round-trip a version back into a list or restore.
+`SnapshotsListQuery()` is an `IStreamQuery<SnapshotInfo>` streaming `SnapshotInfo(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker, the CLI `snapshot list`, and `arius snapshot diff` argument resolution. It streams (one blob per snapshot, resolved oldest→newest) so callers render rows as each manifest resolves. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped.
+
+### SnapshotDiffQuery
+
+`SnapshotDiffQuery(VersionA, VersionB)` is an `IStreamQuery<SnapshotDiffEntry>` reporting what changed between two snapshots. It resolves both manifests (`ISnapshotService.ResolveAsync`), warns when their `AriusVersion` differs (the cross-platform line-ending hash boundary makes identical content hash differently), then BFS-walks both root [filetrees](../../../glossary.md#filetree) in lockstep: child directories with an equal `FileTreeHash` are **pruned** (never read), so work is `O(changed nodes)`. Each remaining leaf is classified into exactly one `ChangeType` — `Added` (path only in B), `Removed` (path only in A), `Modified` (same path, different `ContentHash`), `TimestampChanged` (same path + same `ContentHash`, different timestamps); identical leaves are not emitted. The classification is MECE: `ChangeType` is a plain enum, not `[Flags]`. Rename detection and net-new-content reporting are deliberately out of scope (see the design spec). Each `SnapshotDiffEntry` carries the `FileEntry` from snapshot A (`Before`) and B (`After`); `Added`⇒`Before` null, `Removed`⇒`After` null.
 
 ### StatisticsQuery
 
@@ -49,7 +53,7 @@ The three sizes form a logical→physical chain: `OriginalSize` (logical, with d
 
 ## Why this shape
 
-These are deliberately thin vertical slices: query + result + handler, dispatched by Mediator, reading shared services and projecting UI-shaped records. The hydration query streams (status resolves per chunk, progressively); the snapshot and statistics queries materialize because their sets are small and rendered whole. The storage-tier-hint vs. live-truth split — cheap index hint for `ls`, authoritative blob probe only when asked — is documented on the [storage tier hint](../../../glossary.md#storage-tier-hint) term.
+These are deliberately thin vertical slices: query + result + handler, dispatched by Mediator, reading shared services and projecting UI-shaped records. The hydration, snapshot list, and diff queries stream (status or entries resolve progressively); the statistics query materializes because its set is small and rendered whole. The storage-tier-hint vs. live-truth split — cheap index hint for `ls`, authoritative blob probe only when asked — is documented on the [storage tier hint](../../../glossary.md#storage-tier-hint) term.
 
 ## Open seams / future
 

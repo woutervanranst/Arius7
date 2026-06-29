@@ -12,10 +12,12 @@ worked example for each.
 ## At a glance
 
 ```
-arius archive      <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
-arius restore      <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
-arius ls           [path] -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
-arius repair-index        -a <account> -c <container> [-k <key>] [-p <passphrase>]
+arius archive         <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
+arius restore         <path> -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
+arius ls              [path] -a <account> -c <container> [-k <key>] [-p <passphrase>] [options]
+arius snapshot list          -a <account> -c <container> [-k <key>] [-p <passphrase>]
+arius snapshot diff <from> <to> -a <account> -c <container> [-k <key>] [-p <passphrase>]
+arius repair-index            -a <account> -c <container> [-k <key>] [-p <passphrase>]
 arius update
 ```
 
@@ -24,7 +26,7 @@ to the audit log — see [Where state lives](#where-state-lives)).
 
 ## Global options
 
-These four options apply to `archive`, `restore`, `ls`, and `repair-index`. (`update` takes
+These four options apply to `archive`, `restore`, `ls`, `snapshot list`, `snapshot diff`, and `repair-index`. (`update` takes
 none of them — it talks only to GitHub.)
 
 | Option | Alias | Type | Required | Meaning |
@@ -37,7 +39,9 @@ none of them — it talks only to GitHub.)
 ¹ `--account` may be omitted on the command line if you set the `ARIUS_ACCOUNT` environment
 variable instead. One of the two must be present.
 ² The passphrase is not stored anywhere. It must be supplied (and identical) on every command
-that touches an encrypted repository — there is no way to recover data if it is lost.
+that touches an encrypted repository — there is no way to recover data if it is lost. If it is
+missing or wrong, the command stops with a clear error telling you to provide `--passphrase` / `-p`,
+rather than a cryptic decompression failure.
 
 > **One account + container = one repository.** All local state, the deduplication index, and
 > the audit logs are keyed on the `account`/`container` pair. See [Where state lives](#where-state-lives).
@@ -222,6 +226,29 @@ arius ls ./photos \
   --prefix 2024/ \
   -f invoice
 ```
+
+---
+
+## Inspecting snapshots
+
+### `arius snapshot list`
+
+Lists every snapshot, oldest first, with a 1-based index, the version id, creation time, and file count:
+
+    arius snapshot list -a <account> -c <container>
+
+The index is a convenience for `snapshot diff` — index 1 is the oldest snapshot, the highest index the latest.
+
+### `arius snapshot diff <from> <to>`
+
+Shows what changed between two snapshots. Each argument is either an index from `snapshot list` or a version/timestamp prefix:
+
+    arius snapshot diff 5 6                                  -a <account> -c <container>
+    arius snapshot diff 2024-04-02T13:09:54 2024-12-30T16:17:32 -a <account> -c <container>
+
+An argument made entirely of digits is always read as a `snapshot list` index, never a version prefix — so to select a whole year, give a prefix that isn't purely numeric (e.g. `2024-`), not a bare `2024`.
+
+Output is git `--name-status`-style — `A` added, `D` removed, `M` modified (content changed), `T` timestamp-only — followed by a summary line. The command is read-only. A warning is logged when the two snapshots were written by different Arius versions, because a cross-platform line-ending change can make identical content appear changed.
 
 ---
 

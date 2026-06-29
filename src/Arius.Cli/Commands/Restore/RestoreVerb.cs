@@ -1,5 +1,6 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Cost;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console.Rendering;
@@ -321,6 +322,12 @@ internal static class RestoreVerb
                         "Re-run this command in ~15 hours to complete the restore.");
                 }
                 return 0;
+            }
+            catch (RepositoryEncryptionException ex)
+            {
+                AnsiConsole.MarkupLine(CliBuilder.FormatRepositoryEncryptionError(ex));
+                Log.Error(ex, "restore failed: repository passphrase/encryption mismatch");
+                return 1;
             }
             finally
             {

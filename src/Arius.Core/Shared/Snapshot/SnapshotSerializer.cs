@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -50,14 +51,24 @@ internal static class SnapshotSerializer
         ICompressionService compression,
         CancellationToken   cancellationToken = default)
     {
-        var             ms         = new MemoryStream(bytes);
-        await using var decStream  = encryption.WrapForDecryption(ms);
-        await using var decompress = compression.WrapForDecompression(decStream);
-        var             plain      = new MemoryStream();
-        await decompress.CopyToAsync(plain, cancellationToken);
-        plain.Position = 0;
+        byte[] plain;
+        try
+        {
+            var             ms         = new MemoryStream(bytes);
+            await using var decStream  = encryption.WrapForDecryption(ms);
+            await using var decompress = compression.WrapForDecompression(decStream);
+            var             buffer     = new MemoryStream();
+            await decompress.CopyToAsync(buffer, cancellationToken);
+            plain = buffer.ToArray();
+        }
+        catch (Exception ex) when (ex is InvalidDataException or CryptographicException)
+        {
+            // A missing/incorrect passphrase (or a passphrase given for a plaintext repository) surfaces
+            // here as a decompression or AES-GCM failure. Translate it into a host-agnostic, actionable error.
+            throw new RepositoryEncryptionException(encryption.IsEncrypted, ex);
+        }
 
-        return JsonSerializer.Deserialize<SnapshotManifest>(plain.ToArray(), s_options)
+        return JsonSerializer.Deserialize<SnapshotManifest>(plain, s_options)
                ?? throw new InvalidDataException("Failed to deserialize snapshot manifest.");
     }
 }

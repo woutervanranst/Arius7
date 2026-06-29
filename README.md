@@ -56,6 +56,8 @@ sudo mv arius /usr/local/bin/
 arius archive <path> -a <name> -k <key> -c <container> [options]
 arius restore <path> -a <name> -k <key> -c <container> [options]
 arius ls          -a <name> -k <key> -c <container> [options]
+arius snapshot list             -a <name> -k <key> -c <container>
+arius snapshot diff <from> <to> -a <name> -k <key> -c <container>
 arius repair-index -a <name> -k <key> -c <container>
 arius update
 ```
@@ -89,6 +91,17 @@ arius ls \
 ```
 
 Filter with `--prefix <path>` and `--filter <substring>`, and pick an older snapshot with `-v <version>`.
+
+### Snapshots
+
+Every archive run records a snapshot — a point-in-time view of your files. List them oldest-first, then see exactly what changed between any two:
+
+```bash
+arius snapshot list -a mystorageaccount -c photos-backup
+arius snapshot diff 5 6 -a mystorageaccount -c photos-backup
+```
+
+`diff` takes the index numbers shown by `snapshot list` (or a date prefix like `2024-04-02`) and reports what was added, removed, modified, or had only its timestamps change.
 
 ### Repair chunk index
 

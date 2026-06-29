@@ -2,7 +2,7 @@ using System.Text.Json;
 using Arius.Api.AppData;
 using Arius.Api.Composition;
 using Arius.Api.Contracts;
-using Arius.Core.Features.SnapshotsQuery;
+using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
@@ -18,8 +18,10 @@ internal static class BrowseEndpoints
         {
             var provider = await registry.GetReadProviderAsync(id, ct);
             var mediator = provider.GetRequiredService<IMediator>();
-            var snapshots = await mediator.Send(new SnapshotsQuery(), ct);
-            return snapshots.Select(s => new SnapshotDto(s.Version, s.Timestamp, s.FileCount)).ToList();
+            var snapshots = new List<SnapshotDto>();
+            await foreach (var s in mediator.CreateStream(new SnapshotsListQuery(), ct))
+                snapshots.Add(new SnapshotDto(s.Version, s.Timestamp, s.FileCount));
+            return snapshots;
         });
 
         // `full=true` loads the whole chunk index so the repository-wide storage figures are complete
@@ -44,7 +46,7 @@ internal static class BrowseEndpoints
             var provider = await registry.GetReadProviderAsync(id, ct);
             var mediator = provider.GetRequiredService<IMediator>();
 
-            // Miss: derive the fingerprint cheaply (latest blob name only — not SnapshotsQuery, which
+            // Miss: derive the fingerprint cheaply (latest blob name only — not SnapshotsListQuery, which
             // resolves every manifest), compute, and store.
             var snapshotService = provider.GetRequiredService<ISnapshotService>();
             var snapshotBlobs   = await snapshotService.ListBlobNamesAsync(ct);

@@ -1,4 +1,5 @@
 using Arius.Core.Shared.Compression;
+using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Tests.Shared;
 
@@ -79,6 +80,54 @@ public class SnapshotSerializerTests
 
         System.Text.Encoding.UTF8.GetString(json.ToArray()).ShouldContain($"\"rootHash\":\"{rootHash}\"");
     }
+
+    // ── Passphrase mismatch → friendly RepositoryEncryptionException ───────────────
+
+    [Test]
+    public async Task Deserialize_EncryptedBytes_WithoutPassphrase_ThrowsRepositoryEncryptionException()
+    {
+        // The most common mistake: an encrypted repository read with no passphrase. The ciphertext
+        // reaches the decompressor and would otherwise surface as a cryptic "unrecognized compression
+        // format" error.
+        var bytes = await SnapshotSerializer.SerializeAsync(Manifest(), IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance);
+
+        var ex = await Should.ThrowAsync<RepositoryEncryptionException>(
+            async () => await SnapshotSerializer.DeserializeAsync(bytes, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance));
+
+        ex.PassphraseProvided.ShouldBeFalse();
+        ex.InnerException.ShouldNotBeNull();
+    }
+
+    [Test]
+    public async Task Deserialize_EncryptedBytes_WithWrongPassphrase_ThrowsRepositoryEncryptionException()
+    {
+        var bytes = await SnapshotSerializer.SerializeAsync(Manifest(), IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance);
+
+        var ex = await Should.ThrowAsync<RepositoryEncryptionException>(
+            async () => await SnapshotSerializer.DeserializeAsync(bytes, new PassphraseEncryptionService("not-the-right-passphrase"), ICompressionService.ZtdInstance));
+
+        ex.PassphraseProvided.ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Deserialize_PlaintextBytes_WithPassphrase_ThrowsRepositoryEncryptionException()
+    {
+        var bytes = await SnapshotSerializer.SerializeAsync(Manifest(), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
+
+        var ex = await Should.ThrowAsync<RepositoryEncryptionException>(
+            async () => await SnapshotSerializer.DeserializeAsync(bytes, IEncryptionService.EncryptedInstance, ICompressionService.ZtdInstance));
+
+        ex.PassphraseProvided.ShouldBeTrue();
+    }
+
+    private static SnapshotManifest Manifest() => new()
+    {
+        Timestamp    = new DateTimeOffset(2026, 3, 22, 15, 0, 0, TimeSpan.Zero),
+        RootHash     = FileTreeHash.Parse("a1b2c3d4" + new string('0', 56)),
+        FileCount    = 1,
+        OriginalSize = 1,
+        AriusVersion = "test"
+    };
 
     [Test]
     public void BlobName_TimestampFormat_MatchesSpec()
