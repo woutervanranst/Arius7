@@ -43,9 +43,9 @@ export class RealtimeService {
   }
 
   /** Starts an archive; returns the job id. Subscribe to log$/progress$/done$ for the stream. */
-  async startArchive(repositoryId: number, opts: { tier: string; removeLocal: boolean; noPointers: boolean }): Promise<string> {
+  async startArchive(repositoryId: number, opts: { tier: string; removeLocal: boolean; writePointers: boolean; fastHash: boolean }): Promise<string> {
     await this.ensureStarted();
-    return this.connection!.invoke<string>('StartArchive', repositoryId, opts.tier, opts.removeLocal, opts.noPointers);
+    return this.connection!.invoke<string>('StartArchive', repositoryId, opts.tier, opts.removeLocal, opts.writePointers, opts.fastHash);
   }
 
   /** Starts a restore (empty targetPaths = whole repository). Watch cost$ for the approval modal. */

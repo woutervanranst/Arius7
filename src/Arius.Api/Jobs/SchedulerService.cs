@@ -53,7 +53,7 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             {
                 var jobId = Guid.NewGuid().ToString();
                 logger.LogInformation("Firing scheduled archive for repository {RepositoryId} (job {JobId})", schedule.RepositoryId, jobId);
-                _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, repo.DefaultTier, removeLocal: false, writePointers: false, trigger: "schedule");
+                _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, repo.DefaultTier, removeLocal: false, writePointers: false, fastHash: false, trigger: "schedule");
             }
             database.SetScheduleNextRun(schedule.Id, expression.GetNextOccurrence(now, TimeZoneInfo.Utc));
         }

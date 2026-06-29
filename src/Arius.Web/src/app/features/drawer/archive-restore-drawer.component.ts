@@ -37,9 +37,15 @@ import { formatBytes } from '../../shared/format';
                   }
                 </div>
               </div>
-              <label class="ar-toggle"><input type="checkbox" data-testid="toggle-remove-local" [checked]="store.removeLocal()" (change)="store.toggleRemoveLocal()" /> Remove local binaries <small>(--remove-local)</small></label>
-              <label class="ar-toggle"><input type="checkbox" data-testid="toggle-no-pointers" [checked]="store.noPointers()" (change)="store.toggleNoPointers()" /> Skip pointer files <small>(--no-pointers)</small></label>
-              <div class="ar-note">Small files are bundled (1 MB threshold, 64 MB tar target). Remove-local and skip-pointers are mutually exclusive.</div>
+              <div class="ar-fld">
+                <span>On disk after archive:</span>
+                <div class="ar-seg">
+                  <button data-testid="seg-on-disk" [attr.data-on-disk]="'keep'" [class.on]="store.archiveOnDisk() === 'keep'" (click)="store.archiveOnDisk.set('keep')">Keep files only</button>
+                  <button data-testid="seg-on-disk" [attr.data-on-disk]="'keep-pointers'" [class.on]="store.archiveOnDisk() === 'keep-pointers'" (click)="store.archiveOnDisk.set('keep-pointers')">Keep files + pointers</button>
+                  <button data-testid="seg-on-disk" [attr.data-on-disk]="'replace'" [class.on]="store.archiveOnDisk() === 'replace'" (click)="store.archiveOnDisk.set('replace')">Replace with pointers</button>
+                </div>
+              </div>
+              <label class="ar-toggle"><input type="checkbox" data-testid="toggle-fast-hash" [checked]="store.fastHash()" (change)="store.fastHash.set(!store.fastHash())" /> ⚡ Fast hash — skip re-reading unchanged files</label>
             } @else {
               <!-- Restore form -->
               <div class="ar-target">

@@ -55,11 +55,11 @@ public sealed class JobsHub(
     }
 
     /// <summary>Starts an archive; the caller's connection joins the job group before events flow.</summary>
-    public async Task<string> StartArchive(long repositoryId, string tier, bool removeLocal, bool writePointers)
+    public async Task<string> StartArchive(long repositoryId, string tier, bool removeLocal, bool writePointers, bool fastHash)
     {
         var jobId = Guid.NewGuid().ToString();
         await Groups.AddToGroupAsync(Context.ConnectionId, jobId);
-        _ = jobRunner.RunArchiveAsync(repositoryId, jobId, tier, removeLocal, writePointers);
+        _ = jobRunner.RunArchiveAsync(repositoryId, jobId, tier, removeLocal, writePointers, fastHash);
         return jobId;
     }
 

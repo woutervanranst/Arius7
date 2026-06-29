@@ -27,7 +27,7 @@ public sealed class JobRunner(
 
     private SemaphoreSlim LockFor(long repositoryId) => _repoLocks.GetOrAdd(repositoryId, _ => new SemaphoreSlim(1, 1));
 
-    public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool writePointers, string trigger = "one-off")
+    public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool writePointers, bool fastHash = false, string trigger = "one-off")
     {
         var sink = new JobSink(jobId, hub);
         var repo = database.GetRepository(repositoryId);
@@ -59,6 +59,7 @@ public sealed class JobRunner(
                 UploadTier    = uploadTier,
                 RemoveLocal   = removeLocal,
                 WritePointers = writePointers,
+                FastHash      = fastHash,
             }));
 
             if (result.Success)

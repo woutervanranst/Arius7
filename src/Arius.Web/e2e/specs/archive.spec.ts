@@ -5,18 +5,36 @@ import { test, expect } from '../support/fixtures';
 import { scratchContainer } from '../support/scratch';
 
 test.describe('archive drawer', () => {
-  test('idle form: four tier segments + mutually-exclusive toggles', async ({ page, repo }) => {
+  test('idle form: four tier segments + on-disk radio + fast-hash toggle', async ({ page, repo }) => {
     await page.goto(`/repos/${repo.repoId}/files`);
     await page.getByTestId('btn-archive').click();
     await expect(page.getByTestId('drawer-title')).toContainText('Archive');
     await expect(page.getByTestId('tier-seg')).toHaveCount(4);
 
-    // --remove-local and --no-pointers are mutually exclusive
-    await page.getByTestId('toggle-remove-local').check();
-    await expect(page.getByTestId('toggle-remove-local')).toBeChecked();
-    await page.getByTestId('toggle-no-pointers').check();
-    await expect(page.getByTestId('toggle-no-pointers')).toBeChecked();
-    await expect(page.getByTestId('toggle-remove-local')).not.toBeChecked();
+    // on-disk radio: three options, defaults to 'keep'
+    const onDiskButtons = page.getByTestId('seg-on-disk');
+    await expect(onDiskButtons).toHaveCount(3);
+    const keepBtn         = page.locator('[data-testid="seg-on-disk"][data-on-disk="keep"]');
+    const keepPtrBtn      = page.locator('[data-testid="seg-on-disk"][data-on-disk="keep-pointers"]');
+    const replaceBtn      = page.locator('[data-testid="seg-on-disk"][data-on-disk="replace"]');
+    await expect(keepBtn).toHaveClass(/on/);
+    await expect(keepPtrBtn).not.toHaveClass(/on/);
+    await expect(replaceBtn).not.toHaveClass(/on/);
+
+    // selecting 'keep-pointers' activates only that option
+    await keepPtrBtn.click();
+    await expect(keepBtn).not.toHaveClass(/on/);
+    await expect(keepPtrBtn).toHaveClass(/on/);
+
+    // selecting 'replace' activates only that option
+    await replaceBtn.click();
+    await expect(replaceBtn).toHaveClass(/on/);
+    await expect(keepPtrBtn).not.toHaveClass(/on/);
+
+    // fast-hash toggle: unchecked by default, can be checked
+    await expect(page.getByTestId('toggle-fast-hash')).not.toBeChecked();
+    await page.getByTestId('toggle-fast-hash').check();
+    await expect(page.getByTestId('toggle-fast-hash')).toBeChecked();
 
     await page.getByRole('button', { name: 'Close' }).click();
     await expect(page.getByTestId('drawer')).toBeHidden();
