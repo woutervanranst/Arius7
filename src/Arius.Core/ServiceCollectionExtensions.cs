@@ -7,12 +7,14 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Features.SnapshotsQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Features.StorageAccountInfoQuery;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.HashCache;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -103,6 +105,14 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ICompressionService>()));
 
+        // Local fast-hash cache (one SQLite store per repository). A disposable accelerator: losing it
+        // costs a full-hash run, never data. Only consulted/written under --fast-hash and full hashing.
+        services.AddSingleton<IHashCacheService>(sp =>
+            new HashCacheService(
+                new HashCacheLocalStore(
+                    RepositoryLocalStatePaths.GetHashCacheRoot(accountName, containerName),
+                    sp.GetRequiredService<ILogger<HashCacheLocalStore>>())));
+
         // File tree service
         services.AddSingleton<IFileTreeService>(sp =>
             new FileTreeService(
@@ -127,6 +137,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
+                sp.GetRequiredService<IHashCacheService>(),
                 sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),

@@ -6,6 +6,7 @@ using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Extensions;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.HashCache;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Core.Shared.Streaming;
@@ -101,6 +102,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private readonly IEncryptionService             _encryption;
     private readonly IChunkIndexService             _chunkIndex;
     private readonly IChunkStorageService           _chunkStorage;
+    private readonly IHashCacheService              _hashCache;
     private readonly IFileTreeService              _fileTreeService;
     private readonly ISnapshotService               _snapshotSvc;
     private readonly IMediator                      _mediator;
@@ -116,6 +118,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IEncryptionService              encryption,
         IChunkIndexService              index,
         IChunkStorageService            chunkStorage,
+        IHashCacheService               hashCache,
         IFileTreeService                fileTreeService,
         ISnapshotService                snapshotSvc,
         IMediator                       mediator,
@@ -124,7 +127,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         string                          accountName,
         string                          containerName,
         FileExclusionFilter             exclusionFilter)
-        : this(blobs, encryption, index, chunkStorage, fileTreeService, snapshotSvc, mediator, logger, loggerFactory, accountName, containerName, exclusionFilter, OpenStagingSessionAsync)
+        : this(blobs, encryption, index, chunkStorage, hashCache, fileTreeService, snapshotSvc, mediator, logger, loggerFactory, accountName, containerName, exclusionFilter, OpenStagingSessionAsync)
     {
     }
 
@@ -133,6 +136,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         IEncryptionService              encryption,
         IChunkIndexService              index,
         IChunkStorageService            chunkStorage,
+        IHashCacheService               hashCache,
         IFileTreeService                fileTreeService,
         ISnapshotService                snapshotSvc,
         IMediator                       mediator,
@@ -147,6 +151,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         _encryption         = encryption;
         _chunkIndex         = index;
         _chunkStorage       = chunkStorage;
+        _hashCache          = hashCache;
         _fileTreeService    = fileTreeService;
         _snapshotSvc        = snapshotSvc;
         _mediator           = mediator;
@@ -215,6 +220,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
         long originalSize          = 0;   // sum of original (uncompressed) sizes of ALL files in the snapshot
         long incrementalSize       = 0;   // original (uncompressed) bytes newly uploaded this run
         long incrementalStoredSize = 0;   // stored (compressed) bytes newly written to storage this run
+
+        // fast-hash counters: reused = served from the hashcache without reading; rehashed = full-read +
+        // recorded to the cache. Both are written from N hash workers, so mutate via Interlocked.
+        var fastHashReused   = 0L;
+        var fastHashRehashed = 0L;
 
         var stagingCacheDirectory = RepositoryLocalStatePaths.GetFileTreeCacheRoot(_accountName, _containerName);
         var fs = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
@@ -339,10 +349,31 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 }
                                 else if (pair.Binary is not null)
                                 {
-                                    await using var s  = fs.OpenRead(pair.RelativePath);
-                                    var             p  = opts.CreateHashProgress?.Invoke(pair.RelativePath, fileSize) ?? new Progress<long>();
-                                    await using var ps = new ProgressStream(s, p);
-                                    contentHash = await _encryption.ComputeHashAsync(ps, ct);
+                                    var now = DateTimeOffset.UtcNow.UtcTicks;
+
+                                    // Fast-hash lane: consult the hashcache first. A hit reuses the cached
+                                    // content hash with no read at all; a miss falls through to a full read.
+                                    if (opts.FastHash)
+                                    {
+                                        var verdict = _hashCache.TryReuse(fs, pair.RelativePath, fileSize, now);
+                                        if (verdict.IsHit)
+                                        {
+                                            Interlocked.Increment(ref fastHashReused);
+                                            _logger.LogDebug("[fast-hash] {Path} -> reused ({Reason})", pair.RelativePath, verdict.Reason);
+                                            contentHash = verdict.Hash!.Value;
+                                        }
+                                        else
+                                        {
+                                            _logger.LogDebug("[fast-hash] {Path} -> full-hash ({Reason})", pair.RelativePath, verdict.Reason);
+                                            contentHash = await FullHashAndRecordAsync(pair.RelativePath, fileSize, now, ct);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Fast-hash off: full read as before, but still populate the cache so a
+                                        // later --fast-hash run finds a warm entry.
+                                        contentHash = await FullHashAndRecordAsync(pair.RelativePath, fileSize, now, ct);
+                                    }
                                 }
                                 else
                                 {
@@ -368,6 +399,24 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 // deadlock the bounded enumerate→hash producer. Log, clear the row, skip.
                                 _logger.LogWarning(ex, "Skipping unreadable file during hashing: {Path}", pair.RelativePath);
                                 await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
+                            }
+
+                            // Full read of a binary: hashes for upload while teeing the sparse fingerprint
+                            // for free, then records the cache so a later --fast-hash run is warm. Runs inside
+                            // the per-file try/catch above, so an unreadable file is skipped, never faulting
+                            // the worker. (TryGetChangeSignals never throws.)
+                            async ValueTask<ContentHash> FullHashAndRecordAsync(RelativePath relativePath, long size, long nowTicks, CancellationToken cancellation)
+                            {
+                                await using var s   = fs.OpenRead(relativePath);
+                                var             p   = opts.CreateHashProgress?.Invoke(relativePath, size) ?? new Progress<long>();
+                                await using var smp = new SparseSamplingStream(s, size);
+                                await using var ps  = new ProgressStream(smp, p);
+                                var hash = await _encryption.ComputeHashAsync(ps, cancellation);
+
+                                var signals = fs.TryGetChangeSignals(relativePath);
+                                _hashCache.Record(relativePath, size, signals, smp.Fingerprint(), hash, nowTicks);
+                                Interlocked.Increment(ref fastHashRehashed);
+                                return hash;
                             }
                         });
                 }
@@ -727,6 +776,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await Task.WhenAll(writePointersTask, removeLocalTask);
 
             _logger.LogInformation("[phase] complete");
+
+            if (opts.FastHash)
+                _logger.LogInformation("[fast-hash] summary: reused {Reused}, rehashed {Rehashed}", Interlocked.Read(ref fastHashReused), Interlocked.Read(ref fastHashRehashed));
 
             _logger.LogInformation("[archive] Done: scanned={Scanned} excluded={Excluded} uploaded={Uploaded} deduped={Deduped} uploadedSize={IncrementalSize} storedSize={IncrementalStoredSize} originalSize={OriginalSize} snapshot={Snapshot}", filesScanned, Interlocked.Read(ref entriesExcluded), filesUploaded, filesDeduped, incrementalSize.Bytes().Humanize(), incrementalStoredSize.Bytes().Humanize(), originalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 

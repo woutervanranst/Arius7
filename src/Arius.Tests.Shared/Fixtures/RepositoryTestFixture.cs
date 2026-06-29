@@ -9,6 +9,7 @@ using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.HashCache;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fakes;
@@ -229,12 +230,16 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// <paramref name="exclusions"/> defaults to <c>null</c> (exclude nothing); pass options to test exclusion behavior.
     /// </summary>
     public ArchiveCommandHandler CreateArchiveHandler(FileExclusionOptions? exclusions = null)
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, CreateHashCacheService(), FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
             exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions));
 
     internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession, FileExclusionOptions? exclusions = null)
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, CreateHashCacheService(), FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
             exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions), openStagingSession);
+
+    /// <summary>Creates a real per-repository hashcache service backed by the repository's local hashcache root.</summary>
+    internal IHashCacheService CreateHashCacheService()
+        => new HashCacheService(new HashCacheLocalStore(RepositoryLocalStatePaths.GetHashCacheRoot(AccountName, ContainerName)));
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()
