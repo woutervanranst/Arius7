@@ -53,7 +53,7 @@ public class SnapshotListVerbTests
     {
         var mediator = Substitute.For<IMediator>();
         mediator.CreateStream(Arg.Any<SnapshotsListQuery>(), Arg.Any<CancellationToken>())
-            .Returns<IAsyncEnumerable<SnapshotInfo>>(_ => throw new RepositoryEncryptionException(passphraseProvided: false, new InvalidDataException("Unrecognized compression format")));
+            .Returns(FailsOnEnumeration<SnapshotInfo>(new RepositoryEncryptionException(passphraseProvided: false, new InvalidDataException("Unrecognized compression format"))));
 
         var rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (_, _, _, _, _) =>
         {
@@ -67,6 +67,15 @@ public class SnapshotListVerbTests
         exitCode.ShouldBe(1);
         output.ShouldContain("passphrase");          // actionable, not the raw decompression error
         output.ShouldNotContain("Unhandled exception");
+    }
+
+    // A stream that faults on first enumeration — faithful to the handler's async-iterator failure
+    // (the exception surfaces inside the verb's `await foreach`, not at the CreateStream call).
+    private static async IAsyncEnumerable<T> FailsOnEnumeration<T>(Exception ex)
+    {
+        await Task.CompletedTask;
+        if (ex is not null) throw ex;
+        yield break;
     }
 
     private static async Task<(int ExitCode, string Output)> CaptureOutputAsync(Func<Task<int>> invokeAsync)
