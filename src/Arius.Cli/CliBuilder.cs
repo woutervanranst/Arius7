@@ -3,6 +3,7 @@ using Arius.Cli.Commands.Archive;
 using Arius.Cli.Commands.Ls;
 using Arius.Cli.Commands.Repair;
 using Arius.Cli.Commands.Restore;
+using Arius.Cli.Commands.Snapshot;
 using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.Shared;
@@ -71,6 +72,11 @@ public static class CliBuilder
         rootCommand.Subcommands.Add(LsVerb.Build(serviceProviderFactory));
         rootCommand.Subcommands.Add(RepairVerb.Build(serviceProviderFactory));
         rootCommand.Subcommands.Add(UpdateVerb.Build());
+
+        var snapshot = new Command("snapshot", "Inspect snapshots");
+        snapshot.Subcommands.Add(SnapshotListVerb.Build(serviceProviderFactory));
+        rootCommand.Subcommands.Add(snapshot);
+
         return rootCommand;
     }
 
