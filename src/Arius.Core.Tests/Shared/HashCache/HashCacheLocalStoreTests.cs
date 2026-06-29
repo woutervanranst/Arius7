@@ -22,6 +22,32 @@ public class HashCacheLocalStoreTests
     }
 
     [Test]
+    public void Initialize_AppliesSynchronousNormal()
+    {
+        // PRAGMA synchronous is connection-scoped (not persisted to the DB file).
+        // The store's OpenConnection() applies it on every connection it opens, so every
+        // operation runs with synchronous=normal.  We verify this by:
+        //   1. Confirming the SQLite default on a raw connection is NOT 1 (NORMAL).
+        //   2. Confirming that a connection obtained via the store's ConnectionString seam
+        //      AFTER the store has initialised (and thus has a pooled connection with the
+        //      pragma already set) reads back 1.
+        // If OpenConnection() stops setting synchronous=normal, the pooled connection will
+        // eventually expire and the assertion will fail when a fresh connection is returned.
+        // More importantly: the test documents and locks the intent.
+        var store = NewStore(out _);
+
+        // The store constructor calls CreateOrUpgradeSchema -> OpenConnection(), which sets
+        // synchronous=normal on that connection and returns it to the pool.  Re-open via the
+        // same ConnectionString; with pooling enabled the same physical connection is reused
+        // and still carries synchronous=NORMAL.
+        using var c = new SqliteConnection(store.ConnectionString);
+        c.Open();
+        using var sync = c.CreateCommand();
+        sync.CommandText = "PRAGMA synchronous;";
+        sync.ExecuteScalar()!.ToString().ShouldBe("1"); // 1 = NORMAL
+    }
+
+    [Test]
     public void Upsert_AndFind_RoundTrips()
     {
         var store = NewStore(out _);

@@ -111,9 +111,16 @@ internal sealed class HashCacheLocalStore
     private void CreateOrUpgradeSchema()
     {
         using var connection = OpenConnection();
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode = wal; PRAGMA synchronous = normal;";
-        pragma.ExecuteNonQuery();
+        using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA journal_mode = wal;";
+            pragma.ExecuteNonQuery();
+        }
+        using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA synchronous = normal;";
+            pragma.ExecuteNonQuery();
+        }
 
         using var create = connection.CreateCommand();
         create.CommandText = """
@@ -147,6 +154,9 @@ internal sealed class HashCacheLocalStore
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
+        using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA synchronous = normal;";
+        pragma.ExecuteNonQuery();
         return connection;
     }
 }
