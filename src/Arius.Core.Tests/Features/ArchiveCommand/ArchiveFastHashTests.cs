@@ -42,6 +42,7 @@ public class ArchiveFastHashTests
     }
 
     [Test]
+    [NotInParallel]
     public async Task ThirdRun_AfterCacheDeleted_FullHashesAgain()
     {
         await using var fixture = await CreateArchiveFixtureAsync();
@@ -56,7 +57,7 @@ public class ArchiveFastHashTests
         // SQLite connections, so clear the pool first — otherwise a pooled handle to the (now unlinked)
         // database keeps serving the old rows and the "cold" run would still see a warm cache.
         var hashCacheRootDir = RepositoryLocalStatePaths.GetHashCacheRoot(fixture.AccountName, fixture.ContainerName);
-        ClearHashCachePool(hashCacheRootDir);
+        ClearHashCachePool();
         var hashCacheRoot = hashCacheRootDir.ToString();
         if (Directory.Exists(hashCacheRoot))
             Directory.Delete(hashCacheRoot, recursive: true);
@@ -128,13 +129,12 @@ public class ArchiveFastHashTests
         return content;
     }
 
-    private static void ClearHashCachePool(LocalDirectory hashCacheRoot)
+    private static void ClearHashCachePool()
     {
         // Clear every pooled SQLite handle: the hashcache store opens pooled connections and the exact
         // connection-string key is an implementation detail, so ClearAllPools is the robust way to release
         // the (now-unlinked) database before deleting it. Without this, a pooled handle keeps serving the
         // old rows and the "cold" run would still see a warm cache.
-        _ = hashCacheRoot;
         SqliteConnection.ClearAllPools();
     }
 }
