@@ -11,6 +11,10 @@ Product documentation lives under [`docs/`](docs/) — start at [`docs/README.md
 
 Keep docs in sync with changes: record a one-time architectural decision as an ADR; update the relevant `docs/design/` doc when a subsystem's shape or invariants change; do **not** restate mechanical code behaviour in prose (the code and its docstrings are the source for that). Each `src/Arius.*` project also has its own nested `AGENTS.md` for project-local conventions.
 
+## Superpowers spec & plan location
+
+Save superpowers brainstorming **design specs** and **implementation plans** under [`docs/history/superpowers/`](docs/history/superpowers/) — overriding the skills' defaults of `docs/superpowers/specs/` and `docs/superpowers/plans/`. They are frozen archaeology: kept out of the rendered docs nav (`not_in_nav` in `mkdocs.yml`) and not maintained after the work merges.
+
 ## General
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
