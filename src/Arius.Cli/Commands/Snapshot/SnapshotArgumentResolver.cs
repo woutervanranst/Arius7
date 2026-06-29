@@ -15,7 +15,7 @@ internal static class SnapshotArgumentResolver
         if (int.TryParse(argument, out var index))
         {
             if (index < 1 || index > snapshots.Count)
-                throw new ArgumentException($"Snapshot index {index} is out of range (1..{snapshots.Count}).");
+                throw new ArgumentException($"Snapshot index {index} is out of range (1..{snapshots.Count}).", nameof(argument));
             return snapshots[index - 1].Version;
         }
 

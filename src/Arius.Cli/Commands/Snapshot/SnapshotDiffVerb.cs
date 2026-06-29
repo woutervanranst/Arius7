@@ -55,6 +55,7 @@ internal static class SnapshotDiffVerb
                 catch (PreflightException ex)
                 {
                     AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+                    Log.Error(ex, "Preflight check failed");
                     return 1;
                 }
 
@@ -73,6 +74,7 @@ internal static class SnapshotDiffVerb
                 catch (ArgumentException ex)
                 {
                     AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+                    Log.Error(ex, "snapshot diff argument resolution failed");
                     return 1;
                 }
 
@@ -88,6 +90,7 @@ internal static class SnapshotDiffVerb
                 catch (InvalidOperationException ex)
                 {
                     AnsiConsole.MarkupLine($"[red]Diff failed:[/] {Markup.Escape(ex.Message)}");
+                    Log.Error(ex, "snapshot diff failed");
                     return 1;
                 }
 
@@ -96,6 +99,11 @@ internal static class SnapshotDiffVerb
                     $"{counts.GetValueOrDefault(ChangeType.Removed)} removed, " +
                     $"{counts.GetValueOrDefault(ChangeType.Modified)} modified, " +
                     $"{counts.GetValueOrDefault(ChangeType.TimestampChanged)} timestamp-only[/]");
+                Log.Information("snapshot diff completed: {Added} added, {Removed} removed, {Modified} modified, {TimestampChanged} timestamp-only",
+                    counts.GetValueOrDefault(ChangeType.Added),
+                    counts.GetValueOrDefault(ChangeType.Removed),
+                    counts.GetValueOrDefault(ChangeType.Modified),
+                    counts.GetValueOrDefault(ChangeType.TimestampChanged));
                 return 0;
             }
             finally
