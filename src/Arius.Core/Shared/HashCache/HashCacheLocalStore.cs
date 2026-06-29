@@ -11,6 +11,7 @@ namespace Arius.Core.Shared.HashCache;
 /// sparse fingerprint, and cached content hash captured the last time the file was hashed.
 /// A disposable accelerator — losing it costs a full-hash run, never data.
 /// </summary>
+[SharedWithinAssembly]
 internal sealed class HashCacheLocalStore
 {
     private const string SchemaVersion = "1";

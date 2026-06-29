@@ -3,6 +3,7 @@ using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Shared.HashCache;
 
+[SharedWithinAssembly]
 internal interface IHashCacheService
 {
     FastHashResult TryReuse(RelativeFileSystem fs, RelativePath path, long liveSize, long now);

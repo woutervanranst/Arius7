@@ -7,6 +7,7 @@ namespace Arius.Core.Shared.HashCache;
 /// Per-repository fast-hash facade: the verdict ladder over <see cref="HashCacheLocalStore"/>.
 /// Validates against the live file (never a pointer); a miss means the caller must full-hash.
 /// </summary>
+[SharedWithinAssembly]
 internal sealed class HashCacheService : IHashCacheService
 {
     private readonly HashCacheLocalStore _store;
