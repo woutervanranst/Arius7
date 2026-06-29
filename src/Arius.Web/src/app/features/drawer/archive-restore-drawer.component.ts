@@ -45,7 +45,7 @@ import { formatBytes } from '../../shared/format';
                   <button data-testid="seg-on-disk" [attr.data-on-disk]="'replace'" [class.on]="store.archiveOnDisk() === 'replace'" (click)="store.archiveOnDisk.set('replace')">Replace with pointers</button>
                 </div>
               </div>
-              <label class="ar-toggle"><input type="checkbox" data-testid="toggle-fast-hash" [checked]="store.fastHash()" (change)="store.fastHash.set(!store.fastHash())" /> ⚡ Fast hash — skip re-reading unchanged files</label>
+              <label class="ar-toggle"><input type="checkbox" data-testid="toggle-fast-hash" [checked]="store.fastHash()" (change)="store.fastHash.set(!store.fastHash())" /> Fast hash — skip re-reading unchanged files</label>
             } @else {
               <!-- Restore form -->
               <div class="ar-target">
