@@ -7,9 +7,12 @@ using Arius.AzureBlob;
 using Arius.Core.Shared;
 using Microsoft.AspNetCore.DataProtection;
 using Serilog;
+using Serilog.Events;
 
+// Global log level: ARIUS_LOG_LEVEL (Verbose/Debug/Information/Warning/Error/Fatal); default Information.
+var logLevel = Enum.TryParse<LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : LogEventLevel.Information;
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
+    .MinimumLevel.Is(logLevel)
     .WriteTo.Console()
     .CreateLogger();
 

@@ -140,8 +140,9 @@ public static class CliBuilder
     // ── Audit logging ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Configures the global Serilog logger for one CLI invocation.
-    /// Console sink: Warning+.  File sink: Information+.
+    /// Configures the global Serilog logger for one CLI invocation. The minimum level honors the global
+    /// <c>ARIUS_LOG_LEVEL</c> environment variable (Serilog level names: Verbose/Debug/Information/Warning/
+    /// Error/Fatal; default Information); the file sink is restricted to the same level.
     /// </summary>
     public static string ConfigureAuditLogging(string accountName, string containerName, string commandName)
     {
@@ -157,10 +158,12 @@ public static class CliBuilder
         var formatter = new ExpressionTemplate(
             "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}");
 
+        // Global log level: ARIUS_LOG_LEVEL (Serilog level name; default Information).
+        var level = Enum.TryParse<LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : LogEventLevel.Information;
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
+            .MinimumLevel.Is(level)
             .Enrich.WithThreadId()
-            .WriteTo.File(formatter, logFile, restrictedToMinimumLevel: LogEventLevel.Information)
+            .WriteTo.File(formatter, logFile, restrictedToMinimumLevel: level)
             .CreateLogger();
 
         return logFile;

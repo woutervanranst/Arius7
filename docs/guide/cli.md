@@ -39,6 +39,12 @@ variable instead. One of the two must be present.
 ² The passphrase is not stored anywhere. It must be supplied (and identical) on every command
 that touches an encrypted repository — there is no way to recover data if it is lost.
 
+**Logging — `ARIUS_LOG_LEVEL`.** A single environment variable controls log verbosity across every
+Arius host (CLI, API/Web, Explorer), using Serilog's level names (case-insensitive): `Verbose`,
+`Debug`, `Information` (default), `Warning`, `Error`, `Fatal`. The CLI writes to its per-run audit log
+file; the API/Web container logs to stdout (`docker logs`). Set `Debug` to see per-file `[fast-hash]`
+decisions (`-> reused (ctime match)` vs `(size+fp match)`).
+
 > **One account + container = one repository.** All local state, the deduplication index, and
 > the audit logs are keyed on the `account`/`container` pair. See [Where state lives](#where-state-lives).
 
