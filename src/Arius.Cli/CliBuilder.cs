@@ -9,6 +9,7 @@ using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Serilog.Events;
 using Serilog.Templates;
 
@@ -123,7 +124,9 @@ public static class CliBuilder
 
         // ── Build DI container ────────────────────────────────────────────────
         var services = new ServiceCollection();
-        services.AddLogging(b => b.AddSerilog(dispose: true));
+        // SetMinimumLevel(Trace) stops MEL from pre-filtering below Serilog's level (its default is
+        // Information), so the audit logger's ARIUS_LOG_LEVEL is the single authoritative gate.
+        services.AddLogging(b => b.AddSerilog(dispose: true).SetMinimumLevel(LogLevel.Trace));
         services.AddSingleton<ProgressState>();
 
         // AddMediator() is called here (not in AddArius) so the source generator runs
