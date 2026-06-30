@@ -1,5 +1,3 @@
-using Arius.Core.Shared.FileSystem;
-using Arius.Core.Shared.Hashes;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
