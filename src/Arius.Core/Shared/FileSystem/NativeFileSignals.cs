@@ -181,11 +181,18 @@ internal static partial class NativeFileSignals
     }
 
     // =====================================================================================
-    // macOS (Darwin): stat with the 64-bit-inode struct (the default symbol on modern macOS).
+    // macOS (Darwin, arm64 only): stat with the 64-bit-inode struct.
     // =====================================================================================
 
     private static FileChangeSignals? TryGetMacOs(string fullPath)
     {
+        // Apple Silicon (arm64) only. On x86_64 macOS the bare `stat` symbol can resolve to the legacy
+        // 32-bit-inode variant (no $INODE64), which would misread the DarwinStatBuf offsets and yield a
+        // silently-wrong signal. Intel Macs are unsupported, so we return null and fall to the
+        // fingerprint floor rather than risk a wrong reuse.
+        if (RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
+            return null;
+
         // The target volume is local; macOS network detection is intentionally skipped.
         var buf = default(DarwinStatBuf);
         if (darwin_stat(fullPath, ref buf) != 0)
@@ -203,8 +210,9 @@ internal static partial class NativeFileSignals
     private static partial int darwin_stat(string pathname, ref DarwinStatBuf buf);
 
     /// <summary>
-    /// Subset of the Darwin (arm64/x64) 64-bit-inode <c>struct stat</c>. Only the fields read here are
-    /// mapped at their byte offsets; <c>Size</c> is generous to cover the full struct.
+    /// Subset of the Darwin arm64 64-bit-inode <c>struct stat</c> (the only macOS architecture supported;
+    /// the caller guards to arm64). Only the fields read here are mapped at their byte offsets;
+    /// <c>Size</c> is generous to cover the full struct.
     /// </summary>
     [StructLayout(LayoutKind.Explicit, Size = 144)]
     private struct DarwinStatBuf

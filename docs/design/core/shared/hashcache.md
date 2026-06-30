@@ -33,7 +33,7 @@ flowchart TD
     H -->|no| M4["Miss: fp differs"]
 ```
 
-A `Miss` always returns to the caller with a reason string; the caller logs it and performs a full hash via `FullHashAndRecordAsync`, which records the result back to the cache for future runs.
+A `Miss` always returns to the caller with a reason string; the caller logs it and performs a full hash via `FullHashAndRecordAsync`, which records the result back to the cache for future runs. On a ctime-lane hit the rest of the row is unchanged, so only `last_verified` is bumped — via a targeted one-column `UPDATE` (`HashCacheLocalStore.Touch`), not a full-row rewrite of the sparse-fingerprint BLOB — to keep the dominant unchanged-file path cheap.
 
 **The two lanes are independent, not conjunctive.** A file with no available signals (network FS, unsupported platform, or `statx` ENOSYS on non-x64 Linux) skips step F entirely and falls through to the fingerprint floor. The ctime fast-lane achieves zero byte reads; the fingerprint floor reads only the sparse sample regions.
 
@@ -49,7 +49,7 @@ Location: `~/.arius/<account>-<container>/hash/cache.sqlite` (WAL mode, `synchro
 CREATE TABLE file_hashes (
     path           TEXT    NOT NULL PRIMARY KEY,  -- repository-relative path
     size           INTEGER NOT NULL CHECK (size >= 0),
-    mtime          INTEGER NOT NULL,              -- stored for diagnostics only; NOT in the verdict
+    mtime          INTEGER NOT NULL,              -- file's last-write time (UTC ticks); diagnostics only, NOT in the verdict
     ctime          INTEGER,                       -- nullable: null when signals unavailable
     inode          TEXT,                          -- nullable
     dev            TEXT,                          -- nullable; "major:minor" on Linux, int string on macOS/Windows
@@ -66,7 +66,7 @@ CREATE TABLE metadata (
 -- metadata row: schema_version = "1"
 ```
 
-`mtime` is stored for operator diagnostics (log correlation) only. It does not appear in any verdict check. `signal_set` carries the provenance so that a row written on Windows is never used as a POSIX-signal comparison on Linux and vice versa; a mismatch falls to the fingerprint floor.
+`mtime` is the file's last-write time (UTC ticks), captured at record time and stored for operator diagnostics (log correlation) and the future `mtime`-prefilter seam only — it does not appear in any verdict check. (It is the *file's* timestamp, not the archive run's clock; `last_verified` carries the run clock.) `signal_set` carries the provenance so that a row written on Windows is never used as a POSIX-signal comparison on Linux and vice versa; a mismatch falls to the fingerprint floor.
 
 ### Sparse fingerprint
 
@@ -85,8 +85,10 @@ Digest: `SHA-256(size as 8-byte LE ‖ region-bytes-concatenated)`.
 
 **Two compute paths:**
 
-- `ComputeBySeeking` — opens the file and seeks to each region. Used when the verdict ladder reaches the fingerprint floor (the ctime fast-lane missed).
-- `SparseFingerprint.Sampler` — captures regions as bytes pass through a sequential full-hash read (`SparseSamplingStream`). Used inside `FullHashAndRecordAsync` so the fingerprint is captured at zero extra I/O cost during a full re-hash.
+- `ComputeBySeeking` — opens the file and seeks to each region (cold floor path). Used when the verdict ladder reaches the fingerprint floor (the ctime fast-lane missed). Its read buffer is sized to the largest region, not a fixed `BlockSize`, so the single whole-file region of a small file (up to `k × BlockSize`) is read in one go.
+- `SparseFingerprint.Sampler` — captures regions as bytes pass through a sequential full-hash read (`SparseSamplingStream`), warm path. Used inside `FullHashAndRecordAsync` so the fingerprint is captured at zero extra I/O cost during a full re-hash.
+
+The two paths consume the **same** `Regions` and the **same** `size ‖ region-bytes` framing and **must** produce byte-identical digests for identical content — any change to the layout or framing must be mirrored in both (guarded by `SparseFingerprintTests.Sampler_MatchesSeekingFingerprint_ForSameContent`).
 
 ### Platform signals
 
@@ -97,7 +99,7 @@ Digest: `SHA-256(size as 8-byte LE ‖ region-bytes-concatenated)`.
 | Linux ≥ 4.11 | `statx` (`[LibraryImport("libc")]`) | Architecture-stable struct layout; preferred |
 | Linux 4.4 (e.g. Synology DS918+) | `stat` x86_64 fallback (`[LibraryImport("libc")]`) | `statx` returns `ENOSYS` → fallback; x86_64 struct layout only, guarded by `RuntimeInformation.ProcessArchitecture` |
 | Linux (network FS: CIFS/SMB2/NFS) | — | `statfs` detects by `f_type` magic; returns `null` |
-| macOS | `stat` (Darwin 64-bit inode) | Local volume assumed; no network detection |
+| macOS (arm64 only) | `stat` (Darwin 64-bit inode) | Apple Silicon only — guarded by `RuntimeInformation.ProcessArchitecture`; Intel Macs return `null` → floor (the bare `stat` symbol's inode width is ambiguous on x86_64). Local volume assumed; no network detection |
 | Windows (local) | `GetFileInformationByHandleEx` (`FileBasicInfo` + `FileIdInfo`) | `ChangeTime` field; `SetFileTime` cannot change it (only `NtSetInformationFile` can) — stronger anti-stomp signal |
 | Windows (network, `DRIVE_REMOTE`) | — | `GetDriveType` → returns `null` |
 | Any unsupported OS | — | Returns `null` |
@@ -123,6 +125,7 @@ End-of-run summary at `Information` level (only when `--fast-hash` is active):
 
 - **Correctness-first default.** Without `--fast-hash`, Stage 2 always performs a full read. `--fast-hash` is an explicit opt-in that accepts the heuristic trade.
 - **Disposable-cache invariant.** The hashcache is local and per-machine. Losing it (`rm -rf ~/.arius/<repo>/hash/`) costs one full-hash run. The remote repository is never affected.
+- **Corruption fails loud, not silent.** A corrupt or unreadable `cache.sqlite` raises `HashCacheLocalStoreException` (instructing the operator to delete the hashcache directory), faulting the archive run rather than silently skipping files or auto-rebuilding the DB. The Stage 2 per-file catch deliberately lets this exception escape so it is not misread as a single unreadable file. Recovery is one full-hash run after deletion.
 - **Archive is local and never concurrently multi-platform.** The hashcache is machine-local. Sequential cross-platform use (archive from Windows, then Linux) is supported: the `signal_set` mismatch causes the row to fall to the fingerprint floor, which re-validates the content. Concurrent archives from two machines into the same remote repository are not supported (signals are meaningless across machines), but correctness is maintained because the remote chunk index and snapshots remain the authoritative dedup check.
 - **Signals compared only within the same filesystem.** `dev` encodes the device identity; `signal_set` encodes the OS source. A cross-OS or cross-device comparison is never attempted.
 - **`mtime` is not in the verdict.** Stored for diagnostics only. `ctime` is used because it changes on content write even when `mtime` is explicitly set by the application.
@@ -135,7 +138,7 @@ End-of-run summary at `Information` level (only when `--fast-hash` is active):
 - **Two independent failure modes (ctime vs fingerprint), not one.** The ctime lane catches the common case (unchanged file) with zero reads. The fingerprint floor catches timestamp-stomping and is the safety net when signals are unavailable. Making them independent (not AND-ed) means each path degrades gracefully: no signals → only floor; signals differ → immediate miss, no extra I/O.
 - **Hand-rolled `[LibraryImport]` over Mono.Posix.** Mono.Posix brings a large transitive dependency and does not expose `statx`. Three syscalls (`statx`, `stat`, `statfs`) do not justify a package dependency. Explicit struct offsets make wrong reads detectable in tests (the test seam `TryGetViaStatxForTest`/`TryGetViaStatForTest` cross-validates the two Linux paths on modern kernels).
 - **`statx` preferred; `stat` x86_64 fallback for the DS918+ (kernel 4.4).** `statx` has an architecture-stable struct layout (identical on x86_64 and arm64). The DS918+ runs kernel 4.4 (pre-`statx`); the `stat` fallback is x86_64-only to match its J3455 CPU. Any other non-x64 Linux kernel < 4.11 uses only the fingerprint floor.
-- **Disposable SQLite store.** Mirrors `ChunkIndexLocalStore`. WAL + `synchronous = normal` keeps write latency low without risking undetected corruption (WAL survives a crash; normal sync is sufficient for a cache-only store).
+- **Disposable SQLite store.** Mirrors `ChunkIndexLocalStore`. WAL + `synchronous = normal` keeps write latency low without risking undetected corruption (WAL survives a crash; normal sync is sufficient for a cache-only store). It mirrors that store's scaffolding but **diverges on recovery**: a corrupt cache file throws a `HashCacheLocalStoreException` instructing the operator to delete the hashcache directory, rather than silently recreating it (`ChunkIndexLocalStore.RecreateDatabase`). The hashcache has no remote backing and no repair command, so a loud, operator-visible failure — recovered by one full-hash run — is preferred over an automatic in-place rebuild (deferred as a future option).
 - **Fingerprint constants are benchmark-pending.** `B = 256 KiB`, `S = 1 GiB`, `MinBlocks = 4`, `MaxBlocks = 64` were chosen analytically. See [ADR-0021](../../../decisions/adr-0021-opt-in-change-detection-hashcache.md) for the benchmark procedure to validate them on the DS918+.
 
 ## Open seams

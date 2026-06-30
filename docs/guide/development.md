@@ -91,7 +91,7 @@ dotnet user-secrets set "ARIUS_E2E_KEY"     <key>  --project src/Arius.E2E.Tests
 `src/Arius.E2E.Tests/` contains the actual end-to-end coverage:
 
 - `RepresentativeArchiveRestoreTests.cs` runs one canonical representative workflow on Azurite and, when credentials are available, live Azure.
-- The workflow exercises one evolving archive history (not isolated one-off scenarios): incremental archive, warm and cold restore, previous-version restore, no-op re-archive, `--no-pointers`, `--remove-local`, conflict handling, and archive-tier pending-versus-ready behavior when the backend supports it.
+- The workflow exercises one evolving archive history (not isolated one-off scenarios): incremental archive, warm and cold restore, previous-version restore, no-op re-archive, `--write-pointers`, `--remove-local`, `--fast-hash`, conflict handling, and archive-tier pending-versus-ready behavior when the backend supports it.
 - No-op archive runs preserve the current latest snapshot, so snapshot history reflects repository state changes, not repeated invocations.
 - The synthetic repository size is one explicit constant in `SyntheticRepositoryDefinitionFactory` — tune it upward deliberately.
 - `E2ETests.cs` keeps the live Azure credential sanity check plus narrow hot-tier pointer-file and large-file probes the representative workflow does not cover directly.

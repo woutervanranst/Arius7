@@ -12,7 +12,7 @@ public class ArchiveCommandTests
     public async Task Archive_AllOptions_ParsedCorrectly()
     {
         var harness = new CliHarness();
-        var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr -t Hot --remove-local");
+        var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr -t Hot --remove-local --write-pointers");
 
         exitCode.ShouldBe(0);
 
@@ -20,7 +20,7 @@ public class ArchiveCommandTests
         var cmd = (ArchiveCommand)call.GetArguments()[0]!;
         cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Hot);
         cmd.CommandOptions.RemoveLocal.ShouldBeTrue();
-        cmd.CommandOptions.WritePointers.ShouldBeFalse();
+        cmd.CommandOptions.WritePointers.ShouldBeTrue();
     }
 
     [Test]
@@ -52,18 +52,14 @@ public class ArchiveCommandTests
     }
 
     [Test]
-    public async Task Archive_RemoveLocal_ParsesAndSucceeds()
+    public async Task Archive_RemoveLocalWithoutWritePointers_IsRejected()
     {
-        // --remove-local no longer conflicts with the pointer flag; it now implies pointers in the handler.
+        // --remove-local requires --write-pointers; on its own it is rejected before the handler runs.
         var harness = new CliHarness();
         var exitCode = await harness.InvokeAsync("archive /data -a acct -k key -c ctr --remove-local");
 
-        exitCode.ShouldBe(0);
-
-        var call = harness.ArchiveHandler.ReceivedCalls().Single();
-        var cmd = (ArchiveCommand)call.GetArguments()[0]!;
-        cmd.CommandOptions.RemoveLocal.ShouldBeTrue();
-        cmd.CommandOptions.WritePointers.ShouldBeFalse();
+        exitCode.ShouldBe(1);
+        harness.ArchiveHandler.ReceivedCalls().ShouldBeEmpty();
     }
 
     [Test]

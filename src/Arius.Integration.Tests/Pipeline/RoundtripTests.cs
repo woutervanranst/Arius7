@@ -309,6 +309,7 @@ public class RoundtripTests(AzuriteFixture azurite)
                 RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
+                WritePointers = true, // --remove-local requires --write-pointers
             }), default);
 
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -384,6 +385,7 @@ public class RoundtripTests(AzuriteFixture azurite)
                 RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
+                WritePointers = true, // --remove-local requires --write-pointers
             }), default);
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
 
@@ -765,10 +767,10 @@ public class RoundtripTests(AzuriteFixture azurite)
         fix.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();
     }
 
-    // ── 14.10: --remove-local implies a pointer is written ────────────────────
+    // ── 14.10: --remove-local without --write-pointers is rejected ────────────
 
     [Test]
-    public async Task Archive_RemoveLocal_ImpliesPointerWritten()
+    public async Task Archive_RemoveLocalWithoutWritePointers_IsRejectedAndKeepsBinary()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
@@ -781,14 +783,14 @@ public class RoundtripTests(AzuriteFixture azurite)
                 RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
-                // WritePointers left default (false): --remove-local implies it.
+                WritePointers = false, // illegal: removing the binary while writing no pointer
             }), default);
 
-        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
-
-        // The binary is removed and a pointer sidecar is left behind as the sole local record.
-        fix.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();
-        fix.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
+        // Rejected up front, before any deletion: the binary is untouched and no pointer is written.
+        archiveResult.Success.ShouldBeFalse();
+        archiveResult.ErrorMessage.ShouldContain("--write-pointers");
+        fix.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();
+        fix.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
     }
 
     // ════════════════════════════════════════════════════════════════════════════

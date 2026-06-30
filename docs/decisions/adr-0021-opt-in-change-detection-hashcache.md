@@ -52,9 +52,9 @@ arius archive ./photos
 # Subsequent runs: unchanged files served from cache, changed files full-re-hashed
 arius archive ./photos --fast-hash
 
-# Pointer sidecars are now opt-in; --remove-local implies them
-arius archive ./photos --write-pointers         # write sidecars, keep binary
-arius archive ./photos --remove-local           # implies --write-pointers
+# Pointer sidecars are opt-in; --remove-local requires --write-pointers
+arius archive ./photos --write-pointers                 # write sidecars, keep binary
+arius archive ./photos --remove-local --write-pointers  # remove binary, leave pointer
 ```
 
 ### Consequences and Tradeoffs
@@ -108,16 +108,20 @@ The ctime and fingerprint lanes are **independent** failure modes, not conjuncti
 |---|---|---|---|---|
 | Linux ≥ 4.11 | `statx` | `stx_ctime.tv_sec` + `tv_nsec` (→ UTC ticks) | `stx_ino` (u64, string) | `stx_dev_major:stx_dev_minor` |
 | Linux 4.4 (Synology DS918+) | `stat` x86_64 fallback | `st_ctim.tv_sec` + `tv_nsec` | `st_ino` (u64) | decoded via glibc `gnu_dev_major`/`gnu_dev_minor` macros → `"major:minor"` to match `statx` format |
-| macOS | `stat` (Darwin 64-bit inode) | `st_ctimespec.tv_sec` + `tv_nsec` | `st_ino` (u64) | `st_dev` (int32, string) |
+| macOS (arm64 only) | `stat` (Darwin 64-bit inode) | `st_ctimespec.tv_sec` + `tv_nsec` | `st_ino` (u64) | `st_dev` (int32, string) |
 | Windows | `GetFileInformationByHandleEx` (`FileBasicInfo` + `FileIdInfo`) | `ChangeTime` (FILETIME → UTC ticks) | 128-bit `FileId` (hex string) | `VolumeSerialNumber` (u64, string) |
 
 **Deliberate timestamp-stomp class (Windows).** `SetFileTime` on Windows cannot set `ChangeTime` — only the kernel's `NtSetInformationFile` can. This means `ChangeTime` is far harder to tamper with than `LastWriteTime`, making it a stronger signal. The hashcache relies on this property.
 
 **Network filesystem exclusion.** On Linux, `statfs` detects CIFS/SMB2/NFS by `f_type` magic and returns `null` → the caller uses the fingerprint floor. On Windows, `GetDriveType` returns `DRIVE_REMOTE` → `null`. On macOS the source volume is assumed local (network detection is skipped). Any `TryGet` failure (exception, unsupported FS) also returns `null` → floor.
 
+**macOS is arm64-only.** The Darwin `stat` path is guarded to Apple Silicon: on x86_64 macOS the bare `stat` symbol can resolve to the legacy 32-bit-inode struct, which would misread the field offsets and yield a silently-wrong signal. Intel Macs are unsupported — `TryGet` returns `null` there and the fingerprint floor is used.
+
 ### The statx → stat fallback for the Synology DS918+ (kernel 4.4)
 
 `statx` was added in Linux 4.11; `ENOSYS` from `statx` means the kernel predates it. `TryGetViaStatx` returns `null` on any non-zero return code, and `TryGetLinux` then calls `TryGetViaStat`. The `struct stat` layout is architecture-specific; only the x86_64 layout is implemented (the DS918+ Intel Celeron J3455 is x86_64), guarded by `RuntimeInformation.ProcessArchitecture != Architecture.X64` → `null`. On a non-x64 Linux kernel < 4.11, both paths return `null` and the fingerprint floor is used.
+
+**Open risk — symbol binding on old glibc (not yet validated on hardware).** The `[LibraryImport("libc", EntryPoint = "stat")]` binds the *bare* `stat` symbol. glibc only exported a callable `stat` symbol from 2.33; older glibc (as ships on Synology DSM) exposes the syscall solely through the versioned `__xstat(ver, path, buf)` wrapper, so the P/Invoke may fail to resolve with `EntryPointNotFoundException` — swallowed → `null` → the cheap ctime fast-lane is unavailable on the very NAS the fallback exists for. **Correctness is unaffected** (the sparse-fingerprint floor still avoids full re-reads of unchanged files; it is only slower than a pure `stat`). This must be confirmed on the DS918+ before acting (benchmark step 4: a warm `--fast-hash` run showing only `size+fp match` and no `ctime match` hits on a local mount points at it). The fix, if confirmed, is to add a `__xstat(_STAT_VER, …)` fallback entry point reusing the same `LinuxStatBuf` layout.
 
 ### The sparse fingerprint
 
@@ -141,7 +145,7 @@ The regions are deterministic from the file size, so the same regions are re-sam
 The hashcache stores `(path, size, mtime, ctime, inode, dev, signal_set, sparse_fp, fp_algo, content_hash, last_verified)` keyed by `RelativePath`. `mtime` is stored for diagnostics only and is not used in any verdict. The cache is:
 
 - **Local and per-machine.** `~/.arius/<account>-<container>/hash/cache.sqlite`. Each machine's cache is independent; signals are only compared within the same filesystem. Sequential cross-platform use (archive from Windows, then Linux) is supported: the `signal_set` column stores the provenance (`SignalSets.None = 0`, `Posix = 1`, `Windows = 2`), so a `Windows`-sourced row used from a Linux run will mismatch `signal_set` and fall through to the fingerprint floor.
-- **Disposable.** Losing the file costs one full-hash run. It is never referenced by the remote repository and is never shared across machines.
+- **Disposable.** Losing the file costs one full-hash run. It is never referenced by the remote repository and is never shared across machines. Unlike `ChunkIndexLocalStore` (which silently recreates a corrupt DB), a corrupt hashcache is surfaced as an actionable `HashCacheLocalStoreException` instructing the operator to delete the hashcache directory — there is no remote backing and no repair command, and a silent in-place rebuild is intentionally deferred (a future option). Recovery is the same one full-hash run.
 - **Not concurrently multi-platform.** Concurrent archives from two machines into the same files are not supported. The hashcache is local; each machine has its own. The remote repository (chunk index + snapshots) is the source of truth for deduplication correctness; the hashcache only accelerates the hashing stage of a single machine's archive.
 
 ### Pointer opt-in (the pointer-default change)
@@ -151,9 +155,9 @@ Prior to this ADR, `archive` wrote `.pointer.arius` sidecars by default and `--n
 After this ADR:
 
 - `WritePointers` defaults to `false`. Pass `--write-pointers` to write sidecars.
-- `--remove-local` internally sets `writePointers = opts.WritePointers || opts.RemoveLocal`, so removing the binary always writes a pointer regardless of the flag.
+- `--remove-local` **requires** `--write-pointers`: removing the binary while writing no pointer would leave no local record of the file, so the combination `RemoveLocal && !WritePointers` is rejected up front — validated in **both** the CLI (`ArchiveVerb`) and the handler (`ArchiveCommandHandler`, the backstop for programmatic/API callers). An earlier revision *implied* pointers from `--remove-local`; that silent implication was replaced by this explicit validation so the dangerous combination is an error, not a magic auto-correct.
 - `--no-pointers` is gone from `archive` (it is still present on `restore` where it has a different, valid use).
-- The old mutual-exclusion validation is replaced by the implication.
+- The old `--remove-local` + `--no-pointers` mutual-exclusion validation is replaced by the `--remove-local` requires `--write-pointers` validation.
 - Legacy v5 pointer-only files are still always upgraded in place (stage 5b), regardless of `WritePointers`.
 
 ## Benchmark procedure (for the DS918+ operator)

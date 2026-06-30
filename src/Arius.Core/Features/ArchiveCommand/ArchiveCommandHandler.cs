@@ -43,7 +43,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 ///    - **6b. Flush chunk index** — `_chunkIndex.FlushAsync`; runs concurrently with 6c (`Task.WhenAll`).
 ///    - **6c. Build file tree** — `FileTreeBuilder.SynchronizeAsync`; runs concurrently with 6b and yields the snapshot root hash.
 ///    - **6d. Create snapshot** (×1) — create + promote a snapshot for the root hash (skipped if unchanged).
-///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (binary-present files only when `--write-pointers` or `--remove-local`; legacy pointer upgrades always); runs concurrently with 6f (`Task.WhenAll`).
+///    - **6e. Write pointers** (×N) — write `pendingPointers` in parallel (binary-present files only when `--write-pointers`, which `--remove-local` requires; legacy pointer upgrades always); runs concurrently with 6f (`Task.WhenAll`).
 ///    - **6f. Remove local** (×N) — delete `pendingDeletes` in parallel (only if `--remove-local`); runs concurrently with 6e. Disjoint paths from 6e (pointer sidecar vs binary).
 ///
 /// ```
@@ -187,8 +187,29 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     {
         var opts = command.CommandOptions;
 
-        // --remove-local implies writing pointers: you cannot remove the binary and leave no local record.
-        var writePointers = opts.WritePointers || opts.RemoveLocal;
+        // --remove-local without --write-pointers would delete the binary and leave no local record at
+        // all, so the combination is rejected up front (the CLI rejects it too). Validated here as well
+        // because programmatic/API callers construct the options directly and bypass the CLI guard.
+        if (opts.RemoveLocal && !opts.WritePointers)
+        {
+            _logger.LogError("[archive] --remove-local requires --write-pointers; refusing to run.");
+            return new ArchiveResult
+            {
+                Success               = false,
+                FilesScanned          = 0,
+                EntriesExcluded       = 0,
+                FilesUploaded         = 0,
+                FilesDeduped          = 0,
+                OriginalSize          = 0,
+                IncrementalSize       = 0,
+                IncrementalStoredSize = 0,
+                RootHash              = null,
+                SnapshotTime          = DateTimeOffset.UtcNow,
+                ErrorMessage          = "--remove-local requires --write-pointers: removing the binary without writing a pointer would leave no local record of the file."
+            };
+        }
+
+        var writePointers = opts.WritePointers;
 
         // ── Operation start marker (task 3.10) ───────────────────────────────
         _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} writePointers={WritePointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, writePointers);
@@ -378,11 +399,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                                 await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, created, modified), ct);
                             }
-                            catch (Exception ex) when (!ct.IsCancellationRequested)
+                            catch (Exception ex) when (!ct.IsCancellationRequested && ex is not HashCacheLocalStoreException)
                             {
                                 // A single unreadable file (broken link, permission denied, deleted mid-run)
                                 // must never fault this stage — that would stop draining filePairChannel and
                                 // deadlock the bounded enumerate→hash producer. Log, clear the row, skip.
+                                // A corrupt hashcache is the deliberate exception: it must fault the run with
+                                // its actionable message rather than be misread here as per-file unreadable.
                                 _logger.LogWarning(ex, "Skipping unreadable file during hashing: {Path}", pair.RelativePath);
                                 await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
                             }
@@ -393,14 +416,22 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             // the worker. (TryGetChangeSignals never throws.)
                             async ValueTask<ContentHash> FullHashAndRecordAsync(RelativePath relativePath, long size, long nowTicks, CancellationToken cancellation)
                             {
+                                // Capture the change-signals and mtime BEFORE reading the content, so the
+                                // stored ctime is a conservative lower bound on the bytes we hash: any write
+                                // during or after the read advances ctime past this value, so the next
+                                // --fast-hash run misses and re-hashes rather than reusing a hash of torn
+                                // content. (Capturing after the read would fold a concurrent write into the
+                                // stored ctime and mask the stale hash forever — the one unsafe misprediction.)
+                                var signals = fs.TryGetChangeSignals(relativePath);
+                                var (_, modified) = fs.GetTimestamps(relativePath);
+
                                 await using var s   = fs.OpenRead(relativePath);
                                 var             p   = opts.CreateHashProgress?.Invoke(relativePath, size) ?? new Progress<long>();
                                 await using var smp = new SparseSamplingStream(s, size);
                                 await using var ps  = new ProgressStream(smp, p);
                                 var hash = await _encryption.ComputeHashAsync(ps, cancellation);
 
-                                var signals = fs.TryGetChangeSignals(relativePath);
-                                _hashCache.Record(relativePath, size, signals, smp.Fingerprint(), hash, nowTicks);
+                                _hashCache.Record(relativePath, size, signals, modified.UtcTicks, smp.Fingerprint(), hash, nowTicks);
                                 Interlocked.Increment(ref fastHashRehashed);
                                 return hash;
                             }

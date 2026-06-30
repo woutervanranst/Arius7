@@ -4,7 +4,7 @@ namespace Arius.Core.Shared.HashCache;
 internal interface IHashCacheService
 {
     FastHashResult TryReuse(RelativeFileSystem fs, RelativePath path, long liveSize, long now);
-    void Record(RelativePath path, long size, FileChangeSignals? signals, byte[] sparseFingerprint, ContentHash hash, long now);
+    void Record(RelativePath path, long size, FileChangeSignals? signals, long mtimeTicks, byte[] sparseFingerprint, ContentHash hash, long now);
 }
 
 
@@ -39,7 +39,7 @@ internal sealed class HashCacheService : IHashCacheService
             && e.Inode is not null && e.Dev is not null && e.CtimeTicks is not null
             && s.Inode == e.Inode && s.Dev == e.Dev && s.CtimeTicks == e.CtimeTicks)
         {
-            _store.Upsert(e with { LastVerifiedTicks = now });
+            _store.Touch(path, now); // one-column UPDATE: nothing else changed on a ctime hit
             return FastHashResult.Hit(e.ContentHash, "ctime match");
         }
 
@@ -61,11 +61,11 @@ internal sealed class HashCacheService : IHashCacheService
         return FastHashResult.Miss("fp differs");
     }
 
-    public void Record(RelativePath path, long size, FileChangeSignals? signals, byte[] sparseFingerprint, ContentHash hash, long now)
+    public void Record(RelativePath path, long size, FileChangeSignals? signals, long mtimeTicks, byte[] sparseFingerprint, ContentHash hash, long now)
     {
         _store.Upsert(new HashCacheEntry(
             Path: path, Size: size,
-            MtimeTicks: now, // mtime stored for diagnostics only; not in the verdict
+            MtimeTicks: mtimeTicks, // the file's last-write time; diagnostics only, not in the verdict
             CtimeTicks: signals?.CtimeTicks,
             Inode:      signals?.Inode,
             Dev:        signals?.Dev,

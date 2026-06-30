@@ -66,6 +66,13 @@ import { FolderPickerComponent } from '../../../shared/folder-picker/folder-pick
           <input class="ar-input ar-mono" data-testid="schedule-cron" style="flex:1" placeholder="cron e.g. 0 2 * * *" [(ngModel)]="newCron" />
           <button class="ar-btn-primary" data-testid="schedule-add" [disabled]="!newCron" (click)="addSchedule()"><i class="ki-filled ki-plus"></i>Add</button>
         </div>
+        <!-- Reminder: scheduled archives currently always run without --fast-hash. This disabled toggle
+             is a placeholder until per-schedule fast-hash is wired through (Api SchedulerService). -->
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:#a1a1aa"
+               title="Planned — scheduled archives will be able to opt into fast-hash; not wired up yet.">
+          <input type="checkbox" data-testid="schedule-fast-hash" disabled />
+          Fast-hash scheduled runs <span style="font-style:italic">(coming soon)</span>
+        </label>
       </div>
 
       <!-- Danger zone -->

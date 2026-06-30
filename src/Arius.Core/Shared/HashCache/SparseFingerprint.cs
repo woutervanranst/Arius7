@@ -39,15 +39,25 @@ internal static class SparseFingerprint
         return regions;
     }
 
-    /// <summary>Reads each region by seeking and returns SHA-256 over <c>size ‖ region-bytes</c>.</summary>
+    /// <summary>
+    /// Cold-path twin of <see cref="Sampler"/>: opens the file and seeks to each region, returning
+    /// SHA-256 over <c>size ‖ region-bytes</c>. Used on the fingerprint floor when the ctime fast-lane
+    /// missed. MUST hash byte-identically to <see cref="Sampler"/> for the same content — both consume
+    /// the same <see cref="Regions"/> and the same <c>size ‖ region-bytes</c> framing, so any change to
+    /// either MUST be mirrored in both (guarded by <c>SparseFingerprintTests.Sampler_MatchesSeekingFingerprint_ForSameContent</c>).
+    /// </summary>
     public static byte[] ComputeBySeeking(RelativeFileSystem fs, RelativePath path, long size)
     {
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         sha.AppendData(BitConverter.GetBytes(size));
 
         using var stream = fs.OpenRead(path);
-        var buffer = new byte[BlockSize];
-        foreach (var (offset, length) in Regions(size))
+        var regions = Regions(size);
+        // Buffer the largest region: the single whole-file region for a small file can reach k×BlockSize
+        // (up to 1 MiB at k=MinBlocks), which is larger than BlockSize — a fixed BlockSize buffer would
+        // overflow ReadExactly for files in (BlockSize, k×BlockSize].
+        var buffer = new byte[regions.Count == 0 ? 0 : regions.Max(r => r.Length)];
+        foreach (var (offset, length) in regions)
         {
             stream.Seek(offset, SeekOrigin.Begin);
             stream.ReadExactly(buffer, 0, length);
@@ -57,8 +67,11 @@ internal static class SparseFingerprint
     }
 
     /// <summary>
-    /// Forward-only sink that captures the fingerprint regions as a sequential read passes, so the
-    /// fingerprint costs zero extra I/O when the file is already being fully hashed.
+    /// Warm-path twin of <see cref="ComputeBySeeking"/>: a forward-only sink that captures the
+    /// fingerprint regions as a sequential read passes, so the fingerprint costs zero extra I/O when the
+    /// file is already being fully hashed. MUST hash byte-identically to <see cref="ComputeBySeeking"/>
+    /// for the same content (same <see cref="Regions"/>, same <c>size ‖ region-bytes</c> framing) — keep
+    /// the two in sync.
     /// </summary>
     public sealed class Sampler
     {
