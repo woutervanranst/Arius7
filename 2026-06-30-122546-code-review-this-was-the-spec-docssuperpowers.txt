@@ -1,0 +1,2406 @@
+ ▐▛███▜▌   Claude Code v2.1.195
+▝▜█████▛▘  Opus 4.8 · Claude Team
+  ▘▘ ▝▝    ~/.superset/worktrees/Arius7/fasthash
+
+
+❯ /code-review. this was the spec                                               
+  docs/superpowers/specs/2026-06-29-fast-hash-design.md                         
+
+⏺ I'll start by invoking the code-review skill.
+
+⏺ Skill(code-review)
+  ⎿  Successfully loaded skill
+
+⏺ Using the code-review skill to run a workflow-backed review at xhigh effort
+  against the fast-hash design spec and its implementation diff.
+
+⏺ Workflow(dynamic workflow: code-review)
+  ⎿  /workflows to view dynamic workflow runs
+
+⏺ The workflow-backed code review is running in the background at xhigh effort.
+  It will:
+
+  1. Run multiple finder agents in parallel, each covering a different review
+  angle (correctness bugs, reuse/simplification, efficiency) against the diff
+  and the fast-hash design spec
+  2. Independently verify every candidate finding to filter out false positives
+  3. Return a ranked, deduplicated list of verified findings
+
+  I'll present the verified findings (ranked most-severe first) as soon as the
+  task notification arrives. You can watch live progress with /workflows in the
+  meantime.
+
+✻ Churned for 15s
+
+⏺ Dynamic workflow "Workflow-backed code review — one finder agent per review
+angle, an independent verifier for every distinct (file, line) location across
+the pooled candidates, then a ranked, capped findings report." completed · 19m 
+46s
+
+⏺ The review completed. Let me read the full findings.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Code review complete. 10 finder agents across the diff (62 changed files) and
+  the design spec produced 42 candidates; 38 independent verifiers
+  confirmed/refuted each distinct location. 35 kept, 7 refuted, 15 reported.
+  Ranked most-severe first:
+
+  ---
+  🔴 Critical — silent data loss under --fast-hash
+
+  These are the cardinal sin for a backup tool: a file is changed but archived
+  under its old hash, or dropped entirely. The spec calls
+  "unchanged-when-actually-changed" the only unsafe misprediction — two of these
+  are exactly that.
+
+  1. ctime captured after the content read —
+  src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs:402
+  FullHashAndRecordAsync reads+hashes the file (line 400), then reads
+  ctime/inode/dev (line 402) and Record()s them together. A same-machine write
+  landing between line 400 and 402 (an appended log, a same-size in-place DB
+  write) stores the post-modification ctime with the pre-modification hash. Next
+  --fast-hash run: ctime fast-lane matches → declares UNCHANGED → reuses the
+  stale hash → the changed content is never re-uploaded and is permanently
+  absent from later snapshots. Fix: capture signals before the read, or re-check
+  ctime after.
+
+  2. x86_64 macOS stat struct layout —
+  src/Arius.Core/Shared/FileSystem/NativeFileSignals.cs:202
+  darwin_stat binds EntryPoint="stat". On Intel macOS the bare stat symbol
+  historically maps to the 32-bit-inode struct, not the 64-bit-inode layout
+  DarwinStatBuf assumes (Ino@8, Ctime@64/72). Garbage-but-stable inode/ctime →
+  fast-lane matches a changed file → stale hash reused. (Lower confidence:
+  modern macOS exports the 64-bit variant by default; arm64 unaffected. Verifier
+  confirmed __DARWIN_ONLY_64_BIT_INO_T == 0 for __x86_64__.)
+
+  3. ComputeBySeeking buffer overflow drops files from the snapshot —
+  src/Arius.Core/Shared/HashCache/SparseFingerprint.cs:53
+  Regions(size) returns a single whole-file region up to 1 MiB (k·BlockSize),
+  but ComputeBySeeking allocates a fixed 256 KiB buffer and calls
+  ReadExactly(buffer, 0, length) → ArgumentOutOfRangeException for any file in
+  (256 KiB, 1 MiB] that hits the floor path (floor-only platform, unsupported
+  FS, or ctime/inode moved while content unchanged). The throw escapes
+  HashCacheService.TryReuse (the call at HashCacheService.cs:42 is unguarded)
+  into the Stage-2 per-file catch → logs "Skipping unreadable file" →
+  FileSkippedEvent → the file is silently omitted from the snapshot. Only when
+  --fast-hash is on.
+
+  4. Sparse fingerprint over a shrinking file —
+  src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs:403
+  If a file shrinks between GetFileSize (size captured at 326) and OpenRead
+  (396), SparseSamplingStream never receives tail-region bytes, so Finish()
+  hashes zero-filled buffers there. The recorded row gets an inconsistent (size,
+  fingerprint, hash) triple — Size is the stale larger value, fingerprint is
+  over partly-zero content.
+
+  ---
+  🟠 High — safety / robustness regressions
+
+  5. Scheduled archives never write pointers —
+  src/Arius.Api/Jobs/SchedulerService.cs:56
+  Master passed noPointers: false (pointers written); branch passes
+  writePointers: false. Scheduled/recurring archives (the unattended path, no UI
+  toggle, no schedule column to re-enable) now never produce .pointer.arius 
+  sidecars — the local index silently disappears for the one caller that can't
+  opt back in. Note: the related refuted finding observes the same caller also 
+  pins fastHash: false with no override — scheduled runs, which benefit most 
+  from the cache, can't use it.
+
+  6. Missing SQLite corruption recovery —
+  src/Arius.Core/Shared/HashCache/HashCacheLocalStore.cs:158
+  This store copied the ChunkIndexLocalStore scaffolding (connection builder,
+  schema upgrade, WAL pragmas, single-writer gate) but omitted the recovery half
+  (RecreateDatabase + SqliteException→friendly-exception wrapping at
+  ChunkIndexLocalStore.cs:669/710). A corrupt cache.sqlite throws a raw
+  SqliteException at DI-construction time — before Stage 2's per-file try/catch
+  — aborting the whole run. This contradicts the documented invariant that
+  losing/corrupting the hashcache "costs a full-hash run, never data."
+
+  7. Removed CLI guard for --remove-local + no-pointers —
+  src/Arius.Cli/Commands/Archive/ArchiveVerb.cs:58 (PLAUSIBLE)
+  The up-front rejection of --remove-local --no-pointers was deleted. The sole
+  safeguard is now the handler's implied writePointers = WritePointers || 
+  RemoveLocal. In Stage 6e the pointer write is wrapped in a
+  catch-that-only-logs while Stage 6f deletes the binary unconditionally — so a
+  failed pointer write (disk full, path length) leaves no binary and no pointer.
+  The swallow-and-delete predates this diff, but removing the front-line guard
+  makes that single implication line the only protection.
+
+  ---
+  🟡 Medium — platform fallbacks & UI/test breakage
+
+  8. Linux stat fallback may not bind on legacy glibc —
+  src/Arius.Core/Shared/FileSystem/NativeFileSignals.cs:140 (PLAUSIBLE)
+  The fallback exists for kernels < 4.11 (the doc cites a Synology 4.4 kernel).
+  On that era's glibc, bare stat is an inline wrapper over versioned
+  __xstat(_STAT_VER, …) and isn't exported as a callable symbol →
+  EntryPointNotFoundException, swallowed → every file drops to the fingerprint
+  floor on the one platform the fallback was written for. CI tests only on
+  modern glibc, so the symbol-resolution gap is never exercised.
+
+  9. FromFileTimeUtc throws on out-of-range ChangeTime —
+  src/Arius.Core/Shared/FileSystem/NativeFileSignals.cs:254 (PLAUSIBLE)
+  DateTime.FromFileTimeUtc(basic.ChangeTime) throws for a negative/out-of-range
+  FILETIME (some network/virtual FS report -1). Swallowed by the outer catch →
+  fast-lane unavailable on that volume. Safe direction (slower, never wrong),
+  low severity.
+
+  10. Stale 5-arg hub call breaks e2e seed —
+  src/Arius.Web/e2e/support/global-setup.ts:111 (reported under archive.spec.ts 
+  — the real file isn't in the diff)
+  StartArchive now takes 5 params (repositoryId, tier, removeLocal, 
+  writePointers, fastHash); global-setup still invokes the old 4-arg form →
+  HubException at seed time → the entire archive e2e suite errors before any
+  spec runs.
+
+  11. SignalR cached-resolved-promise bug —
+  src/Arius.Web/src/app/core/api/realtime.service.ts:41
+  this.starting is set once and never cleared on success. After
+  withAutomaticReconnect drops the socket, ensureStarted() resolves the stale
+  fulfilled promise while the connection is Reconnecting/Disconnected →
+  invoke('StartArchive', …) throws "Cannot send data if the connection is not in
+  the Connected state" → archive/restore silently fails to start.
+
+  ---
+  🟢 Low — correctness/efficiency/docs cleanup
+
+  12. mtime column stores run wall-clock, not file mtime —
+  src/Arius.Core/Shared/HashCache/HashCacheService.cs:63
+  Record() writes now into MtimeTicks, duplicating last_verified, even though
+  the true modified time was already in hand (fs.GetTimestamps /
+  HashedFilePair.Modified, captured at line 377). The schema/ADR document mtime
+  as the file's modified time for diagnostics and the future mtime-only fast
+  tier — that seam is dead on arrival.
+
+  13. Per-hit full-row SQLite write on the fast lane —
+  src/Arius.Core/Shared/HashCache/HashCacheService.cs:37
+  A ctime fast-lane HIT (the dominant unchanged-file case, meant to be zero file
+  reads) issues Upsert(e with { LastVerifiedTicks = now }) — a full 11-column
+  rewrite (incl. the sparse_fp BLOB) through the single _gate lock + a WAL
+  commit. 100k unchanged files → 100k serialized write transactions across all 4
+  workers, so the fast-hash run is dominated by lock-contended commits. Fix: 
+  skip the touch (it's diagnostic), batch it, or UPDATE … SET last_verified=? 
+  WHERE path=?.
+
+  14. Two independent fingerprint implementations must stay byte-identical —
+  src/Arius.Core/Shared/HashCache/SparseFingerprint.cs:63 (PLAUSIBLE)
+  ComputeBySeeking (cold-read floor) and Sampler.Finish (warm-write) each
+  re-derive the region layout and size ‖ region-bytes framing independently. Any
+  future edit to one without the other → "fp differs" on every floor comparison
+  → --fast-hash silently degrades to full re-reads with no error. Consolidate 
+  onto one region-hashing helper.
+
+  15. Stale CLI docs — docs/guide/cli.md:68 (also web-ui.md:206,
+  development.md:94)
+  Still documents the removed archive --no-pointers flag and its
+  mutual-exclusion error; never mentions the new --write-pointers / --fast-hash.
+  A user following the "complete reference" hits an unknown-option error and
+  can't discover the new opt-in behavior. Violates the root AGENTS.md docs-sync
+  rule.
+
+  ---
+  Refuted (7) — checked and dismissed
+
+  Worth noting these were investigated and found not to be bugs: the
+  integration-fixture WritePointers=true default flip (regressions it'd hide are
+  covered by new tests in the same diff); the repoId === 0 falsy-zero guard;
+  the floating-point region-offset computation; SparseSamplingStream as
+  redundant boilerplate; duplicated SHA finalization; redundant
+  TryGetChangeSignals try/catch; and the scheduler fastHash: false pin (real
+  observation, but a missing-feature opinion, not a bug).
+
+  ---
+  Bottom line: the design's claim that fast-hash failures fall in the safe
+  direction mostly holds, but findings 1–4 break it — two unsafe mispredictions
+  and a floor-path exception that silently drops files. I'd treat 1, 2, 3 as
+  blockers before anyone relies on --fast-hash, and 5 (scheduled pointers) as a
+  separate regression worth fixing regardless.
+
+  Want me to fix any of these? I'd suggest starting with the critical cluster
+  (1–4) — they're tightly related and all live in the hashcache write/floor
+  paths.
+
+✻ Baked for 21m 5s
+
+※ recap: Code review of the fast-hash feature is done: 15 verified findings, with 4 critical data-loss bugs under --fast-hash. Next action is to fix the critical cluster (findings 1–4) once you confirm you want me to proceed. (disable recaps in /config)
+
+❯ Re (1) if we switch it around, how is that a solution? Ideally it s atomic    
+  but that s not possible right? What s the real timing exposure between 400    
+  and 402?                                                                      
+  Re (2) Intel Mac is not supported - remove support                            
+  Re (3) can you prove this with a test?                                        
+  Re (4) what s the real timing exposure?                                       
+  Re (5) we need to tackle this in the future, in the UI (when clicking the     
+  Properties button) add a checkbox [ ] Fasthash - just as a mental reminder    
+  that we need this to be tunable in the future                                 
+  Re (6) add a HashCacheLocalStore exception and instruct the user to delete    
+  the /hashcache/ folder. Would this be consistent with the chunkindex          
+  behavior? (We don’t have an explicit repair option for the hash cache since   
+  it is not written to remote storage; and I m not comfortable yet with a       
+  silent repair - that may come in the future)                                  
+  Re (7) validate the illegal combination both in the cli and in the handler    
+  upfront                                                                       
+  Re (8) hm that s not good; how could I validate this on my synology because   
+  that s the entire raison-d-etre of that path. Does that mean that on sinology 
+  we are _always_ rehashing the entire file?                                    
+  Re (10) ok fix it                                                             
+  Re (11) ok fix it                                                             
+  Re (12) ok so it should record file mtime right instead of run wall clock     
+  mtime so we can use that in the future?                                       
+  Re (13) ok do the UPDATE … SET thing                                          
+  Re (14) do they have their own purpose? Compute by seeking reads only hose    
+  blocks and sampler stream captures these for free as the whole file is read?  
+  if the purpose is valid, add a comment to keep each others implementation in  
+  sync                                                                          
+  Re (15) fix that                                                              
+  Review all docstrings in this PR and the HashCache namespace; ensure they are 
+  internally consistent. focus on a clear intent                                
+
+⏺ This is a substantial mix of analysis questions and fixes. Let me ground
+  everything in the actual code before answering or changing anything. I'll read
+  the key files in parallel.
+
+  Read 6 files (ctrl+o to expand)
+
+⏺ The HashCache files I read reveal the current state differs slightly from the
+  diff snapshot. Let me read the handler, the ChunkIndex pattern, and locate the
+  remaining files.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Now let me read the ChunkIndex store (for the corruption-recovery +
+  friendly-exception pattern), locate the remaining type definitions, and read
+  the CLI/scheduler/web files.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Models.cs holds the hashcache types. Let me read it plus the remaining files
+  to fix.
+
+  Searched for 1 pattern, read 6 files, ran 1 shell command (ctrl+o to expand)
+⏺ Good — I now have the core picture. Let me read the handler's
+  options/validation/pointer-delete stages, the command definition, the e2e
+  setup, and the DI wiring.
+
+  Read 2 files, ran 1 shell command (ctrl+o to expand)
+
+⏺ Let me find the writePointers implication, the pointer-write/delete stages,
+  and read the e2e setup.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ I have the full code picture now. Let me read the existing tests (to place the
+  proving test for #3 and avoid breaking the cross-validation test for #8) and
+  the docs/spec (for #15, #12, and the docstring review).
+
+  Read 2 files, ran 1 shell command (ctrl+o to expand)
+
+⏺ Now the docs. Let me read the hashcache design doc, ADR, the spec, and the
+  three guide docs flagged stale.
+
+  Read 2 files (ctrl+o to expand)
+
+⏺ Let me read the three stale guide docs and the glossary entries before
+  finalizing the plan.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Let me locate the Web repository Properties component (for the #5 reminder
+  checkbox) and the archive drawer.
+
+  Read 2 files, ran 1 shell command (ctrl+o to expand)
+
+⏺ I've now read all the relevant code, tests, and docs. Before I start changing
+  things, here are the answers to your analysis questions — and two decisions I
+  genuinely need from you.
+
+  Analysis answers
+
+  (1) ctime captured after the read — why does flipping the order fix it, and 
+  what's the real exposure?
+
+  True atomicity (stat + read as one operation) isn't achievable and isn't
+  needed. What matters is which direction the residual race resolves:
+
+  - Today (signals after the read): a write that lands during the read gets
+  folded into the ctime we then store. Next run, the live ctime equals the
+  stored ctime → HIT → the torn/stale hash is reused permanently. Unsafe.
+  - Flipped (signals before OpenRead): the stored ctime becomes a conservative
+  lower bound on "the time the bytes I hashed were valid." Any write at or after
+  that snapshot necessarily advances ctime past the stored value → next run
+  MISS → re-hash. Safe.
+
+  So the real exposure today is not the ~µs between lines 400→402 — it's the
+  entire read window (OpenRead 396 → signal capture 402). Every byte is read
+  before we snapshot ctime, so a write anywhere during the read (seconds, for a
+  large file) is baked into the stored ctime and masks the stale hash forever.
+  After the flip the residual is essentially nil — the only unfixable case is
+  two changes within the same ctime tick (nanoseconds), which is inherent to any
+  ctime/mtime scheme. Fix: capture signals (and mtime, see #12) immediately 
+  before OpenRead.
+
+  (4) Shrinking-file fingerprint — real exposure?
+
+  The window is GetFileSize (line 326, top of the per-file Stage-2 worker) →
+  read completion (line 400) for that one file — bounded per file, though
+  seconds for a large file being actively truncated. But unlike #1, this one is 
+  self-healing: the row stores Size = the stale (larger) value while the
+  uploaded bytes/hash are the actual (shorter) content — and the chunk is
+  self-consistent (hash matches the bytes actually read). Next run, live size ≠
+  stored size → MISS → re-hash. So it's a transient cache poisoning, not data
+  loss. I'd downgrade #4 from my original ranking. Optional cheap hardening
+  (re-stat / use the opened stream's length so size↔fp↔hash are mutually
+  consistent and the entry isn't wasted) — I'll leave it unless you want it.
+
+  (6) Is a friendly "delete the folder" exception consistent with ChunkIndex?
+
+  No — and that divergence is correct. ChunkIndex silently recreates the DB
+  (RecreateDatabase) because it has a remote-backed repair path. The hashcache
+  has neither remote backing nor a repair command, and you're not comfortable
+  with silent repair yet — so it should hard-fail with a friendly message 
+  telling the user to delete the hashcache folder (one full-hash run recovers).
+  What stays consistent with ChunkIndex is the exception shape (a dedicated
+  …LocalStoreException wrapping the SqliteException with actionable guidance);
+  what diverges is recovery (throw-and-instruct vs silent recreate). One extra
+  thing I'll handle: Stage 2's per-file catch currently swallows everything and
+  skips the file, so a corrupt-DB throw mid-run would silently drop files — I'll
+  make this exception bypass that catch so corruption faults the run loudly
+  instead.
+
+  (12) Record the file's mtime, not run wall-clock — right?
+
+  Yes. I'll store the file's real last-write time (already available via
+  fs.GetTimestamps), captured before the read alongside #1's signals, so the
+  documented mtime column and the future mtime-prefilter seam are actually
+  usable.
+
+  (14) Do the two fingerprint paths each have a purpose?
+
+  Yes, genuinely — they're opposite I/O patterns, neither subsumes the other:
+  - ComputeBySeeking — cold floor path: opens and seeks to only the sample
+  regions (~k×256 KiB), hoping to avoid a full read.
+  - Sampler (via SparseSamplingStream) — warm path: captures those same regions
+  for free as bytes stream past during a full re-hash.
+
+  They must produce byte-identical digests (size ‖ region-bytes). I'll add
+  cross-referencing "keep in sync" comments on both and point at the existing
+  Sampler_MatchesSeekingFingerprint_ForSameContent test that guards it.
+
+  (8) Synology — are we always re-hashing the whole file?
+
+  No. If the stat fallback doesn't bind, TryGet returns null → you lose only the
+  zero-read ctime fast-lane. The sparse-fingerprint floor still works
+  (ComputeBySeeking reads just the sample regions and reuses the cached hash on
+  a match), so unchanged files avoid a full re-hash; only genuinely-changed
+  files get fully re-hashed. The catch: files in (256 KiB, 1 MiB] hit the #3
+  buffer bug on the floor → currently throw → file dropped. So fixing #3 is
+  doubly important for the NAS. The likely root cause of the fallback not
+  binding is that older glibc (Synology DSM) exports the stat syscall only
+  through the versioned __xstat symbol, not a bare stat — which is exactly
+  decision #2 below.
+
+  ---
+  Two decisions I need before implementing:
+
+⏺ User answered Claude's questions:
+  ⎿  · For the --remove-local / pointer guard (#7): the ADR currently has 
+     --remove-local silently imply --write-pointers. You asked to 'validate the 
+     illegal combination upfront in CLI and handler.' Which behavior do you 
+     want? → Reject at both layers
+     · For the Synology stat fallback (#8): the fallback likely fails to bind on
+     the NAS's older glibc (only __xstat is exported). I can't verify native 
+     interop on this machine. How do you want to proceed? → Validation recipe 
+     first
+
+⏺ Both decisions noted: #7 → reject at both layers (update ADR + cli.md), #8 → 
+  validation recipe, no native code now. Let me set up task tracking and gather
+  the last few specifics (timestamp types, existing test expectations, Record
+  callers) before editing.
+
+  Read 2 files, ran 1 shell command (ctrl+o to expand)
+
+⏺ I have what I need on tests and types. Let me read the handler's
+  entry/validation section and its end (result + exception handling) so the #7
+  rejection and #6 exception bypass land correctly.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now let me read the archive drawer (to keep the UI from sending the
+  now-rejected --remove-local + no-pointers combo) before I start editing.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ The archive drawer uses a 3-way control (keep / keep-pointers / replace) — so
+  the UI can't express the illegal combo directly. Let me confirm the mapping in
+  the store before concluding the UI needs no #7 change.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Found it — drawer.store.ts:98 sets writePointers only for 'keep-pointers', so
+  'replace' (Replace with pointers) currently sends removeLocal=true, 
+  writePointers=false — exactly the combo #7 will now reject. The old
+  implication masked it. I need to fix that mapping too. Let me read the store's
+  start block.
+
+  Read 1 file (ctrl+o to expand)
+⏺ I now have a complete picture across code, tests, web, and docs. A notable
+  extra finding: the archive drawer's 'replace' option sends removeLocal=true, 
+  writePointers=false — which #7 will now reject — so the UI mapping needs
+  fixing too.
+
+  Let me implement. Starting with the HashCache core (exception type, store
+  hardening for #6 and #13).
+
+⏺ Write(src/Arius.Core/Shared/HashCache/CustomExceptions.cs)
+  ⎿  Wrote 13 lines to src/Arius.Core/Shared/HashCache/CustomExceptions.cs
+       1 namespace Arius.Core.Shared.HashCache;
+       3 // Thrown when the local hashcache SQLite file is unreadable or 
+         corrupt. ArchiveCommandHandler (a
+         rruption faults the run loudly with
+          is shared across namespaces within
+       6 // the assembly. Unlike ChunkIndexLocalStore — which silently re
+       7 // has no remote backing and no repair command, so it instructs 
+         the operator to delete the directory
+         lace.
+      10 internal sealed class HashCacheLocalStoreException(string
+     … +10 lines (ctrl+o to expand)
+
+⏺ Now rewrite HashCacheLocalStore.cs — wrap construction + all operations in the
+  friendly exception (#6) and add the targeted Touch (#13).
+
+⏺ Write(src/Arius.Core/Shared/HashCache/HashCacheLocalStore.cs)
+  ⎿  Added 126 lines, removed 52 lines
+       9  /// sparse fingerprint, and cached content hash captured the la
+          st time the file was hashed.
+      10  /// A disposable accelerator — losing it costs a full-hash run,
+           never data.
+      11  /// </summary>
+      12 +/// <remarks>                                                  
+      13 +/// Mirrors <c>ChunkIndexLocalStore</c>'s SQLite scaffolding (W
+         +AL + <c>synchronous = normal</c>, a                            
+      14 +/// single-writer gate) but deliberately diverges on recovery: 
+         +a corrupt cache file throws a                                  
+      15 +/// <see cref="HashCacheLocalStoreException"/> instructing the 
+         +operator to delete the hashcache                               
+      16 +/// directory, rather than silently recreating it. The hashcach
+         +e is never remote-backed and has no                            
+      17 +/// repair command, so a loud failure — recovered by one full-h
+         +ash run — is preferred over an                                 
+      18 +/// automatic rebuild the operator never sees.                 
+      19 +/// </remarks>                                                 
+      20  [SharedWithinAssembly]
+      21  internal sealed class HashCacheLocalStore
+      22  {
+     ...
+      42              Pooling    = true,
+      43          }.ToString();
+      44  
+      37 -        CreateOrUpgradeSchema();                               
+      45 +        try                                                    
+      46 +        {                                                      
+      47 +            CreateOrUpgradeSchema();                           
+      48 +        }                                                      
+      49 +        catch (SqliteException ex)                             
+      50 +        {                                                      
+      51 +            throw CreateLocalStoreException(ex);               
+      52 +        }                                                      
+      53      }
+      54  
+      55      internal string ConnectionString => _connectionString;
+     ...
+       65  
+       66      public HashCacheEntry? Find(RelativePath path)
+       67      {
+       53 -        using var connection = OpenConnection();              
+       54 -        using var command = connection.CreateCommand();       
+       55 -        command.CommandText = """                             
+       56 -            SELECT size, mtime, ctime, inode, dev, signal_set,
+          - sparse_fp, fp_algo, content_hash, last_verified              
+       57 -            FROM file_hashes WHERE path = $path;              
+       58 -            """;                                              
+       59 -        command.Parameters.AddWithValue("$path", path.ToString
+          -());                                                          
+       60 -        using var reader = command.ExecuteReader();           
+       61 -        if (!reader.Read())                                   
+       62 -            return null;                                      
+       68 +        try                                                   
+       69 +        {                                                     
+       70 +            using var connection = OpenConnection();          
+       71 +            using var command = connection.CreateCommand();   
+       72 +            command.CommandText = """                         
+       73 +                SELECT size, mtime, ctime, inode, dev, signal_
+          +set, sparse_fp, fp_algo, content_hash, last_verified          
+       74 +                FROM file_hashes WHERE path = $path;          
+       75 +                """;                                          
+       76 +            command.Parameters.AddWithValue("$path", path.ToSt
+          +ring());                                                      
+       77 +            using var reader = command.ExecuteReader();       
+       78 +            if (!reader.Read())                               
+       79 +                return null;                                  
+       80  
+       64 -        return new HashCacheEntry(                            
+       65 -            Path:              path,                          
+       66 -            Size:              reader.GetInt64(0),            
+       67 -            MtimeTicks:        reader.GetInt64(1),            
+       68 -            CtimeTicks:        reader.IsDBNull(2) ? null : rea
+          -der.GetInt64(2),                                              
+       69 -            Inode:             reader.IsDBNull(3) ? null : rea
+          -der.GetString(3),                                             
+       70 -            Dev:               reader.IsDBNull(4) ? null : rea
+          -der.GetString(4),                                             
+       71 -            SignalSet:         reader.GetInt32(5),            
+       72 -            SparseFingerprint: (byte[])reader[6],             
+       73 -            FpAlgo:            reader.GetInt32(7),            
+       74 -            ContentHash:       ContentHash.Parse(reader.GetStr
+          -ing(8)),                                                      
+       75 -            LastVerifiedTicks: reader.GetInt64(9));           
+       81 +            return new HashCacheEntry(                        
+       82 +                Path:              path,                      
+       83 +                Size:              reader.GetInt64(0),        
+       84 +                MtimeTicks:        reader.GetInt64(1),        
+       85 +                CtimeTicks:        reader.IsDBNull(2) ? null :
+          + reader.GetInt64(2),                                          
+       86 +                Inode:             reader.IsDBNull(3) ? null :
+          + reader.GetString(3),                                         
+       87 +                Dev:               reader.IsDBNull(4) ? null :
+          + reader.GetString(4),                                         
+       88 +                SignalSet:         reader.GetInt32(5),        
+       89 +                SparseFingerprint: (byte[])reader[6],         
+       90 +                FpAlgo:            reader.GetInt32(7),        
+       91 +                ContentHash:       ContentHash.Parse(reader.Ge
+          +tString(8)),                                                  
+       92 +                LastVerifiedTicks: reader.GetInt64(9));       
+       93 +        }                                                     
+       94 +        catch (SqliteException ex)                            
+       95 +        {                                                     
+       96 +            throw CreateLocalStoreException(ex);              
+       97 +        }                                                     
+       98      }
+       99  
+      100      public void Upsert(HashCacheEntry entry)
+      101      {
+       80 -        lock (_gate)                                          
+      102 +        try                                                   
+      103          {
+       82 -            using var connection = OpenConnection();          
+       83 -            using var command = connection.CreateCommand();   
+       84 -            command.CommandText = """                         
+       85 -                INSERT INTO file_hashes (path, size, mtime, ct
+          -ime, inode, dev, signal_set, sparse_fp, fp_algo, content_hash,
+          - last_verified)                                               
+       86 -                VALUES ($path, $size, $mtime, $ctime, $inode, 
+          -$dev, $signal_set, $sparse_fp, $fp_algo, $content_hash, $last_
+          -verified)                                                     
+       87 -                ON CONFLICT(path) DO UPDATE SET               
+       88 -                    size=excluded.size, mtime=excluded.mtime, 
+          -ctime=excluded.ctime, inode=excluded.inode,                   
+       89 -                    dev=excluded.dev, signal_set=excluded.sign
+          -al_set, sparse_fp=excluded.sparse_fp,                         
+       90 -                    fp_algo=excluded.fp_algo, content_hash=exc
+          -luded.content_hash, last_verified=excluded.last_verified;     
+       91 -                """;                                          
+       92 -            command.Parameters.AddWithValue("$path", entry.Pat
+          -h.ToString());                                                
+       93 -            command.Parameters.AddWithValue("$size", entry.Siz
+          -e);                                                           
+       94 -            command.Parameters.AddWithValue("$mtime", entry.Mt
+          -imeTicks);                                                    
+       95 -            command.Parameters.AddWithValue("$ctime", (object?
+          -)entry.CtimeTicks ?? DBNull.Value);                           
+       96 -            command.Parameters.AddWithValue("$inode", (object?
+          -)entry.Inode ?? DBNull.Value);                                
+       97 -            command.Parameters.AddWithValue("$dev", (object?)e
+          -ntry.Dev ?? DBNull.Value);                                    
+       98 -            command.Parameters.AddWithValue("$signal_set", ent
+          -ry.SignalSet);                                                
+       99 -            command.Parameters.Add("$sparse_fp", SqliteType.Bl
+          -ob).Value = entry.SparseFingerprint;                          
+      100 -            command.Parameters.AddWithValue("$fp_algo", entry.
+          -FpAlgo);                                                      
+      101 -            command.Parameters.AddWithValue("$content_hash", e
+          -ntry.ContentHash.ToString());                                 
+      102 -            command.Parameters.AddWithValue("$last_verified", 
+          -entry.LastVerifiedTicks);                                     
+      103 -            command.ExecuteNonQuery();                        
+      104 +            lock (_gate)                                      
+      105 +            {                                                 
+      106 +                using var connection = OpenConnection();      
+      107 +                using var command = connection.CreateCommand()
+          +;                                                             
+      108 +                command.CommandText = """                     
+      109 +                    INSERT INTO file_hashes (path, size, mtime
+          +, ctime, inode, dev, signal_set, sparse_fp, fp_algo, content_h
+          +ash, last_verified)                                           
+      110 +                    VALUES ($path, $size, $mtime, $ctime, $ino
+          +de, $dev, $signal_set, $sparse_fp, $fp_algo, $content_hash, $l
+          +ast_verified)                                                 
+      111 +                    ON CONFLICT(path) DO UPDATE SET           
+      112 +                        size=excluded.size, mtime=excluded.mti
+          +me, ctime=excluded.ctime, inode=excluded.inode,               
+      113 +                        dev=excluded.dev, signal_set=excluded.
+          +signal_set, sparse_fp=excluded.sparse_fp,                     
+      114 +                        fp_algo=excluded.fp_algo, content_hash
+          +=excluded.content_hash, last_verified=excluded.last_verified; 
+      115 +                    """;                                      
+      116 +                command.Parameters.AddWithValue("$path", entry
+          +.Path.ToString());                                            
+      117 +                command.Parameters.AddWithValue("$size", entry
+          +.Size);                                                       
+      118 +                command.Parameters.AddWithValue("$mtime", entr
+          +y.MtimeTicks);                                                
+      119 +                command.Parameters.AddWithValue("$ctime", (obj
+          +ect?)entry.CtimeTicks ?? DBNull.Value);                       
+      120 +                command.Parameters.AddWithValue("$inode", (obj
+          +ect?)entry.Inode ?? DBNull.Value);                            
+      121 +                command.Parameters.AddWithValue("$dev", (objec
+          +t?)entry.Dev ?? DBNull.Value);                                
+      122 +                command.Parameters.AddWithValue("$signal_set",
+          + entry.SignalSet);                                            
+      123 +                command.Parameters.Add("$sparse_fp", SqliteTyp
+          +e.Blob).Value = entry.SparseFingerprint;                      
+      124 +                command.Parameters.AddWithValue("$fp_algo", en
+          +try.FpAlgo);                                                  
+      125 +                command.Parameters.AddWithValue("$content_hash
+          +", entry.ContentHash.ToString());                             
+      126 +                command.Parameters.AddWithValue("$last_verifie
+          +d", entry.LastVerifiedTicks);                                 
+      127 +                command.ExecuteNonQuery();                    
+      128 +            }                                                 
+      129          }
+      130 +        catch (SqliteException ex)                            
+      131 +        {                                                     
+      132 +            throw CreateLocalStoreException(ex);              
+      133 +        }                                                     
+      134      }
+      135  
+      136 +    /// <summary>                                             
+      137 +    /// Bumps only <c>last_verified</c> for an existing row. U
+          +sed on the ctime fast-lane hit, where every                   
+      138 +    /// other column is unchanged — a one-column <c>UPDATE</c>
+          + avoids rewriting all 11 columns (including                   
+      139 +    /// the sparse-fingerprint BLOB) on the dominant unchanged
+          +-file path. A no-op if the row is absent.                     
+      140 +    /// </summary>                                            
+      141 +    public void Touch(RelativePath path, long lastVerifiedTick
+          +s)                                                            
+      142 +    {                                                         
+      143 +        try                                                   
+      144 +        {                                                     
+      145 +            lock (_gate)                                      
+      146 +            {                                                 
+      147 +                using var connection = OpenConnection();      
+      148 +                using var command = connection.CreateCommand()
+          +;                                                             
+      149 +                command.CommandText = "UPDATE file_hashes SET 
+          +last_verified = $last_verified WHERE path = $path;";          
+      150 +                command.Parameters.AddWithValue("$last_verifie
+          +d", lastVerifiedTicks);                                       
+      151 +                command.Parameters.AddWithValue("$path", path.
+          +ToString());                                                  
+      152 +                command.ExecuteNonQuery();                    
+      153 +            }                                                 
+      154 +        }                                                     
+      155 +        catch (SqliteException ex)                            
+      156 +        {                                                     
+      157 +            throw CreateLocalStoreException(ex);              
+      158 +        }                                                     
+      159 +    }                                                         
+      160 +                                                              
+      161      public void Delete(RelativePath path)
+      162      {
+      109 -        lock (_gate)                                          
+      163 +        try                                                   
+      164          {
+      111 -            using var connection = OpenConnection();          
+      112 -            using var command = connection.CreateCommand();   
+      113 -            command.CommandText = "DELETE FROM file_hashes WHE
+          -RE path = $path;";                                            
+      114 -            command.Parameters.AddWithValue("$path", path.ToSt
+          -ring());                                                      
+      115 -            command.ExecuteNonQuery();                        
+      165 +            lock (_gate)                                      
+      166 +            {                                                 
+      167 +                using var connection = OpenConnection();      
+      168 +                using var command = connection.CreateCommand()
+          +;                                                             
+      169 +                command.CommandText = "DELETE FROM file_hashes
+          + WHERE path = $path;";                                        
+      170 +                command.Parameters.AddWithValue("$path", path.
+          +ToString());                                                  
+      171 +                command.ExecuteNonQuery();                    
+      172 +            }                                                 
+      173          }
+      174 +        catch (SqliteException ex)                            
+      175 +        {                                                     
+      176 +            throw CreateLocalStoreException(ex);              
+      177 +        }                                                     
+      178      }
+      179  
+      180 +    /// <summary>                                             
+      181 +    /// Wraps a raw <see cref="SqliteException"/> (corrupt or 
+          +unreadable cache file) in an actionable                       
+      182 +    /// failure. Unlike <c>ChunkIndexLocalStore</c>, the hashc
+          +ache is not recreated automatically: it is                    
+      183 +    /// local-only and disposable, so the operator is told to 
+          +delete it and let the next run rebuild it.                    
+      184 +    /// </summary>                                            
+      185 +    private HashCacheLocalStoreException CreateLocalStoreExcep
+          +tion(SqliteException ex)                                      
+      186 +    {                                                         
+      187 +        var path = _root.Resolve(_databasePath);              
+      188 +        _logger.LogError(ex, "[hashcache-local] store unreadab
+          +le: {DatabasePath}", path);                                   
+      189 +        var message = $"Local hashcache '{path}' is unreadable
+          + or corrupt. Delete the hashcache directory '{_root}' and re-r
+          +un — the next run rebuilds it with one full-hash pass; no data
+          + is lost.";                                                   
+      190 +        return new HashCacheLocalStoreException(message, ex); 
+      191 +    }                                                         
+      192 +                                                              
+      193      private void CreateOrUpgradeSchema()
+      194      {
+      195          using var connection = OpenConnection();
+
+⏺ Now HashCacheService.cs — Record signature gets the file mtime (#12), the
+  ctime-hit path uses the lightweight Touch (#13).
+
+⏺ Update(src/Arius.Core/Shared/HashCache/HashCacheService.cs)
+  ⎿  Added 1 line, removed 1 line
+       4  internal interface IHashCacheService
+       5  {
+       6      FastHashResult TryReuse(RelativeFileSystem fs, RelativePath
+           path, long liveSize, long now);
+       7 -    void Record(RelativePath path, long size, FileChangeSignals
+         -? signals, byte[] sparseFingerprint, ContentHash hash, long now
+         -);                                                             
+       7 +    void Record(RelativePath path, long size, FileChangeSignals
+         +? signals, long mtimeTicks, byte[] sparseFingerprint, ContentHa
+         +sh hash, long now);                                            
+       8  }
+       9  
+      10  
+
+⏺ Update(src/Arius.Core/Shared/HashCache/HashCacheService.cs)
+  ⎿  Added 1 line, removed 1 line
+      39              && e.Inode is not null && e.Dev is not null && e.Ct
+          imeTicks is not null
+      40              && s.Inode == e.Inode && s.Dev == e.Dev && s.CtimeT
+          icks == e.CtimeTicks)
+      41          {
+      42 -            _store.Upsert(e with { LastVerifiedTicks = now }); 
+      42 +            _store.Touch(path, now); // one-column UPDATE: noth
+         +ing else changed on a ctime hit                                
+      43              return FastHashResult.Hit(e.ContentHash, "ctime mat
+          ch");
+      44          }
+      45  
+
+⏺ Update(src/Arius.Core/Shared/HashCache/HashCacheService.cs)
+  ⎿  Added 2 lines, removed 2 lines
+      61          return FastHashResult.Miss("fp differs");
+      62      }
+      63  
+      64 -    public void Record(RelativePath path, long size, FileChange
+         -Signals? signals, byte[] sparseFingerprint, ContentHash hash, l
+         -ong now)                                                       
+      64 +    public void Record(RelativePath path, long size, FileChange
+         +Signals? signals, long mtimeTicks, byte[] sparseFingerprint, Co
+         +ntentHash hash, long now)                                      
+      65      {
+      66          _store.Upsert(new HashCacheEntry(
+      67              Path: path, Size: size,
+      68 -            MtimeTicks: now, // mtime stored for diagnostics on
+         -ly; not in the verdict                                         
+      68 +            MtimeTicks: mtimeTicks, // the file's last-write ti
+         +me; diagnostics only, not in the verdict                       
+      69              CtimeTicks: signals?.CtimeTicks,
+      70              Inode:      signals?.Inode,
+      71              Dev:        signals?.Dev,
+
+⏺ Now SparseFingerprint.cs — fix the buffer-overflow (#3) and add the
+  keep-in-sync cross-references (#14).
+
+⏺ Update(src/Arius.Core/Shared/HashCache/SparseFingerprint.cs)
+  ⎿  Added 18 lines, removed 5 lines
+      39          return regions;
+      40      }
+      41  
+      42 -    /// <summary>Reads each region by seeking and returns SHA-2
+         -56 over <c>size ‖ region-bytes</c>.</summary>                  
+      42 +    /// <summary>                                              
+      43 +    /// Cold-path twin of <see cref="Sampler"/>: opens the file
+         + and seeks to each region, returning                           
+      44 +    /// SHA-256 over <c>size ‖ region-bytes</c>. Used on the fi
+         +ngerprint floor when the ctime fast-lane                       
+      45 +    /// missed. MUST hash byte-identically to <see cref="Sample
+         +r"/> for the same content — both consume                       
+      46 +    /// the same <see cref="Regions"/> and the same <c>size ‖ r
+         +egion-bytes</c> framing, so any change to                      
+      47 +    /// either MUST be mirrored in both (guarded by <c>SparseFi
+         +ngerprintTests.Sampler_MatchesSeekingFingerprint_ForSameContent
+         +</c>).                                                         
+      48 +    /// </summary>                                             
+      49      public static byte[] ComputeBySeeking(RelativeFileSystem fs
+          , RelativePath path, long size)
+      50      {
+      51          using var sha = IncrementalHash.CreateHash(HashAlgorith
+          mName.SHA256);
+      52          sha.AppendData(BitConverter.GetBytes(size));
+      53  
+      54          using var stream = fs.OpenRead(path);
+      49 -        var buffer = new byte[BlockSize];                      
+      50 -        foreach (var (offset, length) in Regions(size))        
+      55 +        var regions = Regions(size);                           
+      56 +        // Buffer the largest region: the single whole-file reg
+         +ion for a small file can reach k×BlockSize                     
+      57 +        // (up to 1 MiB at k=MinBlocks), which is larger than B
+         +lockSize — a fixed BlockSize buffer would                      
+      58 +        // overflow ReadExactly for files in (BlockSize, k×Bloc
+         +kSize].                                                        
+      59 +        var buffer = new byte[regions.Count == 0 ? 0 : regions.
+         +Max(r => r.Length)];                                           
+      60 +        foreach (var (offset, length) in regions)              
+      61          {
+      62              stream.Seek(offset, SeekOrigin.Begin);
+      63              stream.ReadExactly(buffer, 0, length);
+     ...
+      67      }
+      68  
+      69      /// <summary>
+      60 -    /// Forward-only sink that captures the fingerprint regions
+         - as a sequential read passes, so the                           
+      61 -    /// fingerprint costs zero extra I/O when the file is alrea
+         -dy being fully hashed.                                         
+      70 +    /// Warm-path twin of <see cref="ComputeBySeeking"/>: a for
+         +ward-only sink that captures the                               
+      71 +    /// fingerprint regions as a sequential read passes, so the
+         + fingerprint costs zero extra I/O when the                     
+      72 +    /// file is already being fully hashed. MUST hash byte-iden
+         +tically to <see cref="ComputeBySeeking"/>                      
+      73 +    /// for the same content (same <see cref="Regions"/>, same 
+         +<c>size ‖ region-bytes</c> framing) — keep                     
+      74 +    /// the two in sync.                                       
+      75      /// </summary>
+      76      public sealed class Sampler
+      77      {
+
+⏺ Now NativeFileSignals.cs — guard the macOS path to arm64 only (#2, drop Intel
+  support).
+
+⏺ Update(src/Arius.Core/Shared/FileSystem/NativeFileSignals.cs)
+  ⎿  Added 8 lines, removed 1 line
+      181      }
+      182  
+      183      // =======================================================
+           ==============================
+      184 -    // macOS (Darwin): stat with the 64-bit-inode struct (the 
+          -default symbol on modern macOS).                              
+      184 +    // macOS (Darwin, arm64 only): stat with the 64-bit-inode 
+          +struct.                                                       
+      185      // =======================================================
+           ==============================
+      186  
+      187      private static FileChangeSignals? TryGetMacOs(string fullP
+           ath)
+      188      {
+      189 +        // Apple Silicon (arm64) only. On x86_64 macOS the bar
+          +e `stat` symbol can resolve to the legacy                     
+      190 +        // 32-bit-inode variant (no $INODE64), which would mis
+          +read the DarwinStatBuf offsets and yield a                    
+      191 +        // silently-wrong signal. Intel Macs are unsupported, 
+          +so we return null and fall to the                             
+      192 +        // fingerprint floor rather than risk a wrong reuse.  
+      193 +        if (RuntimeInformation.ProcessArchitecture != Architec
+          +ture.Arm64)                                                   
+      194 +            return null;                                      
+      195 +                                                              
+      196          // The target volume is local; macOS network detection
+            is intentionally skipped.
+      197          var buf = default(DarwinStatBuf);
+      198          if (darwin_stat(fullPath, ref buf) != 0)
+
+⏺ Update(src/Arius.Core/Shared/FileSystem/NativeFileSignals.cs)
+  ⎿  Added 3 lines, removed 2 lines
+      210      private static partial int darwin_stat(string pathname, re
+           f DarwinStatBuf buf);
+      211  
+      212      /// <summary>
+      213 -    /// Subset of the Darwin (arm64/x64) 64-bit-inode <c>struc
+          -t stat</c>. Only the fields read here are                     
+      214 -    /// mapped at their byte offsets; <c>Size</c> is generous 
+          -to cover the full struct.                                     
+      213 +    /// Subset of the Darwin arm64 64-bit-inode <c>struct stat
+          +</c> (the only macOS architecture supported;                  
+      214 +    /// the caller guards to arm64). Only the fields read here
+          + are mapped at their byte offsets;                            
+      215 +    /// <c>Size</c> is generous to cover the full struct.     
+      216      /// </summary>
+      217      [StructLayout(LayoutKind.Explicit, Size = 144)]
+      218      private struct DarwinStatBuf
+
+⏺ Now ArchiveCommandHandler.cs — #7 rejection (replace the implication), #1+#12
+  (capture signals + mtime before the read), and #6 (don't swallow the
+  corruption exception).
+
+⏺ Update(src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs)
+  ⎿  Added 23 lines, removed 2 lines
+      187      {
+      188          var opts = command.CommandOptions;
+      189  
+      190 -        // --remove-local implies writing pointers: you cannot
+          - remove the binary and leave no local record.                 
+      191 -        var writePointers = opts.WritePointers || opts.RemoveL
+          -ocal;                                                         
+      190 +        // --remove-local without --write-pointers would delet
+          +e the binary and leave no local record at                     
+      191 +        // all, so the combination is rejected up front (the C
+          +LI rejects it too). Validated here as well                    
+      192 +        // because programmatic/API callers construct the opti
+          +ons directly and bypass the CLI guard.                        
+      193 +        if (opts.RemoveLocal && !opts.WritePointers)          
+      194 +        {                                                     
+      195 +            _logger.LogError("[archive] --remove-local require
+          +s --write-pointers; refusing to run.");                       
+      196 +            return new ArchiveResult                          
+      197 +            {                                                 
+      198 +                Success               = false,                
+      199 +                FilesScanned          = 0,                    
+      200 +                EntriesExcluded       = 0,                    
+      201 +                FilesUploaded         = 0,                    
+      202 +                FilesDeduped          = 0,                    
+      203 +                OriginalSize          = 0,                    
+      204 +                IncrementalSize       = 0,                    
+      205 +                IncrementalStoredSize = 0,                    
+      206 +                RootHash              = null,                 
+      207 +                SnapshotTime          = DateTimeOffset.UtcNow,
+      208 +                ErrorMessage          = "--remove-local requir
+          +es --write-pointers: removing the binary without writing a poi
+          +nter would leave no local record of the file."                
+      209 +            };                                                
+      210 +        }                                                     
+      211  
+      212 +        var writePointers = opts.WritePointers;               
+      213 +                                                              
+      214          // ── Operation start marker (task 3.10) ─────────────
+           ──────────────────
+      215          _logger.LogInformation("[archive] Start: src={RootDir}
+            account={Account} container={Container} tier={Tier} removeLoc
+           al={RemoveLocal} writePointers={WritePointers}", opts.RootDire
+           ctory, _accountName, _containerName, opts.UploadTier, opts.Rem
+           oveLocal, writePointers);
+      216  
+
+⏺ Update(src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs)
+  ⎿  Added 3 lines, removed 1 line
+      399  
+      400                                  await hashedChannel.Writer.Wri
+           teAsync(new HashedFilePair(pair, contentHash, created, modifie
+           d), ct);
+      401                              }
+      402 -                            catch (Exception ex) when (!ct.IsC
+          -ancellationRequested)                                         
+      402 +                            catch (Exception ex) when (!ct.IsC
+          +ancellationRequested && ex is not HashCacheLocalStoreException
+          +)                                                             
+      403                              {
+      404                                  // A single unreadable file (b
+           roken link, permission denied, deleted mid-run)
+      405                                  // must never fault this stage
+            — that would stop draining filePairChannel and
+      406                                  // deadlock the bounded enumer
+           ate→hash producer. Log, clear the row, skip.
+      407 +                                // A corrupt hashcache is the 
+          +deliberate exception: it must fault the run with              
+      408 +                                // its actionable message rath
+          +er than be misread here as per-file unreadable.               
+      409                                  _logger.LogWarning(ex, "Skippi
+           ng unreadable file during hashing: {Path}", pair.RelativePath)
+           ;
+      410                                  await _mediator.Publish(new Fi
+           leSkippedEvent(pair.RelativePath), ct);
+      411                              }
+
+⏺ Now the #1 + #12 fix in FullHashAndRecordAsync — capture signals and mtime
+  before opening the file:
+
+⏺ Update(src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs)
+  ⎿  Added 10 lines, removed 2 lines
+      416                              // the worker. (TryGetChangeSignal
+           s never throws.)
+      417                              async ValueTask<ContentHash> FullH
+           ashAndRecordAsync(RelativePath relativePath, long size, long n
+           owTicks, CancellationToken cancellation)
+      418                              {
+      419 +                                // Capture the change-signals 
+          +and mtime BEFORE reading the content, so the                  
+      420 +                                // stored ctime is a conservat
+          +ive lower bound on the bytes we hash: any write               
+      421 +                                // during or after the read ad
+          +vances ctime past this value, so the next                     
+      422 +                                // --fast-hash run misses and 
+          +re-hashes rather than reusing a hash of torn                  
+      423 +                                // content. (Capturing after t
+          +he read would fold a concurrent write into the                
+      424 +                                // stored ctime and mask the s
+          +tale hash forever — the one unsafe misprediction.)            
+      425 +                                var signals = fs.TryGetChangeS
+          +ignals(relativePath);                                         
+      426 +                                var (_, modified) = fs.GetTime
+          +stamps(relativePath);                                         
+      427 +                                                              
+      428                                  await using var s   = fs.OpenR
+           ead(relativePath);
+      429                                  var             p   = opts.Cre
+           ateHashProgress?.Invoke(relativePath, size) ?? new Progress<lo
+           ng>();
+      430                                  await using var smp = new Spar
+           seSamplingStream(s, size);
+      431                                  await using var ps  = new Prog
+           ressStream(smp, p);
+      432                                  var hash = await _encryption.C
+           omputeHashAsync(ps, cancellation);
+      433  
+      425 -                                var signals = fs.TryGetChangeS
+          -ignals(relativePath);                                         
+      426 -                                _hashCache.Record(relativePath
+          -, size, signals, smp.Fingerprint(), hash, nowTicks);          
+      434 +                                _hashCache.Record(relativePath
+          +, size, signals, modified.UtcTicks, smp.Fingerprint(), hash, n
+          +owTicks);                                                     
+      435                                  Interlocked.Increment(ref fast
+           HashRehashed);
+      436                                  return hash;
+      437                              }
+
+⏺ Now update the class-doc for stage 6e to reflect the new rule (no
+  implication):
+
+⏺ Update(src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs)
+  ⎿  Added 1 line, removed 1 line
+      43  ///    - **6b. Flush chunk index** — `_chunkIndex.FlushAsync`; 
+          runs concurrently with 6c (`Task.WhenAll`).
+      44  ///    - **6c. Build file tree** — `FileTreeBuilder.Synchronize
+          Async`; runs concurrently with 6b and yields the snapshot root 
+          hash.
+      45  ///    - **6d. Create snapshot** (×1) — create + promote a snap
+          shot for the root hash (skipped if unchanged).
+      46 -///    - **6e. Write pointers** (×N) — write `pendingPointers` 
+         -in parallel (binary-present files only when `--write-pointers` 
+         -or `--remove-local`; legacy pointer upgrades always); runs conc
+         -urrently with 6f (`Task.WhenAll`).                             
+      46 +///    - **6e. Write pointers** (×N) — write `pendingPointers` 
+         +in parallel (binary-present files only when `--write-pointers`,
+         + which `--remove-local` requires; legacy pointer upgrades alway
+         +s); runs concurrently with 6f (`Task.WhenAll`).                
+      47  ///    - **6f. Remove local** (×N) — delete `pendingDeletes` in
+           parallel (only if `--remove-local`); runs concurrently with 6e
+          . Disjoint paths from 6e (pointer sidecar vs binary).
+      48  ///
+      49  /// ```
+
+⏺ Now the CLI ArchiveVerb.cs — reject the combo upfront (#7):
+
+⏺ Update(src/Arius.Cli/Commands/Archive/ArchiveVerb.cs)  ⎿  Added 6 lines
+      62              var writePointers = parseResult.GetValue(writePoint
+          ersOption);
+      63              var fastHash      = parseResult.GetValue(fastHashOp
+          tion);
+      64  
+      65 +            if (removeLocal && !writePointers)                 
+      66 +            {                                                  
+      67 +                AnsiConsole.MarkupLine("[red]Error:[/] --remove
+         +-local requires --write-pointers — removing the binary without 
+         +writing a pointer would leave no local record of the file.");  
+      68 +                return 1;                                      
+      69 +            }                                                  
+      70 +                                                               
+      71              var resolvedAccount = CliBuilder.ResolveAccount(acc
+          ount);
+      72              if (resolvedAccount is null)
+      73              {
+
+⏺ Now update the tests. First, HashCacheServiceTests.cs — thread the new
+  mtimeTicks argument through the four Record calls:
+
+⏺ Update(src/Arius.Core.Tests/Shared/HashCache/HashCacheServiceTests.cs)
+  ⎿  Added 1 line, removed 1 line
+      23          var hash = ContentHash.Parse(new string('a', 64));
+      24          var sig  = fs.TryGetChangeSignals(path);
+      25          if (sig is null) return; // floor-only platform; covere
+          d by Hit_WhenFpMatches
+      26 -        svc.Record(path, fs.GetFileSize(path), sig, [9, 9], has
+         -h, now: 1); // store bogus fp on purpose                       
+      26 +        svc.Record(path, fs.GetFileSize(path), sig, mtimeTicks:
+         + 0, [9, 9], hash, now: 1); // store bogus fp on purpose        
+      27  
+      28          var r = svc.TryReuse(fs, path, fs.GetFileSize(path), no
+          w: 2);
+      29          r.Hash.ShouldBe(hash);             // reused without co
+          nsulting the (bogus) fp
+
+⏺ Update(src/Arius.Core.Tests/Shared/HashCache/HashCacheServiceTests.cs)
+  ⎿  Added 1 line, removed 1 line
+      37          var hash = ContentHash.Parse(new string('a', 64));
+      38          var realFp = SparseFingerprint.ComputeBySeeking(fs, pat
+          h, fs.GetFileSize(path));
+      39          // Store a row whose ctime/inode won't match the live f
+          ile (force the floor branch).
+      40 -        svc.Record(path, fs.GetFileSize(path), signals: null, r
+         -ealFp, hash, now: 1);                                          
+      40 +        svc.Record(path, fs.GetFileSize(path), signals: null, m
+         +timeTicks: 0, realFp, hash, now: 1);                           
+      41  
+      42          var r = svc.TryReuse(fs, path, fs.GetFileSize(path), no
+          w: 2);
+      43          r.Hash.ShouldBe(hash);
+
+⏺ Update(src/Arius.Core.Tests/Shared/HashCache/HashCacheServiceTests.cs)
+  ⎿  Added 1 line, removed 1 line
+      48      public void Miss_WhenSizeChanged()
+      49      {
+      50          var (svc, fs, path) = Setup([1, 2, 3, 4]);
+      51 -        svc.Record(path, size: 999, signals: null, [1], Content
+         -Hash.Parse(new string('a', 64)), now: 1);                      
+      51 +        svc.Record(path, size: 999, signals: null, mtimeTicks: 
+         +0, [1], ContentHash.Parse(new string('a', 64)), now: 1);       
+      52          var r = svc.TryReuse(fs, path, fs.GetFileSize(path), no
+          w: 2);
+      53          r.IsHit.ShouldBeFalse();
+      54          r.Reason.ShouldStartWith("size ");
+
+⏺ Update(src/Arius.Core.Tests/Shared/HashCache/HashCacheServiceTests.cs)
+  ⎿  Added 1 line, removed 1 line
+      72      {
+      73          var (svc, fs, path) = Setup(Enumerable.Range(0, 1000).S
+          elect(i => (byte)i).ToArray());
+      74          var fp = SparseFingerprint.ComputeBySeeking(fs, path, f
+          s.GetFileSize(path));
+      75 -        svc.Record(path, fs.GetFileSize(path), signals: null, f
+         -p, ContentHash.Parse(new string('a', 64)), now: 1);            
+      75 +        svc.Record(path, fs.GetFileSize(path), signals: null, m
+         +timeTicks: 0, fp, ContentHash.Parse(new string('a', 64)), now: 
+         +1);                                                            
+      76  
+      77          var bytes = fs.ReadAllBytes(path); bytes[0] ^= 0xFF; fs
+          .WriteAllBytes(path, bytes); // same size
+      78          svc.TryReuse(fs, path, fs.GetFileSize(path), now: 2).Re
+          ason.ShouldBe("fp differs");
+
+⏺ Add a #12 regression test (mtime persisted is the file's mtime, not the run
+  clock) to HashCacheServiceTests.cs:
+
+⏺ Update(src/Arius.Core.Tests/Shared/HashCache/HashCacheServiceTests.cs)
+  ⎿  Added 16 lines
+      78          svc.TryReuse(fs, path, fs.GetFileSize(path), now: 2).Re
+          ason.ShouldBe("fp differs");
+      79      }
+      80  
+      81 +    [Test]                                                     
+      82 +    public void Record_PersistsProvidedMtime_NotRunClock()     
+      83 +    {                                                          
+      84 +        var (_, fs, path) = Setup([1, 2, 3, 4]);               
+      85 +        var store = NewStore(out _, fs);                       
+      86 +        var svc   = new HashCacheService(store);               
+      87 +                                                               
+      88 +        // mtime is the file's last-write time, passed in by th
+         +e caller — distinct from `now` (run clock).                    
+      89 +        svc.Record(path, fs.GetFileSize(path), signals: null, m
+         +timeTicks: 123_456_789, [1], ContentHash.Parse(new string('a', 
+         +64)), now: 999);                                               
+      90 +                                                               
+      91 +        var row = store.Find(path);                            
+      92 +        row.ShouldNotBeNull();                                 
+      93 +        row!.Value.MtimeTicks.ShouldBe(123_456_789);        // 
+         +the file mtime we recorded                                     
+      94 +        row.Value.LastVerifiedTicks.ShouldBe(999);          // 
+         +the run clock, separately                                      
+      95 +    }                                                          
+      96 +                                                               
+      97      private static (HashCacheService, RelativeFileSystem, Relat
+          ivePath) Setup(byte[] data)
+      98      {
+      99          var dir  = LocalDirectory.Parse(Path.Combine(Path.GetTe
+          mpPath(), $"arius-hcs-{Guid.NewGuid():N}"));
+
+⏺ Now the #3 proving/regression test in SparseFingerprintTests.cs:
+
+⏺ Update(src/Arius.Core.Tests/Shared/HashCache/SparseFingerprintTests.cs)
+  ⎿  Added 30 lines
+      46      }
+      47  
+      48      [Test]
+      49 +    public void ComputeBySeeking_WholeFileRegion_LargerThanBloc
+         +kSize_DoesNotThrow()                                           
+      50 +    {                                                          
+      51 +        // A file in (BlockSize, k×BlockSize] is a single whole
+         +-file region whose length exceeds the                          
+      52 +        // 256 KiB BlockSize. The seek-read buffer must be size
+         +d to the region, not a fixed BlockSize —                       
+      53 +        // otherwise ReadExactly throws ArgumentOutOfRangeExcep
+         +tion and the file is silently dropped from                     
+      54 +        // the snapshot on the fast-hash floor. Regression for 
+         +that bug.                                                      
+      55 +        var data = new byte[512 * 1024]; // 512 KiB: in (256 Ki
+         +B, 1 MiB] → single whole-file region                           
+      56 +        Random.Shared.NextBytes(data);                         
+      57 +        var (fs, path) = WriteTempFile(data);                  
+      58 +        var size = fs.GetFileSize(path);                       
+      59 +                                                               
+      60 +        SparseFingerprint.Regions(size).Count.ShouldBe(1); // a
+         + single whole-file region, length > BlockSize                  
+      61 +                                                               
+      62 +        var fp = SparseFingerprint.ComputeBySeeking(fs, path, s
+         +ize);                                                          
+      63 +        fp.Length.ShouldBe(32);                                
+      64 +                                                               
+      65 +        // And it must still agree with the streaming Sampler o
+         +ver the same content.                                          
+      66 +        var sampler = new SparseFingerprint.Sampler(size);     
+      67 +        var pos = 0;                                           
+      68 +        const int chunk = 64 * 1024;                           
+      69 +        while (pos < data.Length)                              
+      70 +        {                                                      
+      71 +            var len = Math.Min(chunk, data.Length - pos);      
+      72 +            sampler.Capture(pos, data.AsSpan(pos, len));       
+      73 +            pos += len;                                        
+      74 +        }                                                      
+      75 +        sampler.Finish().ShouldBe(fp);                         
+      76 +    }                                                          
+      77 +                                                               
+      78 +    [Test]                                                     
+      79      public void Sampler_MatchesSeekingFingerprint_ForSameConten
+          t()
+      80      {
+      81          var data = Enumerable.Range(0, 2_000_000).Select(i => (
+          byte)(i * 7)).ToArray();
+
+⏺ Now rewrite the #7 test and docstring in ArchivePointerDefaultTests.cs:
+
+⏺ Update(src/Arius.Core.Tests/Features/ArchiveCommand/ArchivePointerDefaultTests
+        .cs)
+  ⎿  Added 3 lines, removed 2 lines
+       8  
+       9  /// <summary>
+      10  /// Pins the opt-in pointer behavior: archiving a binary-presen
+          t file writes NO <c>.pointer.arius</c>
+      11 -/// sidecar by default; <c>WritePointers</c> re-enables it; and
+         - <c>RemoveLocal</c> implies a pointer                          
+      12 -/// is written even when <c>WritePointers</c> is left off (the 
+         -pointer becomes the sole local record).                        
+      11 +/// sidecar by default; <c>WritePointers</c> re-enables it; and
+         + <c>RemoveLocal</c> without                                    
+      12 +/// <c>WritePointers</c> is rejected up front (removing the bin
+         +ary while writing no pointer would leave                       
+      13 +/// no local record), so <c>RemoveLocal</c> requires <c>WritePo
+         +inters</c>.                                                    
+      14  /// </summary>
+      15  public class ArchivePointerDefaultTests
+      16  {
+
+⏺ Update(src/Arius.Core.Tests/Features/ArchiveCommand/ArchivePointerDefaultTests
+        .cs)
+  ⎿  Added 17 lines, removed 2 lines
+      43      }
+      44  
+      45      [Test]
+      46 -    public async Task Archive_RemoveLocal_ImpliesPointerAndRemo
+         -vesBinary()                                                    
+      46 +    public async Task Archive_RemoveLocalWithoutWritePointers_I
+         +sRejectedAndKeepsBinary()                                      
+      47      {
+      48          await using var fixture = await CreateArchiveFixtureAsy
+          nc();
+      49          var relativePath = RelativePath.Parse("docs/readme.txt"
+          );
+      50          await WriteRandomFileAsync(fixture, relativePath, 128);
+      51  
+      52 -        // WritePointers left default (false): --remove-local i
+         -mplies a pointer is written.                                   
+      52 +        // --remove-local without --write-pointers is the illeg
+         +al combination: rejected up front.                             
+      53          var result = await ArchiveAsync(fixture, BlobTier.Cool,
+           removeLocal: true, writePointers: false);
+      54  
+      55 +        result.Success.ShouldBeFalse();                        
+      56 +        result.ErrorMessage.ShouldContain("--write-pointers"); 
+      57 +        fixture.LocalFileSystem.FileExists(relativePath).Should
+         +BeTrue();                 // binary untouched                  
+      58 +        fixture.LocalFileSystem.FileExists(relativePath.ToPoint
+         +erPath()).ShouldBeFalse();                                     
+      59 +    }                                                          
+      60 +                                                               
+      61 +    [Test]                                                     
+      62 +    public async Task Archive_RemoveLocalWithWritePointers_Remo
+         +vesBinaryAndWritesPointer()                                    
+      63 +    {                                                          
+      64 +        await using var fixture = await CreateArchiveFixtureAsy
+         +nc();                                                          
+      65 +        var relativePath = RelativePath.Parse("docs/readme.txt"
+         +);                                                             
+      66 +        await WriteRandomFileAsync(fixture, relativePath, 128);
+      67 +                                                               
+      68 +        var result = await ArchiveAsync(fixture, BlobTier.Cool,
+         + removeLocal: true, writePointers: true);                      
+      69 +                                                               
+      70          result.Success.ShouldBeTrue(result.ErrorMessage);
+      71          fixture.LocalFileSystem.FileExists(relativePath).Should
+          BeFalse();
+      72          fixture.LocalFileSystem.FileExists(relativePath.ToPoint
+          erPath()).ShouldBeTrue();
+
+⏺ Now the Web fixes. First the e2e seed call (#10) and the drawer-store pointer
+  mapping (#7 UI):
+
+⏺ Update(src/Arius.Web/e2e/support/global-setup.ts)
+  ⎿  Added 2 lines, removed 1 line
+      108    await connection.start();
+      109    let jobId: string;
+      110    try {
+      111 -    jobId = await connection.invoke<string>('StartArchive', re
+          -poId, 'hot', false, false);                                   
+      111 +    // StartArchive(repositoryId, tier, removeLocal, writePoin
+          +ters, fastHash)                                               
+      112 +    jobId = await connection.invoke<string>('StartArchive', re
+          +poId, 'hot', false, false, false);                            
+      113    } finally {
+      114      await connection.stop(); // the server job runs independen
+           tly of the connection
+      115    }
+
+⏺ Update(src/Arius.Web/src/app/core/state/drawer.store.ts)
+  ⎿  Added 3 lines, removed 1 line
+       95        this.jobId.set(await this.realtime.startArchive(this.rep
+           oId(), {
+       96          tier: this.archiveTier(),
+       97          removeLocal: this.archiveOnDisk() === 'replace',
+       98 -        writePointers: this.archiveOnDisk() === 'keep-pointers
+          -',                                                            
+       98 +        // Both 'keep-pointers' and 'replace' write pointers; 
+          +'replace' (remove-local) requires them,                       
+       99 +        // since the handler rejects removing a binary while w
+          +riting no pointer.                                            
+      100 +        writePointers: this.archiveOnDisk() !== 'keep',       
+      101          fastHash: this.fastHash(),
+      102        }));
+      103      } else {
+
+⏺ Now the SignalR reconnect bug (#11) — replace the stale-cached-promise logic
+  with state-aware connect logic:
+
+⏺ Update(src/Arius.Web/src/app/core/api/realtime.service.ts)
+  ⎿  Added 22 lines, removed 2 lines
+      37      if (this.connection.state === signalR.HubConnectionState.Co
+          nnected) {
+      38        return Promise.resolve();
+      39      }
+      40 -    // Cache the in-flight start, but drop it on failure so a l
+         -ater call can retry (API not up yet).                          
+      41 -    this.starting ??= this.connection.start().catch(err => { th
+         -is.starting = undefined; throw err; });                        
+      40 +    // Coalesce concurrent callers onto one in-flight attempt a
+         +nd clear it once settled, so a later                           
+      41 +    // call re-evaluates the live connection state instead of r
+         +esolving a stale already-fulfilled                             
+      42 +    // promise — the bug that let an invoke fire while withAuto
+         +maticReconnect had the socket in                               
+      43 +    // Reconnecting/Disconnected.                              
+      44 +    this.starting ??= this.driveToConnected().finally(() => { t
+         +his.starting = undefined; });                                  
+      45      return this.starting;
+      46    }
+      47  
+      48 +  /**                                                          
+      49 +   * Brings the connection to Connected and only then resolves.
+         + Starts it when Disconnected; when                             
+      50 +   * SignalR is mid-transition (Connecting, or Reconnecting und
+         +er withAutomaticReconnect — where                              
+      51 +   * calling start() is illegal) it waits for the transition to
+         + settle, then starts if it ended up                            
+      52 +   * Disconnected.                                             
+      53 +   */                                                          
+      54 +  private async driveToConnected(): Promise<void> {            
+      55 +    const c = this.connection!;                                
+      56 +    while (c.state !== signalR.HubConnectionState.Connected) { 
+      57 +      if (c.state === signalR.HubConnectionState.Disconnected) 
+         +{                                                              
+      58 +        await c.start();                                       
+      59 +        return;                                                
+      60 +      }                                                        
+      61 +      await new Promise(resolve => setTimeout(resolve, 100));  
+      62 +    }                                                          
+      63 +  }                                                            
+      64 +                                                               
+      65    /** Starts an archive; returns the job id. Subscribe to log$/
+          progress$/done$ for the stream. */
+      66    async startArchive(repositoryId: number, opts: { tier: string
+          ; removeLocal: boolean; writePointers: boolean; fastHash: boole
+          an }): Promise<string> {
+      67      await this.ensureStarted();
+
+⏺ Now the #5 reminder — a disabled "Fast-hash" checkbox in the Scheduled
+  archives card:
+
+⏺ Update(src/Arius.Web/src/app/features/repo/properties/properties-tab.component
+        .ts)
+  ⎿  Added 7 lines
+      66            <input class="ar-input ar-mono" data-testid="schedule
+          -cron" style="flex:1" placeholder="cron e.g. 0 2 * * *" [(ngMod
+          el)]="newCron" />
+      67            <button class="ar-btn-primary" data-testid="schedule-
+          add" [disabled]="!newCron" (click)="addSchedule()"><i class="ki
+          -filled ki-plus"></i>Add</button>
+      68          </div>
+      69 +        <!-- Reminder: scheduled archives currently always run 
+         +without --fast-hash. This disabled toggle                      
+      70 +             is a placeholder until per-schedule fast-hash is w
+         +ired through (Api SchedulerService). -->                       
+      71 +        <label style="display:flex;align-items:center;gap:8px;m
+         +argin-top:14px;font-size:12.5px;color:#a1a1aa"                 
+      72 +               title="Planned — scheduled archives will be able
+         + to opt into fast-hash; not wired up yet.">                    
+      73 +          <input type="checkbox" data-testid="schedule-fast-has
+         +h" disabled />                                                 
+      74 +          Fast-hash scheduled runs <span style="font-style:ital
+         +ic">(coming soon)</span>                                       
+      75 +        </label>                                               
+      76        </div>
+      77  
+      78        <!-- Danger zone -->
+
+⏺ All code edits are in. Let me build and run the affected tests before touching
+  the docs.
+
+  Ran 1 shell command (ctrl+o to expand)
+⏺ Build is clean. Now run the affected tests (TUnit):
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ TUnit uses --treenode-filter. Let me use that:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ All 27 targeted tests pass (including the new #3 fingerprint, #12 mtime, and
+  rewritten #7 pointer tests). Let me confirm the CLI and API still build, and
+  typecheck the Web changes.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ There's a src/Arius.slnx. Let me build the whole solution and typecheck the
+  web in parallel:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The solution builds clean and the app typechecks. Let me confirm the web
+  typecheck actually ran (config exists) and check the e2e + template compile
+  path:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The app typechecks clean (exit 0); the e2e errors are just my ad-hoc tsc
+  lacking @types/node/lib config (Playwright supplies those) — none touch my
+  one-line change. The solution builds and all 27 targeted tests pass.
+
+  Now the docs. Let me read the cli.md archive section to edit it precisely.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now update the cli.md archive section — synopsis, options table, the rejection
+  rule, and the example:
+
+⏺ Update(docs/guide/cli.md)
+  ⎿  Added 7 lines, removed 5 lines
+      55  
+      56  ```
+      57  arius archive <path> -a <account> -c <container> [-k <key>] [-p
+           <passphrase>]
+      58 -                     [-t|--tier <Hot|Cool|Cold|Archive>] [--rem
+         -ove-local] [--no-pointers]                                     
+      58 +                     [-t|--tier <Hot|Cool|Cold|Archive>] [--rem
+         +ove-local] [--write-pointers] [--fast-hash]                    
+      59  ```
+      60  
+      61  ### Options
+     ...
+      64  |-------------------|------|---------|----------|---------|
+      65  | `path` | path | — | **Yes** | Local directory to archive. |
+      66  | `--tier`, `-t` | `Hot` \| `Cool` \| `Cold` \| `Archive` | `Ar
+          chive` | No | Storage tier the uploaded *chunks* land on. `Arch
+          ive` is cheapest to store but must be *rehydrated* (slow, paid)
+           before a restore. |
+      67 -| `--remove-local` | flag | off | No | Delete the local *binary
+         - files* after the snapshot is committed, leaving only the small
+         - `.pointer.arius` sidecars behind. |                           
+      68 -| `--no-pointers` | flag | off | No | Do not create or update `
+         -.pointer.arius` sidecar files. |                               
+      67 +| `--remove-local` | flag | off | No | Delete the local *binary
+         + files* after the snapshot is committed, leaving only the `.poi
+         +nter.arius` sidecars behind. Requires `--write-pointers`. |    
+      68 +| `--write-pointers` | flag | off | No | Write (or update) `.po
+         +inter.arius` sidecar files for archived binaries. Off by defaul
+         +t — pointers are opt-in. |                                     
+      69 +| `--fast-hash` | flag | off | No | Skip re-reading files the l
+         +ocal [hashcache](../design/core/shared/hashcache.md) verifies a
+         +s unchanged since the last run. A heuristic that trades a small
+         + mis-detection risk for speed on large, stable trees; the defau
+         +lt re-reads every file. |                                      
+      70  | *(plus the four [global options](#global-options))* | | | | |
+      71  
+      71 -`--remove-local` and `--no-pointers` cannot be combined (you wo
+         -uld be left with no local trace                                
+      72 -of the file at all) — the command rejects the combination with 
+         -an error.                                                      
+      72 +`--remove-local` requires `--write-pointers`: removing the bina
+         +ry while writing no pointer would                              
+      73 +leave no local trace of the file at all, so the command rejects
+         + `--remove-local` on its own with an                           
+      74 +error. (Legacy `.pointer.arius` files are still upgraded in pla
+         +ce regardless of the flag.)                                    
+      75  
+      76  Fixed pipeline behavior (not configurable from the CLI): files 
+          **≥ 1 MB** upload individually as
+      77  *large chunks*; files **< 1 MB** are bundled into *tar chunks* 
+          with a 64 MB target bundle size.
+
+⏺ Update(docs/guide/cli.md)
+  ⎿  Added 1 line, removed 1 line
+      92    -a mystorageaccount \
+      93    -c photos-backup \
+      94    -t Archive \
+      95 -  --remove-local                                               
+      95 +  --remove-local --write-pointers                              
+      96  ```
+      97  
+      98  On success you get a one-line summary, e.g.:
+
+⏺ Now web-ui.md — the archive drawer toggles are stale (describe the removed
+  --no-pointers). Update to the current 3-way control + fast-hash toggle:
+
+⏺ Update(docs/guide/web-ui.md)
+  ⎿  Added 10 lines, removed 6 lines
+      200     **Properties** first (there's nothing local to archive othe
+           rwise).
+      201  2. **Upload tier** — `Hot` / `Cool` / `Cold` / `Archive` (defa
+           ults to the repository's default
+      202     tier). This is where the newly uploaded chunks land.
+      203 -3. **Toggles** (mutually exclusive — turning one on turns the 
+          -other off):                                                   
+      204 -   - **Remove local binaries** — after a successful upload, re
+          -place local files with pointer files                          
+      205 -     to reclaim disk space (`--remove-local`).                
+      206 -   - **Skip pointer files** — don't write pointer files at all
+          - (`--no-pointers`).                                           
+      207 -   - A note reminds you small files are bundled (1 MB threshol
+          -d, ~64 MB tar target) automatically.                          
+      208 -4. Click **Start archive**. The drawer switches to the live st
+          -ream (see *Watching live progress*).                          
+      203 +3. **On disk after archive** — a three-way choice:            
+      204 +   - **Keep files only** — upload, write no pointer sidecars (
+          +the default).                                                 
+      205 +   - **Keep files + pointers** — also write `.pointer.arius` s
+          +idecars next to the binaries                                  
+      206 +     (`--write-pointers`).                                    
+      207 +   - **Replace with pointers** — after a successful upload, de
+          +lete the local binaries and leave only                        
+      208 +     the pointer sidecars to reclaim disk space (`--remove-loc
+          +al`, which always writes pointers).                           
+      209 +4. **Fast hash** — skip re-reading files the local hashcache v
+          +erifies as unchanged since the last                           
+      210 +   run; faster on large, stable trees, off by default (`--fast
+          +-hash`).                                                      
+      211 +5. Click **Start archive**. The drawer switches to the live st
+          +ream (see *Watching live progress*).                          
+      212 +   Small files are bundled automatically (1 MB threshold, ~64 
+          +MB tar target).                                               
+      213  
+      214  ---
+      215  
+
+⏺ Now development.md — the e2e workflow list references the removed archive
+  --no-pointers:
+
+⏺ Update(docs/guide/development.md)
+  ⎿  Added 1 line, removed 1 line
+      91  `src/Arius.E2E.Tests/` contains the actual end-to-end coverage:
+      92  
+      93  - `RepresentativeArchiveRestoreTests.cs` runs one canonical rep
+          resentative workflow on Azurite and, when credentials are avail
+          able, live Azure.
+      94 -- The workflow exercises one evolving archive history (not isol
+         -ated one-off scenarios): incremental archive, warm and cold res
+         -tore, previous-version restore, no-op re-archive, `--no-pointer
+         -s`, `--remove-local`, conflict handling, and archive-tier pendi
+         -ng-versus-ready behavior when the backend supports it.         
+      94 +- The workflow exercises one evolving archive history (not isol
+         +ated one-off scenarios): incremental archive, warm and cold res
+         +tore, previous-version restore, no-op re-archive, `--write-poin
+         +ters`, `--remove-local`, `--fast-hash`, conflict handling, and 
+         +archive-tier pending-versus-ready behavior when the backend sup
+         +ports it.                                                      
+      95  - No-op archive runs preserve the current latest snapshot, so s
+          napshot history reflects repository state changes, not repeated
+           invocations.
+      96  - The synthetic repository size is one explicit constant in `Sy
+          ntheticRepositoryDefinitionFactory` — tune it upward deliberate
+          ly.
+      97  - `E2ETests.cs` keeps the live Azure credential sanity check pl
+          us narrow hot-tier pointer-file and large-file probes the repre
+          sentative workflow does not cover directly.
+
+⏺ Now ADR-0021 — reverse the implication (#7), mark macOS arm64-only (#2), and
+  note the corruption behavior (#6).
+
+⏺ Update(docs/decisions/adr-0021-opt-in-change-detection-hashcache.md)
+  ⎿  Added 3 lines, removed 3 lines
+      52  # Subsequent runs: unchanged files served from cache, changed f
+          iles full-re-hashed
+      53  arius archive ./photos --fast-hash
+      54  
+      55 -# Pointer sidecars are now opt-in; --remove-local implies them 
+      56 -arius archive ./photos --write-pointers         # write sidecar
+         -s, keep binary                                                 
+      57 -arius archive ./photos --remove-local           # implies --wri
+         -te-pointers                                                    
+      55 +# Pointer sidecars are opt-in; --remove-local requires --write-
+         +pointers                                                       
+      56 +arius archive ./photos --write-pointers                 # write
+         + sidecars, keep binary                                         
+      57 +arius archive ./photos --remove-local --write-pointers  # remov
+         +e binary, leave pointer                                        
+      58  ```
+      59  
+      60  ### Consequences and Tradeoffs
+
+⏺ Update(docs/decisions/adr-0021-opt-in-change-detection-hashcache.md)
+  ⎿  Added 2 lines, removed 2 lines
+      151  After this ADR:
+      152  
+      153  - `WritePointers` defaults to `false`. Pass `--write-pointers`
+            to write sidecars.
+      154 -- `--remove-local` internally sets `writePointers = opts.Write
+          -Pointers || opts.RemoveLocal`, so removing the binary always w
+          -rites a pointer regardless of the flag.                       
+      154 +- `--remove-local` **requires** `--write-pointers`: removing t
+          +he binary while writing no pointer would leave no local record
+          + of the file, so the combination `RemoveLocal && !WritePointer
+          +s` is rejected up front — validated in **both** the CLI (`Arch
+          +iveVerb`) and the handler (`ArchiveCommandHandler`, the backst
+          +op for programmatic/API callers). An earlier revision *implied
+          +* pointers from `--remove-local`; that silent implication was 
+          +replaced by this explicit validation so the dangerous combinat
+          +ion is an error, not a magic auto-correct.                    
+      155  - `--no-pointers` is gone from `archive` (it is still present 
+           on `restore` where it has a different, valid use).
+      156 -- The old mutual-exclusion validation is replaced by the impli
+          -cation.                                                       
+      156 +- The old `--remove-local` + `--no-pointers` mutual-exclusion 
+          +validation is replaced by the `--remove-local` requires `--wri
+          +te-pointers` validation.                                      
+      157  - Legacy v5 pointer-only files are still always upgraded in pl
+           ace (stage 5b), regardless of `WritePointers`.
+      158  
+      159  ## Benchmark procedure (for the DS918+ operator)
+
+⏺ Update(docs/decisions/adr-0021-opt-in-change-detection-hashcache.md)
+  ⎿  Added 1 line, removed 1 line
+      108  |---|---|---|---|---|
+      109  | Linux ≥ 4.11 | `statx` | `stx_ctime.tv_sec` + `tv_nsec` (→ U
+           TC ticks) | `stx_ino` (u64, string) | `stx_dev_major:stx_dev_m
+           inor` |
+      110  | Linux 4.4 (Synology DS918+) | `stat` x86_64 fallback | `st_c
+           tim.tv_sec` + `tv_nsec` | `st_ino` (u64) | decoded via glibc `
+           gnu_dev_major`/`gnu_dev_minor` macros → `"major:minor"` to mat
+           ch `statx` format |
+      111 -| macOS | `stat` (Darwin 64-bit inode) | `st_ctimespec.tv_sec`
+          - + `tv_nsec` | `st_ino` (u64) | `st_dev` (int32, string) |    
+      111 +| macOS (arm64 only) | `stat` (Darwin 64-bit inode) | `st_ctim
+          +espec.tv_sec` + `tv_nsec` | `st_ino` (u64) | `st_dev` (int32, 
+          +string) |                                                     
+      112  | Windows | `GetFileInformationByHandleEx` (`FileBasicInfo` + 
+           `FileIdInfo`) | `ChangeTime` (FILETIME → UTC ticks) | 128-bit 
+           `FileId` (hex string) | `VolumeSerialNumber` (u64, string) |
+      113  
+      114  **Deliberate timestamp-stomp class (Windows).** `SetFileTime` 
+           on Windows cannot set `ChangeTime` — only the kernel's `NtSetI
+           nformationFile` can. This means `ChangeTime` is far harder to 
+           tamper with than `LastWriteTime`, making it a stronger signal.
+            The hashcache relies on this property.
+⏺ Update(docs/decisions/adr-0021-opt-in-change-detection-hashcache.md)
+  ⎿  Added 2 lines
+      115  
+      116  **Network filesystem exclusion.** On Linux, `statfs` detects C
+           IFS/SMB2/NFS by `f_type` magic and returns `null` → the caller
+            uses the fingerprint floor. On Windows, `GetDriveType` return
+           s `DRIVE_REMOTE` → `null`. On macOS the source volume is assum
+           ed local (network detection is skipped). Any `TryGet` failure 
+           (exception, unsupported FS) also returns `null` → floor.
+      117  
+      118 +**macOS is arm64-only.** The Darwin `stat` path is guarded to 
+          +Apple Silicon: on x86_64 macOS the bare `stat` symbol can reso
+          +lve to the legacy 32-bit-inode struct, which would misread the
+          + field offsets and yield a silently-wrong signal. Intel Macs a
+          +re unsupported — `TryGet` returns `null` there and the fingerp
+          +rint floor is used.                                           
+      119 +                                                              
+      120  ### The statx → stat fallback for the Synology DS918+ (kernel 
+           4.4)
+      121  
+      122  `statx` was added in Linux 4.11; `ENOSYS` from `statx` means t
+           he kernel predates it. `TryGetViaStatx` returns `null` on any 
+           non-zero return code, and `TryGetLinux` then calls `TryGetViaS
+           tat`. The `struct stat` layout is architecture-specific; only 
+           the x86_64 layout is implemented (the DS918+ Intel Celeron J34
+           55 is x86_64), guarded by `RuntimeInformation.ProcessArchitect
+           ure != Architecture.X64` → `null`. On a non-x64 Linux kernel <
+            4.11, both paths return `null` and the fingerprint floor is u
+           sed.
+
+⏺ Update(docs/decisions/adr-0021-opt-in-change-detection-hashcache.md)
+  ⎿  Added 1 line, removed 1 line
+      143  The hashcache stores `(path, size, mtime, ctime, inode, dev, s
+           ignal_set, sparse_fp, fp_algo, content_hash, last_verified)` k
+           eyed by `RelativePath`. `mtime` is stored for diagnostics only
+            and is not used in any verdict. The cache is:
+      144  
+      145  - **Local and per-machine.** `~/.arius/<account>-<container>/h
+           ash/cache.sqlite`. Each machine's cache is independent; signal
+           s are only compared within the same filesystem. Sequential cro
+           ss-platform use (archive from Windows, then Linux) is supporte
+           d: the `signal_set` column stores the provenance (`SignalSets.
+           None = 0`, `Posix = 1`, `Windows = 2`), so a `Windows`-sourced
+            row used from a Linux run will mismatch `signal_set` and fall
+            through to the fingerprint floor.
+      146 -- **Disposable.** Losing the file costs one full-hash run. It 
+          -is never referenced by the remote repository and is never shar
+          -ed across machines.                                           
+      146 +- **Disposable.** Losing the file costs one full-hash run. It 
+          +is never referenced by the remote repository and is never shar
+          +ed across machines. Unlike `ChunkIndexLocalStore` (which silen
+          +tly recreates a corrupt DB), a corrupt hashcache is surfaced a
+          +s an actionable `HashCacheLocalStoreException` instructing the
+          + operator to delete the hashcache directory — there is no remo
+          +te backing and no repair command, and a silent in-place rebuil
+          +d is intentionally deferred (a future option). Recovery is the
+          + same one full-hash run.                                      
+      147  - **Not concurrently multi-platform.** Concurrent archives fro
+           m two machines into the same files are not supported. The hash
+           cache is local; each machine has its own. The remote repositor
+           y (chunk index + snapshots) is the source of truth for dedupli
+           cation correctness; the hashcache only accelerates the hashing
+            stage of a single machine's archive.
+      148  
+      149  ### Pointer opt-in (the pointer-default change)
+
+⏺ Now the hashcache design doc. Update the mtime semantics (#12), macOS arm64
+  (#2), the two-path sync note (#14), the touch (#13), and corruption recovery
+  (#6):
+
+⏺ Update(docs/design/core/shared/hashcache.md)
+  ⎿  Added 1 line, removed 1 line
+      49  CREATE TABLE file_hashes (
+      50      path           TEXT    NOT NULL PRIMARY KEY,  -- repository
+          -relative path
+      51      size           INTEGER NOT NULL CHECK (size >= 0),
+      52 -    mtime          INTEGER NOT NULL,              -- stored for
+         - diagnostics only; NOT in the verdict                          
+      52 +    mtime          INTEGER NOT NULL,              -- file's las
+         +t-write time (UTC ticks); diagnostics only, NOT in the verdict 
+      53      ctime          INTEGER,                       -- nullable: 
+          null when signals unavailable
+      54      inode          TEXT,                          -- nullable
+      55      dev            TEXT,                          -- nullable; 
+          "major:minor" on Linux, int string on macOS/Windows
+
+⏺ Update(docs/design/core/shared/hashcache.md)
+  ⎿  Added 1 line, removed 1 line
+      66  -- metadata row: schema_version = "1"
+      67  ```
+      68  
+      69 -`mtime` is stored for operator diagnostics (log correlation) on
+         -ly. It does not appear in any verdict check. `signal_set` carri
+         -es the provenance so that a row written on Windows is never use
+         -d as a POSIX-signal comparison on Linux and vice versa; a misma
+         -tch falls to the fingerprint floor.                            
+      69 +`mtime` is the file's last-write time (UTC ticks), captured at 
+         +record time and stored for operator diagnostics (log correlatio
+         +n) and the future `mtime`-prefilter seam only — it does not app
+         +ear in any verdict check. (It is the *file's* timestamp, not th
+         +e archive run's clock; `last_verified` carries the run clock.) 
+         +`signal_set` carries the provenance so that a row written on Wi
+         +ndows is never used as a POSIX-signal comparison on Linux and v
+         +ice versa; a mismatch falls to the fingerprint floor.          
+      70  
+      71  ### Sparse fingerprint
+      72  
+
+⏺ Update(docs/design/core/shared/hashcache.md)
+  ⎿  Added 4 lines, removed 2 lines
+      85  
+      86  **Two compute paths:**
+      87  
+      88 -- `ComputeBySeeking` — opens the file and seeks to each region.
+         - Used when the verdict ladder reaches the fingerprint floor (th
+         -e ctime fast-lane missed).                                     
+      89 -- `SparseFingerprint.Sampler` — captures regions as bytes pass 
+         -through a sequential full-hash read (`SparseSamplingStream`). U
+         -sed inside `FullHashAndRecordAsync` so the fingerprint is captu
+         -red at zero extra I/O cost during a full re-hash.              
+      88 +- `ComputeBySeeking` — opens the file and seeks to each region 
+         +(cold floor path). Used when the verdict ladder reaches the fin
+         +gerprint floor (the ctime fast-lane missed). Its read buffer is
+         + sized to the largest region, not a fixed `BlockSize`, so the s
+         +ingle whole-file region of a small file (up to `k × BlockSize`)
+         + is read in one go.                                            
+      89 +- `SparseFingerprint.Sampler` — captures regions as bytes pass 
+         +through a sequential full-hash read (`SparseSamplingStream`), w
+         +arm path. Used inside `FullHashAndRecordAsync` so the fingerpri
+         +nt is captured at zero extra I/O cost during a full re-hash.   
+      90  
+      91 +The two paths consume the **same** `Regions` and the **same** `
+         +size ‖ region-bytes` framing and **must** produce byte-identica
+         +l digests for identical content — any change to the layout or f
+         +raming must be mirrored in both (guarded by `SparseFingerprintT
+         +ests.Sampler_MatchesSeekingFingerprint_ForSameContent`).       
+      92 +                                                               
+      93  ### Platform signals
+      94  
+      95  `NativeFileSignals.TryGet` returns `FileChangeSignals?(CtimeTic
+          ks, Inode, Dev, SignalSet)` or `null`. It never throws: any exc
+          eption → `null` → caller falls to the fingerprint floor.
+
+⏺ Update(docs/design/core/shared/hashcache.md)
+  ⎿  Added 1 line, removed 1 line
+       99  | Linux ≥ 4.11 | `statx` (`[LibraryImport("libc")]`) | Archite
+           cture-stable struct layout; preferred |
+      100  | Linux 4.4 (e.g. Synology DS918+) | `stat` x86_64 fallback (`
+           [LibraryImport("libc")]`) | `statx` returns `ENOSYS` → fallbac
+           k; x86_64 struct layout only, guarded by `RuntimeInformation.P
+           rocessArchitecture` |
+      101  | Linux (network FS: CIFS/SMB2/NFS) | — | `statfs` detects by 
+           `f_type` magic; returns `null` |
+      102 -| macOS | `stat` (Darwin 64-bit inode) | Local volume assumed;
+          - no network detection |                                       
+      102 +| macOS (arm64 only) | `stat` (Darwin 64-bit inode) | Apple Si
+          +licon only — guarded by `RuntimeInformation.ProcessArchitectur
+          +e`; Intel Macs return `null` → floor (the bare `stat` symbol's
+          + inode width is ambiguous on x86_64). Local volume assumed; no
+          + network detection |                                          
+      103  | Windows (local) | `GetFileInformationByHandleEx` (`FileBasic
+           Info` + `FileIdInfo`) | `ChangeTime` field; `SetFileTime` cann
+           ot change it (only `NtSetInformationFile` can) — stronger anti
+           -stomp signal |
+      104  | Windows (network, `DRIVE_REMOTE`) | — | `GetDriveType` → ret
+           urns `null` |
+      105  | Any unsupported OS | — | Returns `null` |
+
+⏺ Now the verdict-ladder touch note (#13), the disposable-store corruption
+  divergence (#6), and a matching invariant:
+
+⏺ Update(docs/design/core/shared/hashcache.md)
+  ⎿  Added 1 line, removed 1 line
+      33      H -->|no| M4["Miss: fp differs"]
+      34  ```
+      35  
+      36 -A `Miss` always returns to the caller with a reason string; the
+         - caller logs it and performs a full hash via `FullHashAndRecord
+         -Async`, which records the result back to the cache for future r
+         -uns.                                                           
+      36 +A `Miss` always returns to the caller with a reason string; the
+         + caller logs it and performs a full hash via `FullHashAndRecord
+         +Async`, which records the result back to the cache for future r
+         +uns. On a ctime-lane hit the rest of the row is unchanged, so o
+         +nly `last_verified` is bumped — via a targeted one-column `UPDA
+         +TE` (`HashCacheLocalStore.Touch`), not a full-row rewrite of th
+         +e sparse-fingerprint BLOB — to keep the dominant unchanged-file
+         + path cheap.                                                   
+      37  
+      38  **The two lanes are independent, not conjunctive.** A file with
+           no available signals (network FS, unsupported platform, or `st
+          atx` ENOSYS on non-x64 Linux) skips step F entirely and falls t
+          hrough to the fingerprint floor. The ctime fast-lane achieves z
+          ero byte reads; the fingerprint floor reads only the sparse sam
+          ple regions.
+      39  
+
+⏺ Update(docs/design/core/shared/hashcache.md)
+  ⎿  Added 1 line, removed 1 line
+      137  - **Two independent failure modes (ctime vs fingerprint), not 
+           one.** The ctime lane catches the common case (unchanged file)
+            with zero reads. The fingerprint floor catches timestamp-stom
+           ping and is the safety net when signals are unavailable. Makin
+           g them independent (not AND-ed) means each path degrades grace
+           fully: no signals → only floor; signals differ → immediate mis
+           s, no extra I/O.
+      138  - **Hand-rolled `[LibraryImport]` over Mono.Posix.** Mono.Posi
+           x brings a large transitive dependency and does not expose `st
+           atx`. Three syscalls (`statx`, `stat`, `statfs`) do not justif
+           y a package dependency. Explicit struct offsets make wrong rea
+           ds detectable in tests (the test seam `TryGetViaStatxForTest`/
+           `TryGetViaStatForTest` cross-validates the two Linux paths on 
+           modern kernels).
+      139  - **`statx` preferred; `stat` x86_64 fallback for the DS918+ (
+           kernel 4.4).** `statx` has an architecture-stable struct layou
+           t (identical on x86_64 and arm64). The DS918+ runs kernel 4.4 
+           (pre-`statx`); the `stat` fallback is x86_64-only to match its
+            J3455 CPU. Any other non-x64 Linux kernel < 4.11 uses only th
+           e fingerprint floor.
+      140 -- **Disposable SQLite store.** Mirrors `ChunkIndexLocalStore`.
+          - WAL + `synchronous = normal` keeps write latency low without 
+          -risking undetected corruption (WAL survives a crash; normal sy
+          -nc is sufficient for a cache-only store).                     
+      140 +- **Disposable SQLite store.** Mirrors `ChunkIndexLocalStore`.
+          + WAL + `synchronous = normal` keeps write latency low without 
+          +risking undetected corruption (WAL survives a crash; normal sy
+          +nc is sufficient for a cache-only store). It mirrors that stor
+          +e's scaffolding but **diverges on recovery**: a corrupt cache 
+          +file throws a `HashCacheLocalStoreException` instructing the o
+          +perator to delete the hashcache directory, rather than silentl
+          +y recreating it (`ChunkIndexLocalStore.RecreateDatabase`). The
+          + hashcache has no remote backing and no repair command, so a l
+          +oud, operator-visible failure — recovered by one full-hash run
+          + — is preferred over an automatic in-place rebuild (deferred a
+          +s a future option).                                           
+      141  - **Fingerprint constants are benchmark-pending.** `B = 256 Ki
+           B`, `S = 1 GiB`, `MinBlocks = 4`, `MaxBlocks = 64` were chosen
+            analytically. See [ADR-0021](../../../decisions/adr-0021-opt-
+           in-change-detection-hashcache.md) for the benchmark procedure 
+           to validate them on the DS918+.
+      142  
+      143  ## Open seams
+
+⏺ Update(docs/design/core/shared/hashcache.md)
+  ⎿  Added 1 line
+      125  
+      126  - **Correctness-first default.** Without `--fast-hash`, Stage 
+           2 always performs a full read. `--fast-hash` is an explicit op
+           t-in that accepts the heuristic trade.
+      127  - **Disposable-cache invariant.** The hashcache is local and p
+           er-machine. Losing it (`rm -rf ~/.arius/<repo>/hash/`) costs o
+           ne full-hash run. The remote repository is never affected.
+      128 +- **Corruption fails loud, not silent.** A corrupt or unreadab
+          +le `cache.sqlite` raises `HashCacheLocalStoreException` (instr
+          +ucting the operator to delete the hashcache directory), faulti
+          +ng the archive run rather than silently skipping files or auto
+          +-rebuilding the DB. The Stage 2 per-file catch deliberately le
+          +ts this exception escape so it is not misread as a single unre
+          +adable file. Recovery is one full-hash run after deletion.    
+      129  - **Archive is local and never concurrently multi-platform.** 
+           The hashcache is machine-local. Sequential cross-platform use 
+           (archive from Windows, then Linux) is supported: the `signal_s
+           et` mismatch causes the row to fall to the fingerprint floor, 
+           which re-validates the content. Concurrent archives from two m
+           achines into the same remote repository are not supported (sig
+           nals are meaningless across machines), but correctness is main
+           tained because the remote chunk index and snapshots remain the
+            authoritative dedup check.
+      130  - **Signals compared only within the same filesystem.** `dev` 
+           encodes the device identity; `signal_set` encodes the OS sourc
+           e. A cross-OS or cross-device comparison is never attempted.
+      131  - **`mtime` is not in the verdict.** Stored for diagnostics on
+           ly. `ctime` is used because it changes on content write even w
+           hen `mtime` is explicitly set by the application.
+
+⏺ Let me record the #8 open risk (the glibc __xstat binding hypothesis) in the
+  ADR's fallback section, since we're validating before fixing:
+
+⏺ Update(docs/decisions/adr-0021-opt-in-change-detection-hashcache.md)
+  ⎿  Added 2 lines
+      121  
+      122  `statx` was added in Linux 4.11; `ENOSYS` from `statx` means t
+           he kernel predates it. `TryGetViaStatx` returns `null` on any 
+           non-zero return code, and `TryGetLinux` then calls `TryGetViaS
+           tat`. The `struct stat` layout is architecture-specific; only 
+           the x86_64 layout is implemented (the DS918+ Intel Celeron J34
+           55 is x86_64), guarded by `RuntimeInformation.ProcessArchitect
+           ure != Architecture.X64` → `null`. On a non-x64 Linux kernel <
+            4.11, both paths return `null` and the fingerprint floor is u
+           sed.
+      123  
+      124 +**Open risk — symbol binding on old glibc (not yet validated o
+          +n hardware).** The `[LibraryImport("libc", EntryPoint = "stat"
+          +)]` binds the *bare* `stat` symbol. glibc only exported a call
+          +able `stat` symbol from 2.33; older glibc (as ships on Synolog
+          +y DSM) exposes the syscall solely through the versioned `__xst
+          +at(ver, path, buf)` wrapper, so the P/Invoke may fail to resol
+          +ve with `EntryPointNotFoundException` — swallowed → `null` → t
+          +he cheap ctime fast-lane is unavailable on the very NAS the fa
+          +llback exists for. **Correctness is unaffected** (the sparse-f
+          +ingerprint floor still avoids full re-reads of unchanged files
+          +; it is only slower than a pure `stat`). This must be confirme
+          +d on the DS918+ before acting (benchmark step 4: a warm `--fas
+          +t-hash` run showing only `size+fp match` and no `ctime match` 
+          +hits on a local mount points at it). The fix, if confirmed, is
+          + to add a `__xstat(_STAT_VER, …)` fallback entry point reusing
+          + the same `LinuxStatBuf` layout.                              
+      125 +                                                              
+      126  ### The sparse fingerprint
+      127  
+      128  `SparseFingerprint` computes a deterministic spot-hash of a fi
+           le using evenly-spaced regions derived from the file size:
+
+⏺ Code, tests, and docs are updated. Now the final task: a docstring consistency
+  sweep. Let me grep for any stale references that would now contradict the
+  changes (the old implication, --no-pointers, Intel-mac wording, the old mtime
+  comment, etc.):
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ A couple need checking — the CLI ArchiveCommandTests may assert the old
+  (no-rejection) behavior, and JobRunner/RoundtripTests. Let me look:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The CLI ArchiveCommandTests asserts the old behavior (--remove-local alone
+  parses and succeeds) — that breaks under #7. Let me read and fix it.
+  (JobRunner:126 NoPointers is the restore path — legitimately unchanged.)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Two CLI tests assert the old (no-rejection) behavior. Fix both for #7:
+
+⏺ Update(src/Arius.Cli.Tests/Commands/Archive/ArchiveCommandTests.cs)
+  ⎿  Added 2 lines, removed 2 lines
+      12      public async Task Archive_AllOptions_ParsedCorrectly()
+      13      {
+      14          var harness = new CliHarness();
+      15 -        var exitCode = await harness.InvokeAsync("archive /data
+         - -a acct -k key -c ctr -t Hot --remove-local");                
+      15 +        var exitCode = await harness.InvokeAsync("archive /data
+         + -a acct -k key -c ctr -t Hot --remove-local --write-pointers")
+         +;                                                              
+      16  
+      17          exitCode.ShouldBe(0);
+      18  
+     ...
+      20          var cmd = (ArchiveCommand)call.GetArguments()[0]!;
+      21          cmd.CommandOptions.UploadTier.ShouldBe(BlobTier.Hot);
+      22          cmd.CommandOptions.RemoveLocal.ShouldBeTrue();
+      23 -        cmd.CommandOptions.WritePointers.ShouldBeFalse();      
+      23 +        cmd.CommandOptions.WritePointers.ShouldBeTrue();       
+      24      }
+      25  
+      26      [Test]
+
+⏺ Update(src/Arius.Cli.Tests/Commands/Archive/ArchiveCommandTests.cs)  ⎿  Added 4 lines, removed 8 lines
+      52      }
+      53  
+      54      [Test]
+      55 -    public async Task Archive_RemoveLocal_ParsesAndSucceeds()  
+      55 +    public async Task Archive_RemoveLocalWithoutWritePointers_I
+         +sRejected()                                                    
+      56      {
+      57 -        // --remove-local no longer conflicts with the pointer 
+         -flag; it now implies pointers in the handler.                  
+      57 +        // --remove-local requires --write-pointers; on its own
+         + it is rejected before the handler runs.                       
+      58          var harness = new CliHarness();
+      59          var exitCode = await harness.InvokeAsync("archive /data
+           -a acct -k key -c ctr --remove-local");
+      60  
+      61 -        exitCode.ShouldBe(0);                                  
+      62 -                                                               
+      63 -        var call = harness.ArchiveHandler.ReceivedCalls().Singl
+         -e();                                                           
+      64 -        var cmd = (ArchiveCommand)call.GetArguments()[0]!;     
+      65 -        cmd.CommandOptions.RemoveLocal.ShouldBeTrue();         
+      66 -        cmd.CommandOptions.WritePointers.ShouldBeFalse();      
+      61 +        exitCode.ShouldBe(1);                                  
+      62 +        harness.ArchiveHandler.ReceivedCalls().ShouldBeEmpty();
+      63      }
+      64  
+      65      [Test]
+
+⏺ Let me check the integration tests don't send the now-rejected combo:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The rg highlighting collapsed the names, but I can see several more tests
+  encode the old implication (removeLocal: true with pointers defaulted off).
+  Those will now be rejected. Let me read them and the shared fixture to fix #7
+  consistently.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ The ArchiveRecoveryTests helper defaults writePointers = true, so most stay
+  valid — but Archive_RemoveLocalImpliesPointers_EvenWhenWritePointersOff
+  explicitly sets it false and will now be rejected. Let me check the Roundtrip
+  tests' helper and the two remove-local cases there too.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ These integration tests construct options with RemoveLocal = true and no
+  WritePointers (relying on the old implication). Two need WritePointers = true
+  added; the "implies" test must become a rejection test. Let me fix all three
+  plus the ArchiveRecoveryTests implication test.
+
+⏺ Update(src/Arius.Integration.Tests/Pipeline/RoundtripTests.cs)
+  ⎿  Added 2 lines
+      309                  RootDirectory = fix.LocalDirectory.ToString(),
+      310                  UploadTier    = BlobTier.Hot,
+      311                  RemoveLocal   = true,
+      312 +                WritePointers = true, // --remove-local requir
+          +es --write-pointers                                           
+      313              }), default);
+      314  
+      315          archiveResult.Success.ShouldBeTrue(archiveResult.Error
+           Message);
+     ...
+      385                  RootDirectory = fix.LocalDirectory.ToString(),
+      386                  UploadTier    = BlobTier.Hot,
+      387                  RemoveLocal   = true,
+      388 +                WritePointers = true, // --remove-local requir
+          +es --write-pointers                                           
+      389              }), default);
+      390          r1.Success.ShouldBeTrue(r1.ErrorMessage);
+      391  
+
+⏺ Update(src/Arius.Integration.Tests/Pipeline/RoundtripTests.cs)
+  ⎿  Added 8 lines, removed 8 lines
+      767          fix.LocalFileSystem.FileExists(relativePath).ShouldBeT
+           rue();
+      768      }
+      769  
+      770 -    // ── 14.10: --remove-local implies a pointer is written ─
+          -───────────────────                                           
+      770 +    // ── 14.10: --remove-local without --write-pointers is re
+          +jected ────────────                                           
+      771  
+      772      [Test]
+      773 -    public async Task Archive_RemoveLocal_ImpliesPointerWritte
+          -n()                                                           
+      773 +    public async Task Archive_RemoveLocalWithoutWritePointers_
+          +IsRejectedAndKeepsBinary()                                    
+      774      {
+      775          await using var fix = await PipelineFixture.CreateAsyn
+           c(azurite);
+      776  
+     ...
+      783                  RootDirectory = fix.LocalDirectory.ToString(),
+      784                  UploadTier    = BlobTier.Hot,
+      785                  RemoveLocal   = true,
+      786 -                // WritePointers left default (false): --remov
+          -e-local implies it.                                           
+      786 +                WritePointers = false, // illegal: removing th
+          +e binary while writing no pointer                             
+      787              }), default);
+      788  
+      789 -        archiveResult.Success.ShouldBeTrue(archiveResult.Error
+          -Message);                                                     
+      790 -                                                              
+      791 -        // The binary is removed and a pointer sidecar is left
+          - behind as the sole local record.                             
+      792 -        fix.LocalFileSystem.FileExists(relativePath).ShouldBeF
+          -alse();                                                       
+      793 -        fix.LocalFileSystem.FileExists(relativePath.ToPointerP
+          -ath()).ShouldBeTrue();                                        
+      789 +        // Rejected up front, before any deletion: the binary 
+          +is untouched and no pointer is written.                       
+      790 +        archiveResult.Success.ShouldBeFalse();                
+      791 +        archiveResult.ErrorMessage.ShouldContain("--write-poin
+          +ters");                                                       
+      792 +        fix.LocalFileSystem.FileExists(relativePath).ShouldBeT
+          +rue();                                                        
+      793 +        fix.LocalFileSystem.FileExists(relativePath.ToPointerP
+          +ath()).ShouldBeFalse();                                       
+      794      }
+      795  
+      796      // ═══════════════════════════════════════════════════════
+           ═════════════════════
+
+⏺ Now the ArchiveRecoveryTests implication test → rejection test:
+
+⏺ Update(src/Arius.Core.Tests/Features/ArchiveCommand/ArchiveRecoveryTests.cs)
+  ⎿  Added 7 lines, removed 7 lines
+      470      }
+      471  
+      472      [Test]
+      473 -    public async Task Archive_RemoveLocalImpliesPointers_EvenW
+          -henWritePointersOff()                                         
+      473 +    public async Task Archive_RemoveLocalWithoutWritePointers_
+          +IsRejectedAndKeepsBinary()                                    
+      474      {
+      475 -        // --remove-local + --write-pointers off is no longer 
+          -rejected: removing the binary implies a                       
+      476 -        // pointer must be written (it becomes the sole local 
+          -record). The binary is removed and a                          
+      477 -        // .pointer.arius sidecar is left behind.             
+      475 +        // --remove-local requires --write-pointers: removing 
+          +the binary while writing no pointer would                     
+      476 +        // leave no local record, so the combination is reject
+          +ed before any deletion.                                       
+      477          await using var fixture = await CreateArchiveFixtureAs
+           ync();
+      478          var relativePath = RelativePath.Parse("docs/readme.txt
+           ");
+      479          await WriteRandomFileAsync(fixture, relativePath, 128)
+           ;
+      480  
+      481          var result = await ArchiveAsync(fixture, BlobTier.Cool
+           , removeLocal: true, writePointers: false);
+      482  
+      484 -        result.Success.ShouldBeTrue(result.ErrorMessage);     
+      485 -        fixture.LocalFileSystem.FileExists(relativePath).Shoul
+          -dBeFalse();                                                   
+      486 -        fixture.LocalFileSystem.FileExists(relativePath.ToPoin
+          -terPath()).ShouldBeTrue();                                    
+      483 +        result.Success.ShouldBeFalse();                       
+      484 +        result.ErrorMessage.ShouldContain("--write-pointers");
+      485 +        fixture.LocalFileSystem.FileExists(relativePath).Shoul
+          +dBeTrue();                                                    
+      486 +        fixture.LocalFileSystem.FileExists(relativePath.ToPoin
+          +terPath()).ShouldBeFalse();                                   
+      487      }
+      488  
+      489      [Test]
+
+⏺ Let me catch any remaining RemoveLocal = true constructions without pointers
+  across the whole codebase, and check the fast-hash test:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ All remove-local sites are now either paired with writePointers: true or are
+  explicit rejection tests. Let me rebuild and run the affected unit/feature/CLI
+  tests (integration tests need Azurite/Docker, so I'll run those that don't):
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ 55 Core tests pass. Now the CLI tests:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ All CLI tests pass. Two more docstring/intent touch-ups for #7 consistency —
+  the RemoveLocal option doc in the command model and the CLI option
+  description:
+
+⏺ Update(src/Arius.Core/Features/ArchiveCommand/ArchiveCommand.cs)
+  ⎿  Added 5 lines, removed 1 line
+      31      /// <summary>Upload tier for chunk blobs. Default: Archive.
+          </summary>
+      32      public BlobTier UploadTier { get; init; } = BlobTier.Archiv
+          e;
+      33  
+      34 -    /// <summary>If <c>true</c>, delete local binary files afte
+         -r a successful snapshot.</summary>                             
+      34 +    /// <summary>                                              
+      35 +    /// If <c>true</c>, delete local binary files after a succe
+         +ssful snapshot. Requires                                       
+      36 +    /// <see cref="WritePointers"/> — removing the binary witho
+         +ut writing a pointer would leave no local                      
+      37 +    /// record, so the handler rejects <c>RemoveLocal &amp;&amp
+         +; !WritePointers</c> up front.                                 
+      38 +    /// </summary>                                             
+      39      public bool RemoveLocal { get; init; } = false;
+      40  
+      41      /// <summary>If <c>true</c>, write <c>.pointer.arius</c> si
+          decars for binary-present files. Default off.</summary>
+
+⏺ Update(src/Arius.Cli/Commands/Archive/ArchiveVerb.cs)
+  ⎿  Added 1 line, removed 1 line
+      28          };
+      29          var removeLocalOption = new Option<bool>("--remove-loca
+          l")
+      30          {
+      31 -            Description = "Delete local binaries after snapshot
+         -",                                                             
+      31 +            Description = "Delete local binaries after snapshot
+         + (requires --write-pointers)",                                 
+      32          };
+      33          var writePointersOption = new Option<bool>("--write-poi
+          nters")
+      34          {
+
+⏺ Let me do the final docstring consistency read-through of the HashCache
+  namespace's current state:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Let me verify the final SparseFingerprint.cs reads cleanly (most doc edits +
+  the buffer fix landed here):
+
+  Read 1 file (ctrl+o to expand)
+⏺ The HashCache docstrings now read consistently (cold/warm "twins", explicit
+  keep-in-sync clauses, the buffer-size rationale). Final build to confirm the
+  last doc-edits compile:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Everything builds and the affected tests (55 Core + 5 CLI) pass. Here's the
+  complete rundown.
+
+  What changed
+
+  Critical — fast-hash data-safety
+  - #1 ctime-before-read (ArchiveCommandHandler.FullHashAndRecordAsync): signals
+  + mtime are now captured before OpenRead, making the stored ctime a
+  conservative lower bound. A concurrent write now forces a re-hash next run
+  instead of masking a torn hash forever.
+  - #2 macOS arm64-only (NativeFileSignals.TryGetMacOs): guarded to Apple
+  Silicon; Intel Macs return null → floor (the bare stat symbol's inode width is
+  ambiguous on x86_64).
+  - #3 ComputeBySeeking buffer overflow: buffer is now sized to the largest
+  region, not a fixed 256 KiB — files in (256 KiB, 1 MiB] no longer throw and
+  get silently dropped. Proven by a new regression test
+  (ComputeBySeeking_WholeFileRegion_LargerThanBlockSize_DoesNotThrow).
+
+  Safety / robustness
+  - #6 corrupt-cache exception: new HashCacheLocalStoreException; the store
+  wraps construction + all ops and throws an actionable "delete the hashcache
+  directory" message. The Stage-2 per-file catch now lets it escape so
+  corruption faults the run loudly instead of silently skipping files.
+  - #7 reject --remove-local without --write-pointers: validated in both the CLI
+  (ArchiveVerb) and the handler (backstop for API callers); the silent
+  implication is gone. Also fixed the web drawer (drawer.store.ts) — 'replace'
+  was sending writePointers:false, which would have started failing.
+  - #11 SignalR reconnect: ensureStarted no longer resolves a stale fulfilled
+  promise; driveToConnected waits for the socket to actually reach Connected.
+  - #10 e2e seed: StartArchive call updated to the 5-arg signature.
+
+  Correctness / efficiency / cleanup
+  - #12 mtime: records the file's real last-write time (not the run clock); new
+  test pins it.
+  - #13 touch: ctime-hit does a one-column UPDATE (HashCacheLocalStore.Touch)
+  instead of a full-row rewrite of the fingerprint BLOB.
+  - #14: cross-referencing "must stay in sync" docstrings on both fingerprint
+  paths.
+  - #5: a disabled "Fast-hash scheduled runs (coming soon)" checkbox in
+  Properties → Scheduled archives as the reminder.
+  - #15 + docstrings: cli.md, web-ui.md, development.md, ADR-0021, and
+  hashcache.md updated; HashCache-namespace docstrings reconciled.
+
+  Tests updated for #7/#12: ArchivePointerDefaultTests, ArchiveRecoveryTests,
+  RoundtripTests, HashCacheServiceTests, SparseFingerprintTests, CLI
+  ArchiveCommandTests — old "implies pointers" cases became rejection cases.
+
+  Answers to your questions
+
+  The analysis answers to #1, #4, #6, #8, #12, #14 are in my previous message.
+  Key takeaways: #4 is self-healing (safe direction, left as-is); #6 is a
+  deliberate divergence from ChunkIndex's silent recreate; on #8 you're not
+  always re-hashing — only the zero-read ctime lane is lost, the fingerprint
+  floor still avoids full re-reads.
+
+  Two things for you
+
+  #8 — validate on the Synology (per your choice):
+  1. ssh in, uname -r — if < 4.11, statx is ENOSYS and the stat fallback is the
+  only signal path (expected on DSM).
+  2. Run a small tree twice with --fast-hash at debug log level. On the warm
+  run:
+    - [fast-hash] … -> reused (ctime match) on unchanged files → the stat
+  fallback binds and works.
+    - only (size+fp match) and no ctime match → signals are null; the bare stat
+  symbol likely isn't binding on the old glibc.
+  3. If it's the latter, the fix is a __xstat(_STAT_VER, …) fallback (recorded
+  as an open risk in ADR-0021's fallback section). I held off writing untestable
+  native interop until you confirm.
+
+  #9 (FILETIME FromFileTimeUtc on Windows) — you didn't flag it and it's
+  low-severity/safe-direction (throw → swallowed → floor). I left it untouched;
+  say the word if you want a guard.
+
+  Want me to commit this, or run the integration suite (needs Azurite/Docker)
+  first?
+
+✻ Worked for 33m 4s
+
+※ recap: Addressed the fast-hash code review: all 14 fixes are implemented, the solution builds, and 60 affected tests pass. Next: commit the changes, or run the Azurite integration suite first if you prefer. (disable recaps in /config)
