@@ -267,7 +267,12 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        ClearChunkIndexPool(accountName, containerName);
+        // The repository root holds multiple pooled SQLite stores (the chunk-index and the hashcache, each a
+        // cache.sqlite under its own subdirectory). A pooled connection keeps the database file handle open,
+        // which blocks the recursive delete on Windows ("the process cannot access the file 'cache.sqlite'
+        // because it is being used by another process"). The exact connection-string keys are an
+        // implementation detail, so ClearAllPools is the robust way to release every handle before deleting.
+        SqliteConnection.ClearAllPools();
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
@@ -290,17 +295,5 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             index.Dispose();
 
         return ValueTask.CompletedTask;
-    }
-
-    private static void ClearChunkIndexPool(string accountName, string containerName)
-    {
-        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName).Resolve(RelativePath.Parse("cache.sqlite")),
-            Mode       = SqliteOpenMode.ReadWriteCreate,
-            Pooling    = true,
-        }.ToString());
-
-        SqliteConnection.ClearPool(connection);
     }
 }
