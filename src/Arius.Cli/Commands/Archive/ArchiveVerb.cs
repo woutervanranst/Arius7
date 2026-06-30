@@ -28,7 +28,7 @@ internal static class ArchiveVerb
         };
         var removeLocalOption = new Option<bool>("--remove-local")
         {
-            Description = "Delete local binaries after snapshot",
+            Description = "Delete local binaries after snapshot (requires --write-pointers)",
         };
         var writePointersOption = new Option<bool>("--write-pointers")
         {
@@ -61,6 +61,12 @@ internal static class ArchiveVerb
             var removeLocal   = parseResult.GetValue(removeLocalOption);
             var writePointers = parseResult.GetValue(writePointersOption);
             var fastHash      = parseResult.GetValue(fastHashOption);
+
+            if (removeLocal && !writePointers)
+            {
+                AnsiConsole.MarkupLine("[red]Error:[/] --remove-local requires --write-pointers — removing the binary without writing a pointer would leave no local record of the file.");
+                return 1;
+            }
 
             var resolvedAccount = CliBuilder.ResolveAccount(account);
             if (resolvedAccount is null)

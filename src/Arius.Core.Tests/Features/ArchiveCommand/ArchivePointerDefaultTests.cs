@@ -8,8 +8,9 @@ namespace Arius.Core.Tests.Features.ArchiveCommand;
 
 /// <summary>
 /// Pins the opt-in pointer behavior: archiving a binary-present file writes NO <c>.pointer.arius</c>
-/// sidecar by default; <c>WritePointers</c> re-enables it; and <c>RemoveLocal</c> implies a pointer
-/// is written even when <c>WritePointers</c> is left off (the pointer becomes the sole local record).
+/// sidecar by default; <c>WritePointers</c> re-enables it; and <c>RemoveLocal</c> without
+/// <c>WritePointers</c> is rejected up front (removing the binary while writing no pointer would leave
+/// no local record), so <c>RemoveLocal</c> requires <c>WritePointers</c>.
 /// </summary>
 public class ArchivePointerDefaultTests
 {
@@ -42,14 +43,29 @@ public class ArchivePointerDefaultTests
     }
 
     [Test]
-    public async Task Archive_RemoveLocal_ImpliesPointerAndRemovesBinary()
+    public async Task Archive_RemoveLocalWithoutWritePointers_IsRejectedAndKeepsBinary()
     {
         await using var fixture = await CreateArchiveFixtureAsync();
         var relativePath = RelativePath.Parse("docs/readme.txt");
         await WriteRandomFileAsync(fixture, relativePath, 128);
 
-        // WritePointers left default (false): --remove-local implies a pointer is written.
+        // --remove-local without --write-pointers is the illegal combination: rejected up front.
         var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, writePointers: false);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("--write-pointers");
+        fixture.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();                 // binary untouched
+        fixture.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Archive_RemoveLocalWithWritePointers_RemovesBinaryAndWritesPointer()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        await WriteRandomFileAsync(fixture, relativePath, 128);
+
+        var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, writePointers: true);
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
         fixture.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();

@@ -95,7 +95,9 @@ export class DrawerStore {
       this.jobId.set(await this.realtime.startArchive(this.repoId(), {
         tier: this.archiveTier(),
         removeLocal: this.archiveOnDisk() === 'replace',
-        writePointers: this.archiveOnDisk() === 'keep-pointers',
+        // Both 'keep-pointers' and 'replace' write pointers; 'replace' (remove-local) requires them,
+        // since the handler rejects removing a binary while writing no pointer.
+        writePointers: this.archiveOnDisk() !== 'keep',
         fastHash: this.fastHash(),
       }));
     } else {

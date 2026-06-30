@@ -470,20 +470,20 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
-    public async Task Archive_RemoveLocalImpliesPointers_EvenWhenWritePointersOff()
+    public async Task Archive_RemoveLocalWithoutWritePointers_IsRejectedAndKeepsBinary()
     {
-        // --remove-local + --write-pointers off is no longer rejected: removing the binary implies a
-        // pointer must be written (it becomes the sole local record). The binary is removed and a
-        // .pointer.arius sidecar is left behind.
+        // --remove-local requires --write-pointers: removing the binary while writing no pointer would
+        // leave no local record, so the combination is rejected before any deletion.
         await using var fixture = await CreateArchiveFixtureAsync();
         var relativePath = RelativePath.Parse("docs/readme.txt");
         await WriteRandomFileAsync(fixture, relativePath, 128);
 
         var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, writePointers: false);
 
-        result.Success.ShouldBeTrue(result.ErrorMessage);
-        fixture.LocalFileSystem.FileExists(relativePath).ShouldBeFalse();
-        fixture.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeTrue();
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("--write-pointers");
+        fixture.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();
+        fixture.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
     }
 
     [Test]
