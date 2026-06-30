@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Commands/Update/WindowsUpdateAfterExit.ps1" />
+    <EmbeddedResource Include="Commands/Update/UnixUpdateAfterExit.sh" />
   </ItemGroup>
 
   <ItemGroup>

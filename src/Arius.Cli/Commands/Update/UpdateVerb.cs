@@ -158,31 +158,42 @@ internal static class UpdateVerb
                     return 0;
                 }
 
-                // A running executable cannot be overwritten in place on Unix: File.Copy opens the
-                // destination with truncation, which the kernel rejects with ETXTBSY ("Text file busy").
-                // Instead, stage the new binary as a sibling file in the executable's own directory and
-                // atomically rename it over the running executable. rename(2) only swaps the directory
-                // entry — the running process keeps the old (now-unlinked) inode — so it is permitted.
-                // Staging in the same directory also keeps the rename within one filesystem (File.Move
-                // throws across filesystem boundaries, e.g. /tmp → /usr/local/bin); the cross-device copy
-                // happens first, into that sibling path.
+                // The running executable cannot be replaced in place on Unix either. It is published as
+                // a single-file bundle that the runtime keeps memory-mapped while executing; overwriting
+                // the file invalidates those mapped pages and crashes the process (SIGBUS) on the next
+                // bundle read — JIT-compiling another method, lazily loading an assembly, etc. (And a
+                // straight File.Copy over the destination would be rejected with ETXTBSY anyway.)
+                //
+                // So, like Windows, defer the swap to a detached helper that waits for this process to
+                // exit before renaming the new binary into place. The new binary is staged as a sibling
+                // in the executable's own directory so the helper's rename(2) stays within one filesystem
+                // and is atomic; the cross-device copy (e.g. /tmp → /usr/local/bin) happens here, first.
                 var exeDir     = Path.GetDirectoryName(currentExe)!;
                 var stagedPath = Path.Combine(exeDir, $".{Path.GetFileName(currentExe)}.{versionStr}.new");
 
                 File.Copy(tempFile, stagedPath, overwrite: true);
                 File.SetUnixFileMode(stagedPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-                File.Move(stagedPath, currentExe, overwrite: true);
-                try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
 
-                try
+                var unixHelperScriptPath = Path.Combine(tempDir, "unix-update-after-exit.sh");
+                File.WriteAllText(unixHelperScriptPath, LoadEmbeddedUnixUpdateScript());
+
+                var unixHelper = new ProcessStartInfo
                 {
-                    Directory.Delete(tempDir, true);
-                }
-                catch
+                    FileName = "/bin/sh",
+                    UseShellExecute = false,
+                };
+                unixHelper.ArgumentList.Add(unixHelperScriptPath);
+                unixHelper.ArgumentList.Add(Environment.ProcessId.ToString());
+                unixHelper.ArgumentList.Add(stagedPath);
+                unixHelper.ArgumentList.Add(currentExe);
+                unixHelper.ArgumentList.Add(tempDir);
+
+                if (Process.Start(unixHelper) is null)
                 {
+                    throw new InvalidOperationException("Could not launch the update helper.");
                 }
 
-                AnsiConsole.MarkupLine($"[green]Updated to {versionStr}. Please restart arius.[/]");
+                AnsiConsole.MarkupLine($"[green]Downloaded {versionStr}. Restart arius in a moment.[/]");
                 return 0;
             }
             catch (Exception ex)
@@ -204,6 +215,19 @@ internal static class UpdateVerb
 
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException("Could not open embedded Windows update script.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    private static string LoadEmbeddedUnixUpdateScript()
+    {
+        var assembly = typeof(UpdateVerb).Assembly;
+        var resourceName = assembly.GetManifestResourceNames()
+            .FirstOrDefault(name => name.EndsWith("UnixUpdateAfterExit.sh", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("Embedded Unix update script not found.");
+
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException("Could not open embedded Unix update script.");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
