@@ -71,7 +71,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<FileExclusionFilter>(sp =>
             new FileExclusionFilter(sp.GetRequiredService<IOptions<FileExclusionOptions>>().Value));
 
-        // Encryption
         IEncryptionService encryption = passphrase is not null
             ? new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
@@ -79,7 +78,6 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<ICompressionService>(new ZstdCompressionService());
 
-        // Snapshot service
         services.AddSingleton<ISnapshotService>(sp =>
             new SnapshotService(
                 sp.GetRequiredService<IBlobContainerService>(),
@@ -88,7 +86,6 @@ public static class ServiceCollectionExtensions
                 accountName,
                 containerName));
 
-        // Chunk index
         services.AddSingleton<IChunkIndexService>(sp =>
             new ChunkIndexService(
                 sp.GetRequiredService<IBlobContainerService>(),
@@ -105,15 +102,12 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ICompressionService>()));
 
-        // Local fast-hash cache (one SQLite store per repository). A disposable accelerator: losing it
-        // costs a full-hash run, never data. Only consulted/written under --fast-hash and full hashing.
         services.AddSingleton<IHashCacheService>(sp =>
             new HashCacheService(
                 new HashCacheLocalStore(
                     RepositoryLocalStatePaths.GetHashCacheRoot(accountName, containerName),
                     sp.GetRequiredService<ILogger<HashCacheLocalStore>>())));
 
-        // File tree service
         services.AddSingleton<IFileTreeService>(sp =>
             new FileTreeService(
                 sp.GetRequiredService<IBlobContainerService>(),
