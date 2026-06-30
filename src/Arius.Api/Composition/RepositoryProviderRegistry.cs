@@ -158,8 +158,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
             var formatter = new ExpressionTemplate(
                 "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}");
 
-            // Global log level: ARIUS_LOG_LEVEL (Serilog level name; default Information). Drives both the
-            // logger and the file sink so e.g. per-file [fast-hash] decisions (Debug) are captured here.
+            // Global log level: ARIUS_LOG_LEVEL (Serilog level name; default Information)
             var level = Enum.TryParse<LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : LogEventLevel.Information;
             var serilog = new LoggerConfiguration()
                 .MinimumLevel.Is(level)
@@ -176,8 +175,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
                 .CreateLogger();
 
             // dispose: true → disposing this factory disposes the Serilog logger, flushing the file.
-            // SetMinimumLevel(Trace) stops MEL from pre-filtering below Serilog's level (its default is
-            // Information), so Serilog's level above is the single authoritative gate.
+            // SetMinimumLevel(Trace) stops MEL from pre-filtering below Serilog's level (its default is Information), so Serilog's level above is the single authoritative gate.
             var factory = LoggerFactory.Create(b => b.AddSerilog(serilog, dispose: true).SetMinimumLevel(LogLevel.Trace));
             _repoLoggerFactories[repositoryId] = factory;
             return factory;
