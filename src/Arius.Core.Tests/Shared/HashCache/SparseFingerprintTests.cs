@@ -46,6 +46,36 @@ public class SparseFingerprintTests
     }
 
     [Test]
+    public void ComputeBySeeking_WholeFileRegion_LargerThanBlockSize_DoesNotThrow()
+    {
+        // A file in (BlockSize, k×BlockSize] is a single whole-file region whose length exceeds the
+        // 256 KiB BlockSize. The seek-read buffer must be sized to the region, not a fixed BlockSize —
+        // otherwise ReadExactly throws ArgumentOutOfRangeException and the file is silently dropped from
+        // the snapshot on the fast-hash floor. Regression for that bug.
+        var data = new byte[512 * 1024]; // 512 KiB: in (256 KiB, 1 MiB] → single whole-file region
+        Random.Shared.NextBytes(data);
+        var (fs, path) = WriteTempFile(data);
+        var size = fs.GetFileSize(path);
+
+        SparseFingerprint.Regions(size).Count.ShouldBe(1); // a single whole-file region, length > BlockSize
+
+        var fp = SparseFingerprint.ComputeBySeeking(fs, path, size);
+        fp.Length.ShouldBe(32);
+
+        // And it must still agree with the streaming Sampler over the same content.
+        var sampler = new SparseFingerprint.Sampler(size);
+        var pos = 0;
+        const int chunk = 64 * 1024;
+        while (pos < data.Length)
+        {
+            var len = Math.Min(chunk, data.Length - pos);
+            sampler.Capture(pos, data.AsSpan(pos, len));
+            pos += len;
+        }
+        sampler.Finish().ShouldBe(fp);
+    }
+
+    [Test]
     public void Sampler_MatchesSeekingFingerprint_ForSameContent()
     {
         var data = Enumerable.Range(0, 2_000_000).Select(i => (byte)(i * 7)).ToArray();

@@ -46,8 +46,12 @@ internal static class SparseFingerprint
         sha.AppendData(BitConverter.GetBytes(size));
 
         using var stream = fs.OpenRead(path);
-        var buffer = new byte[BlockSize];
-        foreach (var (offset, length) in Regions(size))
+        var regions = Regions(size);
+        // Buffer the largest region: the single whole-file region for a small file can reach k×BlockSize
+        // (up to 1 MiB at k=MinBlocks), which is larger than BlockSize — a fixed BlockSize buffer would
+        // overflow ReadExactly for files in (BlockSize, k×BlockSize].
+        var buffer = new byte[regions.Count == 0 ? 0 : regions.Max(r => r.Length)];
+        foreach (var (offset, length) in regions)
         {
             stream.Seek(offset, SeekOrigin.Begin);
             stream.ReadExactly(buffer, 0, length);
