@@ -14,7 +14,7 @@ Whether the bottleneck is disk/network I/O or CPU, the only way to make a stable
 is to **stop re-reading files whose content has not changed**.
 
 Detecting "unchanged" without reading all the bytes is inherently a **heuristic**. Arius
-values correctness over throughput ([AGENTS.md](../../../AGENTS.md) "Scale and durability"), so
+values correctness over throughput ([AGENTS.md](https://github.com/woutervanranst/Arius7/blob/master/AGENTS.md) "Scale and durability"), so
 the heuristic is **opt-in** and every uncertainty falls back to a full re-hash.
 
 ## Goals

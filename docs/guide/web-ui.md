@@ -287,6 +287,7 @@ result to jump to that repository's Files view. **Esc** closes the overlay.
 
 ## Where to go next
 
+- [Hosts overview](./hosts.md) — how the Web UI compares to the CLI and Explorer hosts, and which to use when.
 - [Deployment guide](./deployment.md) — run the server (Docker single-container, Compose, dev).
 - [Web host design](../design/hosts/web.md) — the Arius.Api + SignalR architecture behind this UI.
 - [Glossary](../glossary.md) — snapshot, chunk, dedup, tier, pointer, rehydration.

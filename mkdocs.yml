@@ -72,6 +72,7 @@ not_in_nav: |
 nav:
   - Home: README.md
   - Guides:
+      - guide/hosts.md
       - guide/cli.md
       - guide/web-ui.md
       - guide/explorer.md

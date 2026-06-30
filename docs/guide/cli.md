@@ -386,6 +386,7 @@ Arius keeps a per-repository cache and audit logs on your machine under your hom
 
 ## See also
 
+- [Hosts overview](./hosts.md) — how the CLI compares to the Web and Explorer hosts, and which to use when.
 - [Root README](https://github.com/woutervanranst/Arius7) — install, blob layout, disaster recovery.
 - [design/hosts/cli.md](../design/hosts/cli.md) — how the CLI host drives Arius.Core and renders progress (internals).
 - [glossary](../glossary.md) — definitions for *snapshot*, *chunk*, *chunk index*, *storage tier hint*, and more.

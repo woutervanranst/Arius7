@@ -175,6 +175,6 @@ Do not attempt to run this without the physical hardware: the benchmark requires
 
 ## More Information
 
-- Design spec (original intent, before implementation): `docs/superpowers/specs/2026-06-29-fast-hash-design.md`
+- Design spec (original intent, before implementation): [design.md](../history/agentic-plans/2026-06-29-fast-hash/design.md), frozen in `docs/history/` alongside its [plan](../history/agentic-plans/2026-06-29-fast-hash/plan.md) and [hardening review](../history/agentic-plans/2026-06-29-fast-hash/code-review.txt)
 - Implementation: `src/Arius.Core/Shared/HashCache/` and `src/Arius.Core/Shared/FileSystem/NativeFileSignals.cs`
 - Tests: `src/Arius.Core.Tests/Features/ArchiveCommand/ArchiveFastHashTests.cs` and `ArchivePointerDefaultTests.cs`
