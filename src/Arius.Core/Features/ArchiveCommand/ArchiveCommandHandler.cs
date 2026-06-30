@@ -378,11 +378,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                                 await hashedChannel.Writer.WriteAsync(new HashedFilePair(pair, contentHash, created, modified), ct);
                             }
-                            catch (Exception ex) when (!ct.IsCancellationRequested)
+                            catch (Exception ex) when (!ct.IsCancellationRequested && ex is not HashCacheLocalStoreException)
                             {
                                 // A single unreadable file (broken link, permission denied, deleted mid-run)
                                 // must never fault this stage — that would stop draining filePairChannel and
                                 // deadlock the bounded enumerate→hash producer. Log, clear the row, skip.
+                                // A corrupt hashcache is the deliberate exception: it must fault the run with
+                                // its actionable message rather than be misread here as per-file unreadable.
                                 _logger.LogWarning(ex, "Skipping unreadable file during hashing: {Path}", pair.RelativePath);
                                 await _mediator.Publish(new FileSkippedEvent(pair.RelativePath), ct);
                             }
