@@ -191,11 +191,44 @@ jobs:
         shell: bash
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: 🏷️ Compute release-notes range
+        id: notes
+        shell: bash
+        env:
+          # Tag names are attacker-controllable. Validate to a safe charset before the
+          # value reaches git-cliff-action, which splices `args` straight into a shell
+          # `run:` line — see the GitHub script-injection guidance.
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$REF_NAME" =~ ^v[0-9][0-9A-Za-z.+_-]*$ ]]; then
+            echo "❌ Unexpected tag format: $REF_NAME" >&2
+            exit 1
+          fi
+          echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+
+          # Release notes cover everything since the last non-beta (stable) release in
+          # this tag's ancestry: for a beta tag that's the last stable before it; for a
+          # stable tag that's the previous stable. `git describe` walks the commit graph,
+          # so this stays correct even when stable and beta tags sit on divergent branches.
+          # --exclude='*-*' skips pre-release tags (the hyphen in e.g. v1.2.3-beta).
+          prev_stable=$(git describe --tags --abbrev=0 --match='v[0-9]*' --exclude='*-*' "${REF_NAME}^" 2>/dev/null || true)
+          if [[ "$prev_stable" =~ ^v[0-9][0-9A-Za-z.+_-]*$ ]]; then
+            echo "range=${prev_stable}..${REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "Release notes range: ${prev_stable}..${REF_NAME}"
+          else
+            echo "range=" >> "$GITHUB_OUTPUT"
+            echo "No prior stable release found; generating notes from full history."
+          fi
+
       - name: 📝 Generate release notes
         uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
-          args: --latest --strip header
+          # One consolidated section spanning everything since the last stable release:
+          # --ignore-tags drops pre-release (hyphenated) tags so intermediate betas don't
+          # split the notes into separate sections, and --tag labels the section with this
+          # tag (a beta tag is itself ignored, so --tag is what names the section).
+          args: --strip header --ignore-tags 'v[0-9].*-' --tag ${{ steps.notes.outputs.tag }} ${{ steps.notes.outputs.range }}
         env:
           OUTPUT: CHANGELOG.md
 
