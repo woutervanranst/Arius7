@@ -267,12 +267,14 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        // The repository root holds multiple pooled SQLite stores (the chunk-index and the hashcache, each a
+        // The repository root holds two pooled SQLite stores (the chunk-index and the hashcache, each a
         // cache.sqlite under its own subdirectory). A pooled connection keeps the database file handle open,
         // which blocks the recursive delete on Windows ("the process cannot access the file 'cache.sqlite'
-        // because it is being used by another process"). The exact connection-string keys are an
-        // implementation detail, so ClearAllPools is the robust way to release every handle before deleting.
-        SqliteConnection.ClearAllPools();
+        // because it is being used by another process"). Clear each store's pool *scoped* to this repository
+        // — never ClearAllPools(), which would also yank pooled connections out from under other
+        // repositories' tests running in parallel.
+        ClearCachePool(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName));
+        ClearCachePool(RepositoryLocalStatePaths.GetHashCacheRoot(accountName, containerName));
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
@@ -295,5 +297,23 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
             index.Dispose();
 
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Clears the pooled SQLite connections for the <c>cache.sqlite</c> store under <paramref name="cacheRoot"/>.
+    /// The pool is keyed by connection string, so this mirrors the shape both stores build
+    /// (<see cref="ChunkIndexLocalStore"/> and <see cref="HashCacheLocalStore"/>) and only releases handles
+    /// for this specific store — leaving every other repository's pool untouched.
+    /// </summary>
+    private static void ClearCachePool(LocalDirectory cacheRoot)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite")),
+            Mode       = SqliteOpenMode.ReadWriteCreate,
+            Pooling    = true,
+        }.ToString());
+
+        SqliteConnection.ClearPool(connection);
     }
 }
