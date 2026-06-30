@@ -1,10 +1,12 @@
 using Arius.AzureBlob;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.HashCache;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared;
@@ -46,8 +48,9 @@ public class ContainerCreationTests(AzuriteFixture azurite)
         var index      = new ChunkIndexService(svc, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, snapshot, Account, containerName);
         var mediator   = Substitute.For<IMediator>();
         var logger     = new FakeLogger<ArchiveCommandHandler>();
+        var hashCache  = new HashCacheService(new HashCacheLocalStore(RepositoryLocalStatePaths.GetHashCacheRoot(Account, containerName)));
         var handler    = new ArchiveCommandHandler(
-            svc, IEncryptionService.PlaintextInstance, index, new ChunkStorageService(svc, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), new FileTreeService(svc, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, Account, containerName),
+            svc, IEncryptionService.PlaintextInstance, index, new ChunkStorageService(svc, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance), hashCache, new FileTreeService(svc, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, Account, containerName),
             snapshot, mediator,
             logger,
             NullLoggerFactory.Instance,

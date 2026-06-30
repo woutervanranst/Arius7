@@ -231,7 +231,7 @@ recoverability outrank raw throughput. Four principles constrain every design.
 | Path | What lives there |
 |---|---|
 | [`core/features/`](core/features/archive-command.md) | One doc per vertical slice — `archive`, `restore`, `ls`, `repair-index`, the `*Query` reads — covering stage structure and the *when* of each workflow. |
-| [`core/shared/`](core/shared/chunk-index.md) | The shared services and supporting mechanics: `SnapshotService`, `FileTreeService`, `ChunkIndexService`, `ChunkStorageService`, plus `Compression`, `Encryption`, `Hashes`, `FileSystem`, `Streaming`, and the `Storage` boundary. |
+| [`core/shared/`](core/shared/chunk-index.md) | The shared services and supporting mechanics: `SnapshotService`, `FileTreeService`, `ChunkIndexService`, `ChunkStorageService`, `HashCacheService`, plus `Compression`, `Encryption`, `Hashes`, `FileSystem`, `Streaming`, and the `Storage` boundary. |
 | [`hosts/`](hosts/cli.md) | How `Arius.Cli`, `Arius.Explorer`, and `Arius.Api`/`Arius.Web` build per-repository providers, drive Core via `IMediator`, and consume progress events. |
 | [`cross-cutting/`](cross-cutting/events-and-progress.md) | Concerns that span slices: [events and progress](cross-cutting/events-and-progress.md), [service lifetimes](cross-cutting/service-lifetimes.md), [memory boundedness](cross-cutting/memory-boundedness.md), [performance](cross-cutting/performance.md), [logging](cross-cutting/logging.md), [testing](cross-cutting/testing.md). |
 | [`../decisions/`](../decisions/README.md) | Architecture Decision Records (ADRs) recording the rationale behind these designs. |

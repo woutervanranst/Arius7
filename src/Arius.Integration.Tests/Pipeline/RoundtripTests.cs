@@ -309,6 +309,7 @@ public class RoundtripTests(AzuriteFixture azurite)
                 RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
+                WritePointers = true, // --remove-local requires --write-pointers
             }), default);
 
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
@@ -384,6 +385,7 @@ public class RoundtripTests(AzuriteFixture azurite)
                 RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
+                WritePointers = true, // --remove-local requires --write-pointers
             }), default);
         r1.Success.ShouldBeTrue(r1.ErrorMessage);
 
@@ -739,10 +741,10 @@ public class RoundtripTests(AzuriteFixture azurite)
         fix.RestoreFileSystem.FileExists(RelativePath.Parse("data.pointer.arius")).ShouldBeFalse();
     }
 
-    // ── 14.9: --no-pointers: no pointer files created ─────────────────────────
+    // ── 14.9: default (WritePointers off): no pointer files created ───────────
 
     [Test]
-    public async Task Archive_NoPointers_NoPointerFilesCreated()
+    public async Task Archive_DefaultWritePointersOff_NoPointerFilesCreated()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
@@ -754,23 +756,26 @@ public class RoundtripTests(AzuriteFixture azurite)
             {
                 RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
-                NoPointers    = true,
+                // WritePointers defaults to false → no sidecars for binary-present files.
             }), default);
 
         archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
 
         // No pointer file should have been created
         fix.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
+        // The binary remains in place.
+        fix.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();
     }
 
-    // ── 14.10: --remove-local + --no-pointers: should be rejected ────────────
+    // ── 14.10: --remove-local without --write-pointers is rejected ────────────
 
     [Test]
-    public async Task Archive_RemoveLocalAndNoPointers_IsRejected()
+    public async Task Archive_RemoveLocalWithoutWritePointers_IsRejectedAndKeepsBinary()
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("data.bin"), [1, 2, 3], CancellationToken.None);
+        var relativePath = RelativePath.Parse("data.bin");
+        await fix.LocalFileSystem.WriteAllBytesAsync(relativePath, [1, 2, 3], CancellationToken.None);
 
         var archiveResult = await fix.CreateArchiveHandler().Handle(
             new ArchiveCommand(new ArchiveCommandOptions
@@ -778,11 +783,14 @@ public class RoundtripTests(AzuriteFixture azurite)
                 RootDirectory = fix.LocalDirectory.ToString(),
                 UploadTier    = BlobTier.Hot,
                 RemoveLocal   = true,
-                NoPointers    = true,
+                WritePointers = false, // illegal: removing the binary while writing no pointer
             }), default);
 
+        // Rejected up front, before any deletion: the binary is untouched and no pointer is written.
         archiveResult.Success.ShouldBeFalse();
-        archiveResult.ErrorMessage.ShouldNotBeNullOrEmpty();
+        archiveResult.ErrorMessage.ShouldContain("--write-pointers");
+        fix.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();
+        fix.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
     }
 
     // ════════════════════════════════════════════════════════════════════════════

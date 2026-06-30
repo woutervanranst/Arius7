@@ -14,6 +14,7 @@ public static class RepositoryLocalStatePaths
     private static readonly PathSegment chunkIndexCache = PathSegment.Parse("chunk-index");
     private static readonly PathSegment fileTreeCache   = PathSegment.Parse("filetrees");
     private static readonly PathSegment snapshotCache   = PathSegment.Parse("snapshots");
+    private static readonly PathSegment hashCache       = PathSegment.Parse("hash");
     private static readonly PathSegment logs            = PathSegment.Parse("logs");
 
     internal static LocalDirectory GetAriusRoot()
@@ -31,5 +32,6 @@ public static class RepositoryLocalStatePaths
     internal static LocalDirectory GetChunkIndexCacheRoot(string accountName, string containerName) => GetRepositoryRoot(accountName, containerName) / chunkIndexCache;
     internal static LocalDirectory GetFileTreeCacheRoot(string accountName, string containerName)   => GetRepositoryRoot(accountName, containerName) / fileTreeCache;
     internal static LocalDirectory GetSnapshotCacheRoot(string accountName, string containerName)   => GetRepositoryRoot(accountName, containerName) / snapshotCache;
+    internal static LocalDirectory GetHashCacheRoot(string accountName, string containerName)       => GetRepositoryRoot(accountName, containerName) / hashCache;
     public static   string         GetLogsDirectory(string accountName, string containerName)            => (GetRepositoryRoot(accountName, containerName) / logs).ToString();
 }

@@ -23,7 +23,7 @@ internal sealed record RestoreStep(string Name, WorkflowRestoreTarget Target, Sy
             state.Fixture,
             state,
             ExpectedVersion,
-            useNoPointers: !ExpectPointers,
+            useWritePointers: ExpectPointers,
             result,
             preserveConflictBytes: false);
     }

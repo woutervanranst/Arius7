@@ -106,7 +106,6 @@ Specialist agents
 
 ## Way of Working
 
-- Arius is pre-release with no production repositories: breaking changes to persisted formats (shard line format, SQLite cache schema, blob layout) are acceptable without migrations or legacy parsing — confirm first, then prefer the clean break.
 - Work in small steps. Work Test-Driven: first, write a failing test. Then, implement. When the tests pass, make a conventional git commit.
 - Avoid coupling the test to the implementation - test the behavior.
 - When making code changes, always run the relevant tests:
@@ -123,6 +122,8 @@ Specialist agents
 ## Scale And Durability
 - Arius is a backup tool for important files. Correctness, durability, and recoverability matter more than raw throughput.
 - Repository scale can be large: potentially terabytes of binary data and many thousands of small files. Consider both byte scale and file-count scale when designing or optimizing archive, restore, list, and cache behavior.
+- **Hashcache / fast-hash.** `--fast-hash` is an opt-in heuristic: the default is always a full re-read. The hashcache (`~/.arius/<account>-<container>/hash/cache.sqlite`) is local and per-machine; signals are compared only within the same filesystem. An archive run is single-machine: concurrent multi-platform archives of the same files are not supported. Sequential cross-platform use is supported (each machine's cache is independent; a `signal_set` mismatch falls to the fingerprint floor). Any full-hash run (with or without `--fast-hash`) warms the cache.
+- **Pointer sidecars are opt-in.** `--write-pointers` (default off) writes `.pointer.arius` sidecars; `--remove-local` implies `--write-pointers` (cannot remove the binary without leaving a local record). The old `--no-pointers` flag on `archive` is gone.
 - Prefer streaming, batching, and bounded-memory or bounded-disk pipelines over whole-repository in-memory materialization when file count can grow.
 - Long-running handlers (`ArchiveCommandHandler`, `ListQueryHandler`) are structured as channel-connected stages: bounded channels for backpressure, each stage completes its writer when done (faults propagate via `Complete(exception)`), and a type-level doc header with stage/channel tables. Mirror that structure and documentation style when adding or restructuring pipelines.
 - For interactive commands (`ls`), favor responsiveness: small lookup batches, stream output as results arrive, never buffer the full listing (no table/recorder materialization in the CLI).
@@ -176,7 +177,7 @@ When writing or reviewing TUnit tests, use the `csharp-tunit` skill.
 
 ## Domain language
 
-Use the precise Arius domain vocabulary (binary file, pointer file, `FilePair`, chunk, large/tar/thin chunk, chunk index, shard, chunk size, storage tier hint, filetree, snapshot, content hash, chunk hash, …) consistently in code, tests, docs, and reviews; avoid generic words like "blob" or "pointer" when a precise term exists. Every term is defined and grounded to its code type in **[`docs/glossary.md`](docs/glossary.md)** — the single home for the vocabulary, which also disambiguates the easily-confused cache verbs (validated / revalidated / synchronized).
+Use the precise Arius domain vocabulary (binary file, pointer file, `FilePair`, chunk, large/tar/thin chunk, chunk index, shard, chunk size, storage tier hint, filetree, snapshot, content hash, chunk hash, hashcache, sparse fingerprint, fast-hash, …) consistently in code, tests, docs, and reviews; avoid generic words like "blob" or "pointer" when a precise term exists. Every term is defined and grounded to its code type in **[`docs/glossary.md`](docs/glossary.md)** — the single home for the vocabulary, which also disambiguates the easily-confused cache verbs (validated / revalidated / synchronized).
 
 ## Hash type guidance
 

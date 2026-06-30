@@ -34,8 +34,8 @@ export class DrawerStore {
 
   // Archive form
   readonly archiveTier = signal('archive');
-  readonly removeLocal = signal(false);
-  readonly noPointers = signal(false);
+  readonly archiveOnDisk = signal<'keep' | 'keep-pointers' | 'replace'>('keep');
+  readonly fastHash = signal(false);
   // Restore form
   readonly overwrite = signal(false);
   readonly restoreNoPointers = signal(false);
@@ -64,8 +64,8 @@ export class DrawerStore {
     this.type.set('archive');
     this.repoId.set(repoId);
     this.archiveTier.set(tier || 'archive');
-    this.removeLocal.set(false);
-    this.noPointers.set(false);
+    this.archiveOnDisk.set('keep');
+    this.fastHash.set(false);
   }
 
   openRestore(repoId: number, version: string | null, collectedPaths: string[]): void {
@@ -85,18 +85,6 @@ export class DrawerStore {
     this.resetStream();
   }
 
-  // Archive toggles are mutually exclusive (CLI: --remove-local vs --no-pointers).
-  toggleRemoveLocal(): void {
-    const next = !this.removeLocal();
-    this.removeLocal.set(next);
-    if (next) this.noPointers.set(false);
-  }
-  toggleNoPointers(): void {
-    const next = !this.noPointers();
-    this.noPointers.set(next);
-    if (next) this.removeLocal.set(false);
-  }
-
   async start(): Promise<void> {
     this.lines.set([]);
     this.progress.set(0);
@@ -105,7 +93,12 @@ export class DrawerStore {
     this.streamState.set('running');
     if (this.type() === 'archive') {
       this.jobId.set(await this.realtime.startArchive(this.repoId(), {
-        tier: this.archiveTier(), removeLocal: this.removeLocal(), noPointers: this.noPointers(),
+        tier: this.archiveTier(),
+        removeLocal: this.archiveOnDisk() === 'replace',
+        // Both 'keep-pointers' and 'replace' write pointers; 'replace' (remove-local) requires them,
+        // since the handler rejects removing a binary while writing no pointer.
+        writePointers: this.archiveOnDisk() !== 'keep',
+        fastHash: this.fastHash(),
       }));
     } else {
       this.jobId.set(await this.realtime.startRestore(this.repoId(), {

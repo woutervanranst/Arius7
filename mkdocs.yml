@@ -90,6 +90,7 @@ nav:
           - design/core/shared/chunk-index.md
           - design/core/shared/chunk-storage.md
           - design/core/shared/filetree.md
+          - design/core/shared/hashcache.md
           - design/core/shared/snapshot.md
           - design/core/shared/storage.md
           - design/core/shared/cost.md
@@ -131,5 +132,6 @@ nav:
       - decisions/adr-0018-archive-tier-metadata-sidecar.md
       - decisions/adr-0019-central-file-exclusion-configuration.md
       - decisions/adr-0020-provider-agnostic-cost-estimation.md
+      - decisions/adr-0021-opt-in-change-detection-hashcache.md
   - Glossary: glossary.md
   - History: history/INDEX.md

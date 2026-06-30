@@ -108,7 +108,8 @@ async function seedSnapshotIfEmpty(ctx: APIRequestContext, repoId: number) {
   await connection.start();
   let jobId: string;
   try {
-    jobId = await connection.invoke<string>('StartArchive', repoId, 'hot', false, false);
+    // StartArchive(repositoryId, tier, removeLocal, writePointers, fastHash)
+    jobId = await connection.invoke<string>('StartArchive', repoId, 'hot', false, false, false);
   } finally {
     await connection.stop(); // the server job runs independently of the connection
   }
