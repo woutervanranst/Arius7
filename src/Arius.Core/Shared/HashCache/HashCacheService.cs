@@ -39,7 +39,7 @@ internal sealed class HashCacheService : IHashCacheService
             && e.Inode is not null && e.Dev is not null && e.CtimeTicks is not null
             && s.Inode == e.Inode && s.Dev == e.Dev && s.CtimeTicks == e.CtimeTicks)
         {
-            _store.Upsert(e with { LastVerifiedTicks = now });
+            _store.Touch(path, now); // one-column UPDATE: nothing else changed on a ctime hit
             return FastHashResult.Hit(e.ContentHash, "ctime match");
         }
 
