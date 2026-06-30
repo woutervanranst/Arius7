@@ -395,14 +395,22 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             // the worker. (TryGetChangeSignals never throws.)
                             async ValueTask<ContentHash> FullHashAndRecordAsync(RelativePath relativePath, long size, long nowTicks, CancellationToken cancellation)
                             {
+                                // Capture the change-signals and mtime BEFORE reading the content, so the
+                                // stored ctime is a conservative lower bound on the bytes we hash: any write
+                                // during or after the read advances ctime past this value, so the next
+                                // --fast-hash run misses and re-hashes rather than reusing a hash of torn
+                                // content. (Capturing after the read would fold a concurrent write into the
+                                // stored ctime and mask the stale hash forever — the one unsafe misprediction.)
+                                var signals = fs.TryGetChangeSignals(relativePath);
+                                var (_, modified) = fs.GetTimestamps(relativePath);
+
                                 await using var s   = fs.OpenRead(relativePath);
                                 var             p   = opts.CreateHashProgress?.Invoke(relativePath, size) ?? new Progress<long>();
                                 await using var smp = new SparseSamplingStream(s, size);
                                 await using var ps  = new ProgressStream(smp, p);
                                 var hash = await _encryption.ComputeHashAsync(ps, cancellation);
 
-                                var signals = fs.TryGetChangeSignals(relativePath);
-                                _hashCache.Record(relativePath, size, signals, smp.Fingerprint(), hash, nowTicks);
+                                _hashCache.Record(relativePath, size, signals, modified.UtcTicks, smp.Fingerprint(), hash, nowTicks);
                                 Interlocked.Increment(ref fastHashRehashed);
                                 return hash;
                             }
