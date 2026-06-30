@@ -200,12 +200,16 @@ Click **Archive** in the repository header to open the Archive drawer (a right s
    **Properties** first (there's nothing local to archive otherwise).
 2. **Upload tier** — `Hot` / `Cool` / `Cold` / `Archive` (defaults to the repository's default
    tier). This is where the newly uploaded chunks land.
-3. **Toggles** (mutually exclusive — turning one on turns the other off):
-   - **Remove local binaries** — after a successful upload, replace local files with pointer files
-     to reclaim disk space (`--remove-local`).
-   - **Skip pointer files** — don't write pointer files at all (`--no-pointers`).
-   - A note reminds you small files are bundled (1 MB threshold, ~64 MB tar target) automatically.
-4. Click **Start archive**. The drawer switches to the live stream (see *Watching live progress*).
+3. **On disk after archive** — a three-way choice:
+   - **Keep files only** — upload, write no pointer sidecars (the default).
+   - **Keep files + pointers** — also write `.pointer.arius` sidecars next to the binaries
+     (`--write-pointers`).
+   - **Replace with pointers** — after a successful upload, delete the local binaries and leave only
+     the pointer sidecars to reclaim disk space (`--remove-local`, which always writes pointers).
+4. **Fast hash** — skip re-reading files the local hashcache verifies as unchanged since the last
+   run; faster on large, stable trees, off by default (`--fast-hash`).
+5. Click **Start archive**. The drawer switches to the live stream (see *Watching live progress*).
+   Small files are bundled automatically (1 MB threshold, ~64 MB tar target).
 
 ---
 
