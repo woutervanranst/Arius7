@@ -118,6 +118,18 @@ public sealed record ArchiveResult
     public required long IncrementalStoredSize { get; init; }
 
     /// <summary>
+    /// Number of files whose hash was served from the hashcache (no file read) during this run.
+    /// Zero when <see cref="ArchiveCommandOptions.FastHash"/> is off.
+    /// </summary>
+    public required long FastHashReused { get; init; }
+
+    /// <summary>
+    /// Number of files that were fully read and recorded to the hashcache during this run
+    /// (includes both --fast-hash misses and all reads when --fast-hash is off).
+    /// </summary>
+    public required long FastHashRehashed { get; init; }
+
+    /// <summary>
     /// Root hash of the snapshot's file tree. <c>null</c> when no snapshot was produced — an empty source
     /// tree, or a failure before the tree was built.
     /// </summary>

@@ -1,8 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.Encryption;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.HashCache;
 using Arius.Tests.Shared;
 using Arius.Tests.Shared.Fixtures;
@@ -27,18 +25,21 @@ public class ArchiveFastHashTests
         // ── Run 1: cold cache → success, populates the hashcache.
         var first = await ArchiveAsync(fixture, new FakeLogger<ArchiveCommandHandler>(), fastHash: true);
         first.Success.ShouldBeTrue(first.ErrorMessage);
+        first.FastHashReused.ShouldBe(0);    // cold cache: nothing reused
+        first.FastHashRehashed.ShouldBe(1);  // one file fully hashed and recorded
 
         // ── Run 2: warm cache, unchanged files → reuse, no rehash.
         var secondLogger = new FakeLogger<ArchiveCommandHandler>();
         var second = await ArchiveAsync(fixture, secondLogger, fastHash: true);
         second.Success.ShouldBeTrue(second.ErrorMessage);
+        second.FastHashReused.ShouldBe(1);   // warm cache: one file served from cache
+        second.FastHashRehashed.ShouldBe(0); // no full read required
 
         var messages = secondLogger.Collector.GetSnapshot().Select(r => r.Message).ToArray();
 
         // Reuse reason is platform-dependent ("ctime match" on Linux, "size+fp match" on a floor-only
         // platform), so assert on the per-file "-> reused" line rather than the specific reason.
         messages.ShouldContain(m => m.Contains("[fast-hash]") && m.Contains("-> reused"));
-        messages.ShouldContain(m => m.Contains("[fast-hash] summary") && m.Contains("rehashed 0"));
     }
 
     [Test]
@@ -49,9 +50,15 @@ public class ArchiveFastHashTests
         await WriteRandomFileAsync(fixture, RelativePath.Parse("large.bin"), LargeFileSize);
 
         // Cold run → populate.
-        (await ArchiveAsync(fixture, new FakeLogger<ArchiveCommandHandler>(), fastHash: true)).Success.ShouldBeTrue();
+        var firstRun = await ArchiveAsync(fixture, new FakeLogger<ArchiveCommandHandler>(), fastHash: true);
+        firstRun.Success.ShouldBeTrue();
+        firstRun.FastHashReused.ShouldBe(0);
+        firstRun.FastHashRehashed.ShouldBe(1);
         // Warm run → reuse (sanity).
-        (await ArchiveAsync(fixture, new FakeLogger<ArchiveCommandHandler>(), fastHash: true)).Success.ShouldBeTrue();
+        var secondRun = await ArchiveAsync(fixture, new FakeLogger<ArchiveCommandHandler>(), fastHash: true);
+        secondRun.Success.ShouldBeTrue();
+        secondRun.FastHashReused.ShouldBe(1);
+        secondRun.FastHashRehashed.ShouldBe(0);
 
         // Delete the hashcache root so the next run sees a cold cache again. The store opens pooled
         // SQLite connections, so clear the pool first — otherwise a pooled handle to the (now unlinked)
@@ -69,8 +76,8 @@ public class ArchiveFastHashTests
         var messages = coldAgainLogger.Collector.GetSnapshot().Select(r => r.Message).ToArray();
         // No per-file reuse on a cold cache (match the per-file "-> reused" line, not the summary's "reused N").
         messages.ShouldNotContain(m => m.Contains("[fast-hash]") && m.Contains("-> reused"));
-        // Summary must show zero reuses and at least one rehash.
-        messages.ShouldContain(m => m.Contains("[fast-hash] summary") && m.Contains("reused 0") && !m.Contains("rehashed 0"));
+        third.FastHashReused.ShouldBe(0);   // cold cache: nothing reused
+        third.FastHashRehashed.ShouldBe(1); // one file fully hashed and recorded
     }
 
     private static async Task<ArchiveResult> ArchiveAsync(
