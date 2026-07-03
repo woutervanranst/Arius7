@@ -347,6 +347,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
                                 ContentHash contentHash;
+                                bool        fileHashReused   = false;
+                                bool        fileHashRehashed = false;
+
                                 if (pair is { Binary: null, Pointer: { Hash: not null } })
                                 {
                                     // Pointer-only: use pointer hash directly (no re-hash)
@@ -363,6 +366,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                         if (verdict.IsHit)
                                         {
                                             Interlocked.Increment(ref fastHashReused);
+                                            fileHashReused = true;
                                             _logger.LogDebug("[fast-hash] {Path} -> reused ({Reason})", pair.RelativePath, verdict.Reason);
                                             contentHash = verdict.Hash!.Value;
                                         }
@@ -370,6 +374,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                         {
                                             _logger.LogDebug("[fast-hash] {Path} -> full-hash ({Reason})", pair.RelativePath, verdict.Reason);
                                             contentHash = await FullHashAndRecordAsync(pair.RelativePath, fileSize, now, ct);
+                                            fileHashRehashed = true;
                                         }
                                     }
                                     else
@@ -377,6 +382,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                         // Fast-hash off: full read as before, but still populate the cache so a
                                         // later --fast-hash run finds a warm entry.
                                         contentHash = await FullHashAndRecordAsync(pair.RelativePath, fileSize, now, ct);
+                                        fileHashRehashed = true;
                                     }
                                 }
                                 else
@@ -387,7 +393,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                     return;
                                 }
 
-                                await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash), ct);
+                                await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash, fileHashReused, fileHashRehashed), ct);
 
                                 _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
 

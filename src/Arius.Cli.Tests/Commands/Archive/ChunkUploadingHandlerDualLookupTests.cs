@@ -27,7 +27,7 @@ public class ChunkUploadingHandlerDualLookupTests
         var path = RelativePath.Parse("big.bin");
 
         await hashingH.Handle(new FileHashingEvent(path, 10_000_000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('a')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('a'), false, false), CancellationToken.None);
 
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('a'), 10_000_000), CancellationToken.None);
 

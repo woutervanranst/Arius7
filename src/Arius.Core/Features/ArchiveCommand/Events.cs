@@ -20,7 +20,17 @@ public sealed record ScanCompleteEvent(long TotalFiles, long TotalBytes) : INoti
 public sealed record FileHashingEvent(RelativePath RelativePath, long FileSize) : INotification;
 
 /// <summary>A file finished hashing.</summary>
-public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash) : INotification;
+/// <param name="RelativePath">Forward-slash relative path of the file.</param>
+/// <param name="ContentHash">The content hash of the file.</param>
+/// <param name="FastHashReused">
+/// <c>true</c> when the hash was served from the hashcache without reading the file
+/// (only possible when <c>--fast-hash</c> is on and the cache entry was valid).
+/// </param>
+/// <param name="FastHashRehashed">
+/// <c>true</c> when the file was fully read and its hash recorded to the hashcache.
+/// <c>false</c> for pointer-only files (hash taken from the pointer) and for cache hits.
+/// </param>
+public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash, bool FastHashReused, bool FastHashRehashed) : INotification;
 
 /// <summary>
 /// An already-scanned file was dropped <i>during</i> the pipeline because it could no longer be
