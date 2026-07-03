@@ -153,6 +153,14 @@ internal static partial class NativeFileSignals
     /// architecture-specific; only the x86_64 layout is implemented, so this returns <c>null</c> on
     /// any other architecture rather than risk reading a wrong layout.
     /// </summary>
+    /// <remarks>
+    /// On glibc &lt; 2.33 <c>stat</c> was not an exported dynamic symbol (the header inlined a call to
+    /// the versioned <c>__xstat</c>), so the <see cref="LibraryImportAttribute"/> below throws
+    /// <see cref="EntryPointNotFoundException"/> there. <see cref="TryGet"/> catches it and the file
+    /// simply drops to the sparse-fingerprint floor — an accepted degradation (more reads, still
+    /// correct) rather than a hard failure. Binding <c>__xstat</c> instead would restore the ctime
+    /// fast-lane on those hosts but needs an architecture-specific <c>_STAT_VER</c> argument.
+    /// </remarks>
     private static FileChangeSignals? TryGetViaStat(string fullPath)
     {
         if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
