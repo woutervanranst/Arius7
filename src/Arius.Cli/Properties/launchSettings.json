@@ -2,7 +2,7 @@
   "profiles": {
     "10 archive": {
       "commandName": "Project",
-      "commandLineArgs": "archive \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source\" -a ariuscibec -c test -t Hot -p test"
+      "commandLineArgs": "archive \"C:\\Users\\WouterVanRanst\\Downloads\\Arius-Test-Source\" -a ariuscibec -c test -t Hot -p test --fast-hash"
     },
     "20 list": {
       "commandName": "Project",
