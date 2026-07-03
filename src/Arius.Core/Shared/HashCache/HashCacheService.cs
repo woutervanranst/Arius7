@@ -18,6 +18,19 @@ internal readonly record struct FastHashResult(ContentHash? Hash, string Reason)
 /// <summary>
 /// Per-repository fast-hash facade: the verdict ladder over <see cref="HashCacheLocalStore"/>.
 /// Validates against the live file (never a pointer); a miss means the caller must full-hash.
+/// <para>
+/// The sparse fingerprint has two implementations of the same bytes, one per side:
+/// <code>
+///  Path                 | method                               | how it reads                                                                          | when
+///  ---------------------+--------------------------------------+---------------------------------------------------------------------------------------+---------------------------
+///   Write (.Record())   | SparseSamplingStream.Fingerprint()   | siphoned off the full sequential read that happens anyway for the content hash—free   | after a full hash
+///   Read  (.TryReuse()) | SparseFingerprint.ComputeBySeeking() | seeks directly to the sample offsets, never reads the whole file (-> cheap)           | validating a cached row
+/// </code>
+/// Load-bearing invariant: both must produce identical bytes for identical content under the same
+/// <see cref="SparseFingerprint.Algo"/> — otherwise an unchanged file never matches and fast-hash
+/// degenerates to always-miss. The FpAlgo guard in <see cref="TryReuse"/> enforces this: bump the
+/// algorithm and old rows are discarded rather than compared across incompatible fingerprint definitions.
+/// </para>
 /// </summary>
 [SharedWithinAssembly]
 internal sealed class HashCacheService : IHashCacheService
@@ -54,6 +67,7 @@ internal sealed class HashCacheService : IHashCacheService
         var liveFp = SparseFingerprint.ComputeBySeeking(fs, path, liveSize);
         if (liveFp.AsSpan().SequenceEqual(e.SparseFingerprint))
         {
+            // Update existing value
             _store.Upsert(e with
             {
                 CtimeTicks        = sig?.CtimeTicks,
@@ -70,6 +84,7 @@ internal sealed class HashCacheService : IHashCacheService
 
     public void Record(RelativePath path, long size, FileChangeSignals? signals, long mtimeTicks, byte[] sparseFingerprint, ContentHash hash, long now)
     {
+        // Insert new value
         _store.Upsert(new HashCacheEntry(
             Path:              path, 
             Size:              size,

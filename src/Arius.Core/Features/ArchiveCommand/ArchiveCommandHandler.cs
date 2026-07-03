@@ -361,10 +361,11 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                                     if (opts.FastHash)
                                     {
-                                        // Fast-hash: consult the hashcache first.
+                                        // Fast-hash on: consult the hashcache first.
                                         var verdict = _hashCache.TryReuse(fs, pair.RelativePath, fileSize, now);
                                         if (verdict.IsHit)
                                         {
+                                            // We read the hash from the hashcache
                                             Interlocked.Increment(ref fastHashReused);
                                             fileHashReused = true;
                                             _logger.LogDebug("[fast-hash] {Path} -> reused ({Reason})", pair.RelativePath, verdict.Reason);
@@ -372,6 +373,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                         }
                                         else
                                         {
+                                            // Read the full file, compute the full hash and write it to the hashcache
                                             _logger.LogDebug("[fast-hash] {Path} -> full-hash ({Reason})", pair.RelativePath, verdict.Reason);
                                             contentHash = await FullHashAndRecordAsync(pair.RelativePath, fileSize, now, ct);
                                             fileHashRehashed = true;
@@ -379,8 +381,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                     }
                                     else
                                     {
-                                        // Fast-hash off: full read as before, but still populate the cache so a
-                                        // later --fast-hash run finds a warm entry.
+                                        // Fast-hash off: read the full file, compute the full hash and write it to the hashcache
                                         contentHash = await FullHashAndRecordAsync(pair.RelativePath, fileSize, now, ct);
                                         fileHashRehashed = true;
                                     }
