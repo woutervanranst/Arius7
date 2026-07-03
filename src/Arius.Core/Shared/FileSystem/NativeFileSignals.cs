@@ -1,9 +1,25 @@
+using Microsoft.Win32.SafeHandles;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
-using Arius.Core.Shared.HashCache;
 
 namespace Arius.Core.Shared.FileSystem;
+
+// --- MODELS
+
+/// <summary>Cheap, platform-provided change signals for one file. See <see cref="SignalSets"/>.</summary>
+[SharedWithinAssembly]
+internal readonly record struct FileChangeSignals(long CtimeTicks, string Inode, string Dev, int SignalSet);
+
+/// <summary>Provenance tag stored on a hashcache row so signals are only compared within the same source.</summary>
+[SharedWithinAssembly]
+internal static class SignalSets
+{
+    public const int None    = 0;
+    public const int Posix   = 1;
+    public const int Windows = 2;
+}
+
+// --- PLATFORM ABSTRACTIONS
 
 /// <summary>
 /// Platform-specific capture of (ctime, inode, dev). Returns <c>null</c> on network filesystems
