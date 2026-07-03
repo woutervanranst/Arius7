@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Core.Shared.HashCache;
 
@@ -14,7 +13,7 @@ internal static class SparseFingerprint
     public const int Algo = 1;
 
     private const int  BlockSize = 256 * 1024;     // B
-    private const long Stride    = 1L << 30;        // S (1 GiB)
+    private const long Stride    = 1L << 30;       // S (1 GiB)
     private const int  MinBlocks = 4;
     private const int  MaxBlocks = 64;
 
@@ -75,9 +74,9 @@ internal static class SparseFingerprint
     /// </summary>
     public sealed class Sampler
     {
-        private readonly long                            _size;
+        private readonly long                               _size;
         private readonly IReadOnlyList<(long Off, int Len)> _regions;
-        private readonly byte[][]                        _captured;
+        private readonly byte[][]                           _captured;
 
         public Sampler(long size)
         {

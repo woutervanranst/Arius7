@@ -187,10 +187,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     {
         var opts = command.CommandOptions;
 
-        // --remove-local without --write-pointers would delete the binary and leave no local record at
-        // all, so the combination is rejected up front (the CLI rejects it too). Validated here as well
-        // because programmatic/API callers construct the options directly and bypass the CLI guard.
-        if (opts.RemoveLocal && !opts.WritePointers)
+        if (opts is { RemoveLocal: true, WritePointers: false }) // --remove-local without --write-pointers would delete the binary and write no pointer
         {
             _logger.LogError("[archive] --remove-local requires --write-pointers; refusing to run.");
             return new ArchiveResult
@@ -211,7 +208,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
         var writePointers = opts.WritePointers;
 
-        // ── Operation start marker (task 3.10) ───────────────────────────────
+        // ── Operation start marker ───────────────────────────────
         _logger.LogInformation("[archive] Start: src={RootDir} account={Account} container={Container} tier={Tier} removeLocal={RemoveLocal} writePointers={WritePointers}", opts.RootDirectory, _accountName, _containerName, opts.UploadTier, opts.RemoveLocal, writePointers);
 
         // ── Ensure container exists ───────────────────────────────────────────
@@ -220,18 +217,15 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
         // ── Shared state ──────────────────────────────────────────────────────
 
-        long filesScanned    = 0;
-        long entriesExcluded  = 0;   // entries excluded during enumeration (excluded / broken symlink / unreadable dir)
-        long filesUploaded   = 0;
-        long filesDeduped    = 0;
-        long originalSize          = 0;   // sum of original (uncompressed) sizes of ALL files in the snapshot
-        long incrementalSize       = 0;   // original (uncompressed) bytes newly uploaded this run
-        long incrementalStoredSize = 0;   // stored (compressed) bytes newly written to storage this run
-
-        // fast-hash counters: reused = served from the hashcache without reading; rehashed = full-read +
-        // recorded to the cache. Both are written from N hash workers, so mutate via Interlocked.
-        var fastHashReused   = 0L;
-        var fastHashRehashed = 0L;
+        long filesScanned          = 0;
+        long entriesExcluded       = 0; // entries excluded during enumeration (excluded / broken symlink / unreadable dir)
+        long filesUploaded         = 0;
+        long filesDeduped          = 0;
+        long originalSize          = 0; // sum of original (uncompressed) sizes of ALL files in the snapshot
+        long incrementalSize       = 0; // original (uncompressed) bytes newly uploaded this run
+        long incrementalStoredSize = 0; // stored (compressed) bytes newly written to storage this run
+        long fastHashReused        = 0; // reused = served from the hashcache without reading
+        long fastHashRehashed      = 0; // rehashed = full-read + recorded to the cache
 
         var stagingCacheDirectory = RepositoryLocalStatePaths.GetFileTreeCacheRoot(_accountName, _containerName);
         var fs = new RelativeFileSystem(LocalDirectory.Parse(opts.RootDirectory));
@@ -358,10 +352,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 {
                                     var now = DateTimeOffset.UtcNow.UtcTicks;
 
-                                    // Fast-hash lane: consult the hashcache first. A hit reuses the cached
-                                    // content hash with no read at all; a miss falls through to a full read.
                                     if (opts.FastHash)
                                     {
+                                        // Fast-hash: consult the hashcache first.
                                         var verdict = _hashCache.TryReuse(fs, pair.RelativePath, fileSize, now);
                                         if (verdict.IsHit)
                                         {
@@ -404,6 +397,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 // A single unreadable file (broken link, permission denied, deleted mid-run)
                                 // must never fault this stage — that would stop draining filePairChannel and
                                 // deadlock the bounded enumerate→hash producer. Log, clear the row, skip.
+                                //
                                 // A corrupt hashcache is the deliberate exception: it must fault the run with
                                 // its actionable message rather than be misread here as per-file unreadable.
                                 _logger.LogWarning(ex, "Skipping unreadable file during hashing: {Path}", pair.RelativePath);
