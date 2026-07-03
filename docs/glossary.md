@@ -83,7 +83,7 @@ spurious local-only rows.
 
 ### fast-hash
 
-**fast-hash** — the opt-in archive mode (CLI: `--fast-hash`; option: `ArchiveCommandOptions.FastHash`) that consults the [hashcache](#hashcache) before reading a file. A cache hit returns the cached [content hash](#content-hash) without re-reading the file bytes; a miss falls through to a full read. Default is off (full re-hash on every run). Any run — with or without `--fast-hash` — warms the cache for future fast-hash runs.
+**fast-hash** — the opt-in archive mode (CLI: `--fast-hash`; option: `ArchiveCommandOptions.FastHash`) that consults the [hashcache](#hashcache) before reading a file. A cache hit returns the cached [content hash](#content-hash) without a full re-read — the `ctime` fast-lane reads no bytes at all, while a [sparse-fingerprint](#sparse-fingerprint) hit still samples a small subset of bytes; a miss falls through to a full read. Default is off (full re-hash on every run). Any run — with or without `--fast-hash` — warms the cache for future fast-hash runs.
 *Code:* `ArchiveCommandOptions.FastHash` in `src/Arius.Core/Features/ArchiveCommand/ArchiveCommand.cs`; verdict ladder in `HashCacheService.TryReuse`.
 
 ---
