@@ -131,9 +131,7 @@ internal sealed class MigrateV5
     {
         // The v5/v3 state DBs live at "states/<name>" (no v7 BlobPaths constant), one blob per historical run.
         var statesPrefix = RelativePath.Parse("states");
-        var states = new List<BlobListItem>();
-        await foreach (var item in _blobs.ListAsync(statesPrefix, includeMetadata: true, cancellationToken: cancellationToken))
-            states.Add(item);
+        var states       = await _blobs.ListAsync(statesPrefix, includeMetadata: true, cancellationToken: cancellationToken).ToListAsync();
 
         if (states.Count == 0)
             throw new InvalidOperationException("No v5 state blob found under 'states/'. Is this a v5 repository?");
