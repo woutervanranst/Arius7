@@ -37,6 +37,68 @@ internal static partial class NativeFileSignals
     }
 
     // =====================================================================================
+    // Windows via GetFileInformationByHandleEx (unchanged — no Mono dependency).
+    // =====================================================================================
+
+    private static FileChangeSignals? TryGetWindows(string fullPath)
+    {
+        var root = Path.GetPathRoot(Path.GetFullPath(fullPath));
+        if (root is not null && GetDriveType(root) == DRIVE_REMOTE)
+            return null;
+
+        using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        if (!GetFileInformationByHandleEx(handle, FileBasicInfo, out FILE_BASIC_INFO basic, Marshal.SizeOf<FILE_BASIC_INFO>()))
+            return null;
+        if (!GetFileInformationByHandleEx(handle, FileIdInfo, out FILE_ID_INFO id, Marshal.SizeOf<FILE_ID_INFO>()))
+            return null;
+
+        // ChangeTime is a FILETIME (100 ns ticks since 1601) → UTC ticks.
+        var ctimeTicks = DateTime.FromFileTimeUtc(basic.ChangeTime).Ticks;
+        return new FileChangeSignals(
+            CtimeTicks: ctimeTicks,
+            Inode: Convert.ToHexString(id.FileId),                 // 128-bit FileId
+            Dev: id.VolumeSerialNumber.ToString(),
+            SignalSet: SignalSets.Windows);
+    }
+
+    private const int DRIVE_REMOTE = 4;
+    private const int FileBasicInfo = 0;
+    private const int FileIdInfo = 18;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetDriveType(string lpRootPathName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle hFile, int infoClass, out FILE_BASIC_INFO info, int size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle hFile, int infoClass, out FILE_ID_INFO info, int size);
+
+    [StructLayout(LayoutKind.Sequential)]
+    [SuppressMessage("Minor Code Smell", "S101:Types should be named in PascalCase",
+        Justification = "Matches the Win32 FILE_BASIC_INFO struct name; only the field layout is marshaled.")]
+    private struct FILE_BASIC_INFO
+    {
+        public long CreationTime;
+        public long LastAccessTime;
+        public long LastWriteTime;
+        public long ChangeTime;
+        public uint FileAttributes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    [SuppressMessage("Minor Code Smell", "S101:Types should be named in PascalCase",
+        Justification = "Matches the Win32 FILE_ID_INFO struct name; only the field layout is marshaled.")]
+    private struct FILE_ID_INFO
+    {
+        public ulong VolumeSerialNumber;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+        public byte[] FileId;
+    }
+
+
+    // =====================================================================================
     // Linux: statx (kernel-stable layout) with a stat fallback for kernels < 4.11.
     // =====================================================================================
 
@@ -180,6 +242,7 @@ internal static partial class NativeFileSignals
         [FieldOffset(0)] public long Type; // f_type
     }
 
+
     // =====================================================================================
     // macOS (Darwin, arm64 only): stat with the 64-bit-inode struct.
     // =====================================================================================
@@ -223,6 +286,7 @@ internal static partial class NativeFileSignals
         [FieldOffset(72)] public long  CtimeNanos;   // st_ctimespec.tv_nsec
     }
 
+
     // =====================================================================================
     // Shared helpers.
     // =====================================================================================
@@ -239,66 +303,4 @@ internal static partial class NativeFileSignals
     internal static FileChangeSignals? TryGetViaStatxForTest(string fullPath) => TryGetViaStatx(fullPath);
 
     internal static FileChangeSignals? TryGetViaStatForTest(string fullPath) => TryGetViaStat(fullPath);
-
-    // =====================================================================================
-    // Windows via GetFileInformationByHandleEx (unchanged — no Mono dependency).
-    // =====================================================================================
-
-    private static FileChangeSignals? TryGetWindows(string fullPath)
-    {
-        var root = Path.GetPathRoot(Path.GetFullPath(fullPath));
-        if (root is not null && GetDriveType(root) == DRIVE_REMOTE)
-            return null;
-
-        using var handle = File.OpenHandle(fullPath, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
-
-        if (!GetFileInformationByHandleEx(handle, FileBasicInfo, out FILE_BASIC_INFO basic, Marshal.SizeOf<FILE_BASIC_INFO>()))
-            return null;
-        if (!GetFileInformationByHandleEx(handle, FileIdInfo, out FILE_ID_INFO id, Marshal.SizeOf<FILE_ID_INFO>()))
-            return null;
-
-        // ChangeTime is a FILETIME (100 ns ticks since 1601) → UTC ticks.
-        var ctimeTicks = DateTime.FromFileTimeUtc(basic.ChangeTime).Ticks;
-        return new FileChangeSignals(
-            CtimeTicks: ctimeTicks,
-            Inode:      Convert.ToHexString(id.FileId),                 // 128-bit FileId
-            Dev:        id.VolumeSerialNumber.ToString(),
-            SignalSet:  SignalSets.Windows);
-    }
-
-    private const int DRIVE_REMOTE  = 4;
-    private const int FileBasicInfo = 0;
-    private const int FileIdInfo    = 18;
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int GetDriveType(string lpRootPathName);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetFileInformationByHandleEx(SafeFileHandle hFile, int infoClass, out FILE_BASIC_INFO info, int size);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetFileInformationByHandleEx(SafeFileHandle hFile, int infoClass, out FILE_ID_INFO info, int size);
-
-    [StructLayout(LayoutKind.Sequential)]
-    [SuppressMessage("Minor Code Smell", "S101:Types should be named in PascalCase",
-        Justification = "Matches the Win32 FILE_BASIC_INFO struct name; only the field layout is marshaled.")]
-    private struct FILE_BASIC_INFO
-    {
-        public long CreationTime;
-        public long LastAccessTime;
-        public long LastWriteTime;
-        public long ChangeTime;
-        public uint FileAttributes;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    [SuppressMessage("Minor Code Smell", "S101:Types should be named in PascalCase",
-        Justification = "Matches the Win32 FILE_ID_INFO struct name; only the field layout is marshaled.")]
-    private struct FILE_ID_INFO
-    {
-        public ulong VolumeSerialNumber;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
-        public byte[] FileId;
-    }
 }

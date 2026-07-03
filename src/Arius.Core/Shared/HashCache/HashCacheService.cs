@@ -71,15 +71,16 @@ internal sealed class HashCacheService : IHashCacheService
     public void Record(RelativePath path, long size, FileChangeSignals? signals, long mtimeTicks, byte[] sparseFingerprint, ContentHash hash, long now)
     {
         _store.Upsert(new HashCacheEntry(
-            Path: path, Size: size,
-            MtimeTicks: mtimeTicks, // the file's last-write time; diagnostics only, not in the verdict
-            CtimeTicks: signals?.CtimeTicks,
-            Inode:      signals?.Inode,
-            Dev:        signals?.Dev,
-            SignalSet:  signals?.SignalSet ?? SignalSets.None,
+            Path:              path, 
+            Size:              size,
+            MtimeTicks:        mtimeTicks, // the file's last-write time
+            CtimeTicks:        signals?.CtimeTicks,
+            Inode:             signals?.Inode,
+            Dev:               signals?.Dev,
+            SignalSet:         signals?.SignalSet ?? SignalSets.None,
             SparseFingerprint: sparseFingerprint,
-            FpAlgo:     SparseFingerprint.Algo,
-            ContentHash: hash,
+            FpAlgo:            SparseFingerprint.Algo,
+            ContentHash:       hash,
             LastVerifiedTicks: now));
     }
 }

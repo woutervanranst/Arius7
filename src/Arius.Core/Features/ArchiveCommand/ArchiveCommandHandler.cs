@@ -98,19 +98,19 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
-    private readonly IBlobContainerService          _blobs;
-    private readonly IEncryptionService             _encryption;
-    private readonly IChunkIndexService             _chunkIndex;
-    private readonly IChunkStorageService           _chunkStorage;
-    private readonly IHashCacheService              _hashCache;
-    private readonly IFileTreeService              _fileTreeService;
-    private readonly ISnapshotService               _snapshotSvc;
-    private readonly IMediator                      _mediator;
-    private readonly ILogger<ArchiveCommandHandler> _logger;
-    private readonly ILoggerFactory                 _loggerFactory;
-    private readonly string                         _accountName;
-    private readonly string                         _containerName;
-    private readonly FileExclusionFilter             _exclusionFilter;
+    private readonly IBlobContainerService                                                  _blobs;
+    private readonly IEncryptionService                                                     _encryption;
+    private readonly IChunkIndexService                                                     _chunkIndex;
+    private readonly IChunkStorageService                                                   _chunkStorage;
+    private readonly IHashCacheService                                                      _hashCache;
+    private readonly IFileTreeService                                                       _fileTreeService;
+    private readonly ISnapshotService                                                       _snapshotSvc;
+    private readonly IMediator                                                              _mediator;
+    private readonly ILogger<ArchiveCommandHandler>                                         _logger;
+    private readonly ILoggerFactory                                                         _loggerFactory;
+    private readonly string                                                                 _accountName;
+    private readonly string                                                                 _containerName;
+    private readonly FileExclusionFilter                                                    _exclusionFilter;
     private readonly Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> _openStagingSession;
 
     internal ArchiveCommandHandler(
