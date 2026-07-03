@@ -53,7 +53,8 @@ public class ArchivePointerDefaultTests
         var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, writePointers: false);
 
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("--write-pointers");
+        result.ErrorMessage.ShouldNotBeNullOrEmpty();
+        result.ErrorMessage!.ShouldContain("--write-pointers");
         fixture.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();                 // binary untouched
         fixture.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
     }
