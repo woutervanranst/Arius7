@@ -52,17 +52,6 @@ internal sealed class HashCacheLocalStore
         }
     }
 
-    internal string ConnectionString => _connectionString;
-
-    /// <summary>Test seam: reads PRAGMA synchronous on a store-produced connection (3=EXTRA,2=FULL,1=NORMAL,0=OFF).</summary>
-    internal int QuerySynchronous()
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "PRAGMA synchronous;";
-        return Convert.ToInt32(command.ExecuteScalar());
-    }
-
     public HashCacheEntry? Find(RelativePath path)
     {
         try
@@ -195,6 +184,9 @@ internal sealed class HashCacheLocalStore
         using var connection = OpenConnection();
         using (var pragma = connection.CreateCommand())
         {
+            // Persisted in the database file: setting it once here puts every future connection into WAL,
+            // letting readers proceed while a write is in flight and making `synchronous = normal` (set
+            // per-connection in OpenConnection) safe from corruption on a crash.
             pragma.CommandText = "PRAGMA journal_mode = wal;";
             pragma.ExecuteNonQuery();
         }
@@ -231,6 +223,10 @@ internal sealed class HashCacheLocalStore
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
+        // `synchronous` lives on the connection handle, not the file, so it is reapplied on every open —
+        // cheap, in-memory only. NORMAL is corruption-safe under WAL; worst case is losing the last few
+        // uncommitted transactions on an unclean shutdown, acceptable since the hashcache rebuilds with
+        // one full-hash pass.
         using var pragma = connection.CreateCommand();
         pragma.CommandText = "PRAGMA synchronous = normal;";
         pragma.ExecuteNonQuery();

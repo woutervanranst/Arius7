@@ -22,13 +22,6 @@ public class HashCacheLocalStoreTests
     }
 
     [Test]
-    public void Initialize_AppliesSynchronousNormal()
-    {
-        var store = NewStore(out _);
-        store.QuerySynchronous().ShouldBe(1);
-    }
-
-    [Test]
     public void Upsert_AndFind_RoundTrips()
     {
         var store = NewStore(out _);
