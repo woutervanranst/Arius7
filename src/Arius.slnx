@@ -6,6 +6,9 @@
   <Folder Name="/Migration/">
     <Project Path="Arius.Migration/Arius.Migration.csproj" />
   </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Arius.AzureBlob.Tests/Arius.AzureBlob.Tests.csproj" />
     <Project Path="Arius.Api.Tests/Arius.Api.Tests.csproj" />
