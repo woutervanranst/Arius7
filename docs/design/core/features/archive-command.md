@@ -62,7 +62,7 @@ When `opts.FastHash` is `true` (`--fast-hash`), Stage 2 first consults `IHashCac
 
 When `opts.FastHash` is `false` (default), Stage 2 always performs `FullHashAndRecordAsync` — the full read — but **still calls `Record`**, so a subsequent `--fast-hash` run finds a warm cache.
 
-`FullHashAndRecordAsync` captures the [sparse fingerprint](../../../glossary.md#sparse-fingerprint) at zero extra I/O via `SparseSamplingStream` (a forward-only wrapper that copies fingerprint-region bytes as the sequential full-hash read passes them). `TryGetChangeSignals` is called after the hash to capture `(ctime, inode, dev)` for the cache row. Captures `(created, modified)` here and emits `HashedFilePair`.
+`FullHashAndRecordAsync` captures the [sparse fingerprint](../../../glossary.md#sparse-fingerprint) at zero extra I/O via `SparseSamplingStream` (a forward-only wrapper that copies fingerprint-region bytes as the sequential full-hash read passes them). `TryGetChangeSignals` is captured *before* the read (not after) so the stored `ctime` is a conservative lower bound on the bytes hashed: any write during or after the read advances `ctime` past this value, forcing a re-hash on the next run rather than masking a stale hash. Captures `(created, modified)` here and emits `HashedFilePair`.
 
 **3 Dedup + Router** (×1) — drains `hashedChannel` in batches of 256, does **one batched `_chunkIndex.LookupAsync`** per batch (instead of a round-trip per file), then decides per item against the index *and* the in-run `inFlightHashes` set:
 - **hit** (in index or already in-flight this run) → emit only a filetree entry; no upload, no index entry. Increments `filesDeduped`.
