@@ -7,6 +7,13 @@ internal interface IHashCacheService
     void Record(RelativePath path, long size, FileChangeSignals? signals, long mtimeTicks, byte[] sparseFingerprint, ContentHash hash, long now);
 }
 
+internal readonly record struct FastHashResult(ContentHash? Hash, string Reason)
+{
+    public        bool           IsHit                                => Hash is not null;
+    public static FastHashResult Hit(ContentHash hash, string reason) => new(hash, reason);
+    public static FastHashResult Miss(string reason)                  => new(null, reason);
+}
+
 
 /// <summary>
 /// Per-repository fast-hash facade: the verdict ladder over <see cref="HashCacheLocalStore"/>.
