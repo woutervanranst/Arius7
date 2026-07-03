@@ -1,6 +1,6 @@
 namespace Arius.Core.Shared.HashCache;
 
-/// <summary>One persisted hashcache row: the cheap signals + sparse fingerprint + cached content hash for a path.</summary>
+/// <summary>One persisted hashcache row: the cheap change signals + sparse fingerprint + cached content hash for a path.</summary>
 internal readonly record struct HashCacheEntry(
     RelativePath Path,
     long Size,

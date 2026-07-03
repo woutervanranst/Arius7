@@ -1,12 +1,21 @@
 namespace Arius.Core.Shared.HashCache;
 
+/// <summary>
+/// Per-repository fast-hash contract consumed by <c>ArchiveCommandHandler</c>: validates a candidate
+/// file against the live filesystem (never a pointer) and reports a hit only when content is provably
+/// unchanged. A miss means the caller must full-hash.
+/// </summary>
 [SharedWithinAssembly]
 internal interface IHashCacheService
 {
+    /// <summary>Attempts to reuse a previously recorded content hash for <paramref name="path"/> without re-hashing it.</summary>
     FastHashResult TryReuse(RelativeFileSystem fs, RelativePath path, long liveSize, long now);
+
+    /// <summary>Persists the content hash and change signals just captured for <paramref name="path"/>, so a later <see cref="TryReuse"/> call can validate against them.</summary>
     void Record(RelativePath path, long size, FileChangeSignals? signals, long mtimeTicks, byte[] sparseFingerprint, ContentHash hash, long now);
 }
 
+/// <summary>Verdict from <see cref="IHashCacheService.TryReuse"/>: the reused hash on a hit, plus a diagnostic <see cref="Reason"/> for either outcome.</summary>
 internal readonly record struct FastHashResult(ContentHash? Hash, string Reason)
 {
     public        bool           IsHit                                => Hash is not null;
@@ -16,15 +25,14 @@ internal readonly record struct FastHashResult(ContentHash? Hash, string Reason)
 
 
 /// <summary>
-/// Per-repository fast-hash facade: the verdict ladder over <see cref="HashCacheLocalStore"/>.
-/// Validates against the live file (never a pointer); a miss means the caller must full-hash.
+/// <see cref="IHashCacheService"/> implementation: the verdict ladder over <see cref="HashCacheLocalStore"/>.
 /// <para>
 /// The sparse fingerprint has two implementations of the same bytes, one per side:
 /// <code>
-///  Path                 | method                               | how it reads                                                                          | when
-///  ---------------------+--------------------------------------+---------------------------------------------------------------------------------------+---------------------------
-///   Write (.Record())   | SparseSamplingStream.Fingerprint()   | siphoned off the full sequential read that happens anyway for the content hash—free   | after a full hash
-///   Read  (.TryReuse()) | SparseFingerprint.ComputeBySeeking() | seeks directly to the sample offsets, never reads the whole file (-> cheap)           | validating a cached row
+///  Path   | method                                | how it reads                                                                        | when
+///  -------+---------------------------------------+--------------------------------------------------------------------------------------+---------------------------------------------
+///  Write  | SparseSamplingStream.Fingerprint()     | siphoned off the full sequential read that happens anyway for the content hash—free  | computed by the caller after a full hash, then handed to .Record()
+///  Read   | SparseFingerprint.ComputeBySeeking()   | seeks directly to the sample offsets, never reads the whole file (-> cheap)          | called directly by .TryReuse() to validate a cached row
 /// </code>
 /// Load-bearing invariant: both must produce identical bytes for identical content under the same
 /// <see cref="SparseFingerprint.Algo"/> — otherwise an unchanged file never matches and fast-hash

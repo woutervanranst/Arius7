@@ -3,7 +3,8 @@ namespace Arius.Core.Shared.HashCache;
 /// <summary>
 /// Read-only pass-through stream that feeds every byte it serves into a <see cref="SparseFingerprint.Sampler"/>,
 /// so the sparse fingerprint is produced for free while the file is fully hashed for upload.
-/// NOTE: Identical shape as ProgressStream but other action (sampler.Capture i.o. progress.Report)
+/// Same read-wrapping shape as <see cref="Arius.Core.Shared.Streaming.ProgressStream"/>, but captures
+/// fingerprint samples instead of reporting progress.
 /// </summary>
 internal sealed class SparseSamplingStream : Stream
 {

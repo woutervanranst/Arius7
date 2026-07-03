@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Arius.Core.Shared.HashCache;
 
 /// <summary>
-/// SQLite-backed local hashcache: maps a repository-relative path to the cheap change-signals,
+/// SQLite-backed local hashcache: maps a repository-relative path to the cheap change signals,
 /// sparse fingerprint, and cached content hash captured the last time the file was hashed.
-/// A disposable accelerator — losing it costs a full-hash run, never data.
+/// A discardable accelerator — losing it costs a full-hash run, never data.
 /// </summary>
 /// <remarks>
 /// Mirrors <c>ChunkIndexLocalStore</c>'s SQLite scaffolding (WAL + <c>synchronous = normal</c>, a
