@@ -22,11 +22,11 @@ internal sealed class HashCacheLocalStore
 {
     private const string SchemaVersion = "1";
 
-    private readonly RelativePath _databasePath = RelativePath.Root / PathSegment.Parse("cache.sqlite");
-    private readonly LocalDirectory                _root;
-    private readonly ILogger<HashCacheLocalStore>  _logger;
-    private readonly string                        _connectionString;
-    private readonly Lock                          _gate = new();
+    private readonly RelativePath                 _databasePath = RelativePath.Root / PathSegment.Parse("cache.sqlite");
+    private readonly LocalDirectory               _root;
+    private readonly ILogger<HashCacheLocalStore> _logger;
+    private readonly string                       _connectionString;
+    private readonly Lock                         _gate = new();
 
     public HashCacheLocalStore(LocalDirectory root, ILogger<HashCacheLocalStore>? logger = null)
     {

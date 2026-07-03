@@ -23,7 +23,7 @@ internal sealed class ChunkIndexLocalStore
     private readonly LocalDirectory                _rootDirectory;
     private readonly RelativePath                  _databasePath = RelativePath.Root / PathSegment.Parse("cache.sqlite");
     private readonly string                        _connectionString;
-    private readonly Lock                          _localStateGate = new();
+    private readonly Lock                          _gate = new();
 
     // -- LIFECYCLE ------------------------------------------------------------
 
@@ -380,7 +380,7 @@ internal sealed class ChunkIndexLocalStore
     {
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -410,7 +410,7 @@ internal sealed class ChunkIndexLocalStore
 
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -447,7 +447,7 @@ internal sealed class ChunkIndexLocalStore
         {
             foreach (var batch in entries.Chunk(UpsertBatchSize))
             {
-                lock (_localStateGate)
+                lock (_gate)
                 {
                     using var connection = OpenConnection();
                     using var transaction = connection.BeginTransaction();
@@ -485,7 +485,7 @@ internal sealed class ChunkIndexLocalStore
 
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -534,7 +534,7 @@ internal sealed class ChunkIndexLocalStore
 
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -603,7 +603,7 @@ internal sealed class ChunkIndexLocalStore
         try
         {
             var materialized = states.ToArray();
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -637,7 +637,7 @@ internal sealed class ChunkIndexLocalStore
         {
             // Under the same gate as the other remote-backed writers (IngestCoverage / pending-flush), so a
             // cleared cache and a coverage ingest can never interleave into a half-cleared state.
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -670,7 +670,7 @@ internal sealed class ChunkIndexLocalStore
     {
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 ClearConnectionPool();
                 var replacedFiles = 0;
