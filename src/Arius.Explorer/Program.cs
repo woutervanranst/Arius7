@@ -22,8 +22,8 @@ internal static class Program
         var logPath      = Path.Join(logDirectory, $"arius-explorer-{DateTime.Now:yyyyMMdd_HHmmss}.log");
 
         // Global log level: ARIUS_LOG_LEVEL (Serilog level name: Verbose/Debug/Information/Warning/Error/Fatal);
-        // defaults to Debug for the Explorer.
-        var logLevel = Enum.TryParse<Serilog.Events.LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : Serilog.Events.LogEventLevel.Debug;
+        // defaults to Information across all Arius hosts (CLI, API/Web, Explorer).
+        var logLevel = Enum.TryParse<Serilog.Events.LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : Serilog.Events.LogEventLevel.Information;
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Is(logLevel)
             .Enrich.FromLogContext()
