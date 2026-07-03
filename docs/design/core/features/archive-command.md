@@ -58,7 +58,7 @@ flowchart LR
 When `opts.FastHash` is `true` (`--fast-hash`), Stage 2 first consults `IHashCacheService.TryReuse` before opening the file:
 
 - **Hit** (ctime match or size+fingerprint match) → content hash served from the [hashcache](../../../glossary.md#hashcache) with zero or minimal byte reads; `fastHashReused` counter incremented.
-- **Miss** → falls through to `FullHashAndRecordAsync`: streams the file through `IEncryptionService.ComputeHashAsync` (wrapped in `SparseSamplingStream` + `ProgressStream`), then calls `IHashCacheService.Record` to populate the cache.
+- **Miss** → falls through to `FullHashAndRecordAsync`: streams the file through `IEncryptionService.ComputeHashAsync` (wrapped in `SparseSamplingStream` + `ProgressStream`), then calls `IHashCacheService.Record` to populate the cache; `fastHashRehashed` counter incremented.
 
 When `opts.FastHash` is `false` (default), Stage 2 always performs `FullHashAndRecordAsync` — the full read — but **still calls `Record`**, so a subsequent `--fast-hash` run finds a warm cache.
 
@@ -104,7 +104,7 @@ flowchart LR
 - **6d Create snapshot** — if the root hash differs from the latest snapshot, `CreateAsync` writes the manifest and `PromoteToSnapshotVersionAsync` promotes the index; a matching root reuses the existing snapshot and creates nothing (ADR-0002). Emits `SnapshotCreatedEvent`.
 - **6e/6f concurrent** — `pendingPointers` are written in parallel via `PointerFileFormat.WriteAsync` while `pendingDeletes` are deleted (only with `--remove-local`); their paths are disjoint (pointer sidecar vs binary), so they cannot race (`Task.WhenAll`). `pendingPointers` is populated only for the files that need writing, so iterating it unconditionally is correct — it is empty when there is nothing to write.
 
-`Handle` returns an `ArchiveResult` carrying `Success`, the scanned/uploaded/deduped counts, three sizes, and the snapshot root hash + time. The sizes separate the snapshot total from this run's increment: `OriginalSize` is the logical size of the whole snapshot (every file, deduped content counted once per file — not just what this run uploaded), while `IncrementalSize` (original/uncompressed bytes newly uploaded) and `IncrementalStoredSize` (compressed bytes newly written to storage) measure only this run's work. The whole body is wrapped so any fault returns a `Success=false` result with counters collected so far rather than throwing.
+`Handle` returns an `ArchiveResult` carrying `Success`, the scanned/uploaded/deduped counts, the fast-hash `FastHashReused` / `FastHashRehashed` counts (also emitted per file on `FileHashedEvent`), three sizes, and the snapshot root hash + time. The sizes separate the snapshot total from this run's increment: `OriginalSize` is the logical size of the whole snapshot (every file, deduped content counted once per file — not just what this run uploaded), while `IncrementalSize` (original/uncompressed bytes newly uploaded) and `IncrementalStoredSize` (compressed bytes newly written to storage) measure only this run's work. The whole body is wrapped so any fault returns a `Success=false` result with counters collected so far rather than throwing.
 
 ## Key invariants
 

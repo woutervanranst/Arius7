@@ -115,11 +115,11 @@ Stage 2 logs each decision at `Debug` level:
 - `[fast-hash] {Path} -> reused ({Reason})` — hit; `Reason` is `"ctime match"` or `"size+fp match"`.
 - `[fast-hash] {Path} -> full-hash ({Reason})` — miss; `Reason` is `"cache miss"`, `"fp_algo bump"`, `"size …→…"`, or `"fp differs"`.
 
-End-of-run summary at `Information` level (only when `--fast-hash` is active):
-
-```
-[fast-hash] summary: reused {Reused}, rehashed {Rehashed}
-```
+The run's reuse/rehash totals are surfaced **structurally** — per file on `FileHashedEvent`
+and aggregated on `ArchiveResult` (`FastHashReused` / `FastHashRehashed`, see
+[archive-command](../features/archive-command.md)) — and folded into the single, always-on
+`[archive] Done: … fasthash-reused=… fasthash-rehashed=…` summary log (rehashed counts every
+full read, so it is populated even when `--fast-hash` is off).
 
 ## Key invariants
 
