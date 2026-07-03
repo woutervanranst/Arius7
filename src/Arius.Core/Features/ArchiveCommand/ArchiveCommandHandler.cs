@@ -750,11 +750,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             }
 
             // ── Stage 6e: Write pointer files ×N in parallel (concurrent w/ 6f) ──────────────────
-            // pendingPointers is populated only with items that must be written: binary-present files when
-            // writePointers is on, plus legacy (v5) pointer-only upgrades regardless of the flag. So iterate
-            // it unconditionally — it is empty when there is nothing to write.
             _logger.LogInformation("[phase] write-pointers");
-            var writePointersTask = pendingPointers.IsEmpty
+            var writePointersTask = pendingPointers.IsEmpty // pendingPointers is populated only with items that must be written: (1) binary-present files when writePointers is on, plus (2) legacy v5 pointer-only upgrades regardless of the flag --> iterate it unconditionally — it is empty when there is nothing to write.
                 ? Task.CompletedTask
                 : Parallel.ForEachAsync(pendingPointers, cancellationToken, async (item, ct) =>
                 {
@@ -792,10 +789,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             _logger.LogInformation("[phase] complete");
 
-            if (opts.FastHash)
-                _logger.LogInformation("[fast-hash] summary: reused {Reused}, rehashed {Rehashed}", Interlocked.Read(ref fastHashReused), Interlocked.Read(ref fastHashRehashed));
-
-            _logger.LogInformation("[archive] Done: scanned={Scanned} excluded={Excluded} uploaded={Uploaded} deduped={Deduped} uploadedSize={IncrementalSize} storedSize={IncrementalStoredSize} originalSize={OriginalSize} snapshot={Snapshot}", filesScanned, Interlocked.Read(ref entriesExcluded), filesUploaded, filesDeduped, incrementalSize.Bytes().Humanize(), incrementalStoredSize.Bytes().Humanize(), originalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
+            _logger.LogInformation("[archive] Done: scanned={Scanned} excluded={Excluded} fasthash-reused={Reused} fasthash-rehashed={Rehashed} uploaded={Uploaded} deduped={Deduped} uploadedSize={IncrementalSize} storedSize={IncrementalStoredSize} originalSize={OriginalSize} snapshot={Snapshot}", 
+                filesScanned, Interlocked.Read(ref entriesExcluded), Interlocked.Read(ref fastHashReused), Interlocked.Read(ref fastHashRehashed), filesUploaded, filesDeduped, incrementalSize.Bytes().Humanize(), incrementalStoredSize.Bytes().Humanize(), originalSize.Bytes().Humanize(), snapshotTime.ToString("o"));
 
             return new ArchiveResult
             {
