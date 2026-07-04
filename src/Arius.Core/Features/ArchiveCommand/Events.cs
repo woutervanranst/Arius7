@@ -68,7 +68,26 @@ public sealed record EntryExcludedEvent(RelativePath RelativePath, ExclusionReas
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;
 
 /// <summary>A chunk upload completed.</summary>
-public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long StoredSize) : INotification;
+/// <param name="ChunkHash">Content hash of the uploaded chunk.</param>
+/// <param name="StoredSize">Bytes written to storage (compressed + encrypted); the upload denominator.</param>
+/// <param name="OriginalSize">
+/// Uncompressed size in bytes of the chunk's source content. Lets a byte-progress consumer express the
+/// uploaded layer in the same original-dataset units as the scanned/hashed layers (stored size would
+/// otherwise understate progress because of compression). For a large chunk this is the file's original
+/// size; tar bundles carry their own uncompressed total on <see cref="TarBundleSealingEvent"/>.
+/// </param>
+public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long StoredSize, long OriginalSize) : INotification;
+
+/// <summary>
+/// A hashed file's content was found already stored — a hit in the chunk index or the in-run in-flight-hashes
+/// set at the Dedup + Router stage — so it is <i>not</i> re-uploaded and contributes only a filetree entry.
+/// It had a prior <see cref="FileScannedEvent"/> and <see cref="FileHashedEvent"/>; consumers tally it as
+/// deduplicated (bytes not re-uploaded). Contrast <see cref="ChunkUploadedEvent"/>, which fires for content
+/// that <i>is</i> uploaded. The handler folds these into <c>ArchiveResult.FilesDeduped</c>.
+/// </summary>
+/// <param name="ContentHash">Content hash of the deduplicated file (already present in the repository).</param>
+/// <param name="OriginalSize">Uncompressed size in bytes of the file whose content was not re-uploaded.</param>
+public sealed record FileDedupedEvent(ContentHash ContentHash, long OriginalSize) : INotification;
 
 /// <summary>A tar bundle is being sealed.</summary>
 /// <param name="EntryCount">Number of entries in the sealed tar.</param>

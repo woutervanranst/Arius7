@@ -481,6 +481,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 Interlocked.Increment(ref filesDeduped);
                                 var pointerSize = isKnown ? known[hashed.ContentHash].OriginalSize : inFlightHashes[hashed.ContentHash];
                                 Interlocked.Add(ref originalSize, pointerSize);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, pointerSize), cancellationToken);
                                 continue;
                             }
 
@@ -490,7 +491,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
-                                Interlocked.Add(ref originalSize, fs.GetFileSize(hashed.FilePair.RelativePath));
+                                var dedupedSize = fs.GetFileSize(hashed.FilePair.RelativePath);
+                                Interlocked.Add(ref originalSize, dedupedSize);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, dedupedSize), cancellationToken);
                             }
                             else
                             {
@@ -562,7 +565,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         if (!uploadResult.AlreadyExisted)
                             Interlocked.Add(ref incrementalStoredSize, storedSize);
 
-                        await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize), ct);
+                        await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize, originalSize), ct);
 
                         _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, stored={Stored})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), storedSize.Bytes().Humanize());
                     }
