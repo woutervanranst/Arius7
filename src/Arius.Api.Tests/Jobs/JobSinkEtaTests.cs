@@ -24,4 +24,23 @@ public class JobSinkEtaTests
         await Assert.That(snap.EtaSeconds).IsNotNull();
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(8, 10);
     }
+
+    [Test]
+    public async Task Eta_is_never_negative_when_uploaded_exceeds_rebaselined_total()
+    {
+        var t0 = DateTimeOffset.UnixEpoch;
+        var s  = new JobSink();
+
+        // Warm start already past the (small) total — e.g. a re-baseline shrank totalNew
+        // below what's already been uploaded.
+        s.AddUploaded(0, 5_000);
+        s.SetTotals(files: 1, bytes: 1_000);
+        s.SampleForEta(t0);                    // 5_000 @ t0 (warm start)
+
+        s.AddUploaded(0, 2_000);               // now 7_000 uploaded; totalNew (1_000) is dwarfed
+        s.SampleForEta(t0.AddSeconds(1));
+
+        var eta = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;
+        await Assert.That(eta is null || eta >= 0).IsTrue();
+    }
 }

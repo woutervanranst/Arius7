@@ -92,7 +92,7 @@ public sealed class JobSink
         var uploaded = Interlocked.Read(ref _uploadedBytes);
         var totalNew = total > 0 ? Math.Max(0, total - deduped) : 0;
         var rate     = RateBytesPerSec(now);
-        long? eta    = totalNew > 0 && rate > 0 ? (long)Math.Ceiling((totalNew - uploaded) / rate) : null;
+        long? eta    = totalNew > 0 && rate > 0 ? (long)Math.Ceiling(Math.Max(0L, totalNew - uploaded) / rate) : null;
         var pct      = totalNew > 0 ? (int)Math.Clamp(uploaded * 100 / totalNew, 0, 100) : 0;
 
         return new JobSnapshot
