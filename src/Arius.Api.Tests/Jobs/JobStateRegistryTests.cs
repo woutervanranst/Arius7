@@ -32,4 +32,15 @@ public class JobStateRegistryTests
 
         reg.CancelLive("absent").ShouldBeFalse();
     }
+
+    [Test]
+    public async Task CancelLive_returns_false_without_throwing_when_the_cts_was_already_disposed()
+    {
+        var reg  = new JobStateRegistry();
+        var sink = new JobSink();
+        reg.Register("job-1", sink);
+        sink.Cts.Dispose();                      // simulate the job's finally having run
+
+        reg.CancelLive("job-1").ShouldBeFalse(); // no ObjectDisposedException escapes
+    }
 }

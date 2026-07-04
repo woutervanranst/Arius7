@@ -19,7 +19,11 @@ public sealed class JobStateRegistry
     /// a caller uses <c>false</c> to fall back to the parked-job path (mark cancelled in the DB, disarm the poller).</summary>
     public bool CancelLive(string jobId)
     {
-        if (_sinks.TryGetValue(jobId, out var sink)) { sink.Cts.Cancel(); return true; }
+        if (_sinks.TryGetValue(jobId, out var sink))
+        {
+            try { sink.Cts.Cancel(); return true; }
+            catch (ObjectDisposedException) { return false; }   // job finished (its finally disposed the CTS) between lookup and cancel
+        }
         return false;
     }
 }
