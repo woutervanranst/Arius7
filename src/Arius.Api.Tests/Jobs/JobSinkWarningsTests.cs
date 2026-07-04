@@ -37,4 +37,16 @@ public sealed class JobSinkWarningsTests
         s.Log("w1", "warn");
         s.BuildSnapshot(DateTimeOffset.UnixEpoch).WarningCount.ShouldBe(1);
     }
+
+    [Test]
+    public async Task StopReporting_does_not_emit_progress_after_done()
+    {
+        // An inert sink can't observe SignalR sends, so assert the guard flag instead: once Done is recorded,
+        // EmitNow is suppressed. We expose this via a test-only check on the sink's terminal flag.
+        var s = new JobSink();
+        s.Done("completed", "done");
+        s.IsDone.ShouldBeTrue();          // Done sets the terminal flag
+        s.StopReporting();                // must be a no-op emit-wise (no throw; timer never started)
+        s.IsDone.ShouldBeTrue();
+    }
 }

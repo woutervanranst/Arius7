@@ -79,6 +79,44 @@ public sealed class JobsHub(
         return jobId;
     }
 
+    /// <summary>Joins the job's SignalR group and returns its current state — live from the registry if the job is
+    /// running, else reconstructed from persisted state_json for a parked/finished job. Progress deltas follow.</summary>
+    public async Task<JobAttachState?> AttachToJob(string jobId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, jobId);
+
+        var job = database.GetJob(jobId);
+        if (job is null) return null;
+
+        if (jobStates.TryGet(jobId, out var sink))
+            return new JobAttachState(job.Status, sink.BuildSnapshot(DateTimeOffset.UtcNow), Cost: null, sink.WarningCount);
+
+        if (job.StateJson is not null)
+        {
+            try
+            {
+                var persisted = System.Text.Json.JsonSerializer.Deserialize<PersistedJobState>(job.StateJson);
+                if (persisted is not null)
+                    return new JobAttachState(job.Status, persisted.Snapshot, Cost: null, persisted.Warnings.Count);
+            }
+            catch (System.Text.Json.JsonException) { /* fall through to a bare snapshot */ }
+        }
+        return new JobAttachState(job.Status, EmptySnapshot(jobId), Cost: null, WarningCount: 0);
+    }
+
+    /// <summary>Leaves the job's SignalR group (the client stopped watching it).</summary>
+    public Task DetachFromJob(string jobId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, jobId);
+
+    private static JobSnapshot EmptySnapshot(string jobId) => new()
+    {
+        JobId = jobId, Phase = "unknown",
+        TotalBytes = 0, TotalNewBytes = 0, ScannedBytes = 0, HashedBytes = 0, UploadedBytes = 0,
+        DedupedBytes = 0, DedupedFiles = 0, EtaSeconds = null, ThroughputBytesPerSec = 0, Pct = 0,
+        Stats = new Dictionary<string, string>(), WarningCount = 0,
+        RestoreTotalFiles = 0, FilesRestored = 0, RestoreTotalBytes = 0, BytesRestored = 0,
+        ChunksAvailable = 0, ChunksRehydrated = 0, ChunksNeedingRehydration = 0, ChunksPending = 0,
+    };
+
     /// <summary>Requests cancellation of a job. A LIVE job is cancelled cooperatively (its token trips at the next
     /// checkpoint). A PARKED job (awaiting-cost / rehydrating, no live run) releases any waiting approval and is
     /// marked terminal so the poller skips it and the single-active-job guard is freed.</summary>

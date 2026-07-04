@@ -36,7 +36,16 @@ public sealed class JobSink
         Group?.SendAsync("Log", new { text, severity });
     }
     public void Cost(object estimate) => Group?.SendAsync("CostEstimate", estimate);
-    public void Done(string status, string summary) => Group?.SendAsync("Done", new { status, summary });
+
+    private volatile bool _done;
+    /// <summary>Whether a terminal <see cref="Done"/> has been sent — suppresses any late progress emit.</summary>
+    public bool IsDone => _done;
+
+    public void Done(string status, string summary, string? outcomeJson = null)
+    {
+        _done = true;
+        Group?.SendAsync("Done", new { jobId = JobId, status, summary, outcome = outcomeJson });
+    }
 
     // ── Warnings capture (verbatim warn/error lines; count survives ring trimming) ──
     private const int WarningRingCap = 200;
@@ -72,8 +81,11 @@ public sealed class JobSink
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
 
-    /// <summary>Sends the current absolute snapshot immediately (used on transitions and on stop).</summary>
-    public void EmitNow() => Group?.SendAsync("Progress", BuildSnapshot(_now()));
+    /// <summary>Sends the current absolute snapshot immediately (used on transitions and on stop). No-ops once
+    /// <see cref="Done"/> has been sent, so the timer's final <see cref="StopReporting"/> emit can never race a
+    /// terminal message that already reached the client (a reattaching client would otherwise see a
+    /// live-looking Progress after the job ended).</summary>
+    public void EmitNow() { if (!_done) Group?.SendAsync("Progress", BuildSnapshot(_now())); }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
     private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles;

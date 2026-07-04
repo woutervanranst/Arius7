@@ -14,3 +14,7 @@ public sealed record CostEstimateDto(
     double TotalHigh,
     double StandardWaitHours,
     double HighWaitHours);
+
+/// <summary>Snapshot-on-attach payload (design §5): the job's current status, its absolute progress snapshot,
+/// the cost modal if it is awaiting-cost, and the live warning count. One round trip, one client apply-path.</summary>
+public sealed record JobAttachState(string Status, Arius.Api.Jobs.JobSnapshot Snapshot, CostEstimateDto? Cost, int WarningCount);
