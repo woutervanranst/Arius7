@@ -85,10 +85,12 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          # Pre-release tags (e.g. v1.2.3-beta) publish only the version tag, never :latest.
+          # Stable tags also get :latest; pre-release tags (e.g. v1.2.3-beta) get :latest-beta instead.
           tags="woutervanranst/ariusweb:$version"
           if [[ "$version" != *-* ]]; then
             tags="$tags"$'\n'"woutervanranst/ariusweb:latest"
+          else
+            tags="$tags"$'\n'"woutervanranst/ariusweb:latest-beta"
           fi
           {
             echo "tags<<EOF"
