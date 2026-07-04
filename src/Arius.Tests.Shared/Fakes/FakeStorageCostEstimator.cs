@@ -49,6 +49,8 @@ public sealed class FakeStorageCostEstimator : IStorageCostEstimator
             DownloadBytes            = request.DownloadBytes,
             TotalStandard            = restoredGiB,
             TotalHigh                = restoredGiB + rehydrateGiB,
+            StandardWait             = TimeSpan.FromHours(15),
+            HighWait                 = TimeSpan.FromHours(1),
         };
     }
 }
