@@ -3,41 +3,55 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Api.Jobs;
 
+/// <summary>Outcome of a cost-approval wait: approved with a priority, explicitly declined, or timed out
+/// (an abandoned modal → the job parks at <c>awaiting-cost</c> and the repo gate is released; design §8).</summary>
+public sealed record ApprovalResult(bool Approved, RehydratePriority? Priority, bool TimedOut);
+
 /// <summary>
-/// Parks a restore's <c>ConfirmRehydration</c> callback on a <see cref="TaskCompletionSource{T}"/>
-/// until the client answers the cost modal via <c>JobsHub.Approve</c>. <c>null</c> = decline/cancel.
-/// A pending approval is also declined when its owning connection drops (closed tab / lost socket),
-/// so a never-answered modal can't park the restore — and the per-repo write lock — indefinitely.
+/// Parks a restore's <c>ConfirmRehydration</c> callback until the client answers the cost modal
+/// (<c>JobsHub.ApproveRestore</c>/<c>DeclineRestore</c>) or a bounded timeout elapses. Keyed by jobId, so ANY
+/// connection may answer (a closed tab no longer declines — the owner map and <c>CancelForConnection</c> of the
+/// pre-rework design are gone). <c>null</c> = decline.
 /// </summary>
 public sealed class RestoreApprovalRegistry
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<RehydratePriority?>> _pending = new();
-    private readonly ConcurrentDictionary<string, string> _ownerByJob = new();   // jobId → connectionId
 
-    /// <summary>
-    /// Awaited by the restore command; completes when the client approves or declines. Records the
-    /// owning connection here — only restores that actually reach the cost modal are tracked, so the
-    /// owner map can't accumulate entries for restores that never need approval.
-    /// </summary>
-    public Task<RehydratePriority?> Register(string jobId, string connectionId)
+    /// <summary>Awaited by the restore command. Completes when the client approves/declines, or reports a timeout
+    /// after <paramref name="timeout"/> (or if <paramref name="ct"/> is cancelled — treated as a timeout so the
+    /// caller parks rather than crashing). Always removes its own pending entry.</summary>
+    public async Task<ApprovalResult> RegisterAsync(string jobId, TimeSpan timeout, CancellationToken ct)
     {
-        _ownerByJob[jobId] = connectionId;
-        return _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        var tcs = _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously));
+        try
+        {
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeout, ct)).ConfigureAwait(false);
+            if (completed != tcs.Task)
+                return new ApprovalResult(Approved: false, Priority: null, TimedOut: true);
+
+            var priority = await tcs.Task.ConfigureAwait(false);
+            return new ApprovalResult(Approved: priority is not null, Priority: priority, TimedOut: false);
+        }
+        catch (OperationCanceledException)
+        {
+            return new ApprovalResult(Approved: false, Priority: null, TimedOut: true);
+        }
+        finally
+        {
+            _pending.TryRemove(jobId, out _);
+        }
     }
 
-    /// <summary>Completes the pending approval for a job (priority, or null to decline).</summary>
+    /// <summary>Completes the pending approval for a job (priority to proceed, or <c>null</c> to decline). No-op
+    /// if nothing is waiting (e.g. the wait already timed out, or the run is parked after a restart — the caller
+    /// then routes to the re-trigger fallback).</summary>
     public void Resolve(string jobId, RehydratePriority? priority)
     {
-        _ownerByJob.TryRemove(jobId, out _);
-        if (_pending.TryRemove(jobId, out var tcs))
+        if (_pending.TryGetValue(jobId, out var tcs))
             tcs.TrySetResult(priority);
     }
 
-    /// <summary>Declines every pending approval owned by a disconnected connection (treats it as cancel).</summary>
-    public void CancelForConnection(string connectionId)
-    {
-        foreach (var (jobId, owner) in _ownerByJob)
-            if (owner == connectionId)
-                Resolve(jobId, null);
-    }
+    /// <summary>Whether a live wait is currently parked for this job (lets the hub choose in-run resolve vs.
+    /// the restart/late-answer re-trigger fallback).</summary>
+    public bool HasPending(string jobId) => _pending.ContainsKey(jobId);
 }

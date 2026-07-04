@@ -75,16 +75,8 @@ public sealed class JobsHub(
 
         var jobId = Guid.NewGuid().ToString();
         await Groups.AddToGroupAsync(Context.ConnectionId, jobId);
-        // Pass the connection so a cost-approval modal is tied to it — a disconnect declines (cancels) it.
         _ = jobRunner.RunRestoreAsync(repositoryId, jobId, Context.ConnectionId, version, targetPaths ?? [], overwrite, noPointers);
         return jobId;
-    }
-
-    /// <summary>A dropped connection (closed tab / lost socket) declines any restore awaiting its approval.</summary>
-    public override Task OnDisconnectedAsync(Exception? exception)
-    {
-        approvals.CancelForConnection(Context.ConnectionId);
-        return base.OnDisconnectedAsync(exception);
     }
 
     /// <summary>Requests cancellation of a live job (cooperative — takes effect at the next checkpoint). The
@@ -125,8 +117,9 @@ public sealed class JobsHub(
         }
     }
 
-    /// <summary>Answers the restore cost modal: "standard" | "high" to proceed, anything else to decline.</summary>
-    public void Approve(string jobId, string? priority)
+    /// <summary>Answers the restore cost modal for a LIVE, in-run approval wait: "standard"/"high" to proceed,
+    /// anything else to decline. The parked/restart fallback (re-trigger a fresh run) is <see cref="ApproveRestore"/>.</summary>
+    public void ApproveRestore(string jobId, string? priority)
     {
         RehydratePriority? chosen = priority?.ToLowerInvariant() switch
         {
@@ -134,8 +127,26 @@ public sealed class JobsHub(
             "high"     => RehydratePriority.High,
             _          => null,
         };
-        approvals.Resolve(jobId, chosen);
+
+        if (approvals.HasPending(jobId))
+        {
+            approvals.Resolve(jobId, chosen);   // in-run: feeds back into the same RestoreCommand
+            return;
+        }
+        // Parked (timed out / restarted): re-trigger handled in Task 6 (ResumeRestoreAsync). Until then this is
+        // a no-op for a non-live job; Task 6 replaces this branch with the re-trigger call.
     }
+
+    /// <summary>Declines the restore cost modal (equivalent to answering "cancel").</summary>
+    public void DeclineRestore(string jobId)
+    {
+        if (approvals.HasPending(jobId)) { approvals.Resolve(jobId, null); return; }
+        // Parked decline is completed in Task 6 (mark cancelled + disarm).
+    }
+
+    /// <summary>Back-compat alias for the current Angular drawer; delegates to <see cref="ApproveRestore"/>.
+    /// Removed when the drawer is reworked in Plan 3.</summary>
+    public void Approve(string jobId, string? priority) => ApproveRestore(jobId, priority);
 
     /// <summary>
     /// Streams the immediate children (directories + files) of a folder in a snapshot, server → client.

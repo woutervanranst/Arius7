@@ -2,9 +2,11 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Arius.Api.AppData;
 using Arius.Api.Composition;
+using Arius.Api.Contracts;
 using Arius.Api.Hubs;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -175,6 +177,14 @@ public sealed class JobRunner(
             // Empty collection = whole-repository restore; otherwise restore each collected path.
             var targets = targetPaths.Count == 0 ? new string?[] { null } : targetPaths.Cast<string?>().ToArray();
 
+            // Cost-approval outcome for this run (set inside the ConfirmRehydration callback). The happy path is
+            // in-run: the user answers within the window and the chosen priority feeds back into THIS run. On
+            // timeout the job parks at awaiting-cost (gate released); on decline it is cancelled. (Design §8.)
+            RehydratePriority? runApprovedPriority = null;
+            var costDeclined = false;
+            var costTimedOut = false;
+            RestoreCostEstimate? lastEstimate = null;
+
             foreach (var target in targets)
             {
                 sink.Log(target is null ? "Resolving whole repository…" : $"Resolving {target}…", "meta");
@@ -187,21 +197,40 @@ public sealed class JobRunner(
                     NoPointers    = noPointers,
                     ConfirmRehydration = async (estimate, ct) =>
                     {
+                        // Same priority for the whole run — a later target that also needs rehydration must not
+                        // re-prompt (idempotent restore reuses the already-approved answer).
+                        if (runApprovedPriority is not null) return runApprovedPriority;
+
+                        lastEstimate = estimate;
                         sink.Log(estimate.ChunksNeedingRehydration > 0
                             ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
                             : "Estimated restore cost — awaiting approval", "warn");
-                        sink.Cost(new
+                        sink.Cost(new CostEstimateDto(
+                            JobId: jobId,
+                            ChunksAvailable:          estimate.ChunksAvailable + estimate.ChunksAlreadyRehydrated,
+                            ChunksNeedingRehydration: estimate.ChunksNeedingRehydration,
+                            BytesNeedingRehydration:  estimate.BytesNeedingRehydration,
+                            DownloadBytes:            estimate.DownloadBytes,
+                            TotalStandard:            estimate.TotalStandard,
+                            TotalHigh:                estimate.TotalHigh,
+                            StandardWaitHours:        estimate.StandardWait.TotalHours,
+                            HighWaitHours:            estimate.HighWait.TotalHours));
+
+                        database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
+
+                        var answer = await approvals.RegisterAsync(jobId, TimeSpan.FromMinutes(15), ct);
+                        if (answer.Approved)
                         {
-                            chunksAvailable          = estimate.ChunksAvailable + estimate.ChunksAlreadyRehydrated,
-                            chunksNeedingRehydration = estimate.ChunksNeedingRehydration,
-                            bytesNeedingRehydration  = estimate.BytesNeedingRehydration,
-                            downloadBytes            = estimate.DownloadBytes,
-                            totalStandard            = estimate.TotalStandard,
-                            totalHigh                = estimate.TotalHigh,
-                        });
-                        var priority = await approvals.Register(jobId, connectionId);
-                        sink.Log(priority is null ? "Restore declined." : $"Approved · {priority} priority", priority is null ? "warn" : "info");
-                        return priority;
+                            runApprovedPriority = answer.Priority;
+                            database.SetJobStatus(jobId, "running");
+                            sink.Log($"Approved · {answer.Priority} priority", "info");
+                            return answer.Priority;
+                        }
+
+                        costTimedOut = answer.TimedOut;
+                        costDeclined = !answer.TimedOut;
+                        sink.Log(answer.TimedOut ? "Cost approval timed out — parked." : "Restore declined.", "warn");
+                        return null;   // Core exits with ChunksPendingRehydration = the still-needed count
                     },
                 }), sink.Cts.Token);
 
@@ -211,6 +240,24 @@ public sealed class JobRunner(
                     sink.Done("failed", result.ErrorMessage ?? "Restore failed.");
                     return;
                 }
+            }
+
+            if (costDeclined)
+            {
+                database.CompleteJob(jobId, "cancelled", 0, "Restore declined at cost approval.");
+                sink.Done("cancelled", "Restore declined.");
+                return;
+            }
+            if (costTimedOut)
+            {
+                // Parked at awaiting-cost (status already set in the callback). Persist resume params so a later
+                // ApproveRestore can re-trigger with the SAME jobId (fallback path, Task 6). Do NOT send Done —
+                // the job is non-terminal. The finally block releases the repo gate.
+                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(
+                    DateTimeOffset.UtcNow,
+                    ResumeParamsFor(lastEstimate, version, targetPaths, destination, overwrite, noPointers,
+                                    priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow))));
+                return;
             }
 
             database.CompleteJob(jobId, "completed", 100, "Restore complete.");
@@ -239,5 +286,28 @@ public sealed class JobRunner(
             sink.Cts.Dispose();
             gate.Release();
         }
+    }
+
+    private static RestoreResumeState ResumeParamsFor(
+        Arius.Core.Shared.Cost.RestoreCostEstimate? estimate,
+        string? version, IReadOnlyList<string> targetPaths, string destination,
+        bool overwrite, bool noPointers, string priority, bool autoResume, DateTimeOffset startedAt)
+    {
+        var window = priority == "High"
+            ? estimate?.HighWait     ?? TimeSpan.FromHours(1)
+            : estimate?.StandardWait ?? TimeSpan.FromHours(15);
+        return new RestoreResumeState
+        {
+            Version              = version,
+            TargetPaths          = targetPaths,
+            Destination          = destination,
+            Overwrite            = overwrite,
+            NoPointers           = noPointers,
+            Priority             = priority,
+            AutoResume           = autoResume,
+            RehydrationStartedAt = startedAt,
+            LastRunAt            = startedAt,
+            RehydrationWindow    = window,
+        };
     }
 }
