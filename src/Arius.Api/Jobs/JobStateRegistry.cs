@@ -14,4 +14,12 @@ public sealed class JobStateRegistry
     public bool TryGet(string jobId, out JobSink sink) => _sinks.TryGetValue(jobId, out sink!);
     public void Remove(string jobId) => _sinks.TryRemove(jobId, out _);
     public IReadOnlyCollection<string> ActiveJobIds => _sinks.Keys.ToArray();
+
+    /// <summary>Cancels a live job's token if it is currently registered. Returns whether a live job was found —
+    /// a caller uses <c>false</c> to fall back to the parked-job path (mark cancelled in the DB, disarm the poller).</summary>
+    public bool CancelLive(string jobId)
+    {
+        if (_sinks.TryGetValue(jobId, out var sink)) { sink.Cts.Cancel(); return true; }
+        return false;
+    }
 }

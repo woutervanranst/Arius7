@@ -21,6 +21,7 @@ public sealed class JobsHub(
     AppDatabase database,
     JobRunner jobRunner,
     RestoreApprovalRegistry approvals,
+    JobStateRegistry jobStates,
     SecretProtector secrets,
     IBlobServiceFactory blobServiceFactory) : Hub
 {
@@ -84,6 +85,15 @@ public sealed class JobsHub(
     {
         approvals.CancelForConnection(Context.ConnectionId);
         return base.OnDisconnectedAsync(exception);
+    }
+
+    /// <summary>Requests cancellation of a live job (cooperative — takes effect at the next checkpoint). The
+    /// parked-job path (mark cancelled, disarm poller/approval) is handled by the richer wiring added alongside
+    /// approve/decline and auto-resume; for a live job this cancels its token.</summary>
+    public Task CancelJob(string jobId)
+    {
+        jobStates.CancelLive(jobId);
+        return Task.CompletedTask;
     }
 
     /// <summary>

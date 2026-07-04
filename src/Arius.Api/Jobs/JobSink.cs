@@ -18,6 +18,11 @@ public sealed class JobSink
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
     public string? JobId { get; }
 
+    /// <summary>Per-job cancellation source. <see cref="CancelJob"/> cancels this; <see cref="JobRunner"/>
+    /// threads its token into the Core command. A fresh source per sink (including inert sinks, where it is
+    /// simply never observed).</summary>
+    public CancellationTokenSource Cts { get; } = new();
+
     public JobSink() { }                                  // inert sink for read providers
     public JobSink(string jobId, IHubContext<JobsHub> hub) { JobId = jobId; _hub = hub; }
 

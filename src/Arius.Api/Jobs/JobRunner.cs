@@ -71,7 +71,7 @@ public sealed class JobRunner(
         try
         {
             sink.Log($"Connecting to container {repo.Container}…", "meta");
-            provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadWrite, sink, CancellationToken.None);
+            provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadWrite, sink, sink.Cts.Token);
             var mediator = provider.GetRequiredService<IMediator>();
 
             var uploadTier = Enum.TryParse<BlobTier>(tier, ignoreCase: true, out var bt) ? bt : BlobTier.Archive;
@@ -84,7 +84,7 @@ public sealed class JobRunner(
                 RemoveLocal   = removeLocal,
                 WritePointers = writePointers,
                 FastHash      = fastHash,
-            }));
+            }), sink.Cts.Token);
 
             if (result.Success)
             {
@@ -100,6 +100,12 @@ public sealed class JobRunner(
                 sink.Done("failed", result.ErrorMessage ?? "Archive failed.");
             }
         }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("Archive job {JobId} cancelled", jobId);
+            database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
+            sink.Done("cancelled", "Cancelled.");
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Archive job {JobId} failed", jobId);
@@ -114,6 +120,7 @@ public sealed class JobRunner(
             database.ClearStatisticsCache(repositoryId); // …and discard memoized statistics for the old snapshot set
             sink.StopReporting();
             jobStates.Remove(jobId);
+            sink.Cts.Dispose();
             gate.Release();
         }
     }
@@ -162,7 +169,7 @@ public sealed class JobRunner(
             Directory.CreateDirectory(destination);
 
             sink.Log($"Connecting to container {repo.Container}…", "meta");
-            provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadOnly, sink, CancellationToken.None);
+            provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
             var mediator = provider.GetRequiredService<IMediator>();
 
             // Empty collection = whole-repository restore; otherwise restore each collected path.
@@ -196,7 +203,7 @@ public sealed class JobRunner(
                         sink.Log(priority is null ? "Restore declined." : $"Approved · {priority} priority", priority is null ? "warn" : "info");
                         return priority;
                     },
-                }));
+                }), sink.Cts.Token);
 
                 if (!result.Success)
                 {
@@ -211,6 +218,12 @@ public sealed class JobRunner(
             database.SetJobOutcome(jobId, JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp: null)));
             sink.Done("completed", "Restore complete.");
         }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("Restore job {JobId} cancelled", jobId);
+            database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
+            sink.Done("cancelled", "Cancelled.");
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Restore job {JobId} failed", jobId);
@@ -223,6 +236,7 @@ public sealed class JobRunner(
             if (provider is not null) await provider.DisposeAsync();
             sink.StopReporting();
             jobStates.Remove(jobId);
+            sink.Cts.Dispose();
             gate.Release();
         }
     }
