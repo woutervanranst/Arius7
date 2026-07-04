@@ -1036,7 +1036,8 @@ Refactor `RunRestoreAsync` so the provider-create + target loop + pending-summat
     private async Task<(int Pending, bool Success, string? Error)> RunRestoreOnceAsync(
         ServiceProvider provider, JobSink sink, string jobId, string destination, string? version,
         IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers,
-        Func<RestoreCostEstimate, CancellationToken, Task<RehydratePriority?>> confirmRehydration)
+        Func<RestoreCostEstimate, CancellationToken, Task<RehydratePriority?>> confirmRehydration,
+        Func<bool>? shouldStop = null)
     {
         var mediator = provider.GetRequiredService<IMediator>();
         var targets = targetPaths.Count == 0 ? new string?[] { null } : targetPaths.Cast<string?>().ToArray();
@@ -1057,12 +1058,18 @@ Refactor `RunRestoreAsync` so the provider-create + target loop + pending-summat
 
             if (!result.Success) return (totalPending, false, result.ErrorMessage);
             totalPending += result.ChunksPendingRehydration;
+
+            // A decline/timeout on any target aborts the whole job — stop processing further targets so a later
+            // target cannot un-poison the run's terminal status (multi-target correctness; carried from the Task-5
+            // inline break that this extraction replaces). ResumeRestoreAsync passes no predicate (non-prompting,
+            // never declines/times-out).
+            if (shouldStop?.Invoke() == true) break;
         }
         return (totalPending, true, null);
     }
 ```
 
-Then `RunRestoreAsync`'s try-body becomes: create the provider, build the prompting callback (Task 5), call `RunRestoreOnceAsync`, handle decline/timeout (Task 5), then the pending branch (next step).
+Then `RunRestoreAsync`'s try-body becomes: create the provider, build the prompting callback (Task 5), call `RunRestoreOnceAsync(..., shouldStop: () => costDeclined || costTimedOut)` (this replaces the Task-5 inline `break` in the old loop), handle decline/timeout (Task 5's branches, unchanged — they run after `RunRestoreOnceAsync` returns and `return` early before the pending branch), then the pending branch (next step).
 
 - [ ] **Step 4: Branch on pending in `RunRestoreAsync`**
 
