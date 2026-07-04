@@ -101,6 +101,17 @@ public sealed class AppDatabase
         EnsureColumn(connection, table: "jobs", column: "state_json", type: "TEXT");
         EnsureColumn(connection, table: "jobs", column: "outcome",    type: "TEXT");
 
+        // Enforces at most one non-terminal job per repository (running | awaiting-cost | rehydrating);
+        // a new start is rejected rather than queued. Runs on every startup (IF NOT EXISTS), so it also
+        // lands on databases created before this index existed.
+        using var index = connection.CreateCommand();
+        index.CommandText = """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_jobs_one_active_per_repo
+                ON jobs(repo_id)
+                WHERE status IN ('running','awaiting-cost','rehydrating');
+            """;
+        index.ExecuteNonQuery();
+
         EnsureCachePayloadVersion(connection);
     }
 
@@ -410,6 +421,29 @@ public sealed class AppDatabase
         command.Parameters.AddWithValue("$o", outcomeJson);
         command.Parameters.AddWithValue("$id", id);
         command.ExecuteNonQuery();
+    }
+
+    /// <summary>Cooperative check backing the single-active-job-per-repository guard: <c>true</c> while the
+    /// repository has a non-terminal job (running/awaiting-cost/rehydrating). The <c>ux_jobs_one_active_per_repo</c>
+    /// unique index is the race-proof backstop for callers that race past this check.</summary>
+    public bool HasActiveJob(long repositoryId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM jobs WHERE repo_id = $r AND status IN ('running','awaiting-cost','rehydrating') LIMIT 1;";
+        command.Parameters.AddWithValue("$r", repositoryId);
+        return command.ExecuteScalar() is not null;
+    }
+
+    /// <summary>On Api startup, any job left <c>running</c> by a crash/restart is dead (its in-process run is gone).
+    /// Mark it <c>interrupted</c>. (Plan 2 extends this to revert a resumable rehydration job to <c>rehydrating</c>.)</summary>
+    public int ReconcileInterruptedJobs()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE jobs SET status = 'interrupted', finished_at = $t WHERE status = 'running';";
+        command.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToString("O"));
+        return command.ExecuteNonQuery();
     }
 
     // ── Schedules ───────────────────────────────────────────────────────────

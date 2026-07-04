@@ -49,11 +49,15 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
 
             // Due: fire an archive job and roll the next occurrence forward.
             var repo = database.GetRepository(schedule.RepositoryId);
-            if (repo is not null)
+            if (repo is not null && !database.HasActiveJob(schedule.RepositoryId))
             {
                 var jobId = Guid.NewGuid().ToString();
                 logger.LogInformation("Firing scheduled archive for repository {RepositoryId} (job {JobId})", schedule.RepositoryId, jobId);
                 _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, repo.DefaultTier, removeLocal: false, writePointers: false, fastHash: false, trigger: "schedule");
+            }
+            else if (repo is not null)
+            {
+                logger.LogWarning("Skipped scheduled archive for repository {RepositoryId} — a job is already in progress", schedule.RepositoryId);
             }
             database.SetScheduleNextRun(schedule.Id, expression.GetNextOccurrence(now, TimeZoneInfo.Utc));
         }

@@ -32,7 +32,7 @@ public sealed record JobRecord(
     long            RepositoryId,
     string          Kind,        // archive | restore
     string          Trigger,     // one-off | schedule
-    string          Status,      // queued | running | rehydrating | completed | failed | cancelled
+    string          Status,      // non-terminal: running | awaiting-cost | rehydrating — terminal: completed | failed | cancelled | interrupted
     double          Pct,
     string?         Detail,
     DateTimeOffset? StartedAt,

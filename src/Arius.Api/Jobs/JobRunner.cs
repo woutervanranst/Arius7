@@ -9,6 +9,7 @@ using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Data.Sqlite;
 
 namespace Arius.Api.Jobs;
 
@@ -35,7 +36,10 @@ public sealed class JobRunner(
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
-        database.InsertJob(jobId, repositoryId, "archive", trigger, "running");
+        // Race-proof backstop for the cooperative HasActiveJob check (JobsHub/SchedulerService): the
+        // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
+        try { database.InsertJob(jobId, repositoryId, "archive", trigger, "running"); }
+        catch (SqliteException) { sink.Done("failed", "A job is already running for this repository."); return; }
         if (string.IsNullOrWhiteSpace(repo.LocalPath))
         {
             sink.Log("No local folder configured for this repository — set one in Properties.", "warn");
@@ -106,7 +110,10 @@ public sealed class JobRunner(
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
-        database.InsertJob(jobId, repositoryId, "restore", "one-off", "running");
+        // Race-proof backstop for the cooperative HasActiveJob check (JobsHub/SchedulerService): the
+        // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
+        try { database.InsertJob(jobId, repositoryId, "restore", "one-off", "running"); }
+        catch (SqliteException) { sink.Done("failed", "A job is already running for this repository."); return; }
 
         var destination = string.IsNullOrWhiteSpace(repo.LocalPath)
             ? Path.Combine(Path.GetTempPath(), "arius-restore", repositoryId.ToString())

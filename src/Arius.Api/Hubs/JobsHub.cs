@@ -57,6 +57,9 @@ public sealed class JobsHub(
     /// <summary>Starts an archive; the caller's connection joins the job group before events flow.</summary>
     public async Task<string> StartArchive(long repositoryId, string tier, bool removeLocal, bool writePointers, bool fastHash)
     {
+        if (database.HasActiveJob(repositoryId))
+            throw new HubException("A job is already running for this repository.");
+
         var jobId = Guid.NewGuid().ToString();
         await Groups.AddToGroupAsync(Context.ConnectionId, jobId);
         _ = jobRunner.RunArchiveAsync(repositoryId, jobId, tier, removeLocal, writePointers, fastHash);
@@ -66,6 +69,9 @@ public sealed class JobsHub(
     /// <summary>Starts a restore (empty targetPaths = whole repository).</summary>
     public async Task<string> StartRestore(long repositoryId, string? version, string[]? targetPaths, bool overwrite, bool noPointers)
     {
+        if (database.HasActiveJob(repositoryId))
+            throw new HubException("A job is already running for this repository.");
+
         var jobId = Guid.NewGuid().ToString();
         await Groups.AddToGroupAsync(Context.ConnectionId, jobId);
         // Pass the connection so a cost-approval modal is tied to it — a disconnect declines (cancels) it.

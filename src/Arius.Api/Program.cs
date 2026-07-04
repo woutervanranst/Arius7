@@ -53,6 +53,10 @@ try
 
     var app = builder.Build();
 
+    // Any job left "running" by a crash/restart is dead (its in-process run is gone) — mark it
+    // interrupted so it doesn't wedge the single-active-job-per-repo guard forever.
+    app.Services.GetRequiredService<AppDatabase>().ReconcileInterruptedJobs();
+
     app.UseCors("web");
 
     // Serve the built Angular SPA from wwwroot in production (no-op in dev, where ng serve is used).
