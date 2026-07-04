@@ -90,7 +90,7 @@ public sealed class JobRunner(
             {
                 var summary = $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.IncrementalStoredSize)} stored ({JobFormat.Bytes(result.IncrementalSize)} uncompressed) · {JobFormat.Bytes(result.OriginalSize)} original";
                 database.CompleteJob(jobId, "completed", 100, summary);
-                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildSnapshot(DateTimeOffset.UtcNow)));
+                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
                 database.SetJobOutcome(jobId, JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, result.SnapshotTime.ToString("O"))));
                 sink.Done("completed", summary);
             }
@@ -207,7 +207,7 @@ public sealed class JobRunner(
             }
 
             database.CompleteJob(jobId, "completed", 100, "Restore complete.");
-            database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildSnapshot(DateTimeOffset.UtcNow)));
+            database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
             database.SetJobOutcome(jobId, JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp: null)));
             sink.Done("completed", "Restore complete.");
         }

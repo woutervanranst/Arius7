@@ -24,9 +24,36 @@ public sealed class JobSink
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
 
     // ── Messages ────────────────────────────────────────────────────────────
-    public void Log(string text, string severity = "meta") => Group?.SendAsync("Log", new { text, severity });
+    public void Log(string text, string severity = "meta")
+    {
+        if (severity is "warn" or "error")
+            CaptureWarning(text);
+        Group?.SendAsync("Log", new { text, severity });
+    }
     public void Cost(object estimate) => Group?.SendAsync("CostEstimate", estimate);
     public void Done(string status, string summary) => Group?.SendAsync("Done", new { status, summary });
+
+    // ── Warnings capture (verbatim warn/error lines; count survives ring trimming) ──
+    private const int WarningRingCap = 200;
+    private readonly LinkedList<string> _warnings = new();
+    private readonly object _warnLock = new();
+    private int _warningCount;
+
+    private void CaptureWarning(string text)
+    {
+        lock (_warnLock)
+        {
+            _warningCount++;
+            _warnings.AddLast(text);
+            if (_warnings.Count > WarningRingCap) _warnings.RemoveFirst();
+        }
+    }
+
+    /// <summary>Total warn/error lines seen (accurate even after the ring trims older lines).</summary>
+    public int WarningCount { get { lock (_warnLock) return _warningCount; } }
+
+    /// <summary>The last ≤200 warn/error lines, oldest→newest.</summary>
+    public IReadOnlyList<string> Warnings { get { lock (_warnLock) return _warnings.ToArray(); } }
 
     // ── Coalesced progress reporting ─────────────────────────────────────────
     private Timer? _timer;
@@ -136,6 +163,7 @@ public sealed class JobSink
             UploadedBytes = uploaded,
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
             EtaSeconds = eta, ThroughputBytesPerSec = rate, Pct = pct,
+            WarningCount = WarningCount,
             Stats = new Dictionary<string, string>   // legacy grid — drops in Plan 3
             {
                 ["Uploaded"] = JobFormat.Bytes(uploaded),
@@ -164,5 +192,14 @@ public sealed class JobSink
         DownloadedBytes = Interlocked.Read(ref _bytesRestored),
         SnapshotTimestamp = snapshotTimestamp,
         DurationSeconds = (long)(now - startedAt).TotalSeconds,
+    };
+
+    /// <summary>Assembles the <see cref="PersistedJobState"/> written to <c>state_json</c> — current snapshot,
+    /// warnings tail, and (restore) the resume params. Archive jobs pass <paramref name="resume"/> = null.</summary>
+    public PersistedJobState BuildPersistedState(DateTimeOffset now, RestoreResumeState? resume) => new()
+    {
+        Snapshot = BuildSnapshot(now),
+        Warnings = Warnings,
+        Resume   = resume,
     };
 }

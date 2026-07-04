@@ -16,6 +16,7 @@ public sealed record JobSnapshot
     public required long?   EtaSeconds     { get; init; }   // null until TotalNewBytes known
     public required double  ThroughputBytesPerSec { get; init; }
     public required int     Pct            { get; init; }   // byte-weighted; legacy consumers read this
+    public required int     WarningCount   { get; init; }
     public required IReadOnlyDictionary<string, string> Stats { get; init; }   // legacy drawer stat grid
 
     // ── Restore progress (zero on archive jobs) ─────────────────────────────
