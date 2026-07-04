@@ -43,6 +43,12 @@ that touches an encrypted repository — there is no way to recover data if it i
 missing or wrong, the command stops with a clear error telling you to provide `--passphrase` / `-p`,
 rather than a cryptic decompression failure.
 
+**Logging — `ARIUS_LOG_LEVEL`.** A single environment variable controls log verbosity across every
+Arius host (CLI, API/Web, Explorer), using Serilog's level names (case-insensitive): `Verbose`,
+`Debug`, `Information` (default), `Warning`, `Error`, `Fatal`. The CLI writes to its per-run audit log
+file; the API/Web container logs to stdout (`docker logs`). Set `Debug` to see per-file `[fast-hash]`
+decisions (`-> reused (ctime match)` vs `(size+fp match)`).
+
 > **One account + container = one repository.** All local state, the deduplication index, and
 > the audit logs are keyed on the `account`/`container` pair. See [Where state lives](#where-state-lives).
 
@@ -59,7 +65,7 @@ if nothing changed since the last run, no blobs are written and no new snapshot 
 
 ```
 arius archive <path> -a <account> -c <container> [-k <key>] [-p <passphrase>]
-                     [-t|--tier <Hot|Cool|Cold|Archive>] [--remove-local] [--no-pointers]
+                     [-t|--tier <Hot|Cool|Cold|Archive>] [--remove-local] [--write-pointers] [--fast-hash]
 ```
 
 ### Options
@@ -68,12 +74,14 @@ arius archive <path> -a <account> -c <container> [-k <key>] [-p <passphrase>]
 |-------------------|------|---------|----------|---------|
 | `path` | path | — | **Yes** | Local directory to archive. |
 | `--tier`, `-t` | `Hot` \| `Cool` \| `Cold` \| `Archive` | `Archive` | No | Storage tier the uploaded *chunks* land on. `Archive` is cheapest to store but must be *rehydrated* (slow, paid) before a restore. |
-| `--remove-local` | flag | off | No | Delete the local *binary files* after the snapshot is committed, leaving only the small `.pointer.arius` sidecars behind. |
-| `--no-pointers` | flag | off | No | Do not create or update `.pointer.arius` sidecar files. |
+| `--remove-local` | flag | off | No | Delete the local *binary files* after the snapshot is committed, leaving only the `.pointer.arius` sidecars behind. Requires `--write-pointers`. |
+| `--write-pointers` | flag | off | No | Write (or update) `.pointer.arius` sidecar files for archived binaries. Off by default — pointers are opt-in. |
+| `--fast-hash` | flag | off | No | Skip re-reading files the local [hashcache](../design/core/shared/hashcache.md) verifies as unchanged since the last run. A heuristic that trades a small mis-detection risk for speed on large, stable trees; the default re-reads every file. |
 | *(plus the four [global options](#global-options))* | | | | |
 
-`--remove-local` and `--no-pointers` cannot be combined (you would be left with no local trace
-of the file at all) — the command rejects the combination with an error.
+`--remove-local` requires `--write-pointers`: removing the binary while writing no pointer would
+leave no local trace of the file at all, so the command rejects `--remove-local` on its own with an
+error. (Legacy `.pointer.arius` files are still upgraded in place regardless of the flag.)
 
 Fixed pipeline behavior (not configurable from the CLI): files **≥ 1 MB** upload individually as
 *large chunks*; files **< 1 MB** are bundled into *tar chunks* with a 64 MB target bundle size.
@@ -94,7 +102,7 @@ arius archive ./photos \
   -a mystorageaccount \
   -c photos-backup \
   -t Archive \
-  --remove-local
+  --remove-local --write-pointers
 ```
 
 On success you get a one-line summary, e.g.:
@@ -405,6 +413,7 @@ Arius keeps a per-repository cache and audit logs on your machine under your hom
 
 ## See also
 
+- [Hosts overview](./hosts.md) — how the CLI compares to the Web and Explorer hosts, and which to use when.
 - [Root README](https://github.com/woutervanranst/Arius7) — install, blob layout, disaster recovery.
 - [design/hosts/cli.md](../design/hosts/cli.md) — how the CLI host drives Arius.Core and renders progress (internals).
 - [glossary](../glossary.md) — definitions for *snapshot*, *chunk*, *chunk index*, *storage tier hint*, and more.

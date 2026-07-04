@@ -8,12 +8,14 @@ using Arius.Core.Features.SnapshotDiffQuery;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Features.StorageAccountInfoQuery;
+using Arius.Core.Shared;
 using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.ChunkStorage;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.HashCache;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -70,7 +72,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<FileExclusionFilter>(sp =>
             new FileExclusionFilter(sp.GetRequiredService<IOptions<FileExclusionOptions>>().Value));
 
-        // Encryption
         IEncryptionService encryption = passphrase is not null
             ? new PassphraseEncryptionService(passphrase)
             : new PlaintextPassthroughService();
@@ -78,7 +79,6 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<ICompressionService>(new ZstdCompressionService());
 
-        // Snapshot service
         services.AddSingleton<ISnapshotService>(sp =>
             new SnapshotService(
                 sp.GetRequiredService<IBlobContainerService>(),
@@ -87,7 +87,6 @@ public static class ServiceCollectionExtensions
                 accountName,
                 containerName));
 
-        // Chunk index
         services.AddSingleton<IChunkIndexService>(sp =>
             new ChunkIndexService(
                 sp.GetRequiredService<IBlobContainerService>(),
@@ -104,7 +103,12 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<ICompressionService>()));
 
-        // File tree service
+        services.AddSingleton<IHashCacheService>(sp =>
+            new HashCacheService(
+                new HashCacheLocalStore(
+                    RepositoryLocalStatePaths.GetHashCacheRoot(accountName, containerName),
+                    sp.GetRequiredService<ILogger<HashCacheLocalStore>>())));
+
         services.AddSingleton<IFileTreeService>(sp =>
             new FileTreeService(
                 sp.GetRequiredService<IBlobContainerService>(),
@@ -128,6 +132,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IEncryptionService>(),
                 sp.GetRequiredService<IChunkIndexService>(),
                 sp.GetRequiredService<IChunkStorageService>(),
+                sp.GetRequiredService<IHashCacheService>(),
                 sp.GetRequiredService<IFileTreeService>(),
                 sp.GetRequiredService<ISnapshotService>(),
                 sp.GetRequiredService<IMediator>(),

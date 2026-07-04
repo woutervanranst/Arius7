@@ -28,11 +28,15 @@ internal static class ArchiveVerb
         };
         var removeLocalOption = new Option<bool>("--remove-local")
         {
-            Description = "Delete local binaries after snapshot",
+            Description = "Delete local binaries after snapshot (requires --write-pointers)",
         };
-        var noPointersOption = new Option<bool>("--no-pointers")
+        var writePointersOption = new Option<bool>("--write-pointers")
         {
-            Description = "Skip pointer file creation",
+            Description = "Write .pointer.arius sidecars (default: off)",
+        };
+        var fastHashOption = new Option<bool>("--fast-hash")
+        {
+            Description = "Skip re-reading files the local hashcache verifies as unchanged",
         };
 
         var cmd = new Command("archive", "Archive a local directory to Azure Blob Storage");
@@ -43,7 +47,8 @@ internal static class ArchiveVerb
         cmd.Arguments.Add(pathArgument);
         cmd.Options.Add(tierOption);
         cmd.Options.Add(removeLocalOption);
-        cmd.Options.Add(noPointersOption);
+        cmd.Options.Add(writePointersOption);
+        cmd.Options.Add(fastHashOption);
 
         cmd.SetAction(async (parseResult, ct) =>
         {
@@ -53,13 +58,13 @@ internal static class ArchiveVerb
             var container   = parseResult.GetValue(containerOption)!;
             var path        = parseResult.GetValue(pathArgument)!;
             var tier        = parseResult.GetValue(tierOption);
-            var removeLocal = parseResult.GetValue(removeLocalOption);
-            var noPointers  = parseResult.GetValue(noPointersOption);
+            var removeLocal   = parseResult.GetValue(removeLocalOption);
+            var writePointers = parseResult.GetValue(writePointersOption);
+            var fastHash      = parseResult.GetValue(fastHashOption);
 
-            // Reject --remove-local + --no-pointers
-            if (removeLocal && noPointers)
+            if (removeLocal && !writePointers)
             {
-                AnsiConsole.MarkupLine("[red]Error:[/] --remove-local cannot be combined with --no-pointers");
+                AnsiConsole.MarkupLine("[red]Error:[/] --remove-local requires --write-pointers — removing the binary without writing a pointer would leave no local record of the file.");
                 return 1;
             }
 
@@ -122,7 +127,8 @@ internal static class ArchiveVerb
                     RootDirectory      = Path.GetFullPath(path),
                     UploadTier         = tier,
                     RemoveLocal        = removeLocal,
-                    NoPointers         = noPointers,
+                    WritePointers      = writePointers,
+                    FastHash           = fastHash,
                     SmallFileThreshold = 1024 * 1024L,
                     TarTargetSize      = 64L * 1024 * 1024,
 

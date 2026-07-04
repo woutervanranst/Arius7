@@ -106,6 +106,9 @@ internal sealed class PipelineFixture : IAsyncDisposable
         {
             RootDirectory = LocalDirectory.ToString(),
             UploadTier    = BlobTier.Hot,
+            // Preserve the pre-flip default for existing callers: many roundtrip tests assert a
+            // .pointer.arius sidecar exists. Tests that exercise the new opt-in default pass explicit opts.
+            WritePointers = true,
         };
         return CreateArchiveHandler(exclusions).Handle(new ArchiveCommand(opts), ct).AsTask();
     }

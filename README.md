@@ -69,8 +69,17 @@ arius archive ./photos \
   -a mystorageaccount \
   -c photos-backup \
   -t Archive \
+  --write-pointers \
   --remove-local
 ```
+
+For large archives that change rarely, add `--fast-hash` to skip re-reading files whose content the local cache confirms as unchanged. The first run (or any run without `--fast-hash`) warms the cache; subsequent runs with `--fast-hash` only re-read changed files.
+
+```bash
+arius archive ./photos -a mystorageaccount -c photos-backup --fast-hash
+```
+
+Pointer sidecar files (`.pointer.arius`) are **off by default**. Pass `--write-pointers` to create them alongside the originals. `--remove-local` requires `--write-pointers` (you cannot remove the binary without leaving a local pointer record).
 
 ### Restore
 

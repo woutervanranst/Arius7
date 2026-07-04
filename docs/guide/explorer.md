@@ -21,18 +21,15 @@ just about *using* it.
 
 ## What Explorer can and cannot do
 
-| | Explorer (this app) | [CLI](https://github.com/woutervanranst/Arius7) | [Web](./web-ui.md) |
-|---|---|---|---|
-| Browse a repository (folders + files) | ✅ | `arius ls` | ✅ |
-| See per-file state (on disk / in cloud / archived) | ✅ (status dots) | partial | ✅ |
-| Restore / download files to disk | ✅ (select + Download) | `arius restore` | ✅ |
-| **Archive (back up) new files** | ❌ | `arius archive` | ❌ |
-| Pick an older snapshot / version | ❌ (latest only) | `arius ls -v` / `arius restore` | partial |
-| Repair the chunk index | ❌ | `arius repair-index` | — |
-| Runs on | Windows only | Windows / Linux / macOS | any (browser) |
+Explorer is **browse + restore only**: it always opens the container **read-only** and always
+shows the **latest** state of the repository. You cannot archive from it, pick an older snapshot,
+compare snapshots, or repair the chunk index. For how that lines up against the CLI and Web hosts,
+see the [hosts overview](./hosts.md#feature-comparison).
 
-Explorer always opens the container **read-only** and always browses the **latest** state of
-the repository. If you need an older version of a file, or you need to archive, use the CLI.
+If you need an older version of a file, list and compare snapshots with `arius snapshot list` /
+`arius snapshot diff` and restore one with `arius restore -v` from the
+[CLI](https://github.com/woutervanranst/Arius7), or time-travel across snapshots in the
+[Web UI](./web-ui.md). To archive, use the CLI or the Web UI.
 
 ---
 
@@ -191,7 +188,8 @@ the current folder reloads so the status dots update to reflect what is now on d
 ### Restore limitations
 
 - **Latest version only.** Explorer always restores the file as it is in the latest state of
-  the repository. To restore an older version of a file, use `arius restore` from the
+  the repository. To inspect or restore an older version, list snapshots with `arius snapshot
+  list`, compare them with `arius snapshot diff`, and restore one with `arius restore -v` from the
   [CLI](https://github.com/woutervanranst/Arius7).
 - **One file at a time, sequentially.** Explorer downloads selected files one after another.
   Restoring a large selection works but is not batched; for very large bulk restores the CLI
@@ -227,6 +225,7 @@ repository fails to load, re-check your credentials via **File ▸ Open…**.
 
 ## See also
 
+- [Hosts overview](./hosts.md) — how Explorer, CLI, and Web compare, and which to use when.
 - [Arius CLI](https://github.com/woutervanranst/Arius7) — archiving, restoring older versions, listing, repairing the index.
 - [Arius Web](./web-ui.md) — the browser-based host (cross-platform).
 - [Glossary](../glossary.md) — snapshot, pointer file, chunk, storage tier, and other terms.

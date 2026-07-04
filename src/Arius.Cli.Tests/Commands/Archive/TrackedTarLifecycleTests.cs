@@ -27,9 +27,9 @@ public class TrackedTarLifecycleTests
         var hashingH = new FileHashingHandler(state);
         var hashedH  = new FileHashedHandler(state);
         await hashingH.Handle(new FileHashingEvent(RelativePath.Parse("f1.txt"), 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(RelativePath.Parse("f1.txt"), FakeContentHash('a')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(RelativePath.Parse("f1.txt"), FakeContentHash('a'), false, false), CancellationToken.None);
         await hashingH.Handle(new FileHashingEvent(RelativePath.Parse("f2.txt"), 200), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(RelativePath.Parse("f2.txt"), FakeContentHash('b')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(RelativePath.Parse("f2.txt"), FakeContentHash('b'), false, false), CancellationToken.None);
 
         await entryH.Handle(new TarEntryAddedEvent(FakeContentHash('a'), 1, 100), CancellationToken.None);
         await entryH.Handle(new TarEntryAddedEvent(FakeContentHash('b'), 2, 300), CancellationToken.None);

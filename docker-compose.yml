@@ -23,3 +23,6 @@ services:
       - HOME=/data
       - Arius__AppDbPath=/data/arius-app.sqlite
       - Arius__DataProtectionKeysPath=/data/keys
+      # Log verbosity (Serilog levels): Verbose|Debug|Information|Warning|Error|Fatal (default Information).
+      # Set Debug to see per-file [fast-hash] decisions in `docker logs arius`.
+      - ARIUS_LOG_LEVEL=Information

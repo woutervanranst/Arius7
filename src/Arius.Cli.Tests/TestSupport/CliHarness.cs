@@ -53,16 +53,18 @@ internal sealed class CliHarness
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
             .Returns(new ArchiveResult
             {
-                Success = true,
-                FilesScanned = 0,
-                EntriesExcluded = 0,
-                FilesUploaded = 0,
-                FilesDeduped = 0,
-                OriginalSize = 0,
-                IncrementalSize = 0,
+                Success               = true,
+                FilesScanned          = 0,
+                EntriesExcluded       = 0,
+                FastHashReused        = 0,
+                FastHashRehashed      = 0,
+                FilesUploaded         = 0,
+                FilesDeduped          = 0,
+                OriginalSize          = 0,
+                IncrementalSize       = 0,
                 IncrementalStoredSize = 0,
-                RootHash = null,
-                SnapshotTime = DateTimeOffset.UtcNow,
+                RootHash              = null,
+                SnapshotTime          = DateTimeOffset.UtcNow,
             });
 
         restoreHandler

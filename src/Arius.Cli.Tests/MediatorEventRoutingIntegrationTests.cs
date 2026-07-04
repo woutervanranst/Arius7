@@ -50,7 +50,7 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new FileScannedEvent(RelativePath.Parse("a.bin"), 100));
         await mediator.Publish(new ScanCompleteEvent(1, 100));
         await mediator.Publish(new FileHashingEvent(RelativePath.Parse("a.bin"), 100));
-        await mediator.Publish(new FileHashedEvent(RelativePath.Parse("a.bin"), FakeContentHash('a')));
+        await mediator.Publish(new FileHashedEvent(RelativePath.Parse("a.bin"), FakeContentHash('a'), false, false));
 
         // A file that becomes unreadable mid-pipeline is tracked, then skipped -> row removed.
         // (Archive FileSkippedEvent must be fully qualified: RestoreCommand also defines one.)
@@ -66,7 +66,7 @@ public class MediatorEventRoutingIntegrationTests
 
         // Large file -> single-chunk upload path: chunk hash bridges back to the content hash.
         await mediator.Publish(new FileHashingEvent(RelativePath.Parse("large.bin"), 200));
-        await mediator.Publish(new FileHashedEvent(RelativePath.Parse("large.bin"), FakeContentHash('d')));
+        await mediator.Publish(new FileHashedEvent(RelativePath.Parse("large.bin"), FakeContentHash('d'), false, false));
         await mediator.Publish(new ChunkUploadingEvent(FakeChunkHash('d'), 200));
         await mediator.Publish(new ChunkUploadedEvent(FakeChunkHash('d'), 150));
 

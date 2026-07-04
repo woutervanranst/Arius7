@@ -9,6 +9,7 @@ using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.FileTree;
+using Arius.Core.Shared.HashCache;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Arius.Tests.Shared.Fakes;
@@ -229,12 +230,16 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// <paramref name="exclusions"/> defaults to <c>null</c> (exclude nothing); pass options to test exclusion behavior.
     /// </summary>
     public ArchiveCommandHandler CreateArchiveHandler(FileExclusionOptions? exclusions = null)
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, CreateHashCacheService(), FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
             exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions));
 
     internal ArchiveCommandHandler CreateArchiveHandler(Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>> openStagingSession, FileExclusionOptions? exclusions = null)
-        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
+        => new(BlobContainer, Encryption, CreateChunkIndexService(), ChunkStorage, CreateHashCacheService(), FileTreeService, Snapshot, Mediator, _archiveLogger, NullLoggerFactory.Instance, AccountName, ContainerName,
             exclusions is null ? FileExclusionFilter.None : new FileExclusionFilter(exclusions), openStagingSession);
+
+    /// <summary>Creates a real per-repository hashcache service backed by the repository's local hashcache root.</summary>
+    internal IHashCacheService CreateHashCacheService()
+        => new HashCacheService(new HashCacheLocalStore(RepositoryLocalStatePaths.GetHashCacheRoot(AccountName, ContainerName)));
 
     /// <summary>Creates a restore handler wired to this fixture's shared repository services.</summary>
     public RestoreCommandHandler CreateRestoreHandler()
@@ -262,7 +267,14 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
     /// </summary>
     public static void DeleteLocalCacheDirectory(string accountName, string containerName)
     {
-        ClearChunkIndexPool(accountName, containerName);
+        // The repository root holds two pooled SQLite stores (the chunk-index and the hashcache, each a
+        // cache.sqlite under its own subdirectory). A pooled connection keeps the database file handle open,
+        // which blocks the recursive delete on Windows ("the process cannot access the file 'cache.sqlite'
+        // because it is being used by another process"). Clear each store's pool *scoped* to this repository
+        // — never ClearAllPools(), which would also yank pooled connections out from under other
+        // repositories' tests running in parallel.
+        ClearCachePool(RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName));
+        ClearCachePool(RepositoryLocalStatePaths.GetHashCacheRoot(accountName, containerName));
         var repositoryRoot = RepositoryLocalStatePaths.GetRepositoryRoot(accountName, containerName).ToString();
         if (Directory.Exists(repositoryRoot))
             Directory.Delete(repositoryRoot, true);
@@ -287,11 +299,17 @@ internal sealed class RepositoryTestFixture : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private static void ClearChunkIndexPool(string accountName, string containerName)
+    /// <summary>
+    /// Clears the pooled SQLite connections for the <c>cache.sqlite</c> store under <paramref name="cacheRoot"/>.
+    /// The pool is keyed by connection string, so this mirrors the shape both stores build
+    /// (<see cref="ChunkIndexLocalStore"/> and <see cref="HashCacheLocalStore"/>) and only releases handles
+    /// for this specific store — leaving every other repository's pool untouched.
+    /// </summary>
+    private static void ClearCachePool(LocalDirectory cacheRoot)
     {
         using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
-            DataSource = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(accountName, containerName).Resolve(RelativePath.Parse("cache.sqlite")),
+            DataSource = cacheRoot.Resolve(RelativePath.Parse("cache.sqlite")),
             Mode       = SqliteOpenMode.ReadWriteCreate,
             Pooling    = true,
         }.ToString());

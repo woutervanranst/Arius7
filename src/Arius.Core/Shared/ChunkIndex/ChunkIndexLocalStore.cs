@@ -23,7 +23,7 @@ internal sealed class ChunkIndexLocalStore
     private readonly LocalDirectory                _rootDirectory;
     private readonly RelativePath                  _databasePath = RelativePath.Root / PathSegment.Parse("cache.sqlite");
     private readonly string                        _connectionString;
-    private readonly Lock                          _localStateGate = new();
+    private readonly Lock                          _gate = new();
 
     // -- LIFECYCLE ------------------------------------------------------------
 
@@ -380,7 +380,7 @@ internal sealed class ChunkIndexLocalStore
     {
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -410,7 +410,7 @@ internal sealed class ChunkIndexLocalStore
 
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -447,7 +447,7 @@ internal sealed class ChunkIndexLocalStore
         {
             foreach (var batch in entries.Chunk(UpsertBatchSize))
             {
-                lock (_localStateGate)
+                lock (_gate)
                 {
                     using var connection = OpenConnection();
                     using var transaction = connection.BeginTransaction();
@@ -485,7 +485,7 @@ internal sealed class ChunkIndexLocalStore
 
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -534,7 +534,7 @@ internal sealed class ChunkIndexLocalStore
 
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -603,7 +603,7 @@ internal sealed class ChunkIndexLocalStore
         try
         {
             var materialized = states.ToArray();
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -637,7 +637,7 @@ internal sealed class ChunkIndexLocalStore
         {
             // Under the same gate as the other remote-backed writers (IngestCoverage / pending-flush), so a
             // cleared cache and a coverage ingest can never interleave into a half-cleared state.
-            lock (_localStateGate)
+            lock (_gate)
             {
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
@@ -670,7 +670,7 @@ internal sealed class ChunkIndexLocalStore
     {
         try
         {
-            lock (_localStateGate)
+            lock (_gate)
             {
                 ClearConnectionPool();
                 var replacedFiles = 0;
@@ -720,9 +720,14 @@ internal sealed class ChunkIndexLocalStore
     private void CreateOrUpgradeSchema()
     {
         using var connection = OpenConnection();
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode = wal; PRAGMA synchronous = normal;";
-        pragma.ExecuteNonQuery();
+        using (var pragma = connection.CreateCommand())
+        {
+            // Persisted in the database file: setting it once here puts every future connection into WAL,
+            // letting readers proceed while a write is in flight and making `synchronous = normal` (set
+            // per-connection in OpenConnection) safe from corruption on a crash.
+            pragma.CommandText = "PRAGMA journal_mode = wal;";
+            pragma.ExecuteNonQuery();
+        }
 
         using var create = connection.CreateCommand();
         create.CommandText = """
@@ -776,6 +781,13 @@ internal sealed class ChunkIndexLocalStore
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
+        // `synchronous` lives on the connection handle, not the file, so it is reapplied on every open —
+        // cheap, in-memory only. NORMAL is corruption-safe under WAL; worst case is losing the last few
+        // uncommitted transactions on an unclean shutdown, acceptable since the chunk index rebuilds from
+        // the remote repository.
+        using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA synchronous = normal;";
+        pragma.ExecuteNonQuery();
         return connection;
     }
 

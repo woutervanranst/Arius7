@@ -69,6 +69,25 @@ spurious local-only rows.
 
 ---
 
+## Caching & hashing acceleration
+
+### hashcache
+
+**hashcache** — a disposable local SQLite database that maps each binary file's repository-relative path to its last-known content hash, sparse fingerprint, and platform change-signals (`ctime`/`inode`/`dev`). Consulted by Stage 2 of the archive pipeline when `--fast-hash` is active; a hit returns the cached content hash with zero or minimal byte reads. Losing it costs one full-hash run; the remote repository is unaffected.
+*Code:* `HashCacheService` / `HashCacheLocalStore` / `HashCacheEntry` in `src/Arius.Core/Shared/HashCache/`; location `~/.arius/<account>-<container>/hash/cache.sqlite`. See [ADR-0021](decisions/adr-0021-opt-in-change-detection-hashcache.md) and [hashcache design](design/core/shared/hashcache.md).
+
+### sparse fingerprint
+
+**sparse fingerprint** — a deterministic spot-hash of a file computed by reading a small set of evenly-spaced byte regions (derived from the file size alone) and hashing `size ‖ region-bytes` with SHA-256. Used as the fallback verification lane in the hashcache verdict ladder when platform change-signals are unavailable or do not match. A fingerprint match means the sampled regions are identical; it is not a full-file integrity check.
+*Code:* `SparseFingerprint` (static class) in `src/Arius.Core/Shared/HashCache/SparseFingerprint.cs`; captured at zero extra I/O by `SparseSamplingStream` during full-hash runs.
+
+### fast-hash
+
+**fast-hash** — the opt-in archive mode (CLI: `--fast-hash`; option: `ArchiveCommandOptions.FastHash`) that consults the [hashcache](#hashcache) before reading a file. A cache hit returns the cached [content hash](#content-hash) without a full re-read — the `ctime` fast-lane reads no bytes at all, while a [sparse-fingerprint](#sparse-fingerprint) hit still samples a small subset of bytes; a miss falls through to a full read. Default is off (full re-hash on every run). Any run — with or without `--fast-hash` — warms the cache for future fast-hash runs.
+*Code:* `ArchiveCommandOptions.FastHash` in `src/Arius.Core/Features/ArchiveCommand/ArchiveCommand.cs`; verdict ladder in `HashCacheService.TryReuse`.
+
+---
+
 ## Hashes
 
 Keep distinct hash value objects for distinct identities — do not collapse them into a

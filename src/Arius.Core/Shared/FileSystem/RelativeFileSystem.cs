@@ -1,3 +1,5 @@
+using Arius.Core.Shared.HashCache;
+
 namespace Arius.Core.Shared.FileSystem;
 
 /// <summary>
@@ -330,6 +332,16 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
                 new DateTimeOffset(File.GetCreationTimeUtc(fullPath), TimeSpan.Zero),
                 new DateTimeOffset(File.GetLastWriteTimeUtc(fullPath), TimeSpan.Zero));
         }
+    }
+
+    /// <summary>
+    /// Returns platform change-signals (ctime, inode, dev) for the file, or <c>null</c> on network/
+    /// unsupported filesystems or any failure — in which case fast-hash uses the sparse-fingerprint floor.
+    /// </summary>
+    public FileChangeSignals? TryGetChangeSignals(RelativePath path)
+    {
+        try { return NativeFileSignals.TryGet(root.Resolve(path)); }
+        catch { return null; }
     }
 
     /// <summary>

@@ -235,6 +235,7 @@ public class ArchiveRecoveryTests
             fixture.Encryption,
             fixture.Index,
             chunkStorage,
+            fixture.CreateHashCacheService(),
             fixture.FileTreeService,
             fixture.Snapshot,
             fixture.Mediator,
@@ -288,6 +289,7 @@ public class ArchiveRecoveryTests
             fixture.Encryption,
             fixture.Index,
             chunkStorage,
+            fixture.CreateHashCacheService(),
             fixture.FileTreeService,
             fixture.Snapshot,
             fixture.Mediator,
@@ -468,15 +470,20 @@ public class ArchiveRecoveryTests
     }
 
     [Test]
-    public async Task Archive_RemoveLocalAndNoPointers_ReturnsValidationFailure()
+    public async Task Archive_RemoveLocalWithoutWritePointers_IsRejectedAndKeepsBinary()
     {
+        // --remove-local requires --write-pointers: removing the binary while writing no pointer would
+        // leave no local record, so the combination is rejected before any deletion.
         await using var fixture = await CreateArchiveFixtureAsync();
-        await WriteRandomFileAsync(fixture, RelativePath.Parse("docs/readme.txt"), 128);
+        var relativePath = RelativePath.Parse("docs/readme.txt");
+        await WriteRandomFileAsync(fixture, relativePath, 128);
 
-        var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, noPointers: true);
+        var result = await ArchiveAsync(fixture, BlobTier.Cool, removeLocal: true, writePointers: false);
 
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldBe("--remove-local cannot be combined with --no-pointers");
+        result.ErrorMessage.ShouldContain("--write-pointers");
+        fixture.LocalFileSystem.FileExists(relativePath).ShouldBeTrue();
+        fixture.LocalFileSystem.FileExists(relativePath.ToPointerPath()).ShouldBeFalse();
     }
 
     [Test]
@@ -599,6 +606,7 @@ public class ArchiveRecoveryTests
             fixture.Encryption,
             fixture.Index,
             chunkStorage,
+            fixture.CreateHashCacheService(),
             fixture.FileTreeService,
             fixture.Snapshot,
             fixture.Mediator,
@@ -646,7 +654,7 @@ public class ArchiveRecoveryTests
     private static async Task<ArchiveResult> ArchiveAsync(RepositoryTestFixture fixture,
         BlobTier uploadTier,
         bool removeLocal = false,
-        bool noPointers = false,
+        bool writePointers = true,
         long? smallFileThreshold = null,
         Func<ChunkHash, long, IProgress<long>>? createUploadProgress = null,
         Func<LocalDirectory, CancellationToken, Task<IFileTreeStagingSession>>? openStagingSession = null,
@@ -663,7 +671,7 @@ public class ArchiveRecoveryTests
                 UploadTier = uploadTier,
                 SmallFileThreshold = smallFileThreshold ?? 1024 * 1024,
                 RemoveLocal = removeLocal,
-                NoPointers = noPointers,
+                WritePointers = writePointers,
                 CreateUploadProgress = createUploadProgress,
             }),
             cancellationToken);

@@ -72,7 +72,7 @@ public class NotificationHandlerTests
         var path     = RelativePath.Parse("a.bin");
 
         await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('a')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('a'), false, false), CancellationToken.None);
 
         state.FilesHashed.ShouldBe(1L);
         state.TrackedFiles[path].ContentHash.ShouldBe(FakeContentHash('a'));
@@ -117,7 +117,7 @@ public class NotificationHandlerTests
         var path     = RelativePath.Parse("tar-input.bin");
 
         await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('2')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('2'), false, false), CancellationToken.None);
         await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
 
         state.FilesHashed.ShouldBe(1L);
@@ -136,7 +136,7 @@ public class NotificationHandlerTests
         var path       = RelativePath.Parse("large.bin");
 
         await hashingH.Handle(new FileHashingEvent(path, 1_000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('3')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('3'), false, false), CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('3'), 1_000), CancellationToken.None);
         await skippedH.Handle(new FileSkippedEvent(path), CancellationToken.None);
 
@@ -185,7 +185,7 @@ public class NotificationHandlerTests
         var path       = RelativePath.Parse("small.txt");
 
         await hashingH.Handle(new FileHashingEvent(path, 500), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('b')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('b'), false, false), CancellationToken.None);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await tarEntryH.Handle(new TarEntryAddedEvent(FakeContentHash('b'), 1, 500), CancellationToken.None);
 
@@ -205,7 +205,7 @@ public class NotificationHandlerTests
         var path      = RelativePath.Parse("s.txt");
 
         await hashingH.Handle(new FileHashingEvent(path, 100), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('c')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('c'), false, false), CancellationToken.None);
         await startedH.Handle(new TarBundleStartedEvent(), CancellationToken.None);
         await tarEntryH.Handle(new TarEntryAddedEvent(FakeContentHash('c'), 1, 100), CancellationToken.None);
 
@@ -240,7 +240,7 @@ public class NotificationHandlerTests
         var path       = RelativePath.Parse("large.bin");
 
         await hashingH.Handle(new FileHashingEvent(path, 1_000_000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('e')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('e'), false, false), CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('e'), 1_000_000), CancellationToken.None);
 
         state.TrackedFiles[path].State.ShouldBe(FileState.Uploading);
@@ -276,7 +276,7 @@ public class NotificationHandlerTests
         var path       = RelativePath.Parse("data.bin");
 
         await hashingH.Handle(new FileHashingEvent(path, 5000), CancellationToken.None);
-        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('9')), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('9'), false, false), CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('9'), 5000), CancellationToken.None);
         await uploadedH.Handle(new ChunkUploadedEvent(FakeChunkHash('9'), 4000), CancellationToken.None);
 

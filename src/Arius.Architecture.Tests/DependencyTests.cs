@@ -2,6 +2,7 @@ using ArchUnitNET.Fluent;
 using ArchUnitNET.Loader;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.ChunkIndex;
+using Arius.Core.Shared.HashCache;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Arius.Architecture.Tests;
@@ -352,14 +353,15 @@ public class DependencyTests
     }
 
     [Test]
-    public void Only_ChunkIndexLocalStore_Should_Depend_On_Sqlite()
+    public void Only_LocalStores_Should_Depend_On_Sqlite()
     {
         IArchRule rule = Classes().That().ResideInAssembly(CoreAssembly)
             .And().DoNotHaveFullName(typeof(ChunkIndexLocalStore).FullName!)
+            .And().DoNotHaveFullName(typeof(HashCacheLocalStore).FullName!)
             .Should().NotDependOnAnyTypesThat().ResideInNamespace("Microsoft.Data.Sqlite");
 
         rule.HasNoViolations(Architecture).ShouldBeTrue(
-            $"Only {typeof(ChunkIndexLocalStore).FullName} should know the local store uses SQLite. Violations: {DescribeViolations(rule)}");
+            $"Only {typeof(ChunkIndexLocalStore).FullName} and {typeof(HashCacheLocalStore).FullName} should know the local stores use SQLite. Violations: {DescribeViolations(rule)}");
     }
 
     // Helper: produce a human-readable summary of rule violations for failure messages
