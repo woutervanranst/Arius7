@@ -240,6 +240,10 @@ public sealed class JobRunner(
                     sink.Done("failed", result.ErrorMessage ?? "Restore failed.");
                     return;
                 }
+
+                // A decline/timeout on any target aborts the whole job — stop processing further targets so a
+                // later target cannot un-poison the run's terminal status (multi-target correctness).
+                if (costDeclined || costTimedOut) break;
             }
 
             if (costDeclined)
