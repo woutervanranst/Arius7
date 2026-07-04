@@ -41,10 +41,19 @@ public sealed class JobSink
     /// <summary>Whether a terminal <see cref="Done"/> has been sent — suppresses any late progress emit.</summary>
     public bool IsDone => _done;
 
+    /// <summary>Serializes the terminal <see cref="Done"/> send against <see cref="EmitNow"/> so the two can never
+    /// interleave: without this, the 1s timer's <c>EmitNow</c> could read <c>_done == false</c>, get preempted, and
+    /// send a stale "Progress" after "Done" already reached the client. Never held across <see cref="BuildSnapshot"/>,
+    /// so it cannot nest under <see cref="_sampleLock"/>/<see cref="_warnLock"/>.</summary>
+    private readonly object _emitLock = new();
+
     public void Done(string status, string summary, string? outcomeJson = null)
     {
-        _done = true;
-        Group?.SendAsync("Done", new { jobId = JobId, status, summary, outcome = outcomeJson });
+        lock (_emitLock)
+        {
+            _done = true;
+            Group?.SendAsync("Done", new { jobId = JobId, status, summary, outcome = outcomeJson });
+        }
     }
 
     // ── Warnings capture (verbatim warn/error lines; count survives ring trimming) ──
@@ -85,7 +94,16 @@ public sealed class JobSink
     /// <see cref="Done"/> has been sent, so the timer's final <see cref="StopReporting"/> emit can never race a
     /// terminal message that already reached the client (a reattaching client would otherwise see a
     /// live-looking Progress after the job ended).</summary>
-    public void EmitNow() { if (!_done) Group?.SendAsync("Progress", BuildSnapshot(_now())); }
+    public void EmitNow()
+    {
+        if (_done) return;                       // cheap early-out
+        var snapshot = BuildSnapshot(_now());    // built outside the lock (absolute-state; a stale build is fine)
+        lock (_emitLock)
+        {
+            if (_done) return;                   // re-check under the lock: a Done that raced in wins
+            Group?.SendAsync("Progress", snapshot);
+        }
+    }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
     private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles;
