@@ -36,7 +36,9 @@ public sealed record JobRecord(
     double          Pct,
     string?         Detail,
     DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt);
+    DateTimeOffset? FinishedAt,
+    string?         StateJson = null,   // serialized live JobSnapshot, refreshed while the job runs
+    string?         Outcome = null);    // serialized terminal JobOutcome, written on completion
 
 /// <summary>A cron schedule that fires archive jobs for a repository.</summary>
 public sealed record ScheduleRecord(

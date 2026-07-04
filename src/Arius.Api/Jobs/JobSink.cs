@@ -151,4 +151,18 @@ public sealed class JobSink
             ChunksPending = _rehydPending,
         };
     }
+
+    /// <summary>Builds the compact, terminal outcome summary persisted to the jobs `outcome` column on completion.
+    /// Archive fields come from the archive counters, restore fields from the restore counters — a job is
+    /// either archive or restore, never both, so the unused side's fields are naturally null/zero.</summary>
+    public JobOutcome BuildOutcome(DateTimeOffset startedAt, DateTimeOffset now, string? snapshotTimestamp) => new()
+    {
+        FileCount = Interlocked.Read(ref _totalFiles) is var f and > 0 ? f : null,
+        UploadedBytes = Interlocked.Read(ref _uploadedBytes),
+        DedupedBytes  = Interlocked.Read(ref _dedupedBytes),
+        FilesRestored = Interlocked.Read(ref _filesRestored) is var r and > 0 ? r : null,
+        DownloadedBytes = Interlocked.Read(ref _bytesRestored),
+        SnapshotTimestamp = snapshotTimestamp,
+        DurationSeconds = (long)(now - startedAt).TotalSeconds,
+    };
 }

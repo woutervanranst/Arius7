@@ -67,7 +67,8 @@ public sealed record JobDto(
     double          Pct,
     string?         Detail,
     DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt);
+    DateTimeOffset? FinishedAt,
+    string?         Outcome = null);
 
 public sealed record ScheduleDto(long Id, long RepoId, string Cron, string Kind, bool Enabled, DateTimeOffset? NextRun);
 

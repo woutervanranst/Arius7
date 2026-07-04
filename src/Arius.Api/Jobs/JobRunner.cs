@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Arius.Api.AppData;
 using Arius.Api.Composition;
 using Arius.Api.Hubs;
@@ -31,6 +32,7 @@ public sealed class JobRunner(
     public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool writePointers, bool fastHash = false, string trigger = "one-off")
     {
         var sink = new JobSink(jobId, hub);
+        var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
         database.InsertJob(jobId, repositoryId, "archive", trigger, "running");
@@ -70,6 +72,8 @@ public sealed class JobRunner(
             {
                 var summary = $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.IncrementalStoredSize)} stored ({JobFormat.Bytes(result.IncrementalSize)} uncompressed) · {JobFormat.Bytes(result.OriginalSize)} original";
                 database.CompleteJob(jobId, "completed", 100, summary);
+                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildSnapshot(DateTimeOffset.UtcNow)));
+                database.SetJobOutcome(jobId, JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, result.SnapshotTime.ToString("O"))));
                 sink.Done("completed", summary);
             }
             else
@@ -99,6 +103,7 @@ public sealed class JobRunner(
     public async Task RunRestoreAsync(long repositoryId, string jobId, string connectionId, string? version, IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers)
     {
         var sink = new JobSink(jobId, hub);
+        var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
         database.InsertJob(jobId, repositoryId, "restore", "one-off", "running");
@@ -162,6 +167,8 @@ public sealed class JobRunner(
             }
 
             database.CompleteJob(jobId, "completed", 100, "Restore complete.");
+            database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildSnapshot(DateTimeOffset.UtcNow)));
+            database.SetJobOutcome(jobId, JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp: null)));
             sink.Done("completed", "Restore complete.");
         }
         catch (Exception ex)

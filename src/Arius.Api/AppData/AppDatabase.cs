@@ -98,6 +98,8 @@ public sealed class AppDatabase
         // Additive migration for databases created before region_hint existed (CREATE TABLE IF NOT EXISTS
         // won't add a column to an existing table). Idempotent: no-op once the column is present.
         EnsureColumn(connection, table: "repositories", column: "region_hint", type: "TEXT");
+        EnsureColumn(connection, table: "jobs", column: "state_json", type: "TEXT");
+        EnsureColumn(connection, table: "jobs", column: "outcome",    type: "TEXT");
 
         EnsureCachePayloadVersion(connection);
     }
@@ -378,13 +380,36 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at FROM jobs ORDER BY COALESCE(started_at, '') DESC LIMIT $limit;";
+        command.CommandText = "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at, state_json, outcome FROM jobs ORDER BY COALESCE(started_at, '') DESC LIMIT $limit;";
         command.Parameters.AddWithValue("$limit", limit);
         using var reader = command.ExecuteReader();
         var result = new List<JobRecord>();
         while (reader.Read())
             result.Add(ReadJob(reader));
         return result;
+    }
+
+    /// <summary>Persists the job's live <see cref="JobSnapshot"/> (serialized) so it survives a host restart
+    /// and can seed a reconnecting client (Task 7). Overwritten roughly every progress tick while the job runs.</summary>
+    public void SaveJobState(string id, string stateJson)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE jobs SET state_json = $s WHERE id = $id;";
+        command.Parameters.AddWithValue("$s", stateJson);
+        command.Parameters.AddWithValue("$id", id);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>Persists the job's terminal <see cref="JobOutcome"/> (serialized) for the jobs-history list.</summary>
+    public void SetJobOutcome(string id, string outcomeJson)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE jobs SET outcome = $o WHERE id = $id;";
+        command.Parameters.AddWithValue("$o", outcomeJson);
+        command.Parameters.AddWithValue("$id", id);
+        command.ExecuteNonQuery();
     }
 
     // ── Schedules ───────────────────────────────────────────────────────────
@@ -518,7 +543,9 @@ public sealed class AppDatabase
         reader.GetDouble(5),
         reader.IsDBNull(6) ? null : reader.GetString(6),
         reader.IsDBNull(7) ? null : DateTimeOffset.Parse(reader.GetString(7)),
-        reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8)));
+        reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8)),
+        reader.IsDBNull(9) ? null : reader.GetString(9),
+        reader.IsDBNull(10) ? null : reader.GetString(10));
 
     private static ScheduleRecord ReadSchedule(SqliteDataReader reader) => new(
         reader.GetInt64(0),

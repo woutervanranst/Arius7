@@ -13,7 +13,7 @@ internal static class JobEndpoints
             var aliases = db.ListRepositories().ToDictionary(r => r.Id, r => r.Alias);
             return db.ListJobs().Select(j => new JobDto(
                 j.Id, j.RepositoryId, aliases.GetValueOrDefault(j.RepositoryId, "—"),
-                j.Kind, j.Trigger, j.Status, j.Pct, j.Detail, j.StartedAt, j.FinishedAt)).ToList();
+                j.Kind, j.Trigger, j.Status, j.Pct, j.Detail, j.StartedAt, j.FinishedAt, j.Outcome)).ToList();
         });
 
         app.MapGet("/repos/{id:long}/schedules", (long id, AppDatabase db) =>
