@@ -360,6 +360,12 @@ public sealed class JobRunner(
         ServiceProvider? provider = null;
         try
         {
+            // Re-check under the gate: a cancel/complete may have committed between the pre-gate status guard
+            // and here. Bail (the finally releases the gate + tears down the sink) rather than resurrect a job
+            // that is no longer parked. Shrinks the resurrection window to two adjacent statements.
+            var underGate = database.GetJob(jobId);
+            if (underGate is null || underGate.Status is not ("rehydrating" or "awaiting-cost")) return;
+
             database.SetJobStatus(jobId, "running", "Resuming restore…");
             provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
 

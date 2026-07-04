@@ -74,7 +74,8 @@ internal static class JobEndpoints
                 {
                     var persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson);
                     var lines = persisted?.Warnings ?? [];
-                    return Results.Ok(new JobWarningsDto(lines.Count, lines, Truncated: false));
+                    var total = persisted?.Snapshot.WarningCount ?? lines.Count;
+                    return Results.Ok(new JobWarningsDto(total, lines, Truncated: total > lines.Count));
                 }
                 catch (JsonException) { /* fall through */ }
             }

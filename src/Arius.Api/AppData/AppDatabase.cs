@@ -486,24 +486,29 @@ public sealed class AppDatabase
         return command.ExecuteScalar() is not null;
     }
 
-    /// <summary>On Api startup, any job left <c>running</c> by a crash/restart is dead (its in-process run is gone).
-    /// Mark it <c>interrupted</c>. (Plan 2 extends this to revert a resumable rehydration job to <c>rehydrating</c>.)
-    /// Redundant after construction — <see cref="CreateOrUpgradeSchema"/> already runs this (via
-    /// <see cref="ReconcileRunningJobs"/>) before the unique index is created — but kept public because it's
-    /// semantically meaningful on its own and is exercised directly by tests.</summary>
+    /// <summary>On Api startup, any job left <c>running</c> OR <c>awaiting-cost</c> by a crash/restart is orphaned:
+    /// both carry in-process/in-memory state (the live run, resp. the in-memory approval wait) that is gone after a
+    /// restart, so neither can continue in place. Mark them <c>interrupted</c> (terminal → frees the
+    /// <c>ux_jobs_one_active_per_repo</c> guard so the user can re-run; no paid work is lost at awaiting-cost because
+    /// rehydration hasn't started yet). <c>rehydrating</c> is deliberately left untouched — the poller legitimately
+    /// re-arms it from the DB on its next tick. Redundant after construction — <see cref="CreateOrUpgradeSchema"/>
+    /// already runs this (via <see cref="ReconcileRunningJobs"/>) before the unique index is created — but kept public
+    /// because it's semantically meaningful on its own and is exercised directly by tests.</summary>
     public int ReconcileInterruptedJobs()
     {
         using var connection = OpenConnection();
         return ReconcileRunningJobs(connection);
     }
 
-    /// <summary>Marks every <c>running</c> job <c>interrupted</c> on the given connection. Shared by the schema
-    /// initializer (must run before <c>ux_jobs_one_active_per_repo</c> is created — see the call site in
-    /// <see cref="CreateOrUpgradeSchema"/>) and the public <see cref="ReconcileInterruptedJobs"/>.</summary>
+    /// <summary>Marks every orphaned <c>running</c> AND <c>awaiting-cost</c> job <c>interrupted</c> on the given
+    /// connection (both have in-process/in-memory state that's gone after a restart). <c>rehydrating</c> is left for
+    /// the poller to re-arm. Shared by the schema initializer (must run before <c>ux_jobs_one_active_per_repo</c> is
+    /// created — see the call site in <see cref="CreateOrUpgradeSchema"/>) and the public
+    /// <see cref="ReconcileInterruptedJobs"/>.</summary>
     private static int ReconcileRunningJobs(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE jobs SET status = 'interrupted', finished_at = $t WHERE status = 'running';";
+        command.CommandText = "UPDATE jobs SET status = 'interrupted', finished_at = $t WHERE status IN ('running','awaiting-cost');";
         command.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToString("O"));
         return command.ExecuteNonQuery();
     }

@@ -53,6 +53,25 @@ public sealed class JobLifecycleDbTests
     }
 
     [Test]
+    public async Task ReconcileInterruptedJobs_marks_awaiting_cost_interrupted_but_leaves_rehydrating()
+    {
+        var (db, repoId) = NewDatabase();
+        db.InsertJob("await", repoId, "restore", "one-off", "running");
+        db.SetJobStatus("await", "awaiting-cost");
+
+        var acc2 = db.InsertAccount("acc2", null);
+        var repo2 = db.InsertRepository("a2", "c2", acc2, null, "archive", null);
+        db.InsertJob("rehy", repo2, "restore", "one-off", "running");
+        db.SetJobStatus("rehy", "rehydrating");
+
+        db.ReconcileInterruptedJobs();
+
+        db.GetJob("await")!.Status.ShouldBe("interrupted");   // orphaned cost prompt is terminal → guard freed
+        db.HasActiveJob(repoId).ShouldBeFalse();
+        db.GetJob("rehy")!.Status.ShouldBe("rehydrating");    // poller re-arms this one
+    }
+
+    [Test]
     public async Task GetJob_state_json_deserializes_to_persisted_state()
     {
         var (db, repoId) = NewDatabase();
