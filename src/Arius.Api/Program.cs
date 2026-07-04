@@ -40,6 +40,7 @@ try
     builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
     builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
+    builder.Services.AddHostedService<Arius.Api.Jobs.RehydrationPollingService>();
 
     builder.Services.AddSignalR()
         .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);

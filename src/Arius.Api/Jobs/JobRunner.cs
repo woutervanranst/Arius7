@@ -334,6 +334,9 @@ public sealed class JobRunner(
     public async Task ResumeRestoreAsync(string jobId)
     {
         var job = database.GetJob(jobId);
+        // Only a still-parked job may be resumed — a cancel/complete that committed between the poller's row
+        // read and this call must not resurrect a terminal job to running.
+        if (job is not null && job.Status is not ("rehydrating" or "awaiting-cost")) return;
         if (job is null || job.StateJson is null) return;
         PersistedJobState? persisted;
         try { persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson); }
