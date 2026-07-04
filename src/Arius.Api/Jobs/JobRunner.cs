@@ -21,6 +21,7 @@ public sealed class JobRunner(
     AppDatabase database,
     IHubContext<JobsHub> hub,
     RestoreApprovalRegistry approvals,
+    JobStateRegistry jobStates,
     ILogger<JobRunner> logger)
 {
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _repoLocks = new();
@@ -40,6 +41,9 @@ public sealed class JobRunner(
             sink.Done("failed", "No source folder configured.");
             return;
         }
+
+        jobStates.Register(jobId, sink);
+        sink.StartReporting();
 
         var gate = LockFor(repositoryId);
         await gate.WaitAsync();
@@ -86,6 +90,8 @@ public sealed class JobRunner(
             if (provider is not null) await provider.DisposeAsync();
             registry.Evict(repositoryId);            // snapshot may have changed → rebuild read caches
             database.ClearStatisticsCache(repositoryId); // …and discard memoized statistics for the old snapshot set
+            sink.StopReporting();
+            jobStates.Remove(jobId);
             gate.Release();
         }
     }
@@ -101,6 +107,9 @@ public sealed class JobRunner(
             ? Path.Combine(Path.GetTempPath(), "arius-restore", repositoryId.ToString())
             : repo.LocalPath!;
         Directory.CreateDirectory(destination);
+
+        jobStates.Register(jobId, sink);
+        sink.StartReporting();
 
         var gate = LockFor(repositoryId);
         await gate.WaitAsync();
@@ -165,6 +174,8 @@ public sealed class JobRunner(
         finally
         {
             if (provider is not null) await provider.DisposeAsync();
+            sink.StopReporting();
+            jobStates.Remove(jobId);
             gate.Release();
         }
     }

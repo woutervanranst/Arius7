@@ -43,4 +43,13 @@ public class JobSinkEtaTests
         var eta = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;
         await Assert.That(eta is null || eta >= 0).IsTrue();
     }
+
+    [Test]
+    public async Task Inert_sink_reporting_is_noop()
+    {
+        var s = new JobSink();          // no hub, no jobId
+        s.StartReporting();             // must not throw / must not start a timer
+        s.StopReporting();
+        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).Pct).IsEqualTo(0);
+    }
 }

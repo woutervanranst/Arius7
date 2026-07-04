@@ -28,6 +28,21 @@ public sealed class JobSink
     public void Cost(object estimate) => Group?.SendAsync("CostEstimate", estimate);
     public void Done(string status, string summary) => Group?.SendAsync("Done", new { status, summary });
 
+    // ── Coalesced progress reporting ─────────────────────────────────────────
+    private Timer? _timer;
+
+    /// <summary>Begins coalesced progress emission (~1s) plus ETA sampling. No-op for an inert (no-hub) sink.</summary>
+    public void StartReporting()
+    {
+        if (JobId is null) return;
+        _timer = new Timer(_ => { SampleForEta(_now()); EmitNow(); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
+
+    /// <summary>Sends the current absolute snapshot immediately (used on transitions and on stop).</summary>
+    public void EmitNow() => Group?.SendAsync("Progress", BuildSnapshot(_now()));
+
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
     private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles;
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
