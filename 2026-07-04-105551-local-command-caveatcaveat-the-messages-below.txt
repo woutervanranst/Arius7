@@ -205,7 +205,7 @@
 
   What's on your mind?
 
-✻ Baked for 4m 58s
+✻ Brewed for 4m 58s
 
 ❯ i m not sure i fully understand the question here; if api restarts then any   
   running job (archvive/restore) will not still be runnnign somehow - since api 
@@ -300,7 +300,7 @@
   multiple jobs). Want me to walk into #2 next, or refine anything about this
   persistence model first?
 
-✻ Worked for 1m 25s
+✻ Cooked for 1m 25s
 
 ❯ perfect. continue to #2                                                       
 
@@ -436,7 +436,7 @@
   Sit right? Anything to adjust — otherwise I'll go to #3 (rehydration 
   auto-resume orchestration), which is the other heavy one.
 
-✻ Sautéed for 1m 53s
+✻ Crunched for 1m 53s
 
 ❯ ok                                                                            
 
@@ -583,7 +583,7 @@
   — the "park in Needs-your-attention instead of decline-on-disconnect" change
   — which is the last of the heavy ones. Want me to continue to #4?
 
-✻ Worked for 2m 29s
+✻ Churned for 2m 29s
 
 ❯ hosts should only talk to features, NEVER to shared services directly (save   
   this in AGENTS.MD) -> you cannot invoke listrehydratedchunksasync from api -> 
@@ -846,7 +846,7 @@
   Want me to continue through these in order, or is there one you'd rather jump
   to?
 
-✻ Sautéed for 4m 38s
+✻ Brewed for 4m 38s
 
 ❯ hm do i understand correctly that the cost callback response is not fed back  
   into the same run of the restorecommandhandler? but you record the answer,    
@@ -1025,7 +1025,7 @@
   window (turning the per-file firehose into coalesced absolute-state deltas
   with the byte-weighted layered aggregates and the 60 s-window ETA). Continue?
 
-✻ Baked for 1m 55s
+✻ Worked for 1m 55s
 
 ❯ remove the footnotes behind the showfooternotes altogether - that s just      
   stupid marketing copy with no real added value for now. maybe we ll use the   
@@ -1110,7 +1110,7 @@
   Next: #7 — warnings capture & retention (the per-job [WRN] buffer behind GET 
   /jobs/{id}/warnings, and how long it lives). Continue?
 
-✻ Brewed for 2m 5s
+✻ Sautéed for 2m 5s
 
 ❯ ok to extend chunkuploadedevent with originalsize. that s a small/limited     
   change for a lot of value. continue with #7                                   
@@ -1214,7 +1214,7 @@
   Next: #8 — pill multiplicity & ownership (one repo with >1 running job → what
   the single repo-scoped pill shows, and which component owns it). Continue?
 
-✻ Brewed for 2m 19s
+✻ Baked for 2m 19s
 
 ❯ so i will be able to consult the warnings per job afterwards, after a restart 
   of the api right?  ok continue with #8                                        
@@ -1303,7 +1303,7 @@
   for the "3,412 files · 1.2 GB uploaded · 5.7 GB deduped · snapshot v12 · 14
   min" one-liner, vs a formatted string). Continue?
 
-✻ Brewed for 1m 22s
+✻ Worked for 1m 22s
 
 ❯ in the api, add a guard that only a single operation per repository is        
   possible (eg. a scheduled archive must fail if a one-off archive is still     
@@ -1383,7 +1383,7 @@
   persist structured completion stats for "3,412 files · 1.2 GB uploaded · 5.7
   GB deduped · snapshot v12 · 14 min", or keep a formatted string?). Continue?
 
-✻ Cooked for 1m 19s
+✻ Brewed for 1m 19s
 
 ❯ ok continue with #9                                                           
 
@@ -1454,7 +1454,7 @@
   cancelled / scheduled, plus how they map to the design's heading chips and the
   Needs your attention section). Continue?
 
-✻ Brewed for 1m 14s
+✻ Cooked for 1m 14s
 
 ❯ yes let s do the timestamp. comtinue with 10                                  
 
@@ -1563,7 +1563,7 @@
   constant, not an event). After that we'll have walked all eleven and can turn
   this into the written spec. Continue to #11?
 
-✻ Cogitated for 1m 43s
+✻ Cooked for 1m 43s
 
 ❯ ok                                                                            
 
@@ -1646,7 +1646,7 @@
   Shall I write the spec now? I'll fold in the dedup-event decision as
   recommended unless you say otherwise.
 
-✻ Crunched for 2m 3s
+✻ Brewed for 2m 3s
 
 ❯ ok to add a new event; be sure to get the docstrings consistent with the      
   FileSkippedEvent / EntryExcludedEvent. drop the parallel workers / drop the   
@@ -1806,4 +1806,224 @@
 
   One check before I commit, since it affects git: shall I commit the AGENTS.md
   boundary-rule edit in the same commit as the spec, or keep them separate?
-✻ Brewed for 4m 26s
+✻ Churned for 4m 26s
+
+❯ /export                                                                       
+  ⎿  Conversation exported to: /Users/wouter/.superset/worktrees/Arius7/jobs-pro
+     gress/2026-07-04-104827-local-command-caveatcaveat-the-messages-below.txt
+
+❯ Two things I did not silently decide and left as flagged tuning/product calls 
+  in the spec: the cost-wait timeout duration ("a few minutes") and the         
+  cancel-confirm on paid rehydration. >> what input do you need from me to      
+  fully finalize the spec before impelementing?                                 
+
+⏺ Update(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Added 1 line, removed 1 line
+      72  The `RestoreCommandHandler` does **not** wait for rehydration: 
+          it downloads what's available, requests rehydration for the res
+          t, and returns `ChunksPendingRehydration > 0` (idempotent). **A
+          uto-resume = re-trigger the restore feature on a schedule until
+           pending == 0.** The re-trigger *is* the status check (a cheap 
+          status peek would need a `Shared` call — forbidden).
+      73  
+      74  - **Latent bug fixed:** `RunRestoreAsync` today unconditionally
+           marks `completed`, silently dropping pending chunks. It must b
+          ranch on `ChunksPendingRehydration`: `> 0` → `rehydrating` + pe
+          rsist resume state + arm the poller; `== 0` → `completed`.
+      75 -- **`RehydrationPollingService : BackgroundService`** (mirrors 
+         -`SchedulerService`): minute tick, per-job due-check from persis
+         -ted fields — **no per-job `Timer` objects → restart-safe.** Ada
+         -ptive cadence: High ~30 min then every 15 min; Standard first ~
+         -10 h then hourly; tighten to 15 min once a re-run reports the f
+         -irst chunk available.                                          
+      75 +- **`RehydrationPollingService : BackgroundService`** (mirrors 
+         +`SchedulerService`): minute tick, per-job due-check from persis
+         +ted fields — **no per-job `Timer` objects → restart-safe.** Ada
+         +ptive cadence (from the handoff): High every 15 min from start;
+         + Standard first ~10 h then hourly; tighten to 15 min once a re-
+         +run reports the first chunk available.                         
+      76  - **autoResume ON** (default): poller re-triggers full restore 
+          runs; status updates as a side-effect of each run. A full tree 
+          walk per re-run is the accepted cost of the boundary; cadence k
+          eeps re-runs rare.
+      77  - **autoResume OFF:** no re-triggering, so status is unknown; s
+          how a **heuristic** "≈ hydrated by HH:MM" (`rehydrationStartedA
+          t` + priority window, §18) + a **"Restore now"** button (on-dem
+          and run). `SetAutoResume(jobId, bool)`, `ResumeRestore(jobId)`.
+      78  - **Same jobId across resumes.** Resume passes a **non-promptin
+          g** `ConfirmRehydration` returning the persisted priority — hon
+          ors the original Standard/High choice, no re-charge, no connect
+          ion needed.
+
+⏺ Honestly, the spec is implementable as-is — most remaining items have
+  defensible defaults already baked in. Only two genuinely need your call; the
+  rest are tuning defaults I'll lock unless you object. Here's the complete list
+  so nothing is decided silently.
+
+  Genuinely need your input
+
+  1. Cost-wait timeout — how long the in-run cost dialog blocks (holding the
+  repo gate) before it parks and frees the repo. Shorter = repo freed sooner
+  when someone abandons the dialog; longer = more slack for a deliberating user.
+  My rec: ~3 min. Your call on the value.
+  2. Cancel-confirm on paid rehydration — show a "rehydration already paid, no
+  refund — cancel anyway?" confirm when cancelling a rehydrating restore (and
+  only there; none for archive)? My rec: yes.
+
+  Defaults I'll bake in unless you object
+
+  - Progress emit ~1 s; StateJson flush ~5–10 s.
+  - Warning buffer cap = last 200 verbatim lines + accurate total count (disk
+  log holds the complete record).
+  - Rehydration poll cadence = the handoff's numbers (High every 15 min from
+  start; Standard first ~10 h then hourly; tighten to 15 min once the first
+  chunk flips). (I'd invented "~30 min then 15 min" for High — corrected the 
+  spec back to the handoff's authoritative "every 15 min from start.")
+  - Download-ETA before download starts ("then ~20 min…") — hidden until a real
+  rate exists, rather than guessing an assumed rate (consistent with the
+  "estimating…" rule). No fabricated numbers.
+  - autoResume default = on (you already confirmed this).
+
+  Process (minor)
+
+  Commit grouping — my rec is two separate commits: the AGENTS.md boundary rule
+  is a standalone durable convention (stands on its own), and the spec is the
+  brainstorm artifact.
+
+  ---
+  So: give me the timeout value + the cancel-confirm yes/no, flag any default
+  you'd change, and I'll finalize the spec, commit (two commits), and move to
+  the implementation plan. If you're happy with all my recommendations as-is,
+  just say "go" and I'll use ~3 min + cancel-confirm=yes.
+
+✻ Baked for 1m 12s
+
+❯ 1/ 15 mins 2/ yes. the implication here is that it will also cleanup the      
+  rehydrated chunks?                                                            
+
+⏺ Good question — and the answer is no, by design, which is worth pinning down
+  explicitly because it's a real semantic, not an automatic implication.
+
+  Cancel does not delete the rehydrated chunk copies. Three reasons:
+
+  1. You can't un-rehydrate in-flight requests. Once rehydration is requested,
+  Azure moves those chunks to the online tier regardless — you can't abort it,
+  and you've already paid. So for chunks still rehydrating there's nothing to
+  clean up.
+  2. Already-rehydrated copies are paid-for and reusable. A rehydrated copy sits
+  in the online tier and, per idempotent restore (ADR-0017), a re-run finds it 
+  available and downloads it without re-paying. Deleting on cancel would throw
+  away value you paid for and force a re-pay if you change your mind.
+  3. Core's Cleanup only runs after a successful restore (i.e. when nothing is
+  pending). A cancelled restore still has pending chunks, so Cleanup wouldn't
+  fire anyway — the copies are cleaned up later by an eventual successful
+  restore of that data.
+
+  So cancel = stop the restore orchestration + mark cancelled; the rehydrated
+  copies stay (reusable, and cleaned up by a future successful restore). The one
+  gap: if you cancel and never re-restore that data, the hot copies linger and
+  cost storage — but the Api can't delete them directly (boundary rule), so a
+  user-initiated "discard rehydrated copies" would be a new Core feature, which
+  I've flagged as an out-of-scope follow-up.
+
+  I've locked both your answers and this cleanup semantic into the spec:
+
+⏺ Update(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Added 1 line, removed 1 line
+      82  
+      83  Happy path is **in-run** (no double classify); park-and-re-trig
+          ger is the **fallback**.
+      84  
+      85 -- **In-run (norm):** the `ConfirmRehydration` callback blocks a
+         -waiting the answer and feeds the chosen priority **back into th
+         -e same run** — exactly as today. Fixed vs today: **keyed by job
+         -Id** (any connection answers), a **bounded wait** (a few minute
+         -s) so an abandoned dialog releases the repo gate and parks, and
+         - **no disconnect-decline** (remove `OnDisconnectedAsync → Cance
+         -lForConnection`).                                              
+      85 +- **In-run (norm):** the `ConfirmRehydration` callback blocks a
+         +waiting the answer and feeds the chosen priority **back into th
+         +e same run** — exactly as today. Fixed vs today: **keyed by job
+         +Id** (any connection answers), a **bounded wait** (15 min) so a
+         +n abandoned dialog releases the repo gate and parks, and **no d
+         +isconnect-decline** (remove `OnDisconnectedAsync → CancelForCon
+         +nection`).                                                     
+      86  - **Fallback (rare):** on timeout / restart / late answer the o
+          riginal run is gone, so `ApproveRestore(jobId, priority)` re-tr
+          iggers `ResumeRestoreAsync` (the §7 primitive, one extra classi
+          fy). `DeclineRestore(jobId)` → `cancelled`.
+      87  - `RestoreApprovalRegistry` is **kept but modified** (jobId-key
+          ed, timeout-aware); only `CancelForConnection` is removed.
+      88  - Estimate is **pushed** (`CostEstimate`, immediate modal) **an
+          d persisted** in `StateJson` ("Review cost ›" / snapshot-on-att
+          ach later). Status `awaiting-cost` → the **Needs your attention
+          ** section; the cost modal renders inline on `/jobs/:id`.
+
+⏺ Update(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Added 2 lines, removed 1 line
+       95  - **`CancelJob(jobId)`**: live → `cts.Cancel()`; parked → mark
+            `cancelled` + disarm poller / clear approval.
+       96  - **Distinguish cancel from failure:** `JobRunner`'s `catch (E
+           xception)` currently maps *everything* (incl. OCE) to `failed`
+           ; add `catch (OperationCanceledException) → "cancelled"` (mirr
+           ors `RepositoryEndpoints.cs:112`).
+       97  - **Safe:** archive's snapshot is the last stage (6d) — cancel
+           ling mid-upload publishes no snapshot; orphan chunks are reusa
+           ble by a future run via dedup. Restore keeps files written so 
+           far (idempotent). Cancel is cooperative — takes effect at the 
+           next checkpoint (≈ after the in-flight chunk); show a "Cancell
+           ing…" transitional state.
+       98 -- **Product call (not baked in):** a lightweight confirm only 
+          -when money was spent (cancelling a `rehydrating` restore); non
+          -e for archive.                                                
+       98 +- **Confirm on paid work:** a confirm ("Rehydration already pa
+          +id — no refund. Cancel anyway?") when cancelling a `rehydratin
+          +g` restore; none for archive.                                 
+       99 +- **Cancel does *not* delete rehydrated chunk copies.** In-fli
+          +ght Azure rehydrations complete regardless (already paid, can'
+          +t be aborted); already-rehydrated copies are paid-for and **re
+          +usable** — a later re-run finds them available and does not re
+          +-pay (idempotent restore, ADR-0017). Core's Cleanup stage dele
+          +tes them only after a *successful* restore (nothing pending), 
+          +so a cancelled restore leaves them for a future re-run or the 
+          +eventual successful Cleanup. A user-initiated "discard rehydra
+          +ted copies" would be a new Core feature — out of scope (follow
+          +-up, §19).                                                    
+      100  
+      101  ## 10. Progress model + ETA (#6)
+      102  
+
+⏺ Let me add that follow-up to §19 so the spec's own cross-reference resolves:
+
+⏺ Update(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Added 1 line
+      220  - **ADR:** "At most one in-flight job per repository, enforced
+            in the Api" (§6) — a durable invariant Core cannot own.
+      221  - Possible design-doc updates on merge: `docs/design/hosts/web
+           .md`, `docs/design/hosts/api.md` (job lifecycle), `docs/design
+           /cross-cutting/logging.md` (per-job capture).
+      222  - If the full-tree-walk cost of rehydration re-runs (§7) ever 
+           bites on large repos, the *right* fix is a Core-level "resume 
+           restore" feature — deliberately deferred.
+      223 +- **User-initiated "discard rehydrated copies"** (§9): a new C
+          +ore cleanup feature to reclaim the online-tier storage of paid
+          +-for rehydrated copies after a cancelled restore that is never
+          + re-run. Deferred — cancel deliberately keeps them reusable.  
+
+⏺ Spec is now fully finalized — every input is in:
+
+  - Cost-wait timeout = 15 min (§8)
+  - Cancel-confirm on paid rehydration = yes (§9), and cancel keeps the 
+  rehydrated copies (reusable/paid-for; §9 + follow-up in §19)
+  - All tuning defaults baked in; High poll cadence corrected to the handoff's
+  "every 15 min from start"
+
+  No open questions remain. The design is coherent end-to-end, and the net Core
+  footprint is just the two additive events (ChunkUploadedEvent.OriginalSize,
+  FileDedupedEvent).
+
+  Ready for me to commit (two commits — the AGENTS.md boundary rule, then the
+  spec) and then invoke writing-plans to turn this into the implementation plan?
+  Say go and I'll proceed.
+
+✻ Baked for 1m 54s
