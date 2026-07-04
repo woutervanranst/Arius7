@@ -40,7 +40,9 @@ test.describe('archive drawer', () => {
     await expect(page.getByTestId('drawer')).toBeHidden();
   });
 
-  // Destructive: creates a dedicated container so the main repo's data is never replaced.
+  // Destructive: creates a dedicated container so the main repo's data is never replaced. Start
+  // dismisses the drawer immediately and hands the job to the floating pill — progress and completion
+  // are observed on the pill / job history, not an in-drawer stream/console.
   test('real archive of a temp folder streams to completion @write', async ({ page, request, repo }) => {
     test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
     test.setTimeout(200_000);
@@ -57,7 +59,13 @@ test.describe('archive drawer', () => {
       await page.goto(`/repos/${created.id}/files`);
       await page.getByTestId('btn-archive').click();
       await page.getByTestId('drawer-start').click();
-      await expect(page.getByText('Archive complete', { exact: false })).toBeVisible({ timeout: 180_000 });
+      await expect(page.getByTestId('drawer')).toBeHidden();
+      await expect(page.getByTestId('job-pill')).toBeVisible({ timeout: 60_000 });
+
+      await expect.poll(async () => {
+        const jobs = await (await request.get(`/api/jobs?repositoryId=${created.id}`)).json();
+        return jobs.find((j: { kind: string }) => j.kind === 'archive')?.status;
+      }, { timeout: 180_000 }).toBe('completed');
     } finally {
       await request.delete(`/api/repos/${created.id}`);
       fs.rmSync(src, { recursive: true, force: true });

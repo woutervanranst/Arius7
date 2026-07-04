@@ -2,19 +2,17 @@ import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
 import { filter } from 'rxjs/operators';
-import { CostEstimateMsg, DoneMsg, EntryDto, JobAttachState, JobSnapshot, ListEntriesOptions, LogLine, SearchHitDto } from './api-models';
+import { CostEstimateMsg, DoneMsg, EntryDto, JobAttachState, JobSnapshot, ListEntriesOptions, SearchHitDto } from './api-models';
 
 /**
  * SignalR client for Arius.Api's hub (/hubs/arius): file-browser entry streaming and the
- * archive/restore job streams (log/progress/cost/done) with the cost-approval handshake.
+ * archive/restore job streams (progress/cost/done) with the cost-approval handshake.
  */
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
   private connection?: signalR.HubConnection;
   private starting?: Promise<void>;
   private handlersBound = false;
-
-  readonly log$ = new Subject<LogLine>();
 
   /** jobIds this client is attached to — re-issued on reconnect (withAutomaticReconnect drops group membership). */
   private readonly attached = new Set<string>();
@@ -69,9 +67,6 @@ export class RealtimeService {
         .build();
     }
     if (!this.handlersBound) {
-      const now = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
-      this.connection.on('Log', (m: { text: string; severity: LogLine['severity'] }) =>
-        this.log$.next({ ts: now(), text: m.text, severity: m.severity }));
       this.connection.on('Progress', (m: JobSnapshot) => this.progress$.next(m));
       this.connection.on('CostEstimate', (m: CostEstimateMsg) => this.cost$.next(m));
       this.connection.on('Done', (m: DoneMsg) => this.done$.next(m));
@@ -106,7 +101,7 @@ export class RealtimeService {
     }
   }
 
-  /** Starts an archive; returns the job id. Subscribe to log$/progress$/done$ for the stream. */
+  /** Starts an archive; returns the job id. Subscribe to progress$/done$ (via jobProgress/jobDone) for the stream. */
   async startArchive(repositoryId: number, opts: { tier: string; removeLocal: boolean; writePointers: boolean; fastHash: boolean }): Promise<string> {
     await this.ensureStarted();
     return this.connection!.invoke<string>('StartArchive', repositoryId, opts.tier, opts.removeLocal, opts.writePointers, opts.fastHash);

@@ -1,15 +1,13 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { RealtimeService } from '../api/realtime.service';
-import { CostEstimateMsg, LogLine } from '../api/api-models';
 import { JobPillStore } from './job-pill.store';
 
 export type DrawerType = 'archive' | 'restore' | 'properties' | 'account' | null;
-export type StreamState = 'idle' | 'running' | 'cost' | 'done';
 
 /**
- * Drives the right slide-over drawers: Archive/Restore (idle forms, live stream, cost-approval modal,
- * terminal state) and the Properties panel. A root singleton so the repo header and the Files tab's
- * "Restore collected" can open it from anywhere.
+ * Drives the right slide-over drawers: Archive/Restore (a plain idle form — Start hands the job
+ * straight to the floating pill and dismisses) and the Properties panel. A root singleton so the
+ * repo header and the Files tab's "Restore collected" can open it from anywhere.
  */
 @Injectable({ providedIn: 'root' })
 export class DrawerStore {
@@ -26,13 +24,8 @@ export class DrawerStore {
   readonly accountsRevision = signal(0);
   bumpAccounts(): void { this.accountsRevision.update(n => n + 1); }
 
-  readonly streamState = signal<StreamState>('idle');
-  readonly lines = signal<LogLine[]>([]);
-  readonly progress = signal(0);
-  readonly stats = signal<Record<string, string> | null>(null);
-  readonly cost = signal<CostEstimateMsg | null>(null);
-  readonly summary = signal('');
-  readonly jobId = signal<string | null>(null);
+  /** Set when StartArchive/StartRestore rejects (e.g. the busy-repo HubException); surfaced by the drawer. */
+  readonly error = signal<string | null>(null);
 
   // Archive form
   readonly archiveTier = signal('archive');
@@ -42,27 +35,20 @@ export class DrawerStore {
   readonly overwrite = signal(false);
   readonly restoreNoPointers = signal(false);
 
-  constructor() {
-    this.realtime.log$.subscribe(line => { if (this.type()) this.lines.update(a => [...a.slice(-250), line]); });
-    this.realtime.progress$.subscribe(p => { this.progress.set(p.pct); if (p.stats) this.stats.set(p.stats); });
-    this.realtime.cost$.subscribe(c => { this.cost.set(c); this.streamState.set('cost'); });
-    this.realtime.done$.subscribe(d => { this.streamState.set('done'); this.progress.set(100); this.summary.set(d.summary); });
-  }
-
   openProperties(repoId: number): void {
-    this.resetStream();
+    this.error.set(null);
     this.type.set('properties');
     this.repoId.set(repoId);
   }
 
   openAccount(accountId: number): void {
-    this.resetStream();
+    this.error.set(null);
     this.type.set('account');
     this.accountId.set(accountId);
   }
 
   openArchive(repoId: number, tier: string): void {
-    this.resetStream();
+    this.error.set(null);
     this.type.set('archive');
     this.repoId.set(repoId);
     this.archiveTier.set(tier || 'archive');
@@ -71,7 +57,7 @@ export class DrawerStore {
   }
 
   openRestore(repoId: number, version: string | null, collectedPaths: string[]): void {
-    this.resetStream();
+    this.error.set(null);
     this.type.set('restore');
     this.repoId.set(repoId);
     this.version.set(version);
@@ -81,52 +67,37 @@ export class DrawerStore {
   }
 
   close(): void {
-    // Closing while the cost modal is up cancels the parked restore (server treats null as decline).
-    if (this.streamState() === 'cost') { const id = this.jobId(); if (id) void this.realtime.approve(id, null); }
     this.type.set(null);
-    this.resetStream();
   }
 
   async start(): Promise<void> {
-    this.lines.set([]);
-    this.progress.set(0);
-    this.stats.set(null);
-    this.cost.set(null);
-    this.streamState.set('running');
-    if (this.type() === 'archive') {
-      this.jobId.set(await this.realtime.startArchive(this.repoId(), {
-        tier: this.archiveTier(),
-        removeLocal: this.archiveOnDisk() === 'replace',
-        // Both 'keep-pointers' and 'replace' write pointers; 'replace' (remove-local) requires them,
-        // since the handler rejects removing a binary while writing no pointer.
-        writePointers: this.archiveOnDisk() !== 'keep',
-        fastHash: this.fastHash(),
-      }));
-    } else {
-      this.jobId.set(await this.realtime.startRestore(this.repoId(), {
-        version: this.version(), targetPaths: this.collectedPaths(), overwrite: this.overwrite(), noPointers: this.restoreNoPointers(),
-      }));
+    this.error.set(null);
+    const kind = this.type();
+    let id: string;
+    try {
+      if (kind === 'archive') {
+        id = await this.realtime.startArchive(this.repoId(), {
+          tier: this.archiveTier(),
+          removeLocal: this.archiveOnDisk() === 'replace',
+          // Both 'keep-pointers' and 'replace' write pointers; 'replace' (remove-local) requires them,
+          // since the handler rejects removing a binary while writing no pointer.
+          writePointers: this.archiveOnDisk() !== 'keep',
+          fastHash: this.fastHash(),
+        });
+      } else {
+        id = await this.realtime.startRestore(this.repoId(), {
+          version: this.version(), targetPaths: this.collectedPaths(), overwrite: this.overwrite(), noPointers: this.restoreNoPointers(),
+        });
+      }
+    } catch (e) {
+      // The hub rejects a second concurrent job on the same repo with a HubException; surface it
+      // inline rather than leaving the drawer silently stuck on "Start".
+      this.error.set(e instanceof Error ? e.message : String(e));
+      return;
     }
     // Hand off to the floating pill and dismiss the drawer (README §Interactions: "Start → drawer
-    // dismisses → pill appears"). Legacy stream state (lines/progress/cost/summary) is left wired for
-    // now — Task 6 strips it once the pill/detail page fully replace the in-drawer stream view.
-    const id = this.jobId();
-    if (id) { this.pill.show(id, this.type() === 'restore' ? 'restore' : 'archive'); this.type.set(null); }
-  }
-
-  async approve(priority: string | null): Promise<void> {
-    this.streamState.set('running');
-    const id = this.jobId();
-    if (id) await this.realtime.approve(id, priority);
-  }
-
-  private resetStream(): void {
-    this.streamState.set('idle');
-    this.lines.set([]);
-    this.progress.set(0);
-    this.stats.set(null);
-    this.cost.set(null);
-    this.summary.set('');
-    this.jobId.set(null);
+    // dismisses → pill appears"). All live progress from here on flows through the pill + detail page.
+    this.pill.show(id, kind === 'restore' ? 'restore' : 'archive');
+    this.type.set(null);
   }
 }

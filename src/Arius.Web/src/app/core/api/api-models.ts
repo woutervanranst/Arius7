@@ -76,14 +76,6 @@ export interface ListEntriesOptions {
   includeLocal?: boolean;
 }
 
-// ── Job streaming (archive / restore) ─────────────────────────────────────────
-
-export interface LogLine {
-  ts: string;
-  text: string;
-  severity: 'ok' | 'warn' | 'dedup' | 'meta' | 'info';
-}
-
 // ── Jobs: absolute-state realtime + REST (Plan 2 protocol) ────────────────────
 
 export const NON_TERMINAL_STATUSES = ['running', 'awaiting-cost', 'rehydrating'] as const;
