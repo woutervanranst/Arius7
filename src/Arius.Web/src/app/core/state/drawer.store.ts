@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { RealtimeService } from '../api/realtime.service';
 import { CostEstimateMsg, LogLine } from '../api/api-models';
+import { JobPillStore } from './job-pill.store';
 
 export type DrawerType = 'archive' | 'restore' | 'properties' | 'account' | null;
 export type StreamState = 'idle' | 'running' | 'cost' | 'done';
@@ -13,6 +14,7 @@ export type StreamState = 'idle' | 'running' | 'cost' | 'done';
 @Injectable({ providedIn: 'root' })
 export class DrawerStore {
   private readonly realtime = inject(RealtimeService);
+  private readonly pill = inject(JobPillStore);
 
   readonly type = signal<DrawerType>(null);
   readonly repoId = signal(0);
@@ -105,6 +107,11 @@ export class DrawerStore {
         version: this.version(), targetPaths: this.collectedPaths(), overwrite: this.overwrite(), noPointers: this.restoreNoPointers(),
       }));
     }
+    // Hand off to the floating pill and dismiss the drawer (README §Interactions: "Start → drawer
+    // dismisses → pill appears"). Legacy stream state (lines/progress/cost/summary) is left wired for
+    // now — Task 6 strips it once the pill/detail page fully replace the in-drawer stream view.
+    const id = this.jobId();
+    if (id) { this.pill.show(id, this.type() === 'restore' ? 'restore' : 'archive'); this.type.set(null); }
   }
 
   async approve(priority: string | null): Promise<void> {

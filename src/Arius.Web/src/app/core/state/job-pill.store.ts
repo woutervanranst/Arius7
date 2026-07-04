@@ -1,0 +1,73 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { ApiService } from '../api/api.service';
+import { RealtimeService } from '../api/realtime.service';
+import { JobSnapshot } from '../api/api-models';
+import { Subscription } from 'rxjs';
+
+/**
+ * Repo-scoped floating-pill state. At most one active job per repo (Plan-2 guard), so the pill adapts
+ * to that one job. Owned by RepoDetailComponent — discovers the repo's active job on mount, accepts a
+ * direct hand-off from the drawer's Start, and re-attaches on revisit. "Dismiss" is view-only.
+ */
+@Injectable({ providedIn: 'root' })
+export class JobPillStore {
+  private readonly api = inject(ApiService);
+  private readonly realtime = inject(RealtimeService);
+  private subs: Subscription[] = [];
+  private currentRepoId = 0;
+
+  readonly jobId = signal<string | null>(null);
+  readonly kind = signal<'archive' | 'restore'>('archive');
+  readonly status = signal<string>('running');
+  readonly snapshot = signal<JobSnapshot | null>(null);
+  private readonly dismissed = signal(false);
+  readonly visible = computed(() => this.jobId() !== null && !this.dismissed());
+
+  /** On entering a repo: find its active job (if any) and attach. */
+  discover(repoId: number): void {
+    if (repoId === this.currentRepoId && this.jobId()) return;   // already tracking this repo's job
+    this.currentRepoId = repoId;
+    this.api.getJobs({ repositoryId: repoId, status: 'active' }).subscribe(jobs => {
+      const job = jobs[0];
+      if (job) this.attach(job.id, job.kind === 'restore' ? 'restore' : 'archive', job.status);
+    });
+  }
+
+  /** Direct hand-off from the drawer's Start (jobId known immediately). */
+  show(jobId: string, kind: 'archive' | 'restore'): void {
+    this.dismissed.set(false);
+    this.attach(jobId, kind, 'running');
+  }
+
+  /** Client-only hide (does not cancel the job). */
+  dismiss(): void { this.dismissed.set(true); }
+
+  /** Drop the pill entirely (e.g. leaving the repo). */
+  detach(): void {
+    const id = this.jobId();
+    if (id) void this.realtime.detachFromJob(id);
+    this.teardown();
+    this.jobId.set(null);
+    this.snapshot.set(null);
+    this.currentRepoId = 0;
+  }
+
+  private attach(jobId: string, kind: 'archive' | 'restore', status: string): void {
+    if (this.jobId() === jobId) return;
+    this.teardown();
+    this.jobId.set(jobId);
+    this.kind.set(kind);
+    this.status.set(status);
+    void this.realtime.attachToJob(jobId).then(state => {
+      if (state && this.jobId() === jobId) { this.snapshot.set(state.snapshot); this.status.set(state.status); }
+    });
+    this.subs.push(this.realtime.jobProgress(jobId).subscribe(s => this.snapshot.set(s)));
+    this.subs.push(this.realtime.jobDone(jobId).subscribe(d => {
+      this.status.set(d.status);
+      // A terminal job auto-hides the pill shortly after (the detail page/overview carry history).
+      setTimeout(() => { if (this.jobId() === jobId) { this.jobId.set(null); this.snapshot.set(null); } }, 4000);
+    }));
+  }
+
+  private teardown(): void { this.subs.forEach(s => s.unsubscribe()); this.subs = []; }
+}

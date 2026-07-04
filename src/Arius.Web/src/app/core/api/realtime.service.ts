@@ -35,11 +35,19 @@ export class RealtimeService {
     return this.done$.pipe(filter(d => d.jobId === jobId));
   }
 
-  /** Joins the job's group and returns the current snapshot (live or persisted). Tracks it for reconnect re-attach. */
+  /**
+   * Joins the job's group and returns the current snapshot (live or persisted). Tracks it for
+   * reconnect re-attach — but only once the invoke actually succeeds, so a failed attach (e.g. an
+   * unknown jobId) doesn't stay in `attached` and get spuriously re-invoked on every reconnect.
+   */
   async attachToJob(jobId: string): Promise<JobAttachState | null> {
     await this.ensureStarted();
+    const state = await this.connection!.invoke<JobAttachState | null>('AttachToJob', jobId).catch(e => {
+      this.attached.delete(jobId);
+      throw e;
+    });
     this.attached.add(jobId);
-    return this.connection!.invoke<JobAttachState | null>('AttachToJob', jobId);
+    return state;
   }
   async detachFromJob(jobId: string): Promise<void> {
     this.attached.delete(jobId);
