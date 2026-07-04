@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import { AccountDto, CreateRepositoryRequest, FsListDto, JobDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
+import { AccountDto, CreateRepositoryRequest, FsListDto, JobDetailDto, JobDto, JobWarningsDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
 @Injectable({ providedIn: 'root' })
@@ -70,8 +70,21 @@ export class ApiService {
     return this.http.post<RepositoryDto>('/api/repos', req);
   }
 
-  getJobs(): Observable<JobDto[]> {
-    return this.http.get<JobDto[]>('/api/jobs');
+  /** Jobs list, optionally filtered by repository and/or status ('active' = the non-terminal set). */
+  getJobs(opts?: { repositoryId?: number; status?: 'active' | 'terminal' | string }): Observable<JobDto[]> {
+    const params = new URLSearchParams();
+    if (opts?.repositoryId != null) params.set('repositoryId', String(opts.repositoryId));
+    if (opts?.status) params.set('status', opts.status);
+    const query = params.toString();
+    return this.http.get<JobDto[]>(`/api/jobs${query ? `?${query}` : ''}`);
+  }
+
+  getJob(id: string): Observable<JobDetailDto> {
+    return this.http.get<JobDetailDto>(`/api/jobs/${id}`);
+  }
+
+  getJobWarnings(id: string): Observable<JobWarningsDto> {
+    return this.http.get<JobWarningsDto>(`/api/jobs/${id}/warnings`);
   }
 
   getSchedules(repoId: number): Observable<ScheduleDto[]> {

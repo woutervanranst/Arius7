@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
-import { CostEstimateMsg, DoneMsg, EntryDto, ListEntriesOptions, LogLine, ProgressMsg, SearchHitDto } from './api-models';
+import { filter } from 'rxjs/operators';
+import { CostEstimateMsg, DoneMsg, EntryDto, JobAttachState, JobSnapshot, ListEntriesOptions, LogLine, SearchHitDto } from './api-models';
 
 /**
  * SignalR client for Arius.Api's hub (/hubs/arius): file-browser entry streaming and the
@@ -14,9 +15,43 @@ export class RealtimeService {
   private handlersBound = false;
 
   readonly log$ = new Subject<LogLine>();
-  readonly progress$ = new Subject<ProgressMsg>();
-  readonly cost$ = new Subject<CostEstimateMsg>();
-  readonly done$ = new Subject<DoneMsg>();
+
+  /** jobIds this client is attached to — re-issued on reconnect (withAutomaticReconnect drops group membership). */
+  private readonly attached = new Set<string>();
+
+  /** Absolute-state progress, tagged by jobId. Subscribers filter by their own jobId. */
+  readonly progress$ = new Subject<JobSnapshot>();     // note: payload is now JobSnapshot (has .jobId)
+  readonly cost$ = new Subject<CostEstimateMsg>();      // now jobId-tagged
+  readonly done$ = new Subject<DoneMsg>();              // now jobId-tagged
+
+  /** Filtered view of progress$ for one job. */
+  jobProgress(jobId: string): Observable<JobSnapshot> {
+    return this.progress$.pipe(filter(s => s.jobId === jobId));
+  }
+  jobCost(jobId: string): Observable<CostEstimateMsg> {
+    return this.cost$.pipe(filter(c => c.jobId === jobId));
+  }
+  jobDone(jobId: string): Observable<DoneMsg> {
+    return this.done$.pipe(filter(d => d.jobId === jobId));
+  }
+
+  /** Joins the job's group and returns the current snapshot (live or persisted). Tracks it for reconnect re-attach. */
+  async attachToJob(jobId: string): Promise<JobAttachState | null> {
+    await this.ensureStarted();
+    this.attached.add(jobId);
+    return this.connection!.invoke<JobAttachState | null>('AttachToJob', jobId);
+  }
+  async detachFromJob(jobId: string): Promise<void> {
+    this.attached.delete(jobId);
+    if (this.connection?.state === signalR.HubConnectionState.Connected)
+      await this.connection.invoke('DetachFromJob', jobId);
+  }
+
+  async cancelJob(jobId: string): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('CancelJob', jobId); }
+  async approveRestore(jobId: string, priority: 'standard' | 'high'): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('ApproveRestore', jobId, priority); }
+  async declineRestore(jobId: string): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('DeclineRestore', jobId); }
+  async setAutoResume(jobId: string, autoResume: boolean): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('SetAutoResume', jobId, autoResume); }
+  async resumeRestore(jobId: string): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('ResumeRestore', jobId); }
 
   private ensureStarted(): Promise<void> {
     if (!this.connection) {
@@ -29,9 +64,10 @@ export class RealtimeService {
       const now = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
       this.connection.on('Log', (m: { text: string; severity: LogLine['severity'] }) =>
         this.log$.next({ ts: now(), text: m.text, severity: m.severity }));
-      this.connection.on('Progress', (m: ProgressMsg) => this.progress$.next(m));
+      this.connection.on('Progress', (m: JobSnapshot) => this.progress$.next(m));
       this.connection.on('CostEstimate', (m: CostEstimateMsg) => this.cost$.next(m));
       this.connection.on('Done', (m: DoneMsg) => this.done$.next(m));
+      this.connection.onreconnected(() => { for (const id of this.attached) void this.connection!.invoke('AttachToJob', id); });
       this.handlersBound = true;
     }
     if (this.connection.state === signalR.HubConnectionState.Connected) {
