@@ -79,12 +79,14 @@ public sealed class JobsHub(
         return jobId;
     }
 
-    /// <summary>Requests cancellation of a live job (cooperative — takes effect at the next checkpoint). The
-    /// parked-job path (mark cancelled, disarm poller/approval) is handled by the richer wiring added alongside
-    /// approve/decline and auto-resume; for a live job this cancels its token.</summary>
+    /// <summary>Requests cancellation of a job. A LIVE job is cancelled cooperatively (its token trips at the next
+    /// checkpoint). A PARKED job (awaiting-cost / rehydrating, no live run) releases any waiting approval and is
+    /// marked terminal so the poller skips it and the single-active-job guard is freed.</summary>
     public Task CancelJob(string jobId)
     {
-        jobStates.CancelLive(jobId);
+        if (jobStates.CancelLive(jobId)) return Task.CompletedTask;   // live → cooperative cancel
+        approvals.Resolve(jobId, null);                               // release any waiting approval
+        database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");    // parked → terminal
         return Task.CompletedTask;
     }
 
@@ -117,9 +119,10 @@ public sealed class JobsHub(
         }
     }
 
-    /// <summary>Answers the restore cost modal for a LIVE, in-run approval wait: "standard"/"high" to proceed,
-    /// anything else to decline. The parked/restart fallback (re-trigger a fresh run) is <see cref="ApproveRestore"/>.</summary>
-    public void ApproveRestore(string jobId, string? priority)
+    /// <summary>Answers the restore cost modal. For a LIVE, in-run approval wait: "standard"/"high" to proceed,
+    /// anything else declines. For a PARKED job (timed out / Api restarted, no live wait): a valid priority
+    /// re-drives it via <see cref="JobRunner.ApproveAndResumeAsync"/>; anything else declines it.</summary>
+    public async Task ApproveRestore(string jobId, string? priority)
     {
         RehydratePriority? chosen = priority?.ToLowerInvariant() switch
         {
@@ -127,26 +130,51 @@ public sealed class JobsHub(
             "high"     => RehydratePriority.High,
             _          => null,
         };
-
-        if (approvals.HasPending(jobId))
-        {
-            approvals.Resolve(jobId, chosen);   // in-run: feeds back into the same RestoreCommand
-            return;
-        }
-        // Parked (timed out / restarted): re-trigger handled in Task 6 (ResumeRestoreAsync). Until then this is
-        // a no-op for a non-live job; Task 6 replaces this branch with the re-trigger call.
+        if (approvals.HasPending(jobId)) { approvals.Resolve(jobId, chosen); return; }   // in-run
+        if (chosen is null) { await DeclineParkedAsync(jobId); return; }
+        _ = jobRunner.ApproveAndResumeAsync(jobId, chosen.Value);                        // parked fallback
     }
 
-    /// <summary>Declines the restore cost modal (equivalent to answering "cancel").</summary>
-    public void DeclineRestore(string jobId)
+    /// <summary>Declines the restore cost modal (equivalent to answering "cancel"). Resolves a live wait, or
+    /// marks a parked job cancelled.</summary>
+    public async Task DeclineRestore(string jobId)
     {
         if (approvals.HasPending(jobId)) { approvals.Resolve(jobId, null); return; }
-        // Parked decline is completed in Task 6 (mark cancelled + disarm).
+        await DeclineParkedAsync(jobId);
+    }
+
+    private Task DeclineParkedAsync(string jobId)
+    {
+        database.SetJobStatus(jobId, "cancelled");                 // frees the guard; poller skips it
+        database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Toggles auto-resume for a rehydrating restore. OFF stops the poller re-driving it (status stays
+    /// rehydrating; the UI shows "≈ hydrated by" + a manual Restore-now). ON re-drives immediately.</summary>
+    public async Task SetAutoResume(string jobId, bool autoResume)
+    {
+        var job = database.GetJob(jobId);
+        if (job?.StateJson is null) return;
+        PersistedJobState? persisted;
+        try { persisted = System.Text.Json.JsonSerializer.Deserialize<PersistedJobState>(job.StateJson); }
+        catch (System.Text.Json.JsonException) { return; }
+        if (persisted?.Resume is null) return;
+        var updated = persisted with { Resume = persisted.Resume with { AutoResume = autoResume } };
+        database.SaveJobState(jobId, System.Text.Json.JsonSerializer.Serialize(updated));
+        if (autoResume) _ = jobRunner.ResumeRestoreAsync(jobId);
+    }
+
+    /// <summary>Manual "Restore now" for a rehydrating restore whose auto-resume is off.</summary>
+    public Task ResumeRestore(string jobId)
+    {
+        _ = jobRunner.ResumeRestoreAsync(jobId);
+        return Task.CompletedTask;
     }
 
     /// <summary>Back-compat alias for the current Angular drawer; delegates to <see cref="ApproveRestore"/>.
     /// Removed when the drawer is reworked in Plan 3.</summary>
-    public void Approve(string jobId, string? priority) => ApproveRestore(jobId, priority);
+    public Task Approve(string jobId, string? priority) => ApproveRestore(jobId, priority);
 
     /// <summary>
     /// Streams the immediate children (directories + files) of a folder in a snapshot, server → client.

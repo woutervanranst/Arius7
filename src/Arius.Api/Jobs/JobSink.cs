@@ -207,4 +207,10 @@ public sealed class JobSink
         Warnings = Warnings,
         Resume   = resume,
     };
+
+    /// <summary>Copies the current available+rehydrated chunk count into <paramref name="resume"/> (used by the
+    /// poller to tighten cadence once rehydration has started producing ready chunks). Returns the same instance
+    /// with the count applied.</summary>
+    public RestoreResumeState WithLiveRehydrationCounts(RestoreResumeState resume) =>
+        resume with { AvailableOrRehydratedCount = _rehydAvailable + _rehydRehydrated };
 }

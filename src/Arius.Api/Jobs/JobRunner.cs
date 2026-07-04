@@ -172,11 +172,6 @@ public sealed class JobRunner(
 
             sink.Log($"Connecting to container {repo.Container}…", "meta");
             provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
-            var mediator = provider.GetRequiredService<IMediator>();
-
-            // Empty collection = whole-repository restore; otherwise restore each collected path.
-            var targets = targetPaths.Count == 0 ? new string?[] { null } : targetPaths.Cast<string?>().ToArray();
-
             // Cost-approval outcome for this run (set inside the ConfirmRehydration callback). The happy path is
             // in-run: the user answers within the window and the chosen priority feeds back into THIS run. On
             // timeout the job parks at awaiting-cost (gate released); on decline it is cancelled. (Design §8.)
@@ -185,65 +180,52 @@ public sealed class JobRunner(
             var costTimedOut = false;
             RestoreCostEstimate? lastEstimate = null;
 
-            foreach (var target in targets)
-            {
-                sink.Log(target is null ? "Resolving whole repository…" : $"Resolving {target}…", "meta");
-                var result = await mediator.Send(new RestoreCommand(new RestoreOptions
+            var (pending, success, error) = await RunRestoreOnceAsync(
+                provider, sink, jobId, destination, version, targetPaths, overwrite, noPointers,
+                confirmRehydration: async (estimate, ct) =>
                 {
-                    RootDirectory = destination,
-                    Version       = version,
-                    TargetPath    = target is null ? null : RelativePath.Parse(target),
-                    Overwrite     = overwrite,
-                    NoPointers    = noPointers,
-                    ConfirmRehydration = async (estimate, ct) =>
+                    // Same priority for the whole run — a later target that also needs rehydration must not
+                    // re-prompt (idempotent restore reuses the already-approved answer).
+                    if (runApprovedPriority is not null) return runApprovedPriority;
+
+                    lastEstimate = estimate;
+                    sink.Log(estimate.ChunksNeedingRehydration > 0
+                        ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
+                        : "Estimated restore cost — awaiting approval", "warn");
+                    sink.Cost(new CostEstimateDto(
+                        JobId: jobId,
+                        ChunksAvailable:          estimate.ChunksAvailable + estimate.ChunksAlreadyRehydrated,
+                        ChunksNeedingRehydration: estimate.ChunksNeedingRehydration,
+                        BytesNeedingRehydration:  estimate.BytesNeedingRehydration,
+                        DownloadBytes:            estimate.DownloadBytes,
+                        TotalStandard:            estimate.TotalStandard,
+                        TotalHigh:                estimate.TotalHigh,
+                        StandardWaitHours:        estimate.StandardWait.TotalHours,
+                        HighWaitHours:            estimate.HighWait.TotalHours));
+
+                    database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
+
+                    var answer = await approvals.RegisterAsync(jobId, TimeSpan.FromMinutes(15), ct);
+                    if (answer.Approved)
                     {
-                        // Same priority for the whole run — a later target that also needs rehydration must not
-                        // re-prompt (idempotent restore reuses the already-approved answer).
-                        if (runApprovedPriority is not null) return runApprovedPriority;
+                        runApprovedPriority = answer.Priority;
+                        database.SetJobStatus(jobId, "running");
+                        sink.Log($"Approved · {answer.Priority} priority", "info");
+                        return answer.Priority;
+                    }
 
-                        lastEstimate = estimate;
-                        sink.Log(estimate.ChunksNeedingRehydration > 0
-                            ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
-                            : "Estimated restore cost — awaiting approval", "warn");
-                        sink.Cost(new CostEstimateDto(
-                            JobId: jobId,
-                            ChunksAvailable:          estimate.ChunksAvailable + estimate.ChunksAlreadyRehydrated,
-                            ChunksNeedingRehydration: estimate.ChunksNeedingRehydration,
-                            BytesNeedingRehydration:  estimate.BytesNeedingRehydration,
-                            DownloadBytes:            estimate.DownloadBytes,
-                            TotalStandard:            estimate.TotalStandard,
-                            TotalHigh:                estimate.TotalHigh,
-                            StandardWaitHours:        estimate.StandardWait.TotalHours,
-                            HighWaitHours:            estimate.HighWait.TotalHours));
+                    costTimedOut = answer.TimedOut;
+                    costDeclined = !answer.TimedOut;
+                    sink.Log(answer.TimedOut ? "Cost approval timed out — parked." : "Restore declined.", "warn");
+                    return null;   // Core exits with ChunksPendingRehydration = the still-needed count
+                },
+                shouldStop: () => costDeclined || costTimedOut);
 
-                        database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
-
-                        var answer = await approvals.RegisterAsync(jobId, TimeSpan.FromMinutes(15), ct);
-                        if (answer.Approved)
-                        {
-                            runApprovedPriority = answer.Priority;
-                            database.SetJobStatus(jobId, "running");
-                            sink.Log($"Approved · {answer.Priority} priority", "info");
-                            return answer.Priority;
-                        }
-
-                        costTimedOut = answer.TimedOut;
-                        costDeclined = !answer.TimedOut;
-                        sink.Log(answer.TimedOut ? "Cost approval timed out — parked." : "Restore declined.", "warn");
-                        return null;   // Core exits with ChunksPendingRehydration = the still-needed count
-                    },
-                }), sink.Cts.Token);
-
-                if (!result.Success)
-                {
-                    database.CompleteJob(jobId, "failed", 0, result.ErrorMessage);
-                    sink.Done("failed", result.ErrorMessage ?? "Restore failed.");
-                    return;
-                }
-
-                // A decline/timeout on any target aborts the whole job — stop processing further targets so a
-                // later target cannot un-poison the run's terminal status (multi-target correctness).
-                if (costDeclined || costTimedOut) break;
+            if (!success)
+            {
+                database.CompleteJob(jobId, "failed", 0, error);
+                sink.Done("failed", error ?? "Restore failed.");
+                return;
             }
 
             if (costDeclined)
@@ -261,6 +243,21 @@ public sealed class JobRunner(
                     DateTimeOffset.UtcNow,
                     ResumeParamsFor(lastEstimate, version, targetPaths, destination, overwrite, noPointers,
                                     priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow))));
+                return;
+            }
+
+            // Latent-bug fix (§7): some chunks still rehydrating — do NOT mark completed. Park as `rehydrating`
+            // with resume params so the poller (Task 7) re-drives the SAME jobId until every chunk is available.
+            if (pending > 0)
+            {
+                var priority = runApprovedPriority?.ToString() ?? "Standard";
+                var resume = ResumeParamsFor(lastEstimate, version, targetPaths, destination, overwrite, noPointers,
+                                             priority, autoResume: true, startedAt: DateTimeOffset.UtcNow);
+                resume = sink.WithLiveRehydrationCounts(resume);   // fold live rehydration counts into resume (Step 5)
+                database.SetJobStatus(jobId, "rehydrating", $"{pending} chunk(s) rehydrating");
+                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume)));
+                sink.Log($"{pending} chunk(s) rehydrating — will auto-resume", "warn");
+                // Non-terminal: no Done. The poller (Task 7) re-drives on its cadence; the finally releases the gate.
                 return;
             }
 
@@ -290,6 +287,140 @@ public sealed class JobRunner(
             sink.Cts.Dispose();
             gate.Release();
         }
+    }
+
+    /// <summary>Runs the restore command over the resolved targets with the supplied cost callback, summing
+    /// <see cref="RestoreResult.ChunksPendingRehydration"/>. Returns (totalPending, success, error). Shared by the
+    /// initial run and <see cref="ResumeRestoreAsync"/>. The caller owns status bookkeeping + persistence.</summary>
+    private async Task<(int Pending, bool Success, string? Error)> RunRestoreOnceAsync(
+        ServiceProvider provider, JobSink sink, string jobId, string destination, string? version,
+        IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers,
+        Func<RestoreCostEstimate, CancellationToken, Task<RehydratePriority?>> confirmRehydration,
+        Func<bool>? shouldStop = null)
+    {
+        var mediator = provider.GetRequiredService<IMediator>();
+        var targets = targetPaths.Count == 0 ? new string?[] { null } : targetPaths.Cast<string?>().ToArray();
+        var totalPending = 0;
+
+        foreach (var target in targets)
+        {
+            sink.Log(target is null ? "Resolving whole repository…" : $"Resolving {target}…", "meta");
+            var result = await mediator.Send(new RestoreCommand(new RestoreOptions
+            {
+                RootDirectory      = destination,
+                Version            = version,
+                TargetPath         = target is null ? null : RelativePath.Parse(target),
+                Overwrite          = overwrite,
+                NoPointers         = noPointers,
+                ConfirmRehydration = confirmRehydration,
+            }), sink.Cts.Token);
+
+            if (!result.Success) return (totalPending, false, result.ErrorMessage);
+            totalPending += result.ChunksPendingRehydration;
+
+            // A decline/timeout on any target aborts the whole job — stop processing further targets so a later
+            // target cannot un-poison the run's terminal status (multi-target correctness; carried from the Task-5
+            // inline break that this extraction replaces). ResumeRestoreAsync passes no predicate (non-prompting,
+            // never declines/times-out).
+            if (shouldStop?.Invoke() == true) break;
+        }
+        return (totalPending, true, null);
+    }
+
+    /// <summary>Re-drives a parked/rehydrating restore with the SAME jobId, non-prompting (honors the persisted
+    /// priority — no re-charge, no connection). Loads resume params from state_json, flips the row to running for
+    /// the (short) re-run, then back to rehydrating (still pending) or completed. Exempt from the single-active-job
+    /// guard: it UPDATEs the existing row, never InsertJob. Design §7.</summary>
+    public async Task ResumeRestoreAsync(string jobId)
+    {
+        var job = database.GetJob(jobId);
+        if (job is null || job.StateJson is null) return;
+        PersistedJobState? persisted;
+        try { persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson); }
+        catch (JsonException) { return; }
+        if (persisted?.Resume is null) return;
+        var resume = persisted.Resume;
+
+        var repo = database.GetRepository(job.RepositoryId);
+        if (repo is null) return;
+
+        var sink = new JobSink(jobId, hub);
+        jobStates.Register(jobId, sink);
+        sink.StartReporting();
+
+        var gate = LockFor(job.RepositoryId);
+        await gate.WaitAsync();
+        ServiceProvider? provider = null;
+        try
+        {
+            database.SetJobStatus(jobId, "running", "Resuming restore…");
+            provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
+
+            var persistedPriority = resume.Priority == "High" ? RehydratePriority.High : RehydratePriority.Standard;
+            var (pending, success, error) = await RunRestoreOnceAsync(
+                provider, sink, jobId, resume.Destination, resume.Version, resume.TargetPaths,
+                resume.Overwrite, resume.NoPointers,
+                confirmRehydration: (_, _) => Task.FromResult<RehydratePriority?>(persistedPriority));
+
+            if (!success)
+            {
+                database.CompleteJob(jobId, "failed", 0, error);
+                sink.Done("failed", error ?? "Restore failed.");
+                return;
+            }
+            if (pending > 0)
+            {
+                var next = resume with { LastRunAt = DateTimeOffset.UtcNow };
+                next = sink.WithLiveRehydrationCounts(next);
+                database.SetJobStatus(jobId, "rehydrating", $"{pending} chunk(s) rehydrating");
+                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, next)));
+                return;
+            }
+            database.CompleteJob(jobId, "completed", 100, "Restore complete.");
+            database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
+            database.SetJobOutcome(jobId, JsonSerializer.Serialize(sink.BuildOutcome(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null)));
+            sink.Done("completed", "Restore complete.");
+        }
+        catch (OperationCanceledException)
+        {
+            database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
+            sink.Done("cancelled", "Cancelled.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Restore resume {JobId} failed", jobId);
+            database.CompleteJob(jobId, "failed", 0, ex.Message);
+            sink.Done("failed", ex.Message);
+        }
+        finally
+        {
+            if (provider is not null) await provider.DisposeAsync();
+            sink.StopReporting();
+            jobStates.Remove(jobId);
+            sink.Cts.Dispose();
+            gate.Release();
+        }
+    }
+
+    /// <summary>Restart/late-answer cost fallback: records the chosen priority into the parked job's resume state,
+    /// then re-drives it (design §8). Used when no live approval wait exists.</summary>
+    public async Task ApproveAndResumeAsync(string jobId, RehydratePriority priority)
+    {
+        var job = database.GetJob(jobId);
+        if (job?.StateJson is null) return;
+        PersistedJobState? persisted;
+        try { persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson); }
+        catch (JsonException) { return; }
+        if (persisted?.Resume is null)
+        {
+            // Parked at awaiting-cost before any resume params existed: seed a minimal resume from the row is not
+            // possible (targets unknown), so fall back to marking cancelled — the client will re-issue the restore.
+            database.CompleteJob(jobId, "cancelled", 0, "Cost approval expired; please restart the restore.");
+            return;
+        }
+        var updated = persisted.Resume with { Priority = priority.ToString(), AutoResume = true };
+        database.SaveJobState(jobId, JsonSerializer.Serialize(persisted with { Resume = updated }));
+        await ResumeRestoreAsync(jobId);
     }
 
     private static RestoreResumeState ResumeParamsFor(
