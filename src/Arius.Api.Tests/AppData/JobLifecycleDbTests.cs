@@ -51,4 +51,20 @@ public sealed class JobLifecycleDbTests
         rows.Count.ShouldBe(1);
         rows[0].Id.ShouldBe("j1");
     }
+
+    [Test]
+    public async Task GetJob_state_json_deserializes_to_persisted_state()
+    {
+        var (db, repoId) = NewDatabase();
+        db.InsertJob("j1", repoId, "restore", "one-off", "running");
+        var sink = new Arius.Api.Jobs.JobSink();
+        sink.SetRestoreTotals(2, 2000);
+        db.SaveJobState("j1", System.Text.Json.JsonSerializer.Serialize(
+            sink.BuildPersistedState(DateTimeOffset.UnixEpoch, resume: null)));
+
+        var job = db.GetJob("j1")!;
+        var persisted = System.Text.Json.JsonSerializer.Deserialize<Arius.Api.Jobs.PersistedJobState>(job.StateJson!)!;
+        persisted.Snapshot.RestoreTotalFiles.ShouldBe(2L);
+        persisted.Warnings.ShouldNotBeNull();
+    }
 }
