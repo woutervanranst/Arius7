@@ -25,9 +25,18 @@ export class JobPillStore {
 
   /** On entering a repo: find its active job (if any) and attach. */
   discover(repoId: number): void {
-    if (repoId === this.currentRepoId && this.jobId()) return;   // already tracking this repo's job
+    if (repoId === this.currentRepoId) {         // revisit / input re-fire for the same repo
+      if (!this.jobId()) this.pollActive(repoId); // keep a live pill; re-poll only if we're not already showing one
+      return;
+    }
+    this.detach();                                // switching repos: drop the old repo's job + its SignalR attachment
     this.currentRepoId = repoId;
+    this.pollActive(repoId);
+  }
+
+  private pollActive(repoId: number): void {
     this.api.getJobs({ repositoryId: repoId, status: 'active' }).subscribe(jobs => {
+      if (this.currentRepoId !== repoId) return;  // navigated away before the request resolved
       const job = jobs[0];
       if (job) this.attach(job.id, job.kind === 'restore' ? 'restore' : 'archive', job.status);
     });
@@ -54,13 +63,14 @@ export class JobPillStore {
 
   private attach(jobId: string, kind: 'archive' | 'restore', status: string): void {
     if (this.jobId() === jobId) return;
+    this.dismissed.set(false);   // a genuinely new job (new repo or new run) must not stay hidden by a prior dismiss
     this.teardown();
     this.jobId.set(jobId);
     this.kind.set(kind);
     this.status.set(status);
     void this.realtime.attachToJob(jobId).then(state => {
       if (state && this.jobId() === jobId) { this.snapshot.set(state.snapshot); this.status.set(state.status); }
-    });
+    }).catch(() => {});
     this.subs.push(this.realtime.jobProgress(jobId).subscribe(s => this.snapshot.set(s)));
     this.subs.push(this.realtime.jobDone(jobId).subscribe(d => {
       this.status.set(d.status);

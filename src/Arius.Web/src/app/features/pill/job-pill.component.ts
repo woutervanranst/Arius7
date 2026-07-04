@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, effect, OnDestroy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { JobPillStore } from '../../core/state/job-pill.store';
-import { formatEta, formatThroughput, phaseSentence, statusMeta } from '../../shared/job-format';
+import { formatEta, formatThroughput, phaseSentence } from '../../shared/job-format';
 
 /** Floating repo-scoped progress pill (bottom-right of the content area). Dark, 30px SVG ring + two lines + "View job ›". */
 @Component({
@@ -30,7 +30,7 @@ import { formatEta, formatThroughput, phaseSentence, statusMeta } from '../../sh
     }
   `,
 })
-export class JobPillComponent {
+export class JobPillComponent implements OnDestroy {
   protected readonly store = inject(JobPillStore);
   readonly repoId = input.required<number>();
   protected readonly circumference = 2 * Math.PI * 13;
@@ -38,6 +38,8 @@ export class JobPillComponent {
   constructor() {
     effect(() => { const id = this.repoId(); if (id) this.store.discover(id); });
   }
+
+  ngOnDestroy(): void { this.store.detach(); }
 
   protected readonly verb = computed(() => {
     const s = this.store.snapshot()!; const kind = this.store.kind();
@@ -47,5 +49,4 @@ export class JobPillComponent {
     const s = this.store.snapshot()!;
     return `${formatEta(s.etaSeconds)} · ${formatThroughput(s.throughputBytesPerSec)}`;
   };
-  protected readonly statusMeta = statusMeta;
 }
