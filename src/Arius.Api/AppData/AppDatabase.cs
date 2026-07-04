@@ -101,6 +101,14 @@ public sealed class AppDatabase
         EnsureColumn(connection, table: "jobs", column: "state_json", type: "TEXT");
         EnsureColumn(connection, table: "jobs", column: "outcome",    type: "TEXT");
 
+        // Reconcile orphaned "running" jobs BEFORE creating the unique index below. A database created
+        // before this guard existed can already hold two 'running' rows for the same repo (the pre-guard
+        // code inserted status='running' before taking the per-repo gate), which would make the CREATE
+        // UNIQUE INDEX fail with a constraint violation and fault AppDatabase construction — and with it,
+        // Api startup. A 'running' row found here is always an orphan from a prior process (this
+        // constructor is the only writer active right now), so reconciling first is always correct.
+        ReconcileRunningJobs(connection);
+
         // Enforces at most one non-terminal job per repository (running | awaiting-cost | rehydrating);
         // a new start is rejected rather than queued. Runs on every startup (IF NOT EXISTS), so it also
         // lands on databases created before this index existed.
@@ -436,10 +444,21 @@ public sealed class AppDatabase
     }
 
     /// <summary>On Api startup, any job left <c>running</c> by a crash/restart is dead (its in-process run is gone).
-    /// Mark it <c>interrupted</c>. (Plan 2 extends this to revert a resumable rehydration job to <c>rehydrating</c>.)</summary>
+    /// Mark it <c>interrupted</c>. (Plan 2 extends this to revert a resumable rehydration job to <c>rehydrating</c>.)
+    /// Redundant after construction — <see cref="CreateOrUpgradeSchema"/> already runs this (via
+    /// <see cref="ReconcileRunningJobs"/>) before the unique index is created — but kept public because it's
+    /// semantically meaningful on its own and is exercised directly by tests.</summary>
     public int ReconcileInterruptedJobs()
     {
         using var connection = OpenConnection();
+        return ReconcileRunningJobs(connection);
+    }
+
+    /// <summary>Marks every <c>running</c> job <c>interrupted</c> on the given connection. Shared by the schema
+    /// initializer (must run before <c>ux_jobs_one_active_per_repo</c> is created — see the call site in
+    /// <see cref="CreateOrUpgradeSchema"/>) and the public <see cref="ReconcileInterruptedJobs"/>.</summary>
+    private static int ReconcileRunningJobs(SqliteConnection connection)
+    {
         using var command = connection.CreateCommand();
         command.CommandText = "UPDATE jobs SET status = 'interrupted', finished_at = $t WHERE status = 'running';";
         command.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToString("O"));

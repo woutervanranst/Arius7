@@ -38,8 +38,22 @@ public sealed class JobRunner(
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
         // Race-proof backstop for the cooperative HasActiveJob check (JobsHub/SchedulerService): the
         // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
+        // Only the unique-constraint violation (SQLITE_CONSTRAINT_UNIQUE) means "already running" —
+        // any other SqliteException (disk full, corruption, …) gets its own message logged instead of
+        // being masked. This sits before the method's main try/catch, so a non-matching SqliteException
+        // is handled right here rather than relying on that catch.
         try { database.InsertJob(jobId, repositoryId, "archive", trigger, "running"); }
-        catch (SqliteException) { sink.Done("failed", "A job is already running for this repository."); return; }
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
+        {
+            sink.Done("failed", "A job is already running for this repository.");
+            return;
+        }
+        catch (SqliteException ex)
+        {
+            logger.LogError(ex, "Archive job {JobId} failed to start", jobId);
+            sink.Done("failed", ex.Message);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(repo.LocalPath))
         {
             sink.Log("No local folder configured for this repository — set one in Properties.", "warn");
@@ -112,13 +126,26 @@ public sealed class JobRunner(
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
         // Race-proof backstop for the cooperative HasActiveJob check (JobsHub/SchedulerService): the
         // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
+        // Only the unique-constraint violation (SQLITE_CONSTRAINT_UNIQUE) means "already running" —
+        // any other SqliteException (disk full, corruption, …) gets its own message logged instead of
+        // being masked. This sits before the method's main try/catch, so a non-matching SqliteException
+        // is handled right here rather than relying on that catch.
         try { database.InsertJob(jobId, repositoryId, "restore", "one-off", "running"); }
-        catch (SqliteException) { sink.Done("failed", "A job is already running for this repository."); return; }
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
+        {
+            sink.Done("failed", "A job is already running for this repository.");
+            return;
+        }
+        catch (SqliteException ex)
+        {
+            logger.LogError(ex, "Restore job {JobId} failed to start", jobId);
+            sink.Done("failed", ex.Message);
+            return;
+        }
 
         var destination = string.IsNullOrWhiteSpace(repo.LocalPath)
             ? Path.Combine(Path.GetTempPath(), "arius-restore", repositoryId.ToString())
             : repo.LocalPath!;
-        Directory.CreateDirectory(destination);
 
         jobStates.Register(jobId, sink);
         sink.StartReporting();
@@ -128,6 +155,12 @@ public sealed class JobRunner(
         ServiceProvider? provider = null;
         try
         {
+            // Inside the try (not before it): a bad LocalPath/permissions error here is now handled by
+            // the catch below (marks the job "failed" + emits Done) instead of escaping this
+            // fire-and-forget task and leaving the row stuck "running" — which would block all future
+            // jobs for this repo under the single-active-job guard.
+            Directory.CreateDirectory(destination);
+
             sink.Log($"Connecting to container {repo.Container}…", "meta");
             provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadOnly, sink, CancellationToken.None);
             var mediator = provider.GetRequiredService<IMediator>();

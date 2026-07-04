@@ -53,9 +53,11 @@ try
 
     var app = builder.Build();
 
-    // Any job left "running" by a crash/restart is dead (its in-process run is gone) — mark it
-    // interrupted so it doesn't wedge the single-active-job-per-repo guard forever.
-    app.Services.GetRequiredService<AppDatabase>().ReconcileInterruptedJobs();
+    // Any job left "running" by a crash/restart is dead (its in-process run is gone) — reconciled to
+    // "interrupted" so it doesn't wedge the single-active-job-per-repo guard forever. This now happens
+    // inside AppDatabase's schema initializer (before the ux_jobs_one_active_per_repo unique index is
+    // created), which already ran when the AppDatabase singleton was constructed above — so no explicit
+    // call is needed here.
 
     app.UseCors("web");
 
