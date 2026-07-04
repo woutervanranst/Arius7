@@ -37,6 +37,7 @@ try
     builder.Services.AddAzureBlobStorage();
     builder.Services.AddSingleton<RepositoryProviderRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
+    builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
     builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
 
