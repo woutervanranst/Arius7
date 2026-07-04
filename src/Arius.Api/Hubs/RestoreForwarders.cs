@@ -19,9 +19,8 @@ public sealed class TreeTraversalCompleteForwarder(JobSink sink) : INotification
 {
     public ValueTask Handle(TreeTraversalCompleteEvent n, CancellationToken ct)
     {
-        sink.SetTotalRestore(n.FileCount);
+        sink.SetRestoreTotals(n.FileCount, n.TotalOriginalSize);
         sink.Log($"✓ {n.FileCount} files · {JobFormat.Bytes(n.TotalOriginalSize)}", "ok");
-        sink.ReportRestore(10);
         return ValueTask.CompletedTask;
     }
 }
@@ -30,6 +29,7 @@ public sealed class RehydrationStatusForwarder(JobSink sink) : INotificationHand
 {
     public ValueTask Handle(RehydrationStatusEvent n, CancellationToken ct)
     {
+        sink.SetRehydration(n.Available, n.Rehydrated, n.NeedsRehydration, n.Pending);
         sink.Log($"{n.Available + n.Rehydrated} chunks hydrated · {n.NeedsRehydration} need rehydration", n.NeedsRehydration > 0 ? "warn" : "info");
         return ValueTask.CompletedTask;
     }
@@ -39,7 +39,6 @@ public sealed class RehydrationStartedForwarder(JobSink sink) : INotificationHan
 {
     public ValueTask Handle(RehydrationStartedEvent n, CancellationToken ct)
     {
-        sink.SetRehydrating(n.ChunkCount);
         sink.Log($"Requesting rehydration · {n.ChunkCount} chunks · {JobFormat.Bytes(n.TotalBytes)}", "warn");
         return ValueTask.CompletedTask;
     }
@@ -58,9 +57,8 @@ public sealed class FileRestoredForwarder(JobSink sink) : INotificationHandler<F
 {
     public ValueTask Handle(FileRestoredEvent n, CancellationToken ct)
     {
-        sink.IncRestored(n.FileSize);
+        sink.AddRestored(n.FileSize);
         sink.Log($"→ {n.RelativePath} ✓", "ok");
-        sink.ReportRestore();
         return ValueTask.CompletedTask;
     }
 }

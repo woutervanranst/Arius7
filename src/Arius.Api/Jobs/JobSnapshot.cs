@@ -17,6 +17,16 @@ public sealed record JobSnapshot
     public required double  ThroughputBytesPerSec { get; init; }
     public required int     Pct            { get; init; }   // byte-weighted; legacy consumers read this
     public required IReadOnlyDictionary<string, string> Stats { get; init; }   // legacy drawer stat grid
+
+    // ── Restore progress (zero on archive jobs) ─────────────────────────────
+    public long RestoreTotalFiles          { get; init; }
+    public long FilesRestored              { get; init; }
+    public long RestoreTotalBytes          { get; init; }
+    public long BytesRestored              { get; init; }
+    public int  ChunksAvailable            { get; init; }
+    public int  ChunksRehydrated           { get; init; }
+    public int  ChunksNeedingRehydration   { get; init; }
+    public int  ChunksPending              { get; init; }
 }
 
 /// <summary>Compact, terminal, list-friendly completion summary (persisted to the jobs `outcome` column).</summary>

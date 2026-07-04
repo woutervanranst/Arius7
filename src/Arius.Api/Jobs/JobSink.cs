@@ -31,7 +31,7 @@ public sealed class JobSink
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
     private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles;
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
-    private int  _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending;
+    private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset Started, DateTimeOffset? Done)> _stages = new();
     private volatile string _phase = "starting";
@@ -56,17 +56,19 @@ public sealed class JobSink
     public void StageStarted(string stage) => _stages[stage] = (_now(), null);
     public void StageDone(string stage) { if (_stages.TryGetValue(stage, out var e)) _stages[stage] = (e.Started, _now()); else _stages[stage] = (_now(), _now()); }
 
-    // ── Sliding-window ETA (archive + restore share the same uploaded-bytes clock) ──────────────
-    private readonly LinkedList<(DateTimeOffset At, long Uploaded)> _samples = new();
+    // ── Sliding-window ETA (a job is either archive or restore, never both, so the two
+    // progress-byte counters are summed into one unified clock) ────────────────────────
+    private readonly LinkedList<(DateTimeOffset At, long Progress)> _samples = new();
     private readonly object _sampleLock = new();
     private static readonly TimeSpan EtaWindow = TimeSpan.FromSeconds(60);
 
-    /// <summary>Record an (instant, cumulative-uploaded-bytes) point and drop points older than the window.</summary>
+    /// <summary>Record an (instant, cumulative-progress-bytes) point and drop points older than the window.</summary>
     public void SampleForEta(DateTimeOffset now)
     {
         lock (_sampleLock)
         {
-            _samples.AddLast((now, Interlocked.Read(ref _uploadedBytes)));
+            var progress = Interlocked.Read(ref _uploadedBytes) + Interlocked.Read(ref _bytesRestored);
+            _samples.AddLast((now, progress));
             while (_samples.First is { } first && now - first.Value.At > EtaWindow)
                 _samples.RemoveFirst();
         }
@@ -79,7 +81,7 @@ public sealed class JobSink
             if (_samples.First is not { } first || _samples.Last is not { } last) return 0;
             var dt = (last.Value.At - first.Value.At).TotalSeconds;
             if (dt <= 0) return 0;
-            var db = last.Value.Uploaded - first.Value.Uploaded;
+            var db = last.Value.Progress - first.Value.Progress;
             return db > 0 ? db / dt : 0;
         }
     }
@@ -92,8 +94,22 @@ public sealed class JobSink
         var uploaded = Interlocked.Read(ref _uploadedBytes);
         var totalNew = total > 0 ? Math.Max(0, total - deduped) : 0;
         var rate     = RateBytesPerSec(now);
-        long? eta    = totalNew > 0 && rate > 0 ? (long)Math.Ceiling(Math.Max(0L, totalNew - uploaded) / rate) : null;
-        var pct      = totalNew > 0 ? (int)Math.Clamp(uploaded * 100 / totalNew, 0, 100) : 0;
+
+        // A job is either archive or restore, never both — pick the active kind's totals/progress
+        // so both Pct and EtaSeconds are meaningful whichever kind is running.
+        var restoreTotalFiles = Interlocked.Read(ref _restoreTotalFiles);
+        var restored          = Interlocked.Read(ref _bytesRestored);
+        var restoreTotal      = Interlocked.Read(ref _restoreTotalBytes);
+        var isRestore         = restoreTotal > 0 || restoreTotalFiles > 0;
+        var denominator       = isRestore ? restoreTotal : totalNew;
+        var progress          = isRestore ? restored     : uploaded;
+
+        long? eta = denominator > 0 && rate > 0 ? (long)Math.Ceiling(Math.Max(0L, denominator - progress) / rate) : null;
+        var pct = denominator > 0
+            ? (int)Math.Clamp(progress * 100 / denominator, 0, 100)
+            : (isRestore && restoreTotalFiles > 0
+                ? (int)Math.Clamp(Interlocked.Read(ref _filesRestored) * 100 / restoreTotalFiles, 0, 100)
+                : 0);
 
         return new JobSnapshot
         {
@@ -110,6 +126,14 @@ public sealed class JobSink
                 ["Uploaded"] = JobFormat.Bytes(uploaded),
                 ["Deduped"]  = Interlocked.Read(ref _dedupedFiles).ToString(),
             },
+            RestoreTotalFiles = restoreTotalFiles,
+            FilesRestored = Interlocked.Read(ref _filesRestored),
+            RestoreTotalBytes = restoreTotal,
+            BytesRestored = restored,
+            ChunksAvailable = _rehydAvailable,
+            ChunksRehydrated = _rehydRehydrated,
+            ChunksNeedingRehydration = _rehydNeeds,
+            ChunksPending = _rehydPending,
         };
     }
 }
