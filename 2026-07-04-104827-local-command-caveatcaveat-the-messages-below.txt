@@ -1,0 +1,1809 @@
+ ▐▛███▜▌   Claude Code v2.1.201
+▝▜█████▛▘  Opus 4.8 · Claude Team
+  ▘▘ ▝▝    ~/.superset/worktrees/Arius7/jobs-progress
+
+ ▎ Fable 5 is back.
+ ▎ Until July 7, you can use up to 50% of your plan's weekly usage limit on Fable 5. If you hit your limit, you can continue on Fable 5 with usage credits. Fable 5 draws down usage faster than Opus 4.8. Learn more
+
+❯ /model                                                                        
+  ⎿  Set model to Opus 4.8 (1M context) and saved as your default for new
+     sessions
+
+❯  /brainstorming '/Users/wouter/Downloads/Arius archive and jobs UI            
+  improvements.zip' anything we still need                                      
+    to figure out here?                                                         
+
+⏺ I'll start by invoking the brainstorming skill, then unpack the zip to see
+  what we're working with.
+
+⏺ Skill(superpowers:brainstorming)
+  ⎿  Successfully loaded skill
+
+⏺ Let me start by exploring the zip contents and the project context in
+  parallel.
+
+  Listed 1 directory, ran 1 shell command (ctrl+o to expand)
+
+⏺ Let me read the design handoff README and understand the project structure.
+
+  Read 2 files (ctrl+o to expand)
+
+⏺ This is a detailed design handoff for reworking Arius.Web's jobs/progress UX.
+  The user's question is a scoping one: "anything we still need to figure out
+  here?" — so before I ask clarifying questions, let me ground myself in the
+  actual current codebase to find the real gaps between what the design assumes
+  and what exists today.
+
+  Searched for 1 pattern, listed 1 directory (ctrl+o to expand)
+
+⏺ Substantial infrastructure already exists (JobsHub, JobRunner, JobSink,
+  SchedulerService, RestoreApprovalRegistry, forwarders, JobEndpoints,
+  AppDatabase). This is not greenfield — so the real gaps are between what's
+  already wired and what the design assumes. Let me read the key current files.
+
+  Read 4 files (ctrl+o to expand)
+
+⏺ Now the JobSink (current progress model), JobRunner, endpoints, persistence
+  records, and the frontend realtime/jobs files.
+
+  Read 3 files (ctrl+o to expand)
+
+⏺ Now the frontend realtime/jobs/drawer files and the persistence records.
+
+  Read 3 files (ctrl+o to expand)
+
+⏺ Let me close the remaining gaps: restore forwarders, the drawer flow,
+  cancellation support, routing, and how jobs are persisted/restarted.
+
+  Read 2 files (ctrl+o to expand)
+
+⏺ Let me verify a few specific gaps with targeted searches: cancellation,
+  rehydration waiting behavior, snapshot-on-subscribe, and the current routes.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Let me check how the restore handler currently deals with the long rehydration
+  wait — this is the biggest architectural question — and the Web routes.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Let me read the rest of the restore handler — specifically the confirm →
+  download → rehydrate → return logic — to confirm whether restore blocks
+  in-process for rehydration or returns early with "pending".
+
+  Read 1 file (ctrl+o to expand)
+⏺ I now have a thorough, grounded picture. Let me read one more central file —
+  the drawer store that owns the current stream/state lifecycle — since the
+  "drawer → pill → reattach" migration hinges on it.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ I've now read the current implementation end-to-end — the events, the hub,
+  both forwarder sets, JobSink, JobRunner, JobEndpoints, the restore handler's
+  rehydration flow, the persistence records, and the whole Angular
+  drawer/jobs/realtime stack. Here's the honest answer to "anything we still
+  need to figure out?"
+
+  First, the good news
+
+  This is a rework, not greenfield. A lot already exists: per-job SignalR
+  groups, a JobRunner with per-repo write-locking, a JobSink that already
+  aggregates byte counters, event forwarders for every Core event the design
+  names, the cost-approval handshake (RestoreApprovalRegistry), a cron
+  SchedulerService, and a SQLite job store. Events already carry byte sizes. So
+  the design's "no Core changes" constraint holds — everything is derivable from
+  what Core emits today.
+
+  But the design is ~95% a visual/UX spec. The genuinely unresolved stuff is
+  almost entirely on the Api state-model and job-lifecycle side, plus a few
+  behavior contradictions with how things work today. Here's what I found,
+  grouped.
+
+  A. The big architectural forks (these gate everything else)
+
+  1. Where does live job state live, and what survives an Api restart?
+  Today JobSink holds the byte aggregates in memory, per running job, and there
+  is no way to fetch a snapshot — a new/returning connection gets nothing. The
+  design's whole "reattach / pill reconnects on revisit / send a full snapshot
+  on subscribe, then deltas" hinges on state a second connection can read. And
+  running jobs are fire-and-forget Tasks: on Api restart the job dies but the DB
+  still says running. This is the decision everything else depends on.
+
+  2. Reattach protocol + per-job message routing.
+  Bigger than it looks: RealtimeService has a single global connection with 
+  global log$/progress$/cost$/done$ subjects — messages aren't tagged with a
+  jobId. The client silently assumes one active job (the drawer's). For the pill
+  + multiple jobs + a /jobs/:id page that can attach to any job, every SignalR
+  message needs a jobId, and the hub needs a new AttachToJob(jobId) (join group
+  + return current aggregate). Open: snapshot via REST GET /jobs/{id}
+  first-then-deltas, vs a SignalR Snapshot message on attach.
+
+  3. Rehydration auto-resume — the second-biggest gap.
+  The current RestoreCommandHandler does not wait hours for rehydration. It
+  downloads what's available now, requests rehydration for the rest, and returns
+  with ChunksPendingRehydration > 0 (idempotent per ADR-0017 — you re-run to
+  pick up hydrated chunks). So the design's "Automatically restore as chunks
+  become available" toggle + adaptive-polling BackgroundService requires new Api
+  orchestration that re-drives RestoreCommand when chunks flip available. Open:
+  re-invoke the whole command (re-walks the tree)? persist restore params
+  (repo/version/targetPaths/priority/destination/toggle — none are in JobRecord
+  today)? and on auto-resume do we re-prompt for cost (no — already paid; pass a
+  non-prompting confirm)?
+
+  4. Cost-confirmation lifecycle is a behavior change, not just a redraw.
+  Today, closing the tab declines/cancels a pending cost approval
+  (OnDisconnectedAsync → CancelForConnection, and DrawerStore.close() sends
+  decline). The new design says a blocked job parks in "Needs your attention" 
+  and waits — decoupled from the connection. Those contradict. We need to
+  decide: does navigating away / closing the tab still cancel, or does the job
+  now wait indefinitely?
+
+  B. Smaller behavioral clarifications
+
+  - 5. Cancellation — "Cancel job" is in the design but no cancellation token is
+  plumbed (JobRunner passes CancellationToken.None). Need per-job CTS +
+  CancelJob(jobId) hub method + confirm cancel semantics (archive mid-upload
+  leaves recoverable partial remote state, no snapshot published — safe).
+  - 6. Progress firehose → coalesced deltas + ETA window — forwarders currently
+  emit Progress on every file hashed / chunk uploaded. Design wants throttled
+  aggregate deltas (~1/s) plus the 60 s sliding-window ETA, which needs
+  time-series sampling JobSink doesn't keep.
+  - 7. Warnings capture — GET /jobs/{id}/warnings (verbatim [WRN]) doesn't
+  exist; warnings are currently just Log(...,"warn") messages, not
+  captured/retained. Need a per-job log buffer + retention-after-completion
+  policy.
+  - 8. Pill multiplicity & ownership — one repo can have >1 running job
+  (scheduled archive + manual restore). Design shows a single pill. Stack? Show
+  newest? And which component owns it (a global overlay gated on the current
+  route's repoId)?
+  - 9. History outcome summaries — 4a's rich one-liner ("…5.7 GB deduped ·
+  snapshot v12 · 14 min"). Archive has these in ArchiveResult; restore's
+  completion is a bland string today. Persist structured stats vs formatted
+  string?
+  - 10. Status vocabulary — design chips need waiting/blocked (cost pending) as
+  a distinct status; today it's
+  queued|running|rehydrating|completed|failed|cancelled.
+  - 11. One KPI to sanity-check — e.g. "16 parallel workers" is a Core constant
+  (DownloadWorkers=4, archive workers elsewhere), not an event. Fine to surface
+  as config, just flagging it's not event-derived.
+
+  C. Non-blocking (for the plan, not now)
+
+  Testing strategy (aggregation/ETA/state-reducer unit tests, hub-attach
+  integration test, Angular components) and the rework sequencing/migration
+  order.
+
+  ---
+  None of these are blockers — they're decisions. The one that cascades into all
+  the others is #1 (state authority + restart durability), so I'd start there.
+  Let me pose it:
+
+⏺ User declined to answer questions
+  ⎿  · When the Api process restarts mid-job, what must survive? (This decides 
+     whether live job state is an in-memory registry or a persisted state 
+     machine — it cascades into the reattach protocol and rehydration 
+     auto-resume.) (Hybrid (Recommended) / Persist everything / Persist nothing)
+
+⏺ Sure — what would you like to clarify before we lock this down? A few things I
+  can expand on if useful:
+
+  - What "in-memory registry" vs "persisted state machine" actually means in
+  this codebase (where the state object lives, how the snapshot-on-attach reads
+  it, what a restart does to each).
+  - Why restart-durability is the fork that cascades — how each choice changes
+  the reattach protocol (#2) and the rehydration auto-resume design (#3).
+  - How realistic Api restarts are in your deployment — if the Api is a
+  long-lived container that rarely restarts, "persist nothing" gets more
+  defensible; if it's restarted on every deploy and a Standard rehydration can
+  be waiting ~15 h, that argues for persisting the waiting restores.
+  - What ADR-0017 (idempotent restore) already guarantees, so we're not
+  re-solving durability that Core already handles.
+
+  Or if your question is something else entirely — scope, a different open item
+  from the list (cost-confirmation lifecycle, cancellation, the pill), or you'd
+  rather I not lead with durability — tell me and I'll reframe.
+
+  What's on your mind?
+
+✻ Baked for 4m 58s
+
+❯ i m not sure i fully understand the question here; if api restarts then any   
+  running job (archvive/restore) will not still be runnnign somehow - since api 
+  is hosting core with the archivecommandhandler running in it. that said, i    
+  was thinking of a ~event sourcing persistence into the database, or would     
+  that be overly contentious? would hangfire make sense or overkill? in theory  
+  api is long-lived so in memory may make sense but key elements need to be     
+  persisted to re-surface it in the ui (perhaps in a json not to overload the   
+  database schema?)                                                             
+
+⏺ Your correction is exactly right, and it actually simplifies the question. A
+  running job can't survive a restart — the archive/restore pipeline is
+  executing in-process inside the Api that's hosting Core, so when the process
+  dies, the work dies. That kills my "persist everything / resume mid-upload"
+  option outright (you'd need Core-level checkpointing, which is out of scope).
+  So the real question was never "keep it running" — it's "what do we persist so
+  the UI can re-surface the job, and so a waiting job can be picked back up?"
+  That's a much narrower thing.
+
+  Let me answer your three mechanism questions directly, because they're the
+  right ones.
+
+  Event sourcing → no (and it'd be contentious for good reason). Full ES means
+  persisting every domain event and replaying to rebuild state. But you
+  deliberately don't want per-file history — the "no per-file row flashing,
+  aggregate only" product decision means per-event data is thrown away on
+  purpose. Persisting thousands-to-millions of FileHashed/ChunkUploaded events
+  per run is pure write amplification for data you've already decided not to
+  show. You only ever need the current aggregate + the terminal outcome, never a
+  replay. So ES is the wrong granularity here.
+
+  There's a lighter cousin that is useful, and I think it's what you're
+  circling: persist the intent (the job request + its resume-relevant params) as
+  the durable source of truth, separate from the live progress. That's not
+  event sourcing — it's just "the job row is authoritative; live counters are a
+  transient cache."
+
+  Hangfire → overkill (the design README already says so, and I agree). Hangfire
+  buys durable enqueue + retry + a dashboard. But (a) a Hangfire job dies on
+  process death too — it'd just retry the whole archive, which our idempotent
+  commands tolerate but don't need; (b) you already have the exact pattern in
+  SchedulerService — a hosted BackgroundService on a PeriodicTimer. The only
+  thing that genuinely needs durable background scheduling is the rehydration 
+  poll + auto-resume, and a hosted service reading persisted "waiting restore"
+  rows does that with zero new infrastructure. Adding Hangfire means a new
+  dependency, its own storage schema, and operational surface for a handful of
+  per-repo jobs. Skip it.
+
+  In-memory + a JSON column → yes, this is the recommendation, and your instinct
+  about not overloading the schema is correct. Concretely:
+
+  Layer: jobs row (durable identity)
+  Holds: id, kind, repo, trigger, status, timestamps
+  Lifetime: forever (history)
+  ────────────────────────────────────────
+  Layer: one new StateJson TEXT column
+  Holds: (a) resume params for a waiting restore (version, targetPaths,
+  priority,
+     destination, auto-resume toggle) + (b) last-known aggregate snapshot for UI
+
+    re-surfacing
+  Lifetime: flushed on transitions + a throttled ~5–10 s tick while running
+  ────────────────────────────────────────
+  Layer: in-memory JobState registry (keyed by jobId)
+  Holds: live byte aggregates, per-stage counters, ETA window samples, warning
+    tail
+  Lifetime: transient — recreated per run; gone on restart
+
+  So: SignalR deltas mutate the in-memory JobState; snapshot-on-attach reads it;
+  it's periodically serialized into StateJson. No per-metric columns, no
+  event-log table, no full-fidelity persistence.
+
+  That gives clean restart semantics:
+  - On boot, any running row with no live JobState → reconcile to
+  interrupted/failed, and the detail page shows the last-known StateJson
+  snapshot marked stale (archive/restore are idempotent — the user just
+  re-runs).
+  - Any waiting-rehydration row → the polling BackgroundService re-arms it from
+  StateJson params and re-drives RestoreCommand (which skips already-restored,
+  downloads newly-hot chunks, re-requests still-pending — no re-prompt, cost
+  already approved). The resumed restore keeps the same jobId, so it reads as
+  one continuous job in history rather than spawning a new one each cycle.
+
+  Net: the DB row is the durable anchor, StateJson is the thin bridge, live
+  progress stays in memory. No ES, no Hangfire.
+
+  Does that model sit right with you? If so, that decision cascades cleanly into
+  the reattach protocol (open question #2) — specifically, AttachToJob(jobId)
+  returns the in-memory snapshot if the job is live, else the StateJson snapshot
+  — and it means every SignalR message now needs a jobId tag (today the client
+  streams are global and untagged, which is the concrete blocker for the pill +
+  multiple jobs). Want me to walk into #2 next, or refine anything about this
+  persistence model first?
+
+✻ Worked for 1m 25s
+
+❯ perfect. continue to #2                                                       
+
+⏺ #2 — Reattach protocol & per-job message routing
+
+  The key realization: killing the console removes the hard part
+
+  The scariest part of any "snapshot + live deltas" design is the race — deltas
+  that land between reading the snapshot and joining the stream, arriving out of
+  order or duplicated. Here's the thing: that problem largely evaporates once 
+  the live console is gone.
+
+  Look at what's actually left flowing over the socket after we kill the
+  console:
+
+  ┌────────────────┬─────────────────────────────┬─────────────────────────┐
+  │    Message     │        Nature today         │      After rework       │
+  ├────────────────┼─────────────────────────────┼─────────────────────────┤
+  │ Log (console   │ append-only stream ← the    │ deleted (warnings move  │
+  │ lines)         │ hard one                    │ to REST)                │
+  ├────────────────┼─────────────────────────────┼─────────────────────────┤
+  │                │ already sends absolute pct  │ absolute aggregate      │
+  │ Progress       │ + stats, not increments     │ (byte layers, ETA,      │
+  │                │                             │ counts)                 │
+  ├────────────────┼─────────────────────────────┼─────────────────────────┤
+  │ CostEstimate   │ one-shot state              │ one-shot state          │
+  ├────────────────┼─────────────────────────────┼─────────────────────────┤
+  │ Done           │ terminal one-shot           │ terminal one-shot       │
+  └────────────────┴─────────────────────────────┴─────────────────────────┘
+
+  Everything remaining is absolute-state, latest-wins. The client never
+  accumulates deltas — it replaces its view with whatever arrived most recently.
+  So snapshot-vs-delta ordering stops mattering: if the server reads the
+  snapshot after joining the group, any message the client receives is ≥ the
+  snapshot's basis, and the next throttled tick (~5–10 s, or on transition)
+  reconverges anyway. No sequence numbers, no gap-filling, no dedup. That's a
+  big simplification and it's a direct dividend of the "no per-file firehose"
+  product decision.
+
+  The protocol
+
+  One new hub primitive, snapshot returned inline:
+
+  Client (/jobs/:id or pill)                    JobsHub
+    │                                              │
+    ├── invoke AttachToJob(jobId) ────────────────►│
+  Groups.AddToGroupAsync(conn, jobId)
+    │                                              │  snapshot = JobState[jobId]
+         (live)
+    │◄──────────── returns snapshot ───────────────┤            ?? load
+  StateJson       (persisted)
+    │                                              │
+    │◄── "Progress" {jobId, ...absolute...} ───────┤  (throttled deltas
+  thereafter)
+    │◄── "Done" {jobId, ...} ──────────────────────┤
+    │                                              │
+    └── invoke DetachFromJob(jobId) ──────────────►│
+  Groups.RemoveFromGroupAsync(conn, jobId)
+
+  Why hub-invoke (snapshot as the return value) over REST-first: one round trip,
+  the group-join and snapshot read happen server-side in one call (join then
+  read → no gap), it reuses the existing single connection, and the snapshot
+  payload is the same shape as a Progress delta so the client has exactly one
+  apply-path. StartArchive/StartRestore just return the jobId; the client always
+  follows with AttachToJob, so there's a single uniform attach code path
+  (started-by-me and not-started-by-me are identical).
+
+  Two things that are currently missing and must be added
+
+  1. Every message must carry jobId. Today RealtimeService has global, untagged
+  log$/progress$/cost$/done$ subjects — it silently assumes one active job. That
+  breaks the moment the client is attached to more than one group at once,
+  which the new design requires: the Jobs-overview "Active" section drives live
+  mini-bars for all running jobs simultaneously. So JobSink sends new { jobId, 
+  ... }, and RealtimeService exposes a jobStream(jobId) helper that filters the
+  tagged global stream. SignalR groups already prevent cross-job leakage; the
+  tag is for disambiguating multiple simultaneous attachments on the client.
+
+  2. Re-attach on socket reconnect. SignalR groups are per-connection —
+  withAutomaticReconnect() gets a new connectionId, so group membership is 
+  silently lost on every reconnect. Nothing re-joins today. The service must
+  track the set of currently-attached jobIds and re-issue AttachToJob for each
+  in connection.onreconnected(...). This is the single most likely "why did the
+  pill go dead" bug if we skip it.
+
+  REST vs hub — clean split by job liveness
+
+  - Running job detail / pill / overview-active → AttachToJob (snapshot + deltas
+  over the socket).
+  - Finished/history job detail (Report ›) → plain GET /jobs/{id} returning the
+  persisted StateJson snapshot + outcome. No socket opened for browsing history.
+  - Discovery (what's running for this repo? / the overview list) → GET 
+  /jobs?repositoryId=…&status=running. The pill queries this on entering a repo
+  route; if any job is live, show pill + attach.
+  - Warnings → GET /jobs/{id}/warnings (verbatim [WRN]), fetched only when the
+  user expands the panel. The live Progress delta carries just a warningCount so
+  the footer "There are N warnings" updates without putting log text on the
+  socket.
+
+  Who attaches to what
+
+  ┌───────────────────────┬─────────────────────────────┬──────────────────┐
+  │        Surface        │         Attaches to         │   Detaches on    │
+  ├───────────────────────┼─────────────────────────────┼──────────────────┤
+  │ Jobs overview         │ all running jobIds          │ leaving /jobs    │
+  │ "Active"              │                             │                  │
+  ├───────────────────────┼─────────────────────────────┼──────────────────┤
+  │ Repo-scoped pill      │ the running job(s) for the  │ leaving the repo │
+  │                       │ current repo                │  route           │
+  ├───────────────────────┼─────────────────────────────┼──────────────────┤
+  │ /jobs/:id detail      │ that one jobId              │ route destroy    │
+  │ (running)             │                             │                  │
+  ├───────────────────────┼─────────────────────────────┼──────────────────┤
+  │ /jobs/:id detail      │ nothing (REST only)         │ —                │
+  │ (finished)            │                             │                  │
+  └───────────────────────┴─────────────────────────────┴──────────────────┘
+
+  ---
+  Two intersections I'm deliberately not resolving here because they're their
+  own open questions:
+  - #4 (cost lifecycle): in this decoupled model, a dropped connection must no 
+  longer decline a pending cost approval (today OnDisconnectedAsync → 
+  CancelForConnection does exactly that). The job has to park in "Needs your
+  attention" instead. That's a behavior change we'll settle in #4.
+  - #8 (pill multiplicity): the protocol supports N attachments fine, but "one
+  repo, two running jobs → what does the single pill show?" is still an open UX
+  call.
+
+  That's the reattach protocol: AttachToJob/DetachFromJob, snapshot-as-return,
+  jobId-tagged absolute-state deltas, client tracks its attached set and
+  re-attaches on reconnect, REST for history/discovery/warnings.
+
+  Sit right? Anything to adjust — otherwise I'll go to #3 (rehydration 
+  auto-resume orchestration), which is the other heavy one.
+
+✻ Sautéed for 1m 53s
+
+❯ ok                                                                            
+
+⏺ #3 — Rehydration auto-resume orchestration
+
+  This is the other heavy one, and there's a latent bug in today's code that
+  frames it. Right now RunRestoreAsync unconditionally does CompleteJob(jobId, 
+  "completed", …, "Restore complete.") after the command returns — it never 
+  checks result.ChunksPendingRehydration. So a restore that requested
+  rehydration for 282 archive-tier chunks is marked completed immediately, and
+  those chunks are silently dropped; the user has to notice and manually re-run
+  hours later. The design's whole rehydration story is really "make this correct
+  + automatic."
+
+  The grain of the mechanism: re-drive the whole command
+
+  The RestoreCommandHandler is already idempotent (ADR-0017): re-running it
+  re-resolves the snapshot, re-classifies (now more chunks are hot), downloads
+  the newly-available ones, skips already-restored files (conflict routing →
+  SkipIdentical), and re-requests still-pending chunks (stage 5 skips chunks
+  already pending). So auto-resume = re-invoke RestoreCommand on a schedule 
+  until it returns ChunksPendingRehydration == 0. Zero Core changes; the
+  re-drive is the authoritative status check.
+
+  I considered a finer mechanism — persist the resolved chunk set and download
+  only the pending subset — but that means duplicating resolution logic in the
+  Api or changing Core. Reject it. Re-drive the whole command.
+
+  The state machine
+
+  first run returns ChunksPendingRehydration > 0
+          │
+          ▼
+     ┌─────────┐   autoResume=on  &  poll finds newly-hot chunks
+     │ waiting │ ──────────────────────────────────────────────►  re-drive (same
+  jobId)
+     │(rehydr.)│                                                        │
+     └─────────┘ ◄─── re-drive still returns pending ───────────────────┤
+          │                                                             │
+          │  re-drive returns pending == 0                              │
+          ▼                                                             ▼
+     ┌───────────┐                                              (downloads
+  newly-hot,
+     │ completed │                                               re-requests
+  still-pending)
+     └───────────┘
+
+  - After the first run, branch on ChunksPendingRehydration: > 0 → status
+  waiting, persist resume state, arm the poller; == 0 → completed (as today).
+  - Each re-drive flips waiting → running for its (short) duration, then back to
+  waiting or on to completed. The poller only touches jobs in waiting, so a
+  slow download can't be double-driven.
+  - Same jobId throughout (per #1 — one continuous job in history). The DB row
+  is the durable anchor; the re-drive rebuilds the transient in-memory JobState.
+
+  The poller — clone the SchedulerService pattern
+
+  A hosted RehydrationPollingService : BackgroundService that wakes every minute
+  and, per persisted waiting restore job, decides "is it due?" from fields in
+  StateJson — no per-job Timer objects, so it's naturally restart-safe (matches
+  the design's "timers re-hydrate from the job store"). Adaptive cadence
+  straight from the design:
+
+  ┌──────────┬────────────────────────────────────────────────────────┐
+  │ Priority │                        Schedule                        │
+  ├──────────┼────────────────────────────────────────────────────────┤
+  │ High     │ check every 15 min from rehydrationStartedAt           │
+  ├──────────┼────────────────────────────────────────────────────────┤
+  │ Standard │ first check ~10 h, then hourly                         │
+  ├──────────┼────────────────────────────────────────────────────────┤
+  │ either   │ tighten to 15 min once the first chunk flips available │
+  └──────────┴────────────────────────────────────────────────────────┘
+
+  The cheap status check is ListRehydratedChunksAsync (one prefix listing — and
+  since restore holds the per-repo gate only during each short re-drive, the
+  wait itself doesn't lock the repo). It updates "X of Y ready" for the UI and
+  adjusts cadence. A re-drive (the expensive tree walk) only fires when the 
+  rehydrated count grew — I'd store lastRehydratedCount in StateJson as the
+  trigger, so we don't re-walk a large repo hourly for no change. (If you'd
+  rather keep it dead simple to start, we can just re-drive on schedule and add
+  the cheap pre-check later — but I lean toward including it since large-repo
+  re-walks aren't free.)
+
+  What StateJson carries for a waiting restore
+
+  repo id · version · targetPaths · destination · chosen priority · autoResume ·
+  rehydrationStartedAt · lastCheckedAt · lastRehydratedCount · + the aggregate
+  snapshot for UI. Notably not the full pending-chunk hash set — the re-drive
+  re-derives that authoritatively.
+
+  Cost is never re-prompted on resume
+
+  Cost was approved once and rehydration already requested/charged on the first
+  run. On re-drive, remaining work is download (already inside the approved
+  estimate) + no-op re-request of still-pending chunks — no new rehydration
+  charge. Mechanism: the resume path passes a non-prompting ConfirmRehydration =
+  (_, _) => Task.FromResult(persistedPriority) — it honors the user's original
+  Standard/High choice and never surfaces a modal or touches
+  RestoreApprovalRegistry (the poller has no connection). This is why the resume
+  path sidesteps the whole connection-scoped-approval mess entirely.
+
+  The toggle (autoResume) — on vs off
+
+  - on → poller re-drives automatically as chunks hydrate. Since all cost was
+  pre-approved, unattended resume incurs no unapproved cost. I'd make this the
+  default — a backup tool shouldn't make you babysit a 15 h wait.
+  - off → poller still polls status (so "X of Y ready" and cadence stay fresh)
+  but does not download. The job parks. To un-park: flip the toggle on, or a
+  "Restore ready chunks now" action on the wait card. The design draws the
+  toggle but not the manual button — I'd add the button on the rehydration wait
+  card so a parked job is actionable without hunting for the toggle. New hub
+  methods: SetAutoResume(jobId, bool) and ResumeRestore(jobId).
+
+  What changes, concretely
+
+  1. RunRestoreAsync: stop unconditionally completing — branch on
+  ChunksPendingRehydration, persist resume state + set waiting when pending.
+  2. New RehydrationPollingService (mirror SchedulerService): minute tick →
+  due-check → cheap status listing → re-drive on growth when autoResume.
+  3. ResumeRestoreAsync: RunRestoreAsync variant with the non-prompting confirm
+  callback, reusing the jobId and updating status.
+  4. Persist resume params + schedule fields in StateJson.
+  5. Hub: SetAutoResume(jobId, bool), ResumeRestore(jobId).
+  6. Status vocab gains waiting (finalized in #10).
+
+  One thing to confirm — the "Verify" stage
+
+  Design 3b lists a restore stage "Verify (hash check + pointer cleanup)." Core
+  has a Cleanup stage (deletes leftover rehydrated chunk blobs when nothing's
+  pending), and chunk integrity is inherent in content-hashing. I'd map the
+  "Verify" row to that existing Cleanup + the implicit hash integrity — not a
+  new post-restore hash-verification pass, since that'd be a Core change (out of
+  scope). Flagging so we don't accidentally scope-creep a real verification
+  pass.
+
+  ---
+  The genuine sub-decisions here: (a) auto-resume default = on (my rec), (b)
+  include the cheap lastRehydratedCount pre-check vs re-drive-on-schedule (my
+  rec: include it), (c) add an explicit "Restore ready chunks now" button for
+  the parked case (my rec: yes), (d) "Verify" = existing Cleanup, no new Core
+  pass (my rec: yes).
+
+  Good with those? This dovetails straight into #4 (cost-confirmation lifecycle)
+  — the "park in Needs-your-attention instead of decline-on-disconnect" change
+  — which is the last of the heavy ones. Want me to continue to #4?
+
+✻ Worked for 2m 29s
+
+❯ hosts should only talk to features, NEVER to shared services directly (save   
+  this in AGENTS.MD) -> you cannot invoke listrehydratedchunksasync from api -> 
+  just re-trigger a restore run, this encapsulates what you need. yes:          
+  autoresume toggle on is the correct default. if it is off: we won't know the  
+  status of the rehydrated chunks (but we can show a '~ should be hydrated by   
+  xx:xx' time?) and a button "Restore now". re the Verify stage, shouldnt we    
+  just rename this to "Cleanup" ?                                               
+
+⏺ You've caught a real violation in my own proposal — thank you. Calling
+  ListRehydratedChunksAsync (an IChunkStorageService, i.e. Core Shared) from the
+  Api polling service breaks the host→features boundary. The fix is exactly
+  what you say: the poller just re-triggers a restore run — the RestoreCommand
+  feature already encapsulates the classify/listing/download, so that's the only
+  primitive we need. Let me record the rule first, then correct #3.
+
+⏺ Update(AGENTS.md)
+  ⎿  Added 1 line
+      199  
+      200  - **Features vs Shared.** `src/Arius.Core/Features/` holds ver
+           tical slices (`*Command`/`*Query`) that decide **when** to res
+           olve a snapshot, walk a tree, look up chunk metadata, upload c
+           hunks, or restore. `src/Arius.Core/Shared/` decides **how** (c
+           aching, serialization, blob interpretation). Repository-wide l
+           ogic reused by more than one feature belongs in `Shared`; sing
+           le-flow logic belongs in the feature handler. Inject shared se
+           rvices into features; don't construct them ad hoc.
+      201  - **Hosts drive Core only through `IMediator`.** `Arius.Cli`, 
+           `Arius.Explorer`, and `Arius.Api` each build one provider per 
+           repository (`AddMediator()` + `AddArius(...)`) and never call 
+           handlers directly. Core depends on `IBlobContainerService`, ne
+           ver the Azure SDK ([ADR-0013](docs/decisions/adr-0013-core-hos
+           t-separation.md), enforced by architecture tests).
+      202 +- **Hosts talk only to Features, never to Core `Shared` servic
+          +es directly.** A host (`Arius.Cli`, `Arius.Explorer`, `Arius.A
+          +pi`) may send/stream commands and queries through `IMediator`,
+          + but must not resolve or call Core `Shared` services (`IChunkS
+          +torageService`, `ISnapshotService`, `IChunkIndexService`, `IFi
+          +leTreeService`, `IBlobContainerService`, …). If a host needs d
+          +ata or an action that no feature exposes, add or extend a feat
+          +ure — do not reach into `Shared`. Example: rehydration progres
+          +s is obtained by re-triggering the restore feature (which is i
+          +dempotent), not by calling `IChunkStorageService.ListRehydrate
+          +dChunksAsync` from the Api.                                   
+      203  - **Feature handlers must not depend on `IBlobContainerService
+           `/`IBlobService`/`IBlobServiceFactory` directly.** Current app
+           roved exceptions: `ArchiveCommandHandler` (container creation)
+            and `ContainerNamesQueryHandler` (repository-external enumera
+           tion). `restore` and `ls` are read-only and must not create co
+           ntainers. Remove stale direct blob/encryption deps when a hand
+           ler no longer uses them.
+      204  - **Service lifetimes are per-repository-provider singletons.*
+           * Fine for the short-lived CLI, but long-lived hosts (Web/Expl
+           orer) must manage provider lifetime — `ChunkIndexService` is s
+           ingle-shot after flush. See [`docs/design/cross-cutting/servic
+           e-lifetimes.md`](docs/design/cross-cutting/service-lifetimes.m
+           d).
+      205  - **DI.** Register shared services once per repository; helper
+           s (`FileTreeBuilder`) receive already-constructed services; av
+           oid duplicate service graphs for one repository (they split ca
+           che/validation state).
+
+⏺ Rule saved to AGENTS.md (as a new boundary bullet under Architecture,
+  alongside the existing IMediator rule). It even documents the rehydration
+  example so the next agent doesn't repeat my mistake.
+
+  (Aside: JobsHub.StreamContainers already violates this — it calls 
+  blobServiceFactory.CreateAsync(...) directly instead of going through the 
+  existing ContainerNamesQueryHandler. Pre-existing, tangential to this work, 
+  but worth a separate cleanup pass someday. Flagging, not touching.)
+
+  #3, corrected
+
+  The re-trigger is the only primitive — no separate status check, because a
+  cheap status check would require reaching into Shared, which we've just
+  forbidden. So:
+
+  autoResume ON
+  - The RehydrationPollingService re-triggers a full restore run on the adaptive
+  schedule (High: ~30 min then every 15 min; Standard: first ~10 h then
+  hourly). Each run is both the status check and the download — it classifies,
+  downloads whatever's now hot, re-requests the rest, and emits its normal
+  RehydrationStatusEvent/progress so the UI's "X of Y ready" updates as a
+  side-effect of the run. "Tighten to 15 min once the first chunk is available"
+  is driven by the run's result, not a separate poll.
+  - Cost of this: a full tree walk per re-run (we can't cheaply peek). That's
+  the accepted price of the boundary; the adaptive cadence exists precisely to
+  keep those heavy re-runs rare and timed to when Azure could plausibly have
+  delivered. If it ever hurts on huge repos, the right fix is a Core-level
+  "resume restore" feature — future work, a Core change, out of scope now.
+
+  autoResume OFF
+  - No re-triggering at all → we genuinely don't know the rehydration status
+  (exactly your point). So the wait card shows a heuristic "≈ should be hydrated
+  by 03:40" (= rehydrationStartedAt + priority window: High ≤ 1 h, Standard ≤
+  15 h) plus a "Restore now" button. Clicking it fires one on-demand run
+  (downloads what's ready, reports status via its events, stays waiting if still
+  pending). The toggle still separately governs auto.
+
+  StateJson for a waiting restore (simplified — no lastRehydratedCount): repo ·
+  version · targetPaths · destination · priority · autoResume ·
+  rehydrationStartedAt · lastRunAt. The re-run re-derives everything else
+  authoritatively.
+
+  Verify → Cleanup: agreed. The mockup's "Verify (hash check + pointer cleanup)"
+  stage becomes just "Cleanup", matching what Core actually does (delete
+  leftover rehydrated chunk blobs when nothing's pending). No new
+  hash-verification pass, no Core change.
+
+  Everything else from #3 stands: latent bug fixed (RunRestoreAsync must branch
+  on ChunksPendingRehydration instead of always completing), same jobId across
+  resumes, non-prompting confirm callback on resume (honors the original
+  priority, no re-charge, no connection needed), poller mirrors SchedulerService
+  (minute tick, due-check from persisted fields, restart-safe).
+
+  ---
+  That closes the three heavy ones (#1 state model, #2 reattach, #3
+  rehydration). Ready for #4 — the cost-confirmation lifecycle (the "park in
+  Needs your attention instead of decline-on-disconnect" change), which is where
+  the connection-scoped-approval behavior has to change. Continue?
+
+✻ Worked for 1m 57s
+
+❯ yes. consolidate the two wait timespans (High = 1hr / Standard = 15hr) in the 
+  codebase in one place (it can be a const that you refer everywhere) to avoid  
+  this being duplicated all over the place.  continue with #4                   
+
+⏺ Good instruction — let me ground it by finding where those windows (and the
+  priority enum) already live, so the "single home" recommendation is concrete
+  rather than inventing a new place.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The zsh globbing ate my flags — let me quote them.
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ There's a ChunkHydrationStatusQuery feature — that's relevant. Let me read the
+  cost estimate type and that query's shape.
+
+  Read 3 files (ctrl+o to expand)
+
+⏺ Consolidating the wait windows
+
+  Grounding first: those windows currently exist in the codebase in exactly one 
+  place — and it's the wrong place. They're hardcoded as UI copy in the drawer
+  (~15 h, ~1 h at archive-restore-drawer.component.ts:118,121). Nothing in Core
+  or Api knows them. The RehydratePriority enum
+  (Shared/Storage/IBlobContainerService.cs) has no timing attached, and
+  RestoreCostEstimate (Shared/Cost/IStorageCostEstimator.cs) carries
+  TotalStandard/TotalHigh costs but no wait durations.
+
+  These windows are Azure-specific SLA knowledge (Standard ≤ 15 h, High ≤ 1 h),
+  so per ADR-0020 they belong in the Azure cost-estimator implementation as the
+  single source of truth. But — and this is the important bit given the boundary
+  rule you just reinforced — a raw C# const can't be "referenced everywhere"
+  because the TypeScript UI can't read it and the Api shouldn't hold provider
+  knowledge. So the single-source realization is:
+
+  - Const lives once in the Azure estimator (High = 1h, Standard = 15h).
+  - Surfaced through RestoreCostEstimate — add StandardWait/HighWait (TimeSpan)
+  to that provider-neutral contract, right next to TotalStandard/TotalHigh.
+  - Everyone downstream reads the estimate, never a literal: the cost dialog
+  renders "up to {StandardWait}" instead of ~15 h; at approval the Api persists
+  rehydrationStartedAt + the chosen priority's window into StateJson; the
+  OFF-mode "should be hydrated by 03:40" heuristic and the poll cadence both
+  compute from that persisted window.
+
+  Same spirit as your instruction (one home), but the value flows through the 
+  feature contract so it crosses the Core→Api→Web boundary without duplication.
+  This is a spec decision — I'm not touching code yet (still pre-approval).
+
+  (Bonus finding relevant to #3: there's a ChunkHydrationStatusQuery feature 
+  that returns per-chunk hydration status via GetHydrationStatusAsync. That's a 
+  boundary-respecting way to get real status without downloading — it could 
+  power a true "X of Y ready" even in OFF mode. But it needs the file list and 
+  adds a walk, so I'd keep OFF simple with the heuristic as you decided, and 
+  just note this exists as a future upgrade.)
+
+  ---
+  #4 — Cost-confirmation lifecycle
+
+  Today: RunRestoreAsync blocks in-process on the ConfirmRehydration callback,
+  which awaits RestoreApprovalRegistry.Register(jobId, connectionId).
+  OnDisconnectedAsync → CancelForConnection declines it, and DrawerStore.close()
+  sends decline. So closing the tab cancels the restore, and — worse — the 
+  per-repo gate (LockFor) is held the entire time the dialog sits unanswered.
+  Walk away for an hour and the repo is locked for an hour.
+
+  The realization: #4 is the same problem as #3, and the same primitive solves
+  it — park and re-trigger. Don't block in-process for a human decision at all:
+
+  Start restore
+     │
+     ▼  run 1: resolve → classify → estimate cost, then STOP (release gate)
+  ┌──────────────┐   Approve(priority)              re-trigger with chosen
+  priority
+  │ awaiting-cost│ ───────────────────────────────► run 2 (download / rehydrate)
+  │ (Needs attn) │
+  └──────────────┘   Decline
+     │  ─────────────────────────────────────────►  cancelled
+
+  - Run 1's callback becomes "capture-and-park": it records the
+  RestoreCostEstimate and returns null. The existing handler already treats null
+  as "exit cleanly before downloading or rehydrating" (Success=true, 
+  FilesRestored=0) — and crucially it has already emitted SnapshotResolved/TreeT
+  raversalComplete/ChunkResolutionComplete/RehydrationStatus, so the detail
+  page's layered bar and counts render immediately, and no rehydration is 
+  requested until the user approves (no premature cost). No Core change.
+  - Approve → ResumeRestoreAsync(jobId, priority) with the non-blocking callback
+  that returns the chosen priority (the same resume primitive as #3). It
+  downloads what's available and requests rehydration at the chosen priority →
+  then #3's waiting flow takes over. The priority persisted here is exactly what
+  #3's poller reads.
+  - Decline → mark cancelled.
+
+  What this deletes: RestoreApprovalRegistry, its TaskCompletionSource, the
+  connection tracking, and OnDisconnectedAsync → CancelForConnection all become
+  orphaned — there's no in-flight await to resolve anymore. Approve/decline are
+  just ordinary hub calls (ApproveRestore(jobId, priority) /
+  DeclineRestore(jobId)) that trigger a re-run or a cancel. A whole
+  synchronization primitive disappears. (Removing it is legitimate — our change
+  orphans it — but I'll call it out explicitly in the plan.)
+
+  Benefits it buys, all at once: the gate is released during the human wait
+  (repo not locked); a dropped connection no longer cancels (the design's "you
+  can close this page"); the job survives an Api restart (estimate + params
+  persisted in StateJson — on restart it's just an awaiting-cost job, still
+  answerable); and it's answerable from any session, not just the one that
+  started it.
+
+  The one tradeoff: the interactive happy path now classifies twice (run 1 to
+  estimate, run 2 to download). For a fresh restore into an empty dir, classify
+  is mostly a tree walk + batched index lookups (no local files to hash-compare)
+  — seconds, not minutes — so I think it's acceptable. If classify ever proves
+  slow on huge repos, the escape hatch is a hybrid: run 1 blocks for a short
+  bounded window (say 60–120 s) so an at-the-keyboard user proceeds in one run,
+  falling back to park-and-re-trigger only if unanswered. I'd start simple
+  (always park) and add the timeout only if measured.
+
+  Delivery of the estimate: run 1 both pushes CostEstimate to the job group (so
+  an attached client shows the modal instantly) and persists it in StateJson (so
+  "Review cost ›" from Needs your attention — or a snapshot-on-attach after
+  navigating away — renders the same modal later). The "Review cost ›" CTA
+  navigates to /jobs/:id, which shows the cost modal inline (design 3b's lower
+  card) when status is awaiting-cost.
+
+  Status: introduces awaiting-cost → the Needs your attention section. Exact
+  vocab (how it relates to waiting/rehydrating) I'll pin down in #10.
+
+  ---
+  That's the last of the four heavy ones. #4 and #3 now share one orchestration:
+  classify → park → (approve/poll) → re-trigger, with StateJson as the durable
+  handoff.
+
+  Remaining open questions are the lighter batch: #5 cancellation · #6 progress
+  throttling + ETA window · #7 warnings capture/retention · #8 pill multiplicity
+  · #9 history outcome summaries · #10 status vocabulary · #11 KPI data
+  availability.
+
+  Want me to continue through these in order, or is there one you'd rather jump
+  to?
+
+✻ Sautéed for 4m 38s
+
+❯ hm do i understand correctly that the cost callback response is not fed back  
+  into the same run of the restorecommandhandler? but you record the answer,    
+  retrigger a fresh restorecommandhandler and feed the response in there? the   
+  epxected happy path is that the user waits on the screen for the confirmation 
+  dialog, so re-running should not become the norm.                             
+
+⏺ You understood my proposal exactly — and you're right to reject it. I had the
+  callback return null to park even in the happy path, forcing a second
+  classify. That makes re-running the norm, which is backwards. Let me correct
+  it.
+
+  The happy path should feed the answer back into the same run. Keep the
+  in-process blocking callback: the user clicks restore, waits a few seconds for
+  classify + estimate, the dialog pops, they Approve, and the callback returns
+  the chosen priority into the same RestoreCommandHandler run — which then
+  downloads and requests rehydration without re-walking anything. That's what
+  today's code already does, and it's correct. I over-generalized.
+
+  What actually needs fixing is only the edge behavior, not the happy path:
+
+  Concern: Who can answer
+  Today: only the starting connection
+  Fixed: key the pending approval by jobId — any connection answers
+  ────────────────────────────────────────
+  Concern: Tab close / disconnect
+  Today: declines/cancels the restore
+  Fixed: no longer cancels — remove OnDisconnectedAsync → CancelForConnection
+  ────────────────────────────────────────
+  Concern: User walks away
+  Today: gate held forever, awaits forever
+  Fixed: bounded wait (a few minutes): on timeout the callback returns null, the
+
+    run exits cleanly (releasing the repo gate), and the job parks as
+    awaiting-cost with the estimate persisted
+  ────────────────────────────────────────
+  Concern: Api restart mid-wait
+  Today: in-process await dies, job stuck running
+  Fixed: on boot, awaiting-cost is a persisted waiting job, still answerable
+
+  So the model is: in-run feedback is the norm; re-trigger is the fallback —
+  reached only when the original run no longer exists (timed-out-and-parked, Api
+  restarted, or answered from a fresh session much later). In that fallback the
+  answer can't feed the dead run, so we re-trigger ResumeRestoreAsync(jobId, 
+  priority) — the same resume primitive #3 already needs for rehydration
+  auto-resume, with a non-blocking callback that just returns the persisted
+  priority. It costs one extra classify, but only in the rare walk-away/restart
+  case, never in the happy path.
+
+  This also corrects my earlier claim: RestoreApprovalRegistry is not deleted —
+  it stays, but modified (jobId-keyed, timeout-aware, no disconnect-decline).
+  The only thing genuinely removed is the connection-scoped CancelForConnection.
+
+  The distinction the Api draws when the callback returns null:
+  - returned because the user explicitly Declined (via DeclineRestore(jobId)) →
+  mark cancelled;
+  - returned because of timeout / shutdown → leave awaiting-cost (parked,
+  estimate persisted), a later Approve re-triggers.
+
+  The bounded timeout exists mainly to release the per-repo gate when someone
+  abandons the dialog — an engaged user answers well within it, so they never
+  hit the re-trigger path. (If holding the gate for even a few minutes turns out
+  to matter, we can make parking disconnect-driven instead of purely
+  timeout-driven, but I'd start with the simple timeout.)
+
+  Net: happy path = one run, no re-classify, exactly as you expect. Everything
+  else about #4 stands (park in Needs your attention, awaiting-cost status,
+  estimate pushed for the immediate modal + persisted for "Review cost ›",
+  survives restart).
+
+  Good now? If so, on to #5 — cancellation (which needs the CTS plumbing that
+  doesn't exist yet), or pick another from the remaining batch (#5–#11).
+
+✻ Worked for 3m 28s
+
+❯ ok continue with cancellation                                                 
+
+⏺ Let me ground the cancellation semantics — especially the archive safety
+  question (does cancelling leave a partial snapshot?) — before recommending.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Grounded, and the news is good — most of the machinery is already
+  cancellation-ready; today the Api just never supplies a token.
+
+  What's already in place
+
+  - CreateJobProviderAsync(…, CancellationToken) already takes a token —
+  JobRunner just passes CancellationToken.None today.
+  - Core is cancellation-aware end-to-end: Parallel.ForEachAsync(…, ct), channel
+  ops, and an explicit catch (OperationCanceledException) in
+  ArchiveCommandHandler (line 244).
+  - The codebase already has the "cancel ≠ failure" idiom:
+  RepositoryEndpoints.cs:112 does catch (Exception ex) when (ex is not 
+  OperationCanceledException).
+  - cancelled is already a documented job status; CompleteJob takes a free-form
+  status string.
+
+  So #5 is mostly plumbing a token that already has a socket to plug into.
+
+  Archive cancel is provably safe
+
+  The snapshot is stage 6d — the very last step, created only after all uploads
+  and tree-build (and skipped if unchanged). So cancelling mid-upload throws OCE
+  before any snapshot is published → the repository state is unchanged and 
+  consistent. The chunks uploaded so far become orphans that a future archive 
+  reuses via dedup — not corruption, not wasted work (this is the same
+  partial-state the durability model already tolerates for a crash, per
+  AGENTS.md "blob storage is non-transactional… recoverable"). Restore is
+  likewise safe: files already written stay on disk, re-running continues
+  (idempotent).
+
+  The design
+
+  Per-job CancellationTokenSource registry (in-memory, keyed by jobId, alongside
+  the JobState registry from #1). JobRunner creates the CTS at run start,
+  passes cts.Token into CreateJobProviderAsync + mediator.Send, and
+  disposes/deregisters in finally. In-memory only — a token can't be persisted,
+  and after a restart there are no live runs to cancel.
+
+  Hub CancelJob(jobId) handles both live and parked jobs:
+  - Live run (CTS present) → cts.Cancel() → OCE propagates → the finally still
+  releases the repo gate → JobRunner maps OCE → cancelled.
+  - Parked (no CTS): awaiting-cost → same as decline; waiting-rehydration →
+  disarm the poller (#3) and mark cancelled.
+
+  Distinguish cancelled from failed — the single behavioral fix in JobRunner:
+  its current catch (Exception) maps everything (including OCE) to failed.
+  Change to mirror the existing idiom — catch (OperationCanceledException) → 
+  CompleteJob(…, "cancelled", …), other exceptions → failed.
+
+  Semantics table:
+
+  ┌──────────────────────┬────────────────────────────┬────────────────────┐
+  │      Job state       │        Cancel does         │    Money/refund    │
+  ├──────────────────────┼────────────────────────────┼────────────────────┤
+  │                      │ stop at next checkpoint;   │                    │
+  │ Archive uploading    │ no snapshot published;     │ n/a                │
+  │                      │ orphan chunks reusable     │                    │
+  ├──────────────────────┼────────────────────────────┼────────────────────┤
+  │                      │ stop; files written so far │ download already   │
+  │ Restore downloading  │  stay; re-runnable         │ spent, not         │
+  │                      │                            │ refunded           │
+  ├──────────────────────┼────────────────────────────┼────────────────────┤
+  │ Parked awaiting-cost │ mark cancelled (= decline) │ nothing spent yet  │
+  ├──────────────────────┼────────────────────────────┼────────────────────┤
+  │ Parked               │ disarm poller; mark        │ rehydration        │
+  │ waiting-rehydration  │ cancelled                  │ already paid — not │
+  │                      │                            │  refunded          │
+  └──────────────────────┴────────────────────────────┴────────────────────┘
+
+  Promptness: cancellation is cooperative — it takes effect at the next
+  await/channel op/SDK call, i.e. typically after the in-flight chunk finishes.
+  Seconds, not instant. Worth a small "Cancelling…" transitional state in the UI
+  so the button doesn't look dead.
+
+  #4 interaction: if cancel fires while a run is blocked on the cost-approval
+  callback, the job's ct cancels approvals.WaitForAnswer(jobId, timeout, ct) →
+  the run exits via OCE → cancelled (not parked). This is exactly why the
+  approval wait must observe the job's token.
+
+  One product call
+
+  "Cancel job" is a plain red link in the mockups, and the "rehydration not
+  refunded" note sits behind showFooterNotes (default hidden). I'd add a
+  lightweight confirm only when real money was spent — i.e. cancelling a
+  waiting-rehydration restore ("Rehydration already paid — cancelling won't
+  refund it. Cancel anyway?") — and no confirm for archive (safe/cheap).
+  Flagging as a UX decision, not baking it in.
+
+  ---
+  Client side is just RealtimeService.cancelJob(jobId) → the detail page's
+  "Cancel job" → server emits Done{status:"cancelled"} to the group.
+
+  That's cancellation. Next up: #6 — progress throttling + the ETA sliding 
+  window (turning the per-file firehose into coalesced absolute-state deltas
+  with the byte-weighted layered aggregates and the 60 s-window ETA). Continue?
+
+✻ Baked for 1m 55s
+
+❯ remove the footnotes behind the showfooternotes altogether - that s just      
+  stupid marketing copy with no real added value for now. maybe we ll use the   
+  footer for sth else.                                                          
+                                                                                
+  continue                                                                      
+
+⏺ Agreed — kill showFooterNotes and both notes entirely. "On completion:
+  snapshot…" and "rehydration not refunded" are filler that add nothing; the
+  footer stays free for something real later. Recorded as a scope decision.
+  (That also retires the phrasing I borrowed for #5's cancel-confirm — if we
+  keep any confirm there, it'll be plain, not that copy.)
+
+  #6 — Progress throttling + ETA
+
+  Three distinct pieces here. The first is the one that fixes the original
+  complaint (the bar that "jumps to 95% and hangs").
+
+  6a. Shift the aggregate model from counts → bytes
+
+  Today JobSink counts files (_filesHashed, hashed*90/total) — which is exactly
+  why the bar lurches: hashing 95% of the files finishes fast, then the long
+  upload has no headroom left. The design's layered bar is byte-weighted:
+  scannedBytes (from FileScannedEvent) ⊇ hashedBytes ⊇ uploadedBytes, with
+  totalBytes from ScanCompleteEvent. The headline % becomes uploadedBytes / 
+  totalNewBytes — monotonic and honest.
+
+  One concrete wrinkle to verify early (it bumps against "no Core changes"): the
+  three layers must be in the same unit — original dataset bytes — or the
+  uploaded layer, measured in stored (compressed) bytes, would top out at ~half
+  the track and look permanently stalled. Reconciling:
+  - Tar chunks: easy — TarBundleSealingEvent carries UncompressedSize + TarHash;
+  on TarBundleUploadedEvent(TarHash) add the remembered uncompressed size.
+  - Large chunks: ChunkUploadedEvent gives only StoredSize. We need each
+  uploaded large chunk's original size. Action: confirm that's derivable from 
+  existing events (ChunkUploadingEvent.Size, or by remembering the file size
+  from FileHashing/FileScanned). If it genuinely isn't, that's the one spot that
+  would otherwise want a Core event tweak — so we want to know now, not
+  mid-build.
+
+  Also tracked here: dedupedBytes/files (purple KPI) and per-stage counters.
+
+  6b. Coalesce the firehose → ~1 s absolute-state deltas
+
+  Right now every FileHashedEvent/ChunkUploadedEvent/etc. calls
+  SendAsync("Progress") — thousands of sends per run. New model: forwarders only
+  mutate the in-memory JobState; they never send. A per-job ~1 s timer (living
+  in the JobState registry from #1) emits one Progress message carrying the
+  current absolute aggregate, plus an immediate emit on transitions (stage
+  complete, cost prompt, done) for snappiness. Because deltas are absolute-state
+  (#2), coalescing is trivially safe — you just send the latest. This same
+  timer is the natural home for #1's throttled StateJson flush (a slower ~5–10 s
+  sibling) and for 6c's sampling below. All Api-side; no Shared calls.
+
+  6c. ETA + throughput via a sliding window
+
+  - Each ~1 s tick pushes (now, uploadedBytes) into a small ring buffer. Rate =
+  Δbytes / Δtime over the last ~60 s window (a sliding window, not a cumulative
+  average — the latter lags badly when throughput changes). That rate is the
+  "2.4 MB/s sustained" throughput readout.
+  - ETA = (totalNewBytes − uploadedBytes) / rate. But totalNewBytes is only
+  known once hash+dedup-route completes (~90 s in) — so show "estimating…" until
+  then, exactly as the design specifies. The throttle timer doubles as the ETA
+  sampler, so this is nearly free.
+  - Rehydration "resumes ~03:40" is the other ETA and stays a heuristic off the
+  consolidated wait-window const (from the #4 consolidation) — not rate-based.
+
+  The resulting Progress payload
+
+  Grows from {pct, stats} to the full absolute aggregate — { jobId, phase, 
+  scannedBytes, totalBytes, hashedBytes, uploadedBytes, dedupedBytes, 
+  etaSeconds|null, throughputBytesPerSec, perStage[], warningCount } — and the 
+  snapshot-on-attach (#2) returns this exact shape, so the client has one render
+  path whether it's live-delta or reattach.
+
+  ---
+  Net effect: byte-weighted honest progress, ~1 msg/s instead of thousands, a
+  windowed ETA that says "estimating…" until it can be truthful. The only thing
+  needing verification is the large-chunk original-size question in 6a — worth
+  checking against the events before we commit the "no Core changes" promise.
+
+  Next: #7 — warnings capture & retention (the per-job [WRN] buffer behind GET 
+  /jobs/{id}/warnings, and how long it lives). Continue?
+
+✻ Brewed for 2m 5s
+
+❯ ok to extend chunkuploadedevent with originalsize. that s a small/limited     
+  change for a lot of value. continue with #7                                   
+
+⏺ Good — extending ChunkUploadedEvent with OriginalSize is a clean, additive,
+  high-value change. Recorded: this officially revises the handoff's
+  "Api/Web-only, no Core changes" constraint to "Api/Web + this one additive 
+  event field." Touches only the record, the spot in ArchiveCommandHandler that
+  raises it, and ChunkUploadedForwarder. Tars are already covered via
+  TarBundleSealingEvent.UncompressedSize, so this is the only Core edit needed
+  for the byte-accurate bar.
+
+  Let me ground #7 in how logging is actually wired per-job before recommending.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Grounded — and this clarifies the whole thing. The Api uses Serilog, and
+  Core's log output already goes to a per-repository rolling file
+  (~/.arius/{account}-{container}/logs/arius-.txt, via the cached
+  GetOrCreateRepoLoggerFactory, same file the CLI writes). But that factory is
+  per-repo, not per-job — so today there is no per-job log capture at all, and
+  the "warnings" the UI shows are actually ad-hoc sink.Log(…, "warn") SignalR
+  console messages, which are a different thing entirely and are going away with
+  the console.
+
+  #7 — Warnings capture & retention
+
+  Capture: a per-job fan-out logger
+
+  Build the job's logger as a child of the shared per-repo logger plus a bounded
+  in-memory WRN sink:
+
+  per-job Serilog logger
+     ├─► shared per-repo rolling file   (unchanged — full record stays on disk)
+     └─► in-memory buffer sink (level ≥ Warning)  → lives in JobState
+
+  Because CreateJobProviderAsync already builds a fresh provider per job, this
+  is the natural seam: the job provider gets a per-job logger instead of the
+  shared factory directly. Capture is scoped by which logger instance ran —
+  robust, unlike Serilog LogContext/AsyncLocal enrichment, which I'd avoid here
+  since the archive pipeline fans work across Task.Run/Parallel.ForEachAsync and
+  ambient context flow gets fragile.
+
+  Lines are captured rendered with the same ExpressionTemplate as the file
+  ([HH:mm:ss.fff] [WRN] [ctx] message), so the panel shows byte-for-byte what's
+  in the log — exactly the design's "raw log messages verbatim."
+
+  Unify the warning sources
+
+  With the console gone, the scattered sink.Log(…, "warn") calls disappear. In
+  their place:
+  - Core [WRN] (e.g. "content hash not found in chunk index", "chunk out of sync
+  with tier hint — re-routing") → captured automatically by the buffer sink.
+  These are the warnings the panel exists to show.
+  - Api-orchestration warnings/errors (JobRunner's "No source folder
+  configured", exception messages) → logged through the same per-job logger, so
+  they land in both the file and the buffer, uniformly.
+  - The current rehydration-status "warn" Log lines in RestoreForwarders aren't
+  warnings at all — they're status, and become part of the byte-aggregate
+  Progress (#6), not the warnings buffer.
+
+  Retention
+
+  ┌────────────────┬───────────────────────────┬────────────────────────────┐
+  │     Where      │           Holds           │          Lifetime          │
+  ├────────────────┼───────────────────────────┼────────────────────────────┤
+  │ JobState       │ last ~200 rendered WRN    │                            │
+  │ buffer (live)  │ lines + accurate total    │ while running              │
+  │                │ count                     │                            │
+  ├────────────────┼───────────────────────────┼────────────────────────────┤
+  │ StateJson      │ same, flushed at          │ with the job row →         │
+  │ (persisted)    │ completion + periodically │ survives restart, shows on │
+  │                │                           │  finished jobs             │
+  ├────────────────┼───────────────────────────┼────────────────────────────┤
+  │ per-repo       │ everything, verbatim      │ 366-day rolling (existing) │
+  │ rolling file   │                           │                            │
+  └────────────────┴───────────────────────────┴────────────────────────────┘
+
+  The in-memory/persisted buffer is a bounded convenience tail; the file on disk
+  is the complete authoritative record. If a run exceeds the cap, the panel
+  shows count = N, the last 200 lines, truncated = true, and a pointer to the
+  full log path.
+
+  Endpoint & delivery
+
+  - GET /jobs/{id}/warnings → { count, lines: string[], truncated }. Live job →
+  from JobState; finished/after-restart → from StateJson. It reads only
+  Api-owned data — no Shared call, boundary respected.
+  - The live count rides on Progress.warningCount (#6), so the footer "There are
+  N warnings" updates without a fetch; the verbatim lines are fetched lazily
+  only when the user expands the panel — keeping log text off the socket, per
+  the design.
+
+  Level: capture Warning and above (so a failed job's [ERR] is visible too),
+  framed in the UI as warnings.
+
+  ---
+  That closes the capture/retention question with no new table (reuses
+  StateJson) and no Core change.
+
+  Next: #8 — pill multiplicity & ownership (one repo with >1 running job → what
+  the single repo-scoped pill shows, and which component owns it). Continue?
+
+✻ Brewed for 2m 19s
+
+❯ so i will be able to consult the warnings per job afterwards, after a restart 
+  of the api right?  ok continue with #8                                        
+
+⏺ Yes — exactly. After an Api restart you can open any job
+  (running-then-interrupted, completed, failed) and its warnings render from
+  StateJson via GET /jobs/{id}/warnings. One honest caveat worth stating: for a
+  job that was running at the instant the Api died, the persisted tail is only
+  as fresh as the last periodic flush (~5–10 s), so the final few seconds of
+  warnings before the crash might not be in StateJson — but they're always in
+  the per-repo rolling file on disk (366-day retention), which is the complete
+  record. For completed jobs there's no gap: the final flush captures
+  everything. So: yes, consultable per-job after restart, with the disk log as
+  the always-complete backstop.
+
+  #8 — Pill multiplicity & ownership
+
+  Multiplicity is real, but bounded
+
+  The per-repo gate serializes the active run, so two jobs can never be running 
+  (byte-progressing) simultaneously for one repo. But parked jobs release the
+  gate (#3/#4), so a repo can have, at once: one running job + N parked jobs
+  (awaiting-cost and/or waiting-rehydration). E.g. a scheduled archive running
+  while a restore sits waiting for rehydration.
+
+  One pill, showing the single most-important active job
+
+  No stacked pills. The pill is a "what's happening in this repo" surface that
+  adapts to the highest-priority active job:
+
+  ┌──────────┬─────────────────────┬─────────────────────────────────────────┐
+  │ Priority │        State        │              Pill content               │
+  ├──────────┼─────────────────────┼─────────────────────────────────────────┤
+  │          │                     │ amber — "Restore · approve cost —       │
+  │ 1        │ awaiting-cost       │ Review ›" (in-context nudge; the        │
+  │          │                     │ durable home is Jobs → Needs your       │
+  │          │                     │ attention)                              │
+  ├──────────┼─────────────────────┼─────────────────────────────────────────┤
+  │ 2        │ running             │ the progress ring — "Archiving 62% · ~2 │
+  │          │                     │  min · 41 MB/s" (from #6 aggregate)     │
+  ├──────────┼─────────────────────┼─────────────────────────────────────────┤
+  │ 3        │ waiting-rehydration │ "Restore · resumes ~03:40 — View ›"     │
+  └──────────┴─────────────────────┴─────────────────────────────────────────┘
+
+  If more than one job is active, add a small "+N" on the pill that opens the
+  glance popover (design 2a) listing all active jobs for the repo, each linking
+  to its detail page. That keeps the single-pill simplicity while never hiding a
+  second job.
+
+  Ownership: RepoDetailComponent
+
+  The pill belongs to the repo-detail shell (repos/:repoId, parent of the
+  files/statistics tabs) — so it survives tab switches within the repo and 
+  unmounts when you leave the repo, matching "while browsing that repository."
+  It does not appear on the global Jobs page or Overview (those have their own
+  lists).
+
+  Discovery & attach
+
+  - On repo mount: query active jobs for the repo (GET 
+  /jobs?repositoryId=X&status=active); if any, show the pill and attach (#2) to
+  drive the ring.
+  - On user-initiated start: the drawer hands the new jobId straight to the pill
+  — the primary "Start → drawer dismisses → pill appears" flow, no round-trip
+  needed.
+  - Revisit / reconnect: re-query + re-attach, covered by #2's attach protocol
+  and reconnect handling.
+  - Externally-started job appearing while you're already sitting on the repo
+  (e.g. a schedule fires): a repo-scoped "jobs-changed" SignalR ping would make
+  the pill pop live. I'd treat that as a nice-to-have refinement, not core —
+  mount-time query + drawer handoff cover the real flows.
+
+  Dismiss
+
+  The popover's "Hide pill" is client-side view state (a hidden-jobId set for
+  this session) — it suppresses the pill without cancelling anything. Cancelling
+  is the separate red action on the detail page (#5).
+
+  ---
+  Net: a single adaptive pill owned by the repo shell, reflecting the
+  most-important active job with a "+N" overflow to a popover — no stacking, no
+  cross-repo complexity, and the urgent (awaiting-cost) case gets surfaced
+  in-context instead of buried.
+
+  Next: #9 — history outcome summaries (persisting structured completion stats
+  for the "3,412 files · 1.2 GB uploaded · 5.7 GB deduped · snapshot v12 · 14
+  min" one-liner, vs a formatted string). Continue?
+
+✻ Brewed for 1m 22s
+
+❯ in the api, add a guard that only a single operation per repository is        
+  possible (eg. a scheduled archive must fail if a one-off archive is still     
+  running, a restore cannot coincide with an archive etc). Core cannot know     
+  this, this must be a Api responsiblity. does that resolve #8 since there will 
+  be either 0 or 1 pill but never more?                                         
+⏺ That's a good call, and it's stronger than the current behavior — but there's
+  a subtlety that makes it more than just the existing gate, and getting it
+  right is what actually collapses #8.
+
+  The guard must cover parked jobs, not just running ones
+
+  Today JobRunner has a per-repo SemaphoreSlim that serializes the active 
+  execution — and it queues a second job rather than rejecting it. Two problems
+  for what you want:
+  1. You want reject, not queue ("a scheduled archive must fail if a one-off is
+  still running").
+  2. Parked jobs release the gate (#3/#4): a restore waiting hours for
+  rehydration, or sitting in awaiting-cost, is not holding the semaphore. So a
+  plain execution-gate would happily let a scheduled archive start alongside a
+  parked restore — exactly the "restore coinciding with archive" you're trying
+  to forbid.
+
+  So the guard can't be the in-process semaphore. It has to be a
+  repository-level invariant over job state in the DB:
+
+  ▎ A repository may have at most one job in a non-terminal state (running | 
+  ▎ awaiting-cost | waiting-rehydration). Any new start request — one-off, 
+  ▎ scheduled, or restore — is rejected while such a job exists.
+
+  Terminal states (completed/failed/cancelled) don't block. And the
+  resume/re-trigger of the existing job is exempt — it's the same jobId
+  transitioning states (#3/#4), not a new operation.
+
+  Enforcement
+
+  - Authoritative + race-proof: a SQLite partial unique index —
+  UNIQUE(repository_id) WHERE status IN ('running','awaiting-cost','waiting').
+  The invariant lives in storage, so two concurrent starts can't both slip
+  through; the second insert simply fails. Resume is an UPDATE of the one row,
+  so it never trips the index.
+  - Friendly rejection: a pre-check gives a clean message. Hub
+  StartArchive/StartRestore → return a "repository busy" error the drawer
+  surfaces ("A job is already running for this repository"). Scheduler → log a
+  warning and roll NextRun forward (skip this occurrence).
+  - Reads are exempt: browse/ls/statistics use the cached read provider (inert
+  sink, no job row) — they never create jobs, so they can always run alongside
+  an active job. The guard is about archive/restore jobs only.
+  - The existing execution semaphore can stay as cheap defense-in-depth (stop a
+  job overlapping its own re-trigger), but admission policy flips from queue → 
+  reject, and its doc/comment updates from "serialized" to "exclusive."
+
+  This is a durable architectural invariant Core genuinely can't enforce (it has
+  no cross-job view) — so it's a good candidate ADR when we write things up.
+
+  Does it resolve #8? Yes.
+
+  With 0 or 1 non-terminal job per repo, the pill is always 0 or 1 — never more.
+  So all the multiplicity machinery I proposed drops out: no stacked pills, no
+  "+N" overflow, no popover-list-of-many. #8 collapses to what's left standing:
+  - One pill, adaptive to the single job's state (running progress ring /
+  awaiting-cost amber "Review ›" / waiting-rehydration "resumes ~03:40 — View
+  ›").
+  - Owned by RepoDetailComponent (repo-scoped, survives tab switches, unmounts
+  on leaving the repo).
+  - Discovery: query the repo's single active job on mount + direct hand-off
+  from the drawer on user start; re-attach on revisit (#2).
+  - The glance popover is just a larger glance card for that one job, not a
+  list.
+
+  (Note: the guard is per-repo, so the Jobs overview "Active" section can still
+  list many jobs — one per repo across different repos. That's unchanged and
+  correct.)
+
+  ---
+  So #8 is settled and simpler. Next: #9 — history outcome summaries (do we
+  persist structured completion stats for "3,412 files · 1.2 GB uploaded · 5.7
+  GB deduped · snapshot v12 · 14 min", or keep a formatted string?). Continue?
+
+✻ Cooked for 1m 19s
+
+❯ ok continue with #9                                                           
+
+⏺ #9 — History outcome summaries
+
+  The answer falls out of decisions we've already made: persist structured 
+  stats, format the one-liner client-side. We're already persisting the final
+  aggregate in StateJson (#1), so the structured data exists — we just shouldn't
+  bake presentation into a stored string like today's archive summary does.
+
+  Two tiers, both written once at completion
+
+  ┌────────────────┬─────────────────────────────────┬──────────────────────┐
+  │      Tier      │              Holds              │       Read by        │
+  ├────────────────┼─────────────────────────────────┼──────────────────────┤
+  │ compact        │                                 │ the Jobs list (GET   │
+  │ outcome (small │ the handful of one-liner fields │ /jobs), one per row  │
+  │  JSON)         │                                 │                      │
+  ├────────────────┼─────────────────────────────────┼──────────────────────┤
+  │                │ complete final aggregate (all   │ the detail page (GET │
+  │ full StateJson │ layers at 100%, KPI tiles,      │  /jobs/{id} →        │
+  │                │ stage timings, warnings tail)   │ "Report ›")          │
+  └────────────────┴─────────────────────────────────┴──────────────────────┘
+
+  The list must not ship or parse a full StateJson per row, so the compact
+  outcome is its own small blob (aligns with your earlier "one JSON, don't bloat
+  the schema" steer — no per-metric columns). Both are composed at completion
+  from the final JobState aggregate + the command result, then frozen (terminal,
+  immutable).
+
+  Fields:
+  - Archive → fileCount, uploadedBytes, dedupedBytes (original-byte units,
+  consistent with the layered bar), snapshotVersion, durationSeconds → "3,412
+  files · 1.2 GB uploaded · 5.7 GB deduped · snapshot v12 · 14 min".
+  - Restore → filesRestored, downloadedBytes, durationSeconds (+ chunksPending
+  if it ended partial). This finally gives restore a real summary — today it's
+  just the bland "Restore complete." string, because RestoreResult is thin; the
+  stats come from the aggregate (bytesRestored etc.), not the result.
+
+  The client composes the one-liner from these fields (localizable, styleable),
+  rather than us storing pre-formatted prose.
+
+  One thing to verify — "snapshot v12"
+
+  ArchiveResult/SnapshotCreatedEvent carry RootHash, SnapshotTime, FileCount —
+  but no ordinal "v12". So the version label needs a source. Options without a
+  Core change: show the timestamp ("snapshot 2026-06-28 15:47") or the short 
+  root hash; or, if a cheap snapshot-count/ordinal is already derivable at the
+  Api (e.g. the repo's snapshot list length), use that for "v12". I'd default to
+  timestamp-or-short-hash and only do the ordinal if it's free — flagging so we
+  don't quietly promise "v12" we can't produce.
+
+  Actions (no new machinery)
+
+  - "Report ›" → the finished-job detail route → GET /jobs/{id} (full
+  StateJson), no socket (per #2's history split).
+  - "Edit ›" (scheduled rows) → schedule editing, which the existing
+  /repos/{id}/schedules endpoints already support.
+  - The legacy Detail string on JobRecord becomes a short status fallback (or is
+  deprecated) — the rich summary comes from outcome.
+
+  ---
+  That's #9: structured-in, formatted-out, restore gets real stats, one small
+  verification on the version label.
+
+  Last of the batch: #10 — status vocabulary (we've now accumulated running /
+  awaiting-cost / waiting-rehydration / interrupted / completed / failed /
+  cancelled / scheduled, plus how they map to the design's heading chips and the
+  Needs your attention section). Continue?
+
+✻ Brewed for 1m 14s
+
+❯ yes let s do the timestamp. comtinue with 10                                  
+
+⏺ Timestamp it is for the snapshot label — no ordinal, no Core change. Recorded.
+
+  #10 — Status vocabulary
+
+  Consolidating everything we've decided into one canonical set. Today's enum
+  (queued | running | rehydrating | completed | failed | cancelled + a scheduled
+  the UI filters on) needs two removals and one addition.
+
+  Canonical job statuses
+
+  Status: running
+  Color: blue
+  Terminal?: no
+  Meaning: actively executing (uploading/downloading); has live progress + ETA
+  Jobs-page home: Active
+  ────────────────────────────────────────
+  Status: awaiting-cost
+  Color: amber
+  Terminal?: no
+  Meaning: parked at cost confirmation (#4)
+  Jobs-page home: Needs your attention — "Review cost ›"
+  ────────────────────────────────────────
+  Status: rehydrating
+  Color: amber
+  Terminal?: no
+  Meaning: parked waiting for Azure rehydration (#3)
+  Jobs-page home: Active (auto-resuming) or Needs attention (parked) — see below
+  ────────────────────────────────────────
+  Status: completed
+  Color: green
+  Terminal?: yes
+  Meaning: done
+  Jobs-page home: Scheduled & history
+  ────────────────────────────────────────
+  Status: failed
+  Color: red
+  Terminal?: yes
+  Meaning: errored
+  Jobs-page home: Scheduled & history
+  ────────────────────────────────────────
+  Status: cancelled
+  Color: zinc
+  Terminal?: yes
+  Meaning: user-cancelled (#5)
+  Jobs-page home: Scheduled & history
+  ────────────────────────────────────────
+  Status: interrupted
+  Color: zinc/amber
+  Terminal?: yes
+  Meaning: was running when the Api restarted; re-run manually (#1)
+  Jobs-page home: Scheduled & history
+
+  Removed:
+  - queued — the single-op-per-repo guard (last turn) rejects a second job,
+  never queues, so this state can't occur.
+  - scheduled as a job status — a schedule is a separate entity
+  (ScheduleRecord/schedules table), not a job. The current UI filter on
+  job.status === 'scheduled' never matches. The purple "scheduled" chip counts
+  enabled schedules, not jobs.
+
+  Added: interrupted — distinct from failed (honest: a restart isn't an error)
+  and from cancelled (not user-initiated).
+
+  Heading chips
+
+  - running (blue) = count(running)
+  - waiting (amber) = count(awaiting-cost) + count(rehydrating)
+  - scheduled (purple) = count(enabled schedules) — the separate entity
+
+  "Needs your attention" membership needs the autoResume flag, not just status
+
+  - awaiting-cost → always (blocks on a human cost decision).
+  - rehydrating & autoResume = off → yes (parked; the user must hit "Restore
+  now" or it never proceeds).
+  - rehydrating & autoResume = on → no — it's progressing on its own, so it sits
+  in Active with a "waiting for rehydration · resumes ~03:40" phase sentence.
+
+  So the section split reads the autoResume sub-flag (in StateJson), not status
+  alone.
+
+  Restart reconciliation rule (ties #1 + #3 together)
+
+  On boot, for each non-terminal job:
+  - running → interrupted unless its StateJson shows a resumable rehydration
+  context (chunksPending > 0) — in which case revert to rehydrating and re-arm
+  the poller. This covers the edge where the crash happened during a rehydration
+  re-drive (status was momentarily running): partial downloads are on disk
+  (idempotent), pending chunks remain, so it correctly resumes rather than being
+  mislabeled interrupted.
+  - awaiting-cost → stays (persisted, answerable; approve → fresh run).
+  - rehydrating → stays (poller re-arms; or parked if autoResume off).
+
+  Keep in sync
+
+  The partial unique index from #8 enumerates exactly the non-terminal set:
+  WHERE status IN ('running','awaiting-cost','rehydrating'). Any change to the
+  status vocabulary updates that index in lockstep.
+
+  ---
+  That's #10. One left in the batch: #11 — KPI data availability (a quick audit
+  that every KPI tile in the mockups is derivable from existing events + Api
+  computation, flagging any that aren't — e.g. "16 parallel workers" is a
+  constant, not an event). After that we'll have walked all eleven and can turn
+  this into the written spec. Continue to #11?
+
+✻ Cogitated for 1m 43s
+
+❯ ok                                                                            
+
+⏺ Let me verify one thing before the audit — whether live dedup is actually
+  wired today, since it's the KPI most likely to be a gap.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Confirmed the suspicion: IncDeduped() is defined but never called — the
+  Dedup+Router stage decides hit/miss internally and emits no per-file event
+  ("hit → emit only a filetree update; no upload, no index entry"). FilesDeduped
+  exists only on ArchiveResult, at the very end. And worker counts are Core
+  constants (HashWorkers=4, UploadWorkers=4, …) — "16 parallel workers" doesn't
+  even map to a single one.
+
+  #11 — KPI data availability audit
+
+  Most of the mockups' values are cleanly derivable from existing events + #6's
+  byte aggregation + the approved ChunkUploadedEvent.OriginalSize. The audit:
+
+  ✅ Derivable (no new data)
+  - Header ETA / throughput / elapsed / tier / account-container; layered bars
+  (archive & restore); pill (%, ETA, rate, "files to go").
+  - Archive KPIs: Uploaded, Est. finish.
+  - All restore KPIs: Restored (files/bytes), Ready to download, Rehydrating
+  (count/size/priority), Cost approved (from the persisted approval, #4).
+  - Restore stages (Plan / Confirm cost / Rehydrate / Download / Cleanup).
+
+  ⚠️ One real gap — the dedup KPI (needs a decision)
+  The archive "Deduplicated · 81 files · 48 MB not re-uploaded" (the prominent
+  purple tile) is not live-derivable today. Without a signal, it can only appear
+  at the very end from ArchiveResult — meaning it'd read "0" for the entire
+  ~22-min upload and then pop, which is worse than useless. And it can't be
+  inferred from the bar's hashed-minus-uploaded gap (that gap conflates
+  in-flight with deduped).
+
+  Recommendation: a second small, additive Core event —
+  FileDedupedEvent(ContentHash, long OriginalSize) published at the Dedup+Router
+  "hit" branch — mirroring the ChunkUploadedEvent.OriginalSize change you
+  already approved. It wires the already-present JobSink.IncDeduped(bytes) and
+  makes the tile live. This is the same "tiny change, lots of value" shape.
+  (Alternative: drop the tile to completion-only — I'd not do that; it's a
+  headline number.)
+
+  🎨 Cosmetic flags (drop or trivial)
+  - "16 parallel workers" — not a single constant, not evented. I'd drop it (low
+  value) or show a static configured number; not worth plumbing.
+  - "Snapshot — took 32 s in the last run" — needs the previous job's stage
+  timing. Either store per-stage timings in outcome and look up the last job, or
+  simplify the copy to current-run/omit. Minor.
+  - "upload + ~30 s snapshot" and restore's "then ~20 min download at 2.4 MB/s"
+  (before download starts) — heuristics; use a static finalize const / assumed
+  rate. Minor.
+  - Per-stage timings (the dot-list "done in 96 s") — not a data gap, just Api
+  bookkeeping: record first/last event timestamp per stage in JobState.
+
+  Net Core changes for the whole project: exactly two small additive events —
+  ChunkUploadedEvent.OriginalSize and FileDedupedEvent. Everything else is Api
+  aggregation + Web.
+
+  ---
+  That completes the walk-through of all eleven open questions. We now have a
+  coherent design:
+
+  - #1 in-memory JobState registry + StateJson durable bridge; #2 AttachToJob
+  snapshot-then-deltas, jobId-tagged, reconnect-safe; #3 re-trigger-only
+  rehydration resume via a poller; #4 classify→park→re-trigger cost approval
+  (in-run happy path); #5 per-job CTS cancellation; #6 byte-weighted coalesced
+  deltas + windowed ETA; #7 per-job fan-out warning capture; #8 dissolved by the
+  single-op-per-repo guard; #9 structured outcome + client-formatted one-liner;
+  #10 canonical status set; #11 two tiny Core events.
+  - Plus recorded decisions: host→features boundary rule (in AGENTS.md),
+  consolidated rehydration-window const, dropped showFooterNotes, "Cleanup"
+  rename, timestamp snapshot labels.
+
+  Per the brainstorming flow, the next step is to write this up as a design spec
+  (to docs/history/superpowers/ per your AGENTS.md override), commit it, and
+  have you review before we move to an implementation plan.
+
+  Shall I write the spec now? I'll fold in the dedup-event decision as
+  recommended unless you say otherwise.
+
+✻ Crunched for 2m 3s
+
+❯ ok to add a new event; be sure to get the docstrings consistent with the      
+  FileSkippedEvent / EntryExcludedEvent. drop the parallel workers / drop the   
+  'took 32s in the last run' i ll just watch the pulsing bullet for progress to 
+  know it s busy. / same for the upload + 30s snapshot.                         
+
+⏺ All locked in. Let me acknowledge and record:
+
+  - FileDedupedEvent — approved, docstrings to match the
+  FileSkippedEvent/EntryExcludedEvent house style (rich <summary>, <see cref>
+  cross-references, explains where in the pipeline it fires and what consumers
+  do with it).
+  - Dropped: "16 parallel workers", "took 32 s in the last run" (pulsing bullet
+  conveys "busy"), and "+ ~30 s snapshot". Less heuristic guesswork, cleaner
+  tiles.
+
+  That clears every decision. Let me check the spec location and existing
+  conventions, then write it up.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Conventions confirmed — RFC-style design docs at
+  docs/history/superpowers/YYYY-MM-DD-<topic>-design.md. Writing the spec now.
+
+⏺ Write(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Wrote 221 lines to
+     docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md
+       1 # Design: Archive/Restore & Jobs progress UX
+       3 **Date:** 2026-07-04 · **Status:** approved (brainstorm) · **Bra
+         nch:** `jobs-progress`
+         o additive events in `src/Arius.Core`.
+       6 ---
+       7 
+       9 
+      10 Arius.Web presents running archive/restore operations with a ter
+         mps to ~95% during hashing, then hangs for the entire upload), a
+         l`, turns 4a/3a/3b) replaces this with:
+     … +443 lines (ctrl+o to expand)
+
+⏺ Now the spec self-review (placeholder / consistency / scope / ambiguity).
+  Found three cross-reference errors to fix — the section numbers drifted as I
+  wrote.
+
+⏺ Update(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Added 1 line, removed 1 line
+      46  - **The DB row is the durable anchor; `JobState` is a transient
+           cache.** A resumed job keeps the **same jobId**.
+      47  - **Restart reconciliation** (see §11 for the status rule): `ru
+          nning` → `interrupted` unless `StateJson` shows a resumable reh
+          ydration context (`chunksPending > 0`) → then `rehydrating`; `a
+          waiting-cost`/`rehydrating` → stay (re-armed).
+      48  
+      49 -**Schema changes** (`jobs` table): add `StateJson TEXT NULL` an
+         -d `Outcome TEXT NULL` (§8); add the partial unique index from §
+         -7.                                                             
+      49 +**Schema changes** (`jobs` table): add `StateJson TEXT NULL` an
+         +d `Outcome TEXT NULL` (§13); add the partial unique index from 
+         +§6.                                                            
+      50  
+      51  ## 5. Reattach protocol & per-job message routing (#2)
+      52  
+
+⏺ Update(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Added 1 line, removed 1 line
+      74  - **Latent bug fixed:** `RunRestoreAsync` today unconditionally
+           marks `completed`, silently dropping pending chunks. It must b
+          ranch on `ChunksPendingRehydration`: `> 0` → `rehydrating` + pe
+          rsist resume state + arm the poller; `== 0` → `completed`.
+      75  - **`RehydrationPollingService : BackgroundService`** (mirrors 
+          `SchedulerService`): minute tick, per-job due-check from persis
+          ted fields — **no per-job `Timer` objects → restart-safe.** Ada
+          ptive cadence: High ~30 min then every 15 min; Standard first ~
+          10 h then hourly; tighten to 15 min once a re-run reports the f
+          irst chunk available.
+      76  - **autoResume ON** (default): poller re-triggers full restore 
+          runs; status updates as a side-effect of each run. A full tree 
+          walk per re-run is the accepted cost of the boundary; cadence k
+          eeps re-runs rare.
+      77 -- **autoResume OFF:** no re-triggering, so status is unknown; s
+         -how a **heuristic** "≈ hydrated by HH:MM" (`rehydrationStartedA
+         -t` + priority window, §12) + a **"Restore now"** button (on-dem
+         -and run). `SetAutoResume(jobId, bool)`, `ResumeRestore(jobId)`.
+      77 +- **autoResume OFF:** no re-triggering, so status is unknown; s
+         +how a **heuristic** "≈ hydrated by HH:MM" (`rehydrationStartedA
+         +t` + priority window, §18) + a **"Restore now"** button (on-dem
+         +and run). `SetAutoResume(jobId, bool)`, `ResumeRestore(jobId)`.
+      78  - **Same jobId across resumes.** Resume passes a **non-promptin
+          g** `ConfirmRehydration` returning the persisted priority — hon
+          ors the original Standard/High choice, no re-charge, no connect
+          ion needed.
+      79  - `StateJson` (waiting restore): repo · version · targetPaths ·
+           destination · priority · autoResume · rehydrationStartedAt · l
+          astRunAt · aggregate snapshot.
+      80  
+
+⏺ Update(docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md)
+  ⎿  Added 1 line, removed 1 line
+      101  
+      102  - **Counts → bytes.** The bar is byte-weighted: `scannedBytes`
+            (`FileScannedEvent`) ⊇ `hashedBytes` ⊇ `uploadedBytes`, denom
+           inator `totalBytes` (`ScanCompleteEvent`); headline % = `uploa
+           dedBytes / totalNewBytes` (monotonic — fixes the 95%-hang). Th
+           e **uploaded layer must be in original-dataset bytes** (stored
+           /compressed bytes would top out at ~half the track): tars via 
+           `TarBundleSealingEvent.UncompressedSize` keyed by `TarHash`; l
+           arge chunks via the new `ChunkUploadedEvent.OriginalSize` (§11
+           ).
+      103  - **Coalesced deltas.** Forwarders only mutate `JobState`; a *
+           *per-job ~1 s timer** emits one absolute `Progress` message (+
+            immediate emit on transitions), replacing the thousands-of-se
+           nds firehose. Same timer flushes `StateJson` (slower) and samp
+           les ETA.
+      104 -- **Windowed ETA.** Each tick pushes `(now, uploadedBytes)` in
+          -to a ring buffer; rate = Δbytes/Δtime over ~60 s (= throughput
+          - readout). ETA = `(totalNewBytes − uploadedBytes) / rate`; sho
+          -w **"estimating…"** until `totalNewBytes` is known (after hash
+          -+dedup-route, ~90 s). Rehydration "resumes ~HH:MM" is the sepa
+          -rate heuristic (§12).                                         
+      104 +- **Windowed ETA.** Each tick pushes `(now, uploadedBytes)` in
+          +to a ring buffer; rate = Δbytes/Δtime over ~60 s (= throughput
+          + readout). ETA = `(totalNewBytes − uploadedBytes) / rate`; sho
+          +w **"estimating…"** until `totalNewBytes` is known (after hash
+          ++dedup-route, ~90 s). Rehydration "resumes ~HH:MM" is the sepa
+          +rate heuristic (§7, §18).                                     
+      105  - **Progress payload:** `{ jobId, phase, scannedBytes, totalBy
+           tes, hashedBytes, uploadedBytes, dedupedBytes, dedupedFiles, e
+           taSeconds|null, throughputBytesPerSec, perStage[], warningCoun
+           t }`. Snapshot-on-attach returns the same shape.
+      106  
+      107  ## 11. Two additive Core events (#11 audit result)
+
+⏺ Spec written to docs/history/superpowers/2026-07-04-jobs-progress-ux-design.md
+  and self-reviewed (no placeholders; fixed three drifted section cross-refs;
+  scope is one cohesive feature, decomposable at the planning step).
+
+  It captures the full design in 19 sections:
+
+  - §4–§13 — the resolved decisions: job-state model (JobState registry +
+  StateJson bridge), reattach protocol, single-op-per-repo guard, rehydration
+  auto-resume, cost lifecycle, cancellation, byte-weighted progress + ETA, the
+  two Core events, status vocabulary, pill & history.
+  - §14–§16 — concrete Api surface (hub methods, REST endpoints, services,
+  persistence, logging), Web surface (deletions + new components), and an
+  attach/resume sequence diagram.
+  - §17–§19 — testing approach, recorded cross-cutting decisions (boundary rule,
+  window const, dropped footer/KPIs, "Cleanup" rename, timestamp labels), and
+  follow-ups (the single-op-per-repo ADR).
+
+  Two things I did not silently decide and left as flagged tuning/product calls
+  in the spec: the cost-wait timeout duration ("a few minutes") and the
+  cancel-confirm on paid rehydration.
+
+  Please review the spec and let me know if you want any changes. I've left it
+  uncommitted — once you're happy, I'll commit it (together with the AGENTS.md
+  boundary rule I added this session, which is currently an uncommitted change)
+  and then move on to writing the implementation plan.
+
+  One check before I commit, since it affects git: shall I commit the AGENTS.md
+  boundary-rule edit in the same commit as the spec, or keep them separate?
+✻ Brewed for 4m 26s
