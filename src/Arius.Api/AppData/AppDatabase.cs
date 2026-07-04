@@ -395,6 +395,49 @@ public sealed class AppDatabase
         command.ExecuteNonQuery();
     }
 
+    /// <summary>Updates a job's <c>status</c> (and optional <c>detail</c>) for a NON-terminal transition
+    /// (running↔awaiting-cost↔rehydrating). Leaves <c>finished_at</c> untouched — use <see cref="CompleteJob"/>
+    /// for terminal states. The <c>ux_jobs_one_active_per_repo</c> index is enforced: moving between two
+    /// non-terminal statuses for the same repository's single active row is a plain UPDATE and never conflicts.</summary>
+    public void SetJobStatus(string id, string status, string? detail = null)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = detail is null
+            ? "UPDATE jobs SET status = $status WHERE id = $id;"
+            : "UPDATE jobs SET status = $status, detail = $detail WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$status", status);
+        if (detail is not null) command.Parameters.AddWithValue("$detail", detail);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>Reads a single job by id, or <c>null</c> if it does not exist. Backs <c>GET /jobs/{id}</c>
+    /// and the rehydration poller's per-job due check.</summary>
+    public JobRecord? GetJob(string id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at, state_json, outcome FROM jobs WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadJob(reader) : null;
+    }
+
+    /// <summary>All jobs currently in <c>rehydrating</c> — the rehydration poller's work list. Rebuilt from the
+    /// DB every tick so the poller holds no per-job timers and survives an Api restart (design §7).</summary>
+    public IReadOnlyList<JobRecord> ListActiveRehydrations()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at, state_json, outcome FROM jobs WHERE status = 'rehydrating';";
+        using var reader = command.ExecuteReader();
+        var result = new List<JobRecord>();
+        while (reader.Read())
+            result.Add(ReadJob(reader));
+        return result;
+    }
+
     public IReadOnlyList<JobRecord> ListJobs(int limit = 100)
     {
         using var connection = OpenConnection();
