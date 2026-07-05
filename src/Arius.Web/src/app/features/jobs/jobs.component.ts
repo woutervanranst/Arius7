@@ -126,7 +126,7 @@ interface HistoryRow {
       <div style="margin-top:22px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">Scheduled &amp; history</div>
       <div data-testid="jobs-history" style="margin-top:8px;border:1px solid #ececef;border-radius:13px;overflow:hidden">
         @for (row of historyRows(); track row.job.id; let first = $first) {
-          <div data-testid="job-row" style="display:grid;grid-template-columns:260px 1fr 190px 110px;align-items:center;gap:18px;padding:13px 20px;opacity:.66"
+          <div data-testid="job-row" style="display:grid;grid-template-columns:260px 1fr 190px 110px;align-items:center;gap:18px;padding:13px 20px;opacity:.75"
                [style.borderTop]="first ? 'none' : '1px solid #f6f6f7'">
             <div style="display:flex;align-items:center;gap:12px">
               <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center"

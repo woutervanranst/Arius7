@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
 import { filter } from 'rxjs/operators';
-import { CostEstimateMsg, DoneMsg, EntryDto, JobAttachState, JobSnapshot, ListEntriesOptions, SearchHitDto } from './api-models';
+import { CostEstimateMsg, DoneMsg, EntryDto, isNonTerminal, JobAttachState, JobSnapshot, ListEntriesOptions, SearchHitDto } from './api-models';
 
 /**
  * SignalR client for Arius.Api's hub (/hubs/arius): file-browser entry streaming and the
@@ -70,7 +70,18 @@ export class RealtimeService {
       this.connection.on('Progress', (m: JobSnapshot) => this.progress$.next(m));
       this.connection.on('CostEstimate', (m: CostEstimateMsg) => this.cost$.next(m));
       this.connection.on('Done', (m: DoneMsg) => this.done$.next(m));
-      this.connection.onreconnected(() => { for (const id of this.attached) void this.connection!.invoke('AttachToJob', id); });
+      this.connection.onreconnected(() => {
+        for (const id of this.attached) {
+          this.connection!.invoke<JobAttachState | null>('AttachToJob', id)
+            .then(state => {
+              if (!state) return;
+              this.progress$.next(state.snapshot);   // refresh absolute state after the gap
+              if (!isNonTerminal(state.status))       // job finished while disconnected → let consumers finalize
+                this.done$.next({ jobId: id, status: state.status, summary: '', outcome: null });
+            })
+            .catch(() => {});
+        }
+      });
       this.handlersBound = true;
     }
     if (this.connection.state === signalR.HubConnectionState.Connected) {

@@ -303,7 +303,11 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly kindLabel = computed(() => this.kind() === 'restore' ? 'Restore' : 'Archive');
   protected readonly accent = computed(() => this.kind() === 'restore' ? '#6d28d9' : '#3b82f6');
   protected readonly meta = computed(() => statusMeta(this.status()));
-  protected readonly outcome = computed<JobOutcome | null>(() => { const o = this.detail()?.outcome; return o ? JSON.parse(o) as JobOutcome : null; });
+  protected readonly outcome = computed<JobOutcome | null>(() => {
+    const o = this.detail()?.outcome;
+    if (!o) return null;
+    try { return JSON.parse(o) as JobOutcome; } catch { return null; }
+  });
 
   // layered-bar percentages
   protected readonly scannedPct = computed(() => { const s = this.snap(); return s && s.totalBytes ? s.scannedBytes * 100 / s.totalBytes : (this.kind() === 'restore' ? 100 : 0); });
@@ -411,7 +415,10 @@ export class JobDetailComponent implements OnDestroy {
   attach(id: string): void {
     if (id === this.currentId) return;
     this.teardown(); this.currentId = id;
-    this.api.getJob(id).subscribe(d => { this.detail.set(d); this.status.set(d.status); if (d.snapshot) this.snap.set(d.snapshot); });
+    this.api.getJob(id).subscribe(d => {
+      if (this.currentId !== id) return;   // a newer attach won the race
+      this.detail.set(d); this.status.set(d.status); if (d.snapshot) this.snap.set(d.snapshot);
+    });
     void this.realtime.attachToJob(id).then(st => { if (st && this.currentId === id) { this.snap.set(st.snapshot); this.status.set(st.status); if (st.cost) this.cost.set(st.cost); } });
     this.subs.push(this.realtime.jobProgress(id).subscribe(s => this.snap.set(s)));
     this.subs.push(this.realtime.jobCost(id).subscribe(c => this.cost.set(c)));
