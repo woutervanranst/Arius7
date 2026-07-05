@@ -1,7 +1,9 @@
 using Arius.Api.AppData;
+using Arius.Api.Composition;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Arius.Api.Integration.Tests.Harness;
 
@@ -10,11 +12,18 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"arius-itest-{Guid.NewGuid():N}.sqlite");
 
+    public ScenarioRegistry Scenarios { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("Arius:AppDbPath", _dbPath);
-        // Task 5 adds: register ScenarioRegistry + swap IRepositoryCoreComposer here.
+        builder.ConfigureServices(services =>
+        {
+            services.AddSingleton(Scenarios);
+            services.RemoveAll<IRepositoryCoreComposer>();
+            services.AddSingleton<IRepositoryCoreComposer, ScriptedRepositoryCoreComposer>();
+        });
     }
 
     /// <summary>Seeds an account + repository row (protected secrets, no real Azure) and returns the repo id.</summary>
