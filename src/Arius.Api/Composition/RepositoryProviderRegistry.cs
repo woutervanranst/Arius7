@@ -1,6 +1,5 @@
 using Arius.Api.AppData;
 using Arius.Api.Jobs;
-using Arius.AzureBlob;
 using Arius.Core;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
@@ -29,7 +28,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 {
     private readonly AppDatabase         _database;
     private readonly SecretProtector     _secrets;
-    private readonly IBlobServiceFactory _blobServiceFactory;
+    private readonly IRepositoryCoreComposer _coreComposer;
     private readonly ILoggerFactory      _loggerFactory;
     private readonly ILogger<RepositoryProviderRegistry> _logger;
 
@@ -45,12 +44,12 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     public RepositoryProviderRegistry(
         AppDatabase database,
         SecretProtector secrets,
-        IBlobServiceFactory blobServiceFactory,
+        IRepositoryCoreComposer coreComposer,
         ILoggerFactory loggerFactory)
     {
         _database           = database;
         _secrets            = secrets;
-        _blobServiceFactory = blobServiceFactory;
+        _coreComposer       = coreComposer;
         _loggerFactory      = loggerFactory;
         _logger             = loggerFactory.CreateLogger<RepositoryProviderRegistry>();
     }
@@ -116,13 +115,9 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     {
         var connection = LoadConnection(repositoryId);
 
-        var blobService   = await _blobServiceFactory.CreateAsync(connection.AccountName, connection.AccountKey, cancellationToken).ConfigureAwait(false);
-        var blobContainer = await blobService.OpenContainerServiceAsync(connection.Container, mode, cancellationToken).ConfigureAwait(false);
-
         var services = new ServiceCollection();
 
-        // Route Core's logging to the repository's shared rolling log file (same location the CLI
-        // writes to), so every Web-launched operation is captured on disk, not just the console.
+        // Route Core's logging to the repository's shared rolling log file (same as before).
         var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
         services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
@@ -130,10 +125,12 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // Per-job sink resolved by the event forwarders (auto-registered by AddMediator).
         services.AddSingleton(jobSink);
 
-        // AddMediator() (generated in this assembly) must run here, not inside AddArius.
+        // AddMediator() (generated in this assembly) must run here, not inside the composer.
         services.AddMediator();
-        services.AddAzureBlobStorage();
-        services.AddArius(blobContainer, connection.Passphrase, connection.AccountName, connection.Container);
+
+        // The Arius.Core graph (handlers + storage) is composed behind an interface so tests can
+        // swap in a scripted fake without touching Arius.Core.
+        await _coreComposer.ComposeAsync(services, connection, mode, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Built {Mode} provider for repository {RepositoryId} ({Account}/{Container})", mode, repositoryId, connection.AccountName, connection.Container);
         return services.BuildServiceProvider();

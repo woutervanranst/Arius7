@@ -35,6 +35,7 @@ try
     builder.Services.AddSingleton(new AppDatabase(dbPath));
     builder.Services.AddSingleton<SecretProtector>();
     builder.Services.AddAzureBlobStorage();
+    builder.Services.AddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
     builder.Services.AddSingleton<RepositoryProviderRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
     builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
@@ -99,3 +100,6 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// Exposed so Arius.Api.Integration.Tests can boot the app with WebApplicationFactory<Program>.
+public partial class Program { }
