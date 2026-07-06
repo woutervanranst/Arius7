@@ -172,11 +172,11 @@ public sealed class JobRunner(
 
             provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
             // Cost-approval outcome for this run (set inside the ConfirmRehydration callback). The happy path is
-            // in-run: the user answers within the window and the chosen priority feeds back into THIS run. On
-            // timeout the job parks at awaiting-cost (gate released); on decline it is cancelled. (Design §8.)
+            // in-run: the user answers and the chosen priority feeds back into THIS run — the wait is unbounded
+            // (held by the still-live run) until answered or the run's token is cancelled. On decline the run is
+            // cancelled. (Design §8.)
             RehydratePriority? runApprovedPriority = null;
             var costDeclined = false;
-            var costTimedOut = false;
             RestoreCostEstimate? lastEstimate = null;
             CostEstimateDto? lastCostDto = null;
 
@@ -213,21 +213,20 @@ public sealed class JobRunner(
 
                     database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
 
-                    var answer = await approvals.RegisterAsync(jobId, TimeSpan.FromMinutes(15), ct);
-                    if (answer.Approved)
+                    var priority = await approvals.RegisterAsync(jobId, ct);
+                    if (priority is not null)
                     {
                         sink.ClearPending();   // leaving the prompt — a later reattach is mid-restore, not awaiting one
-                        runApprovedPriority = answer.Priority;
+                        runApprovedPriority = priority;
                         database.SetJobStatus(jobId, "running");
-                        return answer.Priority;
+                        return priority;
                     }
 
-                    costTimedOut = answer.TimedOut;
-                    costDeclined = !answer.TimedOut;
-                    sink.Log(answer.TimedOut ? "Cost approval timed out — parked." : "Restore declined.", "warn");
+                    costDeclined = true;
+                    sink.Log("Restore declined.", "warn");
                     return null;   // Core exits with ChunksPendingRehydration = the still-needed count
                 },
-                shouldStop: () => costDeclined || costTimedOut);
+                shouldStop: () => costDeclined);
 
             if (!success)
             {
@@ -242,19 +241,6 @@ public sealed class JobRunner(
                 sink.Done("cancelled", "Restore declined.");
                 return;
             }
-            if (costTimedOut)
-            {
-                // Parked at awaiting-cost (status already set in the callback). Persist resume params so a later
-                // ApproveRestore can re-trigger with the SAME jobId (fallback path, Task 6). Do NOT send Done —
-                // the job is non-terminal. The finally block releases the repo gate.
-                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(
-                    DateTimeOffset.UtcNow,
-                    ResumeParamsFor(lastEstimate, version, targetPaths, destination, overwrite, noPointers,
-                                    priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow),
-                    cost: lastCostDto)));
-                return;
-            }
-
             // Latent-bug fix (§7): some chunks still rehydrating — do NOT mark completed. Park as `rehydrating`
             // with resume params so the poller (Task 7) re-drives the SAME jobId until every chunk is available.
             if (pending > 0)
