@@ -162,7 +162,9 @@ export class JobsComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly realtime = inject(RealtimeService);
 
-  protected readonly jobs = toSignal(this.api.getJobs());
+  private readonly jobsData = signal<JobDto[] | undefined>(undefined);
+  protected readonly jobs = this.jobsData.asReadonly();
+  private reload(): void { this.api.getJobs().subscribe(list => this.jobsData.set(list)); }
 
   protected readonly needsAttention = computed(() => this.jobs()?.filter(j => j.status === 'awaiting-cost') ?? []);
   // §12 list simplification: `rehydrating` (auto-resume state isn't visible on the list DTO) lives in Active, not here.
@@ -187,6 +189,7 @@ export class JobsComponent implements OnDestroy {
   /** Live snapshots for Active rows, keyed by jobId — populated by attaching to each row's SignalR job group. */
   private readonly snapshots = signal<Record<string, JobSnapshot>>({});
   private readonly jobSubs = new Map<string, Subscription>();
+  private readonly doneSubs = new Map<string, Subscription>();
 
   protected readonly activeRows = computed<ActiveRow[]>(() => this.running().map(job => {
     const kind: 'archive' | 'restore' = job.kind === 'restore' ? 'restore' : 'archive';
@@ -211,13 +214,16 @@ export class JobsComponent implements OnDestroy {
   }));
 
   constructor() {
+    this.reload();
     // Attach (join the SignalR job group + seed the current snapshot) once per newly-seen active row,
     // then rely on jobProgress() deltas for the live mini-bar. Cleaned up in ngOnDestroy.
     effect(() => {
       for (const job of this.running()) {
         if (this.jobSubs.has(job.id)) continue;
         const sub = this.realtime.jobProgress(job.id).subscribe(snap => this.snapshots.update(m => ({ ...m, [job.id]: snap })));
+        const doneSub = this.realtime.jobDone(job.id).subscribe(() => this.reload());   // finished → re-fetch so it leaves Active + chips update
         this.jobSubs.set(job.id, sub);
+        this.doneSubs.set(job.id, doneSub);
         void this.realtime.attachToJob(job.id)
           .then(state => { if (state) this.snapshots.update(m => ({ ...m, [job.id]: state.snapshot })); })
           .catch(() => {});
@@ -231,6 +237,8 @@ export class JobsComponent implements OnDestroy {
       void this.realtime.detachFromJob(id);
     }
     this.jobSubs.clear();
+    for (const sub of this.doneSubs.values()) sub.unsubscribe();
+    this.doneSubs.clear();
   }
 
   protected kindLabel(job: JobDto): string {
