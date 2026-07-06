@@ -107,8 +107,8 @@ public sealed class JobSink
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
     private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes;
-    private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
-    private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending;
+    private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored, _chunkBytesTotal;
+    private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset Started, DateTimeOffset? Done)> _stages = new();
     private volatile string _phase = "starting";
@@ -132,6 +132,12 @@ public sealed class JobSink
     public void AddRestored(long size) { Interlocked.Increment(ref _filesRestored); Interlocked.Add(ref _bytesRestored, size); }
     public void SetRehydration(int available, int rehydrated, int needs, int pending)
     { _rehydAvailable = available; _rehydRehydrated = rehydrated; _rehydNeeds = needs; _rehydPending = pending; }
+
+    /// <summary>Records the authoritative distinct-chunk total (and their byte total) from
+    /// ChunkResolutionCompleteEvent — the single denominator for the restore hydration bar, so it no longer
+    /// has to be (wrongly) reconstructed from a subset of the rehydration buckets.</summary>
+    public void SetChunkTotals(int totalChunks, long totalChunkBytes)
+    { _chunksTotal = totalChunks; Interlocked.Exchange(ref _chunkBytesTotal, totalChunkBytes); }
 
     public void SetPhase(string phase) => _phase = phase;
     public void StageStarted(string stage) => _stages[stage] = (_now(), null);
@@ -220,6 +226,8 @@ public sealed class JobSink
             ChunksRehydrated = _rehydRehydrated,
             ChunksNeedingRehydration = _rehydNeeds,
             ChunksPending = _rehydPending,
+            ChunksTotal = _chunksTotal,
+            ChunkBytesTotal = Interlocked.Read(ref _chunkBytesTotal),
         };
     }
 

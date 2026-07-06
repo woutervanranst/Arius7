@@ -115,6 +115,7 @@ public sealed class JobsHub(
         Stats = new Dictionary<string, string>(), WarningCount = 0,
         RestoreTotalFiles = 0, FilesRestored = 0, RestoreTotalBytes = 0, BytesRestored = 0,
         ChunksAvailable = 0, ChunksRehydrated = 0, ChunksNeedingRehydration = 0, ChunksPending = 0,
+        ChunksTotal = 0, ChunkBytesTotal = 0,
     };
 
     /// <summary>Requests cancellation of a job. A job parked at the cost prompt is cancelled by resolving its wait as

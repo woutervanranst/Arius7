@@ -43,4 +43,21 @@ public class RepresentationTests
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
         await Assert.That(snap.TotalNewBytes).IsEqualTo(1000L);
     }
+
+    [Test]
+    public async Task ChunkResolutionCompleteForwarder_sets_authoritative_chunk_total()
+    {
+        var s = new JobSink();
+        await new ChunkResolutionCompleteForwarder(s).Handle(
+            new Arius.Core.Features.RestoreCommand.ChunkResolutionCompleteEvent(TotalChunks: 427, LargeCount: 12, TarCount: 40, TotalChunkBytes: 2_760_000_000), default);
+        await new RehydrationStatusForwarder(s).Handle(
+            new Arius.Core.Features.RestoreCommand.RehydrationStatusEvent(Available: 145, Rehydrated: 0, NeedsRehydration: 282, Pending: 0), default);
+
+        var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
+        await Assert.That(snap.ChunksTotal).IsEqualTo(427);            // authoritative, includes needs-rehydration
+        await Assert.That(snap.ChunkBytesTotal).IsEqualTo(2_760_000_000L);
+        // sanity: the four buckets sum to the authoritative total
+        await Assert.That(snap.ChunksAvailable + snap.ChunksRehydrated + snap.ChunksNeedingRehydration + snap.ChunksPending)
+            .IsEqualTo(snap.ChunksTotal);
+    }
 }

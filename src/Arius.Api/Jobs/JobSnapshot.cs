@@ -28,6 +28,8 @@ public sealed record JobSnapshot
     public int  ChunksRehydrated           { get; init; }
     public int  ChunksNeedingRehydration   { get; init; }
     public int  ChunksPending              { get; init; }
+    public int  ChunksTotal                { get; init; }   // authoritative distinct-chunk total (ChunkResolutionCompleteEvent)
+    public long ChunkBytesTotal            { get; init; }
 }
 
 /// <summary>Compact, terminal, list-friendly completion summary (persisted to the jobs `outcome` column).</summary>

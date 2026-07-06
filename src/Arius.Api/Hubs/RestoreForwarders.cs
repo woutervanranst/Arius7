@@ -25,6 +25,15 @@ public sealed class TreeTraversalCompleteForwarder(JobSink sink) : INotification
     }
 }
 
+public sealed class ChunkResolutionCompleteForwarder(JobSink sink) : INotificationHandler<ChunkResolutionCompleteEvent>
+{
+    public ValueTask Handle(ChunkResolutionCompleteEvent n, CancellationToken ct)
+    {
+        sink.SetChunkTotals(n.TotalChunks, n.TotalChunkBytes);
+        return ValueTask.CompletedTask;
+    }
+}
+
 public sealed class RehydrationStatusForwarder(JobSink sink) : INotificationHandler<RehydrationStatusEvent>
 {
     public ValueTask Handle(RehydrationStatusEvent n, CancellationToken ct)
