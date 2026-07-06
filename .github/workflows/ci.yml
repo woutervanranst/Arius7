@@ -186,3 +186,36 @@ jobs:
           flags: web
           name: coverage-web
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  web-e2e-hermetic:
+    name: 🎭 Web e2e (hermetic, scripted Core)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Arius.Web
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v7
+      - name: ⚙️ Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - name: ⚙️ Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/Arius.Web/package-lock.json
+      - name: 📦 Install dependencies
+        run: npm ci
+      - name: 🌐 Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: 🎭 Run hermetic e2e
+        run: npm run e2e:hermetic
+      - name: ⬆️ Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-hermetic
+          path: src/Arius.Web/e2e/hermetic/playwright-report
+          retention-days: 7
