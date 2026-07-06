@@ -1,4 +1,5 @@
 using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Testing;
 using Arius.Core.Features.ArchiveCommand;
 
 namespace Arius.Api.Integration.Tests;

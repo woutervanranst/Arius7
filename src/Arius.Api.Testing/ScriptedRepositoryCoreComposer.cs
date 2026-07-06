@@ -11,19 +11,21 @@ using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Features.StorageAccountInfoQuery;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Fakes;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Arius.Api.Integration.Tests.Harness;
+namespace Arius.Api.Testing;
 
 /// <summary>Test composer: registers a scripted Core (scenario-driven command handlers + a deterministic
 /// cost estimator) into the per-repo provider. Never opens a real container.</summary>
-public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios) : IRepositoryCoreComposer
+public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, ScenarioGate gate) : IRepositoryCoreComposer
 {
     public Task ComposeAsync(IServiceCollection services, RepositoryConnection connection, PreflightMode mode, CancellationToken cancellationToken)
     {
-        services.AddSingleton<IStorageCostEstimator>(new FakeStorageCostEstimator());
+        services.AddSingleton<IStorageCostEstimator>(new ScriptedStorageCostEstimator());
+        // Per-repo gate + context so the scripted handlers can hold a run until a control endpoint releases it.
+        services.AddSingleton(gate);
+        services.AddSingleton(new ScenarioContext(connection.RepositoryId));
 
         // Othamar Mediator's generated ContainerMetadata eagerly resolves EVERY discovered
         // command/query handler on the first Send/Publish through this provider's IMediator — not just

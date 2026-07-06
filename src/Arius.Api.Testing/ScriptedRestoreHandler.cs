@@ -1,11 +1,11 @@
 using Arius.Core.Features.RestoreCommand;
 using Mediator;
 
-namespace Arius.Api.Integration.Tests.Harness;
+namespace Arius.Api.Testing;
 
 /// <summary>Fake restore handler: publishes scripted restore events and drives the run's ConfirmRehydration
 /// cost handshake exactly as the real handler would, so JobRunner's awaiting-cost path runs unchanged.</summary>
-public sealed class ScriptedRestoreHandler(IPublisher publisher, RestoreScenario scenario)
+public sealed class ScriptedRestoreHandler(IPublisher publisher, RestoreScenario scenario, ScenarioGate gate, ScenarioContext ctx)
     : ICommandHandler<RestoreCommand, RestoreResult>
 {
     public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
@@ -22,6 +22,8 @@ public sealed class ScriptedRestoreHandler(IPublisher publisher, RestoreScenario
 
         foreach (var evt in scenario.PostApproveEvents)
             await publisher.Publish(evt, cancellationToken);
+        if (scenario.Gated)
+            await gate.WaitForRelease(ctx.RepositoryId, cancellationToken);
 
         return scenario.Result;
     }

@@ -1,4 +1,5 @@
 using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Testing;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
 using Mediator;
@@ -15,7 +16,7 @@ public class ScriptedArchiveHandlerTests
         var scan = new ScanCompleteEvent(2, 3000);
         var uploaded = new ChunkUploadedEvent(ChunkHash.Parse(new string('c', 64)), 400, 2000);
         var result = NewArchiveResult();
-        var handler = new ScriptedArchiveHandler(publisher, new ArchiveScenario([scan, uploaded], result));
+        var handler = new ScriptedArchiveHandler(publisher, new ArchiveScenario([scan, uploaded], result), new ScenarioGate(), new ScenarioContext(RepositoryId: 1));
 
         var actual = await handler.Handle(new ArchiveCommand(new ArchiveCommandOptions { RootDirectory = "/x" }), default);
 

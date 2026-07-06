@@ -1,5 +1,6 @@
 using Arius.Api.AppData;
 using Arius.Api.Composition;
+using Arius.Api.Testing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,7 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.AddSingleton(Scenarios);
+            services.AddSingleton<ScenarioGate>();   // ScriptedRepositoryCoreComposer ctor dependency
             services.RemoveAll<IRepositoryCoreComposer>();
             services.AddSingleton<IRepositoryCoreComposer, ScriptedRepositoryCoreComposer>();
         });

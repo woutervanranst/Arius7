@@ -4,13 +4,13 @@ using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
-namespace Arius.Api.Integration.Tests.Harness;
+namespace Arius.Api.Testing;
 
 /// <summary>Reusable representative scenarios modelled on the handoff's reference run. Kept in one place so
 /// Plans 2 &amp; 3 exercise the same shapes the fidelity guard validates.</summary>
 public static class CanonicalScenarios
 {
-    public static ArchiveScenario RepresentativeArchive() => new(
+    public static ArchiveScenario RepresentativeArchive(bool gated = false) => new(
         Events:
         [
             new ScanCompleteEvent(TotalFiles: 3122, TotalBytes: 3_160_000_000),
@@ -25,9 +25,10 @@ public static class CanonicalScenarios
             Success = true, FilesScanned = 3122, EntriesExcluded = 0, FilesUploaded = 1, FilesDeduped = 1,
             OriginalSize = 3_160_000_000, IncrementalSize = 100_000_000, IncrementalStoredSize = 60_000_000,
             FastHashReused = 0, FastHashRehashed = 3122, RootHash = null, SnapshotTime = DateTimeOffset.UnixEpoch,
-        });
+        },
+        Gated: gated);
 
-    public static RestoreScenario RehydratingRestore() => new(
+    public static RestoreScenario RehydratingRestore(bool gated = false) => new(
         PreCostEvents:
         [
             new SnapshotResolvedEvent(DateTimeOffset.UnixEpoch, default),
@@ -46,5 +47,17 @@ public static class CanonicalScenarios
             new RehydrationStatusEvent(Available: 145, Rehydrated: 282, NeedsRehydration: 0, Pending: 0),
             new FileRestoredEvent(RelativePath.Parse("big.bin"), 100_000_000),
         ],
-        Result: new RestoreResult { Success = true, FilesRestored = 3122, FilesSkipped = 0, ChunksPendingRehydration = 0, ErrorMessage = null });
+        Result: new RestoreResult { Success = true, FilesRestored = 3122, FilesSkipped = 0, ChunksPendingRehydration = 0, ErrorMessage = null },
+        Gated: gated);
+
+    /// <summary>A restore that PARKS at <c>rehydrating</c> after approval (post-approve result still reports chunks
+    /// pending), so a reattach renders the rehydration wait card + auto-resume toggle + "≈ hydrated by" (#13/#14).</summary>
+    public static RestoreScenario RehydratingRestoreStaysPending() => RehydratingRestore() with
+    {
+        PostApproveEvents =
+        [
+            new RehydrationStatusEvent(Available: 145, Rehydrated: 0, NeedsRehydration: 282, Pending: 282),
+        ],
+        Result = new RestoreResult { Success = true, FilesRestored = 0, FilesSkipped = 0, ChunksPendingRehydration = 282, ErrorMessage = null },
+    };
 }

@@ -1,6 +1,6 @@
 using Mediator;
 
-namespace Arius.Api.Integration.Tests.Harness;
+namespace Arius.Api.Testing;
 
 /// <summary>
 /// Stand-ins for the Mediator commands/queries the scripted harness doesn't script.

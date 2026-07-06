@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Testing;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
