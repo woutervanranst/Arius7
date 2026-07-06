@@ -1,4 +1,4 @@
-import { JobSnapshot } from '../core/api/api-models';
+import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 
 /** "~12 min left" / "estimating…" (null until totalNewBytes is known). */
 export function formatEta(seconds: number | null | undefined): string {
@@ -29,6 +29,16 @@ export function hydratedByLabel(startedAtIso: string | null, windowHours: number
   if (!startedAtIso) return '';
   const done = new Date(new Date(startedAtIso).getTime() + windowHours * 3600_000);
   return `≈ hydrated by ${done.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** The rehydration SLA window (hours) for the "≈ hydrated by" ETA: the live cost estimate when present
+ *  (priority-aware), else the persisted resume window (so a rehydrating job past cost-approval still shows
+ *  an ETA), else null. */
+export function resolveRehydrationWindowHours(
+  cost: CostEstimateMsg | null, resume: ResumeInfo | null, priority: 'standard' | 'high'): number | null {
+  if (cost) return priority === 'high' ? cost.highWaitHours : cost.standardWaitHours;
+  if (resume) return resume.rehydrationWindowHours;
+  return null;
 }
 
 export interface StatusMeta { label: string; color: string; bg: string; border: string; dot: string; icon: string; pulse: boolean; }

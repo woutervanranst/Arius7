@@ -1,5 +1,5 @@
-import { archiveBarLayers, restoreBarLayers, phaseSentence } from './job-format';
-import { JobSnapshot } from '../core/api/api-models';
+import { archiveBarLayers, restoreBarLayers, phaseSentence, resolveRehydrationWindowHours } from './job-format';
+import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 
 function snap(p: Partial<JobSnapshot>): JobSnapshot {
   return {
@@ -38,5 +38,21 @@ describe('phaseSentence', () => {
   });
   it('shows the upload sentence when there is new data', () => {
     expect(phaseSentence(snap({ totalBytes: 1000, hashedBytes: 1000, totalNewBytes: 3_110_000_000, uploadedBytes: 1_680_000_000 }), 'archive')).toContain('Uploading');
+  });
+});
+
+describe('resolveRehydrationWindowHours', () => {
+  const cost = (p: Partial<CostEstimateMsg>): CostEstimateMsg => ({ jobId: 'j', chunksAvailable: 0, chunksNeedingRehydration: 0, bytesNeedingRehydration: 0, downloadBytes: 0, totalStandard: 0, totalHigh: 0, standardWaitHours: 15, highWaitHours: 1, ...p });
+  const resume = (p: Partial<ResumeInfo>): ResumeInfo => ({ autoResume: true, rehydrationStartedAt: '2026-01-01T00:00:00Z', rehydrationWindowHours: 15, ...p });
+
+  it('prefers the live cost estimate when present (priority-aware)', () => {
+    expect(resolveRehydrationWindowHours(cost({ highWaitHours: 1 }), null, 'high')).toBe(1);
+    expect(resolveRehydrationWindowHours(cost({ standardWaitHours: 15 }), null, 'standard')).toBe(15);
+  });
+  it('falls back to the persisted resume window when cost is null (rehydrating past approval)', () => {
+    expect(resolveRehydrationWindowHours(null, resume({ rehydrationWindowHours: 15 }), 'standard')).toBe(15);
+  });
+  it('returns null when neither is available', () => {
+    expect(resolveRehydrationWindowHours(null, null, 'high')).toBeNull();
   });
 });

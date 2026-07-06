@@ -140,11 +140,20 @@ export interface JobOutcome {
   durationSeconds: number | null;
 }
 
+/** Persisted resume facts for a restore, mirrored from the server `ResumeInfo` (auto-resume toggle #14,
+ *  rehydration-window ETA #13). Surfaced on reattach so a job past cost-approval still renders them. */
+export interface ResumeInfo {
+  autoResume: boolean;
+  rehydrationStartedAt: string;
+  rehydrationWindowHours: number;
+}
+
 export interface JobAttachState {
   status: string;
   snapshot: JobSnapshot;
   cost: CostEstimateMsg | null;
   warningCount: number;
+  resume: ResumeInfo | null;
 }
 
 export interface JobDto {
@@ -175,6 +184,8 @@ export interface JobDetailDto {
   outcome: string | null;
   snapshot: JobSnapshot | null;
   warningCount: number;
+  cost: CostEstimateMsg | null;
+  resume: ResumeInfo | null;
 }
 
 export interface JobWarningsDto {

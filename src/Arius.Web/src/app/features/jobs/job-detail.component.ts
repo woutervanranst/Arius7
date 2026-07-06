@@ -3,10 +3,10 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api/api.service';
 import { RealtimeService } from '../../core/api/realtime.service';
-import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, isNonTerminal } from '../../core/api/api-models';
+import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
 import { Subscription } from 'rxjs';
 
 /** One stage-summary row (derived from the live snapshot). */
@@ -296,6 +296,7 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly warnings = signal<string[]>([]);
   protected readonly priority = signal<'standard' | 'high'>('high');
   protected readonly autoResume = signal(true);
+  protected readonly resume = signal<ResumeInfo | null>(null);
   private subs: Subscription[] = [];
   private currentId = '';
 
@@ -332,10 +333,8 @@ export class JobDetailComponent implements OnDestroy {
     if (eta == null) return 'estimating…';
     return new Date(Date.now() + eta * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   });
-  protected readonly rehydrateWindowHours = computed<number | null>(() => {
-    const c = this.cost(); if (!c) return null;
-    return this.priority() === 'high' ? c.highWaitHours : c.standardWaitHours;
-  });
+  protected readonly rehydrateWindowHours = computed<number | null>(() =>
+    resolveRehydrationWindowHours(this.cost(), this.resume(), this.priority()));
   protected readonly hydratedBy = computed(() => {
     const w = this.rehydrateWindowHours();
     return w != null ? hydratedByLabel(this.detail()?.startedAt ?? null, w) : '';
@@ -414,8 +413,14 @@ export class JobDetailComponent implements OnDestroy {
     this.api.getJob(id).subscribe(d => {
       if (this.currentId !== id) return;   // a newer attach won the race
       this.detail.set(d); this.status.set(d.status); if (d.snapshot) this.snap.set(d.snapshot);
+      if (d.cost) this.cost.set(d.cost);
+      if (d.resume) { this.resume.set(d.resume); this.autoResume.set(d.resume.autoResume); }
     });
-    void this.realtime.attachToJob(id).then(st => { if (st && this.currentId === id) { this.snap.set(st.snapshot); this.status.set(st.status); if (st.cost) this.cost.set(st.cost); } });
+    void this.realtime.attachToJob(id).then(st => { if (st && this.currentId === id) {
+      this.snap.set(st.snapshot); this.status.set(st.status);
+      if (st.cost) this.cost.set(st.cost);
+      if (st.resume) { this.resume.set(st.resume); this.autoResume.set(st.resume.autoResume); }
+    } });
     this.subs.push(this.realtime.jobProgress(id).subscribe(s => this.snap.set(s)));
     this.subs.push(this.realtime.jobCost(id).subscribe(c => this.cost.set(c)));
     this.subs.push(this.realtime.jobDone(id).subscribe(d => { this.status.set(d.status); this.cost.set(null); this.api.getJob(id).subscribe(x => this.detail.set(x)); }));
