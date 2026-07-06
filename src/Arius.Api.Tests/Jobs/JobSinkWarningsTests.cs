@@ -39,6 +39,19 @@ public sealed class JobSinkWarningsTests
     }
 
     [Test]
+    public async Task Log_still_captures_warnings_after_the_live_send_is_removed()
+    {
+        // #15: Group?.SendAsync("Log", …) was dropped (no client handler survives the console cutover); the
+        // warn/error capture path (WarningCount / Warnings / BuildSnapshot) must be unaffected.
+        var s = new JobSink();   // inert (Group == null) — a live send here would have thrown/no-op silently
+        for (var i = 0; i < 250; i++) s.Log($"warn {i}", "warn");
+
+        s.WarningCount.ShouldBe(250);          // true total, not ring-capped
+        s.Warnings.Count.ShouldBe(200);        // ring tail still capped
+        s.BuildSnapshot(DateTimeOffset.UnixEpoch).WarningCount.ShouldBe(250);
+    }
+
+    [Test]
     public async Task StopReporting_does_not_emit_progress_after_done()
     {
         // An inert sink can't observe SignalR sends, so assert the guard flag instead: once Done is recorded,

@@ -97,7 +97,7 @@ public sealed class JobsHub(
             {
                 var persisted = System.Text.Json.JsonSerializer.Deserialize<PersistedJobState>(job.StateJson);
                 if (persisted is not null)
-                    return new JobAttachState(job.Status, persisted.Snapshot, Cost: null, persisted.Warnings.Count);
+                    return new JobAttachState(job.Status, persisted.Snapshot, Cost: null, persisted.Snapshot.WarningCount);
             }
             catch (System.Text.Json.JsonException) { /* fall through to a bare snapshot */ }
         }

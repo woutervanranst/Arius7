@@ -31,9 +31,10 @@ public sealed class JobSink
     // ── Messages ────────────────────────────────────────────────────────────
     public void Log(string text, string severity = "meta")
     {
+        // Capture warn/error lines for the warnings panel/count. The live "Log" SignalR stream was removed
+        // with the console (Plan 3 web cutover) — there is no client handler, so we no longer broadcast it.
         if (severity is "warn" or "error")
             CaptureWarning(text);
-        Group?.SendAsync("Log", new { text, severity });
     }
     public void Cost(object estimate) => Group?.SendAsync("CostEstimate", estimate);
 

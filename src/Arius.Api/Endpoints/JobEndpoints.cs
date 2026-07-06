@@ -48,7 +48,7 @@ internal static class JobEndpoints
                 {
                     var persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson);
                     snapshot = persisted?.Snapshot;
-                    warningCount = persisted?.Warnings.Count ?? 0;
+                    warningCount = persisted?.Snapshot.WarningCount ?? 0;
                 }
                 catch (JsonException) { /* leave snapshot null */ }
             }

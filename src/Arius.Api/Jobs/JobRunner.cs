@@ -391,7 +391,8 @@ public sealed class JobRunner(
             }
             database.CompleteJob(jobId, "completed", 100, "Restore complete.");
             database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
-            var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null));
+            var startedAt = job.StartedAt ?? resume.RehydrationStartedAt;
+            var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, null));
             database.SetJobOutcome(jobId, outcomeJson);
             sink.EmitNow();                       // final absolute progress (100%) before the terminal message
             sink.Done("completed", "Restore complete.", outcomeJson);
