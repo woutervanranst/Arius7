@@ -124,12 +124,6 @@ export class RealtimeService {
     return this.connection!.invoke<string>('StartRestore', repositoryId, opts.version, opts.targetPaths, opts.overwrite, opts.noPointers);
   }
 
-  /** Answers the restore cost modal. priority = 'standard' | 'high'; null/'' declines. */
-  async approve(jobId: string, priority: string | null): Promise<void> {
-    await this.ensureStarted();
-    await this.connection!.invoke('Approve', jobId, priority);
-  }
-
   /** Streams cross-repository search hits (filename filter across every repository). */
   searchAll(query: string): Observable<SearchHitDto> {
     return new Observable<SearchHitDto>(subscriber => {

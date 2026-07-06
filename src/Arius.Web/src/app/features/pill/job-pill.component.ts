@@ -11,7 +11,7 @@ import { formatEta, formatThroughput, phaseSentence } from '../../shared/job-for
   imports: [RouterLink],
   template: `
     @if (store.visible() && store.snapshot(); as s) {
-      <div data-testid="job-pill" style="position:fixed;right:18px;bottom:16px;z-index:50;display:flex;align-items:center;gap:11px;
+      <div data-testid="job-pill" style="position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:50;display:flex;align-items:center;gap:11px;
            background:#18181b;color:#fff;border-radius:999px;padding:9px 16px 9px 10px;box-shadow:0 12px 32px rgba(9,9,11,.28)">
         <!-- 30px progress ring -->
         <svg width="30" height="30" viewBox="0 0 30 30" style="transform:rotate(-90deg)">
@@ -43,7 +43,7 @@ export class JobPillComponent implements OnDestroy {
 
   protected readonly verb = computed(() => {
     const s = this.store.snapshot()!; const kind = this.store.kind();
-    return phaseSentence(s, kind).split(' —')[0] + (kind === 'archive' ? ' photos' : '');   // "Uploading" style verb
+    return phaseSentence(s, kind).split(' —')[0];   // "Uploading" / "Restoring" style verb
   });
   protected line2 = () => {
     const s = this.store.snapshot()!;
