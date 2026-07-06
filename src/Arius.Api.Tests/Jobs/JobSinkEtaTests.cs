@@ -36,6 +36,7 @@ public class JobSinkEtaTests
         // below what's already been uploaded.
         s.AddUploaded(0, 5_000);
         s.SetTotals(files: 1, bytes: 1_000);
+        s.AddQueuedNew(1_000);                 // additive new-bytes-to-upload now known (no dedup here)
         s.SampleForEta(t0);                    // 5_000 @ t0 (warm start)
 
         s.AddUploaded(0, 2_000);               // now 7_000 uploaded; totalNew (1_000) is dwarfed
