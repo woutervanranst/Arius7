@@ -10,14 +10,22 @@ namespace Arius.Api.Integration.Tests;
 
 public class ConcurrentResumeTests
 {
+    // Smoke test for concurrent ResumeRestoreAsync of the same job: it verifies the fixed code path does not
+    // deadlock, does not double-complete, and leaks no registry entry under real concurrency.
+    //
+    // It does NOT discriminate the review-#3 clobber (it passes with and without the Register-under-gate fix):
+    // the fix's correctness is verified by inspection instead. An automated discriminator is impractical —
+    // once the first resume flips status to "running" under the repo gate, a second resume bails at the
+    // pre-gate (rehydrating|awaiting-cost) guard and never reaches Register, so the clobber exists only in a
+    // sub-microsecond thread race that scenario-gating can't force, and the ux_jobs_one_active_per_repo unique
+    // index prevents holding the repo gate open with a second job to widen the window.
     [Test]
-    public async Task Two_concurrent_resumes_do_not_leave_the_job_registered_after_both_finish()
+    public async Task Concurrent_resumes_of_the_same_job_complete_cleanly_without_deadlock_or_leak()
     {
         await using var factory = new AriusApiFactory();
         var dest = Path.Combine(Path.GetTempPath(), $"arius-itest-dst-{Guid.NewGuid():N}");
         var repoId = factory.SeedRepository(localPath: dest);
 
-        // A restore that completes (no pending) so each resume runs to completion.
         factory.Scenarios.SetRestore(repoId, new RestoreScenario(
             PreCostEvents: [ new FileRestoredEvent(RelativePath.Parse("a"), 100) ],
             CostPrompt: null,
@@ -28,7 +36,6 @@ public class ConcurrentResumeTests
         var db = factory.Services.GetRequiredService<AppDatabase>();
         var jobStates = factory.Services.GetRequiredService<JobStateRegistry>();
 
-        // Seed a rehydrating row with resume state so ResumeRestoreAsync proceeds.
         var jobId = Guid.NewGuid().ToString();
         db.InsertJob(jobId, repoId, "restore", "one-off", "rehydrating");
         db.SaveJobState(jobId, System.Text.Json.JsonSerializer.Serialize(new PersistedJobState
@@ -43,12 +50,12 @@ public class ConcurrentResumeTests
             },
         }));
 
-        var a = runner.ResumeRestoreAsync(jobId);
-        var b = runner.ResumeRestoreAsync(jobId);
+        // Genuinely interleave the two resumes.
+        var a = Task.Run(() => runner.ResumeRestoreAsync(jobId));
+        var b = Task.Run(() => runner.ResumeRestoreAsync(jobId));
         await Task.WhenAll(a, b);
 
-        // Both runs finished: the registry must not hold a stale sink, and the job is terminal exactly once.
-        await Assert.That(jobStates.TryGet(jobId, out _)).IsFalse();
-        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
+        await Assert.That(jobStates.TryGet(jobId, out _)).IsFalse();          // no leaked registration
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");   // single clean completion
     }
 }
