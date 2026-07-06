@@ -27,7 +27,15 @@ public sealed class RestoreApprovalRegistry
         {
             var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeout, ct)).ConfigureAwait(false);
             if (completed != tcs.Task)
-                return new ApprovalResult(Approved: false, Priority: null, TimedOut: true);
+            {
+                // Timeout fired — but a concurrent Resolve may have completed the TCS between WhenAny returning
+                // and now. Atomically claim the timeout; if the claim FAILS, a real answer landed first, so honor
+                // it — otherwise a genuine approval that raced the deadline would be silently discarded (#3).
+                if (tcs.TrySetResult(null))
+                    return new ApprovalResult(Approved: false, Priority: null, TimedOut: true);
+                var raced = await tcs.Task.ConfigureAwait(false);
+                return new ApprovalResult(Approved: raced is not null, Priority: raced, TimedOut: false);
+            }
 
             var priority = await tcs.Task.ConfigureAwait(false);
             return new ApprovalResult(Approved: priority is not null, Priority: priority, TimedOut: false);
