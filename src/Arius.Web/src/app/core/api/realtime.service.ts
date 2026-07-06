@@ -47,6 +47,22 @@ export class RealtimeService {
     this.attached.add(jobId);
     return state;
   }
+
+  /**
+   * Re-applies a job's reattach state to the streams after a reconnect gap. Refreshes absolute progress; for a
+   * still-active job also re-emits its cost estimate (the one-shot CostEstimate push can be lost while
+   * disconnected — review #6); for a finished job emits a terminal done so consumers finalize.
+   */
+  private forwardReattach(id: string, state: JobAttachState | null): void {
+    if (!state) return;
+    this.progress$.next(state.snapshot);
+    if (isNonTerminal(state.status)) {
+      if (state.cost) this.cost$.next(state.cost);
+    } else {
+      this.done$.next({ jobId: id, status: state.status, summary: '', outcome: null });
+    }
+  }
+
   async detachFromJob(jobId: string): Promise<void> {
     this.attached.delete(jobId);
     if (this.connection?.state === signalR.HubConnectionState.Connected)
@@ -73,12 +89,7 @@ export class RealtimeService {
       this.connection.onreconnected(() => {
         for (const id of this.attached) {
           this.connection!.invoke<JobAttachState | null>('AttachToJob', id)
-            .then(state => {
-              if (!state) return;
-              this.progress$.next(state.snapshot);   // refresh absolute state after the gap
-              if (!isNonTerminal(state.status))       // job finished while disconnected → let consumers finalize
-                this.done$.next({ jobId: id, status: state.status, summary: '', outcome: null });
-            })
+            .then(state => this.forwardReattach(id, state))
             .catch(() => {});
         }
       });
