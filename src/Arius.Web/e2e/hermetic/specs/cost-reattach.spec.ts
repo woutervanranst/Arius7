@@ -25,6 +25,10 @@ test('the cost modal renders on a fresh reattach of an awaiting-cost restore (#2
   await expect(page.getByTestId('prio-standard')).toBeVisible();
   await expect(page.getByTestId('prio-high')).toBeVisible();
 
+  // #2: the modal must default to Standard (the cheaper option), not High.
+  await expect(page.getByTestId('prio-standard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('prio-high')).toHaveAttribute('aria-pressed', 'false');
+
   // …and it's surfaced in the jobs list under "Needs your attention".
   await page.goto('/jobs');
   await expect(page.getByTestId('jobs-needs-attention').getByTestId('job-review-cost')).toBeVisible();

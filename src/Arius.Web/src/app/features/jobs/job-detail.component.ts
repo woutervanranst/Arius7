@@ -252,6 +252,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               </div>
               <div style="display:flex;gap:10px;margin-top:14px">
                 <button data-testid="prio-standard" type="button" (click)="priority.set('standard')"
+                        [attr.aria-pressed]="priority() === 'standard'"
                         style="flex:1;border-radius:10px;padding:11px;text-align:left;background:#fff;cursor:pointer"
                         [style.border]="priority() === 'standard' ? '2px solid #7c3aed' : '1px solid #e4e4e7'"
                         [style.background]="priority() === 'standard' ? '#f5f3ff' : '#fff'">
@@ -259,6 +260,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
                   <div style="font-size:11.5px;margin-top:2px" [style.color]="priority() === 'standard' ? '#7c3aed' : '#a1a1aa'">up to {{ c.standardWaitHours }} h wait</div>
                 </button>
                 <button data-testid="prio-high" type="button" (click)="priority.set('high')"
+                        [attr.aria-pressed]="priority() === 'high'"
                         style="flex:1;border-radius:10px;padding:11px;text-align:left;cursor:pointer"
                         [style.border]="priority() === 'high' ? '2px solid #7c3aed' : '1px solid #e4e4e7'"
                         [style.background]="priority() === 'high' ? '#f5f3ff' : '#fff'">
@@ -294,7 +296,7 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly cost = signal<CostEstimateMsg | null>(null);
   protected readonly warningsOpen = signal(false);
   protected readonly warnings = signal<string[]>([]);
-  protected readonly priority = signal<'standard' | 'high'>('high');
+  protected readonly priority = signal<'standard' | 'high'>('standard');
   protected readonly autoResume = signal(true);
   protected readonly resume = signal<ResumeInfo | null>(null);
   private subs: Subscription[] = [];
