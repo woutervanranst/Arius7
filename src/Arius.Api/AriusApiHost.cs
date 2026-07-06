@@ -35,6 +35,7 @@ public static class AriusApiHost
         builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
         builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
         builder.Services.AddHostedService<Arius.Api.Jobs.RehydrationPollingService>();
+        builder.Services.AddHostedService<Arius.Api.Jobs.StaleApprovalSweepService>();
 
         builder.Services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);

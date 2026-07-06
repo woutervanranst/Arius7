@@ -20,7 +20,7 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             try { Tick(); }
             catch (Exception ex) { logger.LogError(ex, "Scheduler tick failed"); }
         }
-        while (await SafeWaitAsync(timer, stoppingToken));
+        while (await timer.SafeWaitForNextTickAsync(stoppingToken));
     }
 
     private void Tick()
@@ -67,11 +67,5 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
     {
         try { expression = CronExpression.Parse(cron); return true; }
         catch (CronFormatException) { expression = null!; return false; }
-    }
-
-    private static async Task<bool> SafeWaitAsync(PeriodicTimer timer, CancellationToken token)
-    {
-        try { return await timer.WaitForNextTickAsync(token); }
-        catch (OperationCanceledException) { return false; }
     }
 }

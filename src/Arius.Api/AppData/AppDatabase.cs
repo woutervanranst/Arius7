@@ -444,6 +444,22 @@ public sealed class AppDatabase
         return result;
     }
 
+    /// <summary>Jobs stuck at <c>awaiting-cost</c> whose <c>started_at</c> predates <paramref name="olderThan"/> —
+    /// the abandoned-cost-prompt work list for <see cref="Arius.Api.Jobs.StaleApprovalSweepService"/>. Never returns
+    /// <c>rehydrating</c> rows (those legitimately live for hours).</summary>
+    public IReadOnlyList<JobRecord> ListStaleAwaitingCost(DateTimeOffset olderThan)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at, state_json, outcome FROM jobs WHERE status = 'awaiting-cost' AND started_at < $t;";
+        command.Parameters.AddWithValue("$t", olderThan.ToString("O"));
+        using var reader = command.ExecuteReader();
+        var result = new List<JobRecord>();
+        while (reader.Read())
+            result.Add(ReadJob(reader));
+        return result;
+    }
+
     public IReadOnlyList<JobRecord> ListJobs(int limit = 100)
     {
         using var connection = OpenConnection();

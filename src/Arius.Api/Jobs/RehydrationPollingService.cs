@@ -21,7 +21,7 @@ public sealed class RehydrationPollingService(IServiceProvider services, ILogger
             try { Tick(); }
             catch (Exception ex) { logger.LogError(ex, "Rehydration poll tick failed"); }
         }
-        while (await SafeWaitAsync(timer, stoppingToken));
+        while (await timer.SafeWaitForNextTickAsync(stoppingToken));
     }
 
     private void Tick()
@@ -46,11 +46,5 @@ public sealed class RehydrationPollingService(IServiceProvider services, ILogger
             logger.LogInformation("Re-driving rehydrating restore {JobId} (repo {RepositoryId})", job.Id, job.RepositoryId);
             _ = runner.ResumeRestoreAsync(job.Id);
         }
-    }
-
-    private static async Task<bool> SafeWaitAsync(PeriodicTimer timer, CancellationToken token)
-    {
-        try { return await timer.WaitForNextTickAsync(token); }
-        catch (OperationCanceledException) { return false; }
     }
 }
