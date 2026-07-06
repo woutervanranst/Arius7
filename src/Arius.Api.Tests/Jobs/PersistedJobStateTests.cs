@@ -16,7 +16,7 @@ public sealed class PersistedJobStateTests
             Version = "v3", TargetPaths = new[] { "docs" }, Destination = "/data",
             Overwrite = false, NoPointers = true, Priority = "High", AutoResume = true,
             RehydrationStartedAt = DateTimeOffset.UnixEpoch, LastRunAt = DateTimeOffset.UnixEpoch,
-            RehydrationWindow = TimeSpan.FromHours(1), AvailableOrRehydratedCount = 2,
+            RehydrationWindow = TimeSpan.FromHours(1), RehydratedCount = 2,
         };
 
         var json = JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UnixEpoch, resume));

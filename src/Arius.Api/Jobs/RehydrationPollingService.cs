@@ -39,7 +39,7 @@ public sealed class RehydrationPollingService(IServiceProvider services, ILogger
             var resume = persisted?.Resume;
             if (resume is null || !resume.AutoResume) continue;
 
-            var firstChunkSeen = resume.AvailableOrRehydratedCount > 0;
+            var firstChunkSeen = resume.RehydratedCount > 0;
             if (!RehydrationSchedule.IsDue(now, resume.RehydrationStartedAt, resume.LastRunAt, resume.Priority, firstChunkSeen))
                 continue;
 

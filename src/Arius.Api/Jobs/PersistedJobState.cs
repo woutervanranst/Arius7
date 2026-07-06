@@ -27,5 +27,8 @@ public sealed record RestoreResumeState
     public required DateTimeOffset             RehydrationStartedAt       { get; init; }
     public required DateTimeOffset             LastRunAt                  { get; init; }
     public required TimeSpan                    RehydrationWindow          { get; init; }
-    public          int                        AvailableOrRehydratedCount { get; init; }
+    /// <summary>Count of chunks that have become ready via rehydration (the RehydrationStatusEvent.Rehydrated
+    /// bucket). &gt; 0 means "a chunk newly hydrated" → tighten the poller cadence. NOT available+rehydrated:
+    /// always-online chunks must not trip the quiet window.</summary>
+    public          int                        RehydratedCount { get; init; }
 }
