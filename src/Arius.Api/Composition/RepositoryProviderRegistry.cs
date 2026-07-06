@@ -117,11 +117,6 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
         var services = new ServiceCollection();
 
-        // Route Core's logging to the repository's shared rolling log file (same as before).
-        var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
-        services.AddSingleton(repoLoggerFactory);
-        services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
-
         // Per-job sink resolved by the event forwarders (auto-registered by AddMediator).
         services.AddSingleton(jobSink);
 
@@ -131,6 +126,11 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // The Arius.Core graph (handlers + storage) is composed behind an interface so tests can
         // swap in a scripted fake without touching Arius.Core.
         await _coreComposer.ComposeAsync(services, connection, mode, cancellationToken).ConfigureAwait(false);
+
+        // Route Core's logging to the repository's shared rolling log file (same as before).
+        var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
+        services.AddSingleton(repoLoggerFactory);
+        services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
 
         _logger.LogInformation("Built {Mode} provider for repository {RepositoryId} ({Account}/{Container})", mode, repositoryId, connection.AccountName, connection.Container);
         return services.BuildServiceProvider();
