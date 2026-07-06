@@ -344,8 +344,7 @@ public sealed class JobRunner(
         if (repo is null) return;
 
         var sink = new JobSink(jobId, hub);
-        jobStates.Register(jobId, sink);
-        sink.StartReporting();
+        var registered = false;
 
         var gate = LockFor(job.RepositoryId);
         await gate.WaitAsync();
@@ -357,6 +356,12 @@ public sealed class JobRunner(
             // that is no longer parked. Shrinks the resurrection window to two adjacent statements.
             var underGate = database.GetJob(jobId);
             if (underGate is null || underGate.Status is not ("rehydrating" or "awaiting-cost")) return;
+
+            // Register only once we hold the gate and have decided to run: concurrent resumes serialize here, so
+            // the registry never holds a sink whose run isn't the current gate holder (review #3).
+            jobStates.Register(jobId, sink);
+            sink.StartReporting();
+            registered = true;
 
             database.SetJobStatus(jobId, "running", "Resuming restore…");
             provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
@@ -403,8 +408,7 @@ public sealed class JobRunner(
         finally
         {
             if (provider is not null) await provider.DisposeAsync();
-            sink.StopReporting();
-            jobStates.Remove(jobId);
+            if (registered) { sink.StopReporting(); jobStates.Remove(jobId); }
             sink.Cts.Dispose();
             gate.Release();
         }
