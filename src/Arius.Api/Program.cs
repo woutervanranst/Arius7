@@ -1,11 +1,5 @@
-using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Endpoints;
-using Arius.Api.Hubs;
-using Arius.AzureBlob;
+using Arius.Api;
 using Arius.Core.Shared;
-using Microsoft.AspNetCore.DataProtection;
 using Serilog;
 using Serilog.Events;
 
@@ -21,75 +15,16 @@ try
     var builder = WebApplication.CreateBuilder(args);
     builder.Host.UseSerilog();
 
-    // ── Configuration: paths live on a mounted volume in Docker, a local folder in dev ──
-    // NOTE: the dev folder is ".appstate" (not "data") because the source folder "AppData" and a
-    // "data" runtime folder collide on case-insensitive filesystems (macOS/Windows).
-    var dbPath = builder.Configuration["Arius:AppDbPath"]
-                 ?? Path.Combine(builder.Environment.ContentRootPath, ".appstate", "arius-app.sqlite");
-    var keysDir = builder.Configuration["Arius:DataProtectionKeysPath"]
-                  ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "keys");
-    Directory.CreateDirectory(keysDir);
-
-    // ── Services ──
-    builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
-    builder.Services.AddSingleton(new AppDatabase(dbPath));
-    builder.Services.AddSingleton<SecretProtector>();
-    builder.Services.AddAzureBlobStorage();
-    builder.Services.AddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
-    builder.Services.AddSingleton<RepositoryProviderRegistry>();
-    builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
-    builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
-    builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
-    builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
-    builder.Services.AddHostedService<Arius.Api.Jobs.RehydrationPollingService>();
-
-    builder.Services.AddSignalR()
-        .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
-
-    builder.Services.AddCors(options => options.AddPolicy("web", policy =>
-        policy.WithOrigins("http://localhost:4200")
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials()
-              .WithExposedHeaders("X-Arius-Version")));
-
+    builder.AddAriusApi();
     var app = builder.Build();
+    app.MapAriusApi();
 
     // Any job left "running" by a crash/restart is dead (its in-process run is gone) — reconciled to
-    // "interrupted" so it doesn't wedge the single-active-job-per-repo guard forever. This now happens
-    // inside AppDatabase's schema initializer (before the ux_jobs_one_active_per_repo unique index is
-    // created), which already ran when the AppDatabase singleton was constructed above — so no explicit
-    // call is needed here.
+    // "interrupted" inside AppDatabase's schema initializer (which ran when the AppDatabase singleton was
+    // constructed in AddAriusApi), before the ux_jobs_one_active_per_repo unique index is created — so no
+    // explicit call is needed here.
 
-    app.UseCors("web");
-
-    // Serve the built Angular SPA from wwwroot in production (no-op in dev, where ng serve is used).
-    app.UseDefaultFiles();
-    app.UseStaticFiles();
-
-    // REST endpoints live under /api so they never collide with the Angular SPA's client-side
-    // routes (/overview, /repos, /jobs, …). The SignalR hub lives under /hubs.
-    var api = app.MapGroup("/api");
-
-    // Stamp every API response with the running build version (the git tag of the deployed image)
-    api.AddEndpointFilter(async (ctx, next) =>
-    {
-        ctx.HttpContext.Response.Headers["X-Arius-Version"] = AriusVersion.Display;
-        return await next(ctx);
-    });
-
-    api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-    api.MapAccountEndpoints();
-    api.MapRepositoryEndpoints();
-    api.MapBrowseEndpoints();
-    api.MapJobEndpoints();
-    api.MapFilesystemEndpoints();
-    app.MapHub<JobsHub>("/hubs/arius");
-
-    // SPA fallback: client-side routes (/overview, /repos/…) serve index.html (only when present).
-    app.MapFallbackToFile("index.html");
-
-    Log.Information("Arius.Api {Version} starting — app db {DbPath}", AriusVersion.Display, dbPath);
+    Log.Information("Arius.Api {Version} starting", AriusVersion.Display);
     app.Run();
 }
 catch (Exception ex)
