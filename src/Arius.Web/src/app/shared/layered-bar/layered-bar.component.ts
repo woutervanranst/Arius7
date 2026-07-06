@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 /**
- * Byte-weighted layered progress bar (design README §Screens 2). ONE track, three overlapping fills,
- * each a subset of the previous (scanned ⊇ middle ⊇ top), all as % of the same dataset — so it never
- * jumps or hangs. Archive palette blues, restore palette purples.
+ * Byte-weighted layered progress bar (design README §Screens 2). ONE track, three overlapping fills.
+ * Archive: all three fills are % of the same dataset (totalBytes), each a subset of the previous
+ * (scanned ⊇ hashed ⊇ uploaded) — so it never jumps or hangs. Restore is two overlapping phases:
+ * the hydration fill is chunk-space (over chunksTotal) and the restored fill is byte-space
+ * (over restoreTotalBytes); each is independently monotonic 0→100. Archive palette blues, restore purples.
  */
 @Component({
   selector: 'arius-layered-bar',

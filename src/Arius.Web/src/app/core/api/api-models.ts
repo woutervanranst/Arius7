@@ -107,6 +107,8 @@ export interface JobSnapshot {
   chunksRehydrated: number;
   chunksNeedingRehydration: number;
   chunksPending: number;
+  chunksTotal: number;
+  chunkBytesTotal: number;
 }
 
 export interface CostEstimateMsg {

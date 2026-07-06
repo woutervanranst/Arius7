@@ -47,13 +47,37 @@ export function statusMeta(status: string): StatusMeta {
   }
 }
 
-/** One phase sentence for the pill / overview row / detail header, e.g. "Uploading — 1.68 of 3.11 GB · 2.4 MB/s". */
+/** One phase sentence for the pill / overview row / detail header. */
 export function phaseSentence(s: JobSnapshot, kind: string): string {
   const gb = (n: number) => (n / 1e9).toFixed(2) + ' GB';
   if (kind === 'restore') {
     if (s.chunksNeedingRehydration > 0 && s.bytesRestored === 0) return `Rehydrating — ${s.chunksNeedingRehydration} chunks from Archive tier`;
     return `Restoring — ${s.filesRestored} of ${s.restoreTotalFiles} files`;
   }
-  if (s.totalNewBytes === 0) return 'Scanning & hashing — estimating…';
+  // Still scanning/hashing (routing hasn't produced the new-bytes total yet) → estimating.
+  // Once hashing is done (hashedBytes ≥ totalBytes), the new-bytes total is known — even if it's 0.
+  if (s.totalBytes === 0 || s.hashedBytes < s.totalBytes) return 'Scanning & hashing — estimating…';
+  if (s.totalNewBytes === 0) return 'No new data — finalizing snapshot';
   return `Uploading — ${gb(s.uploadedBytes)} of ${gb(s.totalNewBytes)}`;
+}
+
+/** Archive layered-bar percentages — all three layers over the SAME dataset (totalBytes), so the bar
+ *  never has a layer overtake the one below it. The Uploaded layer converges to just under 100%; the
+ *  remaining gap is the deduplicated bytes (which were never uploaded). */
+export function archiveBarLayers(s: JobSnapshot): { scanned: number; middle: number; top: number } {
+  const d = s.totalBytes;
+  return d > 0
+    ? { scanned: s.scannedBytes * 100 / d, middle: s.hashedBytes * 100 / d, top: s.uploadedBytes * 100 / d }
+    : { scanned: 0, middle: 0, top: 0 };
+}
+
+/** Restore layered-bar percentages. Two overlapping phases: hydration (chunk-space, over the authoritative
+ *  chunksTotal INCLUDING chunks still needing rehydration) and download-to-disk (byte-space). Online-tier
+ *  chunks download immediately, so these layers overlap rather than gate. */
+export function restoreBarLayers(s: JobSnapshot): { scanned: number; middle: number; top: number } {
+  return {
+    scanned: 100,
+    middle: s.chunksTotal > 0 ? (s.chunksAvailable + s.chunksRehydrated) * 100 / s.chunksTotal : 0,
+    top: s.restoreTotalBytes > 0 ? s.bytesRestored * 100 / s.restoreTotalBytes : 0,
+  };
 }
