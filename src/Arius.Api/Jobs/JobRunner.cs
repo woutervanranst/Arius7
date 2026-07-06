@@ -410,6 +410,16 @@ public sealed class JobRunner(
         }
     }
 
+    /// <summary>Cancels a job that has no live run to observe a token-cancel (a rehydrating job between poller ticks,
+    /// or an awaiting-cost row swept as abandoned). Marks it <c>cancelled</c> in the DB AND broadcasts the terminal
+    /// <c>Done</c> to its SignalR group so attached clients finalize immediately — the parked paths previously wrote
+    /// the DB but never told the client (review #5). A fresh <see cref="JobSink"/> reuses the exact Done wire shape.</summary>
+    public void CancelParked(string jobId, string summary = "Cancelled.")
+    {
+        database.CompleteJob(jobId, "cancelled", 0, summary);
+        new JobSink(jobId, hub).Done("cancelled", summary);
+    }
+
     /// <summary>Restart/late-answer cost fallback: records the chosen priority into the parked job's resume state,
     /// then re-drives it (design §8). Used when no live approval wait exists.</summary>
     public async Task ApproveAndResumeAsync(string jobId, RehydratePriority priority)

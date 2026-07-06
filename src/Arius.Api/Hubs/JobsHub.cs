@@ -135,7 +135,7 @@ public sealed class JobsHub(
         if (approvals.HasPending(jobId)) { approvals.Resolve(jobId, null); return Task.CompletedTask; }
         if (jobStates.CancelLive(jobId)) return Task.CompletedTask;   // mid-run → cooperative CTS cancel
         approvals.Resolve(jobId, null);                               // parked/not-live safety no-op
-        database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
+        jobRunner.CancelParked(jobId);                               // mark cancelled + broadcast Done (review #5)
         return Task.CompletedTask;
     }
 
@@ -194,7 +194,7 @@ public sealed class JobsHub(
 
     private Task DeclineParkedAsync(string jobId)
     {
-        database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
+        jobRunner.CancelParked(jobId);   // mark cancelled + broadcast Done (review #5)
         return Task.CompletedTask;
     }
 
