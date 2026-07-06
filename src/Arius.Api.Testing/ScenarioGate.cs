@@ -11,19 +11,18 @@ public sealed class ScenarioGate
 {
     private readonly ConcurrentDictionary<long, TaskCompletionSource> _gates = new();
 
-    public Task WaitForRelease(long repositoryId, CancellationToken ct)
-    {
-        var tcs = _gates.GetOrAdd(repositoryId, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
-        return tcs.Task.WaitAsync(ct);
-    }
+    public Task WaitForRelease(long repositoryId, CancellationToken ct) => GateFor(repositoryId).Task.WaitAsync(ct);
 
     public void Release(long repositoryId)
     {
         // Create-or-complete: a release that arrives before the scripted handler reaches WaitForRelease must be
         // remembered, so the later WaitForRelease sees an already-completed latch instead of creating a fresh,
         // never-signalled TCS and hanging until the Playwright timeout (review #12). Sticky until ReleaseAll().
-        _gates.GetOrAdd(repositoryId, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+        GateFor(repositoryId).TrySetResult();
     }
+
+    private TaskCompletionSource GateFor(long repositoryId) =>
+        _gates.GetOrAdd(repositoryId, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
 
     public void ReleaseAll()
     {

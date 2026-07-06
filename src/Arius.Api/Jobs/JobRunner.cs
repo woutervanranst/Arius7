@@ -34,7 +34,7 @@ public sealed class JobRunner(
 
     public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool writePointers, bool fastHash = false, string trigger = "one-off")
     {
-        var sink = new JobSink(jobId, hub);
+        var sink = new JobSink(jobId, hub, logger);
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
@@ -59,8 +59,7 @@ public sealed class JobRunner(
         if (string.IsNullOrWhiteSpace(repo.LocalPath))
         {
             sink.Log("No local folder configured for this repository — set one in Properties.", "warn");
-            database.CompleteJob(jobId, "failed", 0, "No source folder configured.");
-            sink.Done("failed", "No source folder configured.");
+            FailOrCancel(sink, jobId, "failed", "No source folder configured.", "No source folder configured.");
             return;
         }
 
@@ -89,31 +88,23 @@ public sealed class JobRunner(
             if (result.Success)
             {
                 var summary = $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.IncrementalStoredSize)} stored ({JobFormat.Bytes(result.IncrementalSize)} uncompressed) · {JobFormat.Bytes(result.OriginalSize)} original";
-                database.CompleteJob(jobId, "completed", 100, summary);
-                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
-                var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, result.SnapshotTime.ToString("O")));
-                database.SetJobOutcome(jobId, outcomeJson);
-                sink.EmitNow();                       // final absolute progress (100%) before the terminal message
-                sink.Done("completed", summary, outcomeJson);
+                CompleteAndBroadcast(sink, jobId, summary, startedAt, result.SnapshotTime.ToString("O"));
             }
             else
             {
-                database.CompleteJob(jobId, "failed", 0, result.ErrorMessage);
-                sink.Done("failed", result.ErrorMessage ?? "Archive failed.");
+                FailOrCancel(sink, jobId, "failed", result.ErrorMessage, result.ErrorMessage ?? "Archive failed.");
             }
         }
         catch (OperationCanceledException)
         {
             logger.LogInformation("Archive job {JobId} cancelled", jobId);
-            database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
-            sink.Done("cancelled", "Cancelled.");
+            FailOrCancel(sink, jobId, "cancelled", "Cancelled.", "Cancelled.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Archive job {JobId} failed", jobId);
-            database.CompleteJob(jobId, "failed", 0, ex.Message);
             sink.Log(ex.Message, "warn");
-            sink.Done("failed", ex.Message);
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
         }
         finally
         {
@@ -129,7 +120,7 @@ public sealed class JobRunner(
 
     public async Task RunRestoreAsync(long repositoryId, string jobId, string connectionId, string? version, IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers)
     {
-        var sink = new JobSink(jobId, hub);
+        var sink = new JobSink(jobId, hub, logger);
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
@@ -178,7 +169,6 @@ public sealed class JobRunner(
             RehydratePriority? runApprovedPriority = null;
             var costDeclined = false;
             RestoreCostEstimate? lastEstimate = null;
-            CostEstimateDto? lastCostDto = null;
 
             var (pending, success, error) = await RunRestoreOnceAsync(
                 provider, sink, jobId, destination, version, targetPaths, overwrite, noPointers,
@@ -202,7 +192,6 @@ public sealed class JobRunner(
                         TotalHigh:                estimate.TotalHigh,
                         StandardWaitHours:        estimate.StandardWait.TotalHours,
                         HighWaitHours:            estimate.HighWait.TotalHours);
-                    lastCostDto = costDto;
                     sink.Cost(costDto);
                     // Retained on the sink (not yet persisted) so a reattach while this run is still LIVE but
                     // blocked on the approval wait below can render the same cost + resume defaults via
@@ -230,15 +219,13 @@ public sealed class JobRunner(
 
             if (!success)
             {
-                database.CompleteJob(jobId, "failed", 0, error);
-                sink.Done("failed", error ?? "Restore failed.");
+                FailOrCancel(sink, jobId, "failed", error, error ?? "Restore failed.");
                 return;
             }
 
             if (costDeclined)
             {
-                database.CompleteJob(jobId, "cancelled", 0, "Restore declined at cost approval.");
-                sink.Done("cancelled", "Restore declined.");
+                FailOrCancel(sink, jobId, "cancelled", "Restore declined at cost approval.", "Restore declined.");
                 return;
             }
             // Latent-bug fix (§7): some chunks still rehydrating — do NOT mark completed. Park as `rehydrating`
@@ -256,25 +243,18 @@ public sealed class JobRunner(
                 return;
             }
 
-            database.CompleteJob(jobId, "completed", 100, "Restore complete.");
-            database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
-            var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp: null));
-            database.SetJobOutcome(jobId, outcomeJson);
-            sink.EmitNow();                       // final absolute progress (100%) before the terminal message
-            sink.Done("completed", "Restore complete.", outcomeJson);
+            CompleteAndBroadcast(sink, jobId, "Restore complete.", startedAt, snapshotTimestamp: null);
         }
         catch (OperationCanceledException)
         {
             logger.LogInformation("Restore job {JobId} cancelled", jobId);
-            database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
-            sink.Done("cancelled", "Cancelled.");
+            FailOrCancel(sink, jobId, "cancelled", "Cancelled.", "Cancelled.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Restore job {JobId} failed", jobId);
-            database.CompleteJob(jobId, "failed", 0, ex.Message);
             sink.Log(ex.Message, "warn");
-            sink.Done("failed", ex.Message);
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
         }
         finally
         {
@@ -343,7 +323,7 @@ public sealed class JobRunner(
         var repo = database.GetRepository(job.RepositoryId);
         if (repo is null) return;
 
-        var sink = new JobSink(jobId, hub);
+        var sink = new JobSink(jobId, hub, logger);
         var registered = false;
 
         var gate = LockFor(job.RepositoryId);
@@ -374,8 +354,7 @@ public sealed class JobRunner(
 
             if (!success)
             {
-                database.CompleteJob(jobId, "failed", 0, error);
-                sink.Done("failed", error ?? "Restore failed.");
+                FailOrCancel(sink, jobId, "failed", error, error ?? "Restore failed.");
                 return;
             }
             if (pending > 0)
@@ -386,24 +365,16 @@ public sealed class JobRunner(
                 database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, next)));
                 return;
             }
-            database.CompleteJob(jobId, "completed", 100, "Restore complete.");
-            database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
-            var startedAt = job.StartedAt ?? resume.RehydrationStartedAt;
-            var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, null));
-            database.SetJobOutcome(jobId, outcomeJson);
-            sink.EmitNow();                       // final absolute progress (100%) before the terminal message
-            sink.Done("completed", "Restore complete.", outcomeJson);
+            CompleteAndBroadcast(sink, jobId, "Restore complete.", job.StartedAt ?? resume.RehydrationStartedAt, null);
         }
         catch (OperationCanceledException)
         {
-            database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
-            sink.Done("cancelled", "Cancelled.");
+            FailOrCancel(sink, jobId, "cancelled", "Cancelled.", "Cancelled.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Restore resume {JobId} failed", jobId);
-            database.CompleteJob(jobId, "failed", 0, ex.Message);
-            sink.Done("failed", ex.Message);
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
         }
         finally
         {
@@ -425,6 +396,29 @@ public sealed class JobRunner(
         // client it was cancelled (review #5 follow-up).
         if (database.CompleteJob(jobId, "cancelled", 0, summary))
             new JobSink(jobId, hub).Done("cancelled", summary);
+    }
+
+    /// <summary>Marks a job <c>completed</c> and — only if that guarded write actually applied (a concurrent
+    /// cancel/sweep did not win the race) — persists final state + outcome, emits the final snapshot, and
+    /// broadcasts the terminal <c>Done</c>. Skipping all of it on a lost race keeps the client's terminal message
+    /// and the persisted outcome from contradicting a row another writer already terminalized (review #5 follow-up).</summary>
+    private void CompleteAndBroadcast(JobSink sink, string jobId, string summary, DateTimeOffset startedAt, string? snapshotTimestamp)
+    {
+        if (!database.CompleteJob(jobId, "completed", 100, summary)) return;   // lost the race — another writer terminalized it
+        database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
+        var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp));
+        database.SetJobOutcome(jobId, outcomeJson);
+        sink.EmitNow();                       // final absolute progress (100%) before the terminal message
+        sink.Done("completed", summary, outcomeJson);
+    }
+
+    /// <summary>Writes a terminal <c>failed</c>/<c>cancelled</c> status and broadcasts the matching <c>Done</c> only
+    /// if the guarded write applied — never announce a terminal state the DB rejected because another writer got
+    /// there first (review #5 follow-up).</summary>
+    private void FailOrCancel(JobSink sink, string jobId, string status, string? detail, string doneMessage)
+    {
+        if (database.CompleteJob(jobId, status, 0, detail))
+            sink.Done(status, doneMessage);
     }
 
     private static RestoreResumeState ResumeParamsFor(

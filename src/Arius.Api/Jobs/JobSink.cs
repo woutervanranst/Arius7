@@ -2,6 +2,7 @@ using Arius.Api.Contracts;
 using Arius.Api.Hubs;
 using Arius.Core.Shared.Hashes;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.Api.Jobs;
 
@@ -15,6 +16,7 @@ namespace Arius.Api.Jobs;
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
+    private readonly ILogger? _logger;   // optional diagnostic logger (ETA/throughput tracing); null on inert/read sinks
 
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
     public string? JobId { get; }
@@ -25,7 +27,7 @@ public sealed class JobSink
     public CancellationTokenSource Cts { get; } = new();
 
     public JobSink() { }                                  // inert sink for read providers
-    public JobSink(string jobId, IHubContext<JobsHub> hub) { JobId = jobId; _hub = hub; }
+    public JobSink(string jobId, IHubContext<JobsHub> hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
 
@@ -104,7 +106,7 @@ public sealed class JobSink
     public void StartReporting()
     {
         if (JobId is null) return;
-        _timer = new Timer(_ => { SampleForEta(_now()); EmitNow(); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        _timer = new Timer(_ => { var now = _now(); SampleForEta(now); EmitNow(); LogEtaDiagnostics(now); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
@@ -122,6 +124,30 @@ public sealed class JobSink
             if (_done) return;                   // re-check under the lock: a Done that raced in wins
             Group?.SendAsync("Progress", snapshot);
         }
+    }
+
+    /// <summary>TEMPORARY diagnostic (ETA/throughput instability): once per reporting tick, logs the sliding-window
+    /// state and the derived rate/ETA at Information under the "[ETA]" tag so the numbers driving the header can be
+    /// traced offline. No-op unless a logger was supplied. Remove once the estimator is stabilised.</summary>
+    private void LogEtaDiagnostics(DateTimeOffset now)
+    {
+        if (_logger is null || JobId is null) return;
+        int count; double spanSec; long windowDelta;
+        lock (_sampleLock)
+        {
+            count = _samples.Count;
+            var first = _samples.First;
+            var last  = _samples.Last;
+            spanSec     = first is not null && last is not null ? (last.Value.At - first.Value.At).TotalSeconds : 0;
+            windowDelta = first is not null && last is not null ? last.Value.Progress - first.Value.Progress : 0;
+        }
+        var snap = BuildSnapshot(now);
+        _logger.LogInformation(
+            "[ETA] job={JobId} phase={Phase} pct={Pct} eta={Eta}s rate={Rate:F0}B/s | window n={Count} span={Span:F1}s delta={Delta}B | archive up={Uploaded} newTotal={TotalNew} hashed={Hashed} scanned={Scanned} total={Total} deduped={Deduped} | restore restored={Restored}/{RestoreTotal}B files={FilesRestored}/{RestoreTotalFiles} chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
+            JobId, snap.Phase, snap.Pct, snap.EtaSeconds, snap.ThroughputBytesPerSec, count, spanSec, windowDelta,
+            snap.UploadedBytes, snap.TotalNewBytes, snap.HashedBytes, snap.ScannedBytes, snap.TotalBytes, snap.DedupedBytes,
+            snap.BytesRestored, snap.RestoreTotalBytes, snap.FilesRestored, snap.RestoreTotalFiles,
+            snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
     }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────

@@ -24,7 +24,7 @@ public static class JobViewResolver
             {
                 var persisted = JsonSerializer.Deserialize<PersistedJobState>(stateJson);
                 if (persisted is not null)
-                    return new ResolvedJobView(persisted.Snapshot, persisted.Cost, ResumeInfo.From(persisted.Resume), persisted.Snapshot.WarningCount, persisted.Warnings);
+                    return new ResolvedJobView(persisted.Snapshot, persisted.Cost, ResumeInfo.From(persisted.Resume), persisted.Snapshot.WarningCount, persisted.Warnings ?? []);
             }
             catch (JsonException) { /* fall through to empty */ }
         }
