@@ -9,7 +9,7 @@ import { RealtimeService } from '../../core/api/realtime.service';
 import { JobDto, JobOutcome, JobSnapshot, ScheduleDto, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount } from '../../shared/format';
-import { formatDuration, formatEta, phaseSentence, StatusMeta, statusMeta } from '../../shared/job-format';
+import { formatDuration, formatEta, phaseSentence, StatusMeta, statusMeta, archiveBarLayers, restoreBarLayers } from '../../shared/job-format';
 
 /** "04 Jul 14:02" — used for the "ran …" meta line and the history one-liner's snapshot timestamp. */
 function formatTimestamp(iso: string): string {
@@ -191,15 +191,9 @@ export class JobsComponent implements OnDestroy {
   protected readonly activeRows = computed<ActiveRow[]>(() => this.running().map(job => {
     const kind: 'archive' | 'restore' = job.kind === 'restore' ? 'restore' : 'archive';
     const s = this.snapshots()[job.id];
-    const scanned = s
-      ? (s.totalBytes ? s.scannedBytes * 100 / s.totalBytes : (kind === 'restore' ? 100 : 0))
-      : (kind === 'restore' ? 100 : 0);
-    const middle = !s ? 0 : kind === 'restore'
-      ? ((s.chunksAvailable + s.chunksRehydrated + s.chunksPending) ? (s.chunksAvailable + s.chunksRehydrated) * 100 / (s.chunksAvailable + s.chunksRehydrated + s.chunksPending) : 0)
-      : (s.totalBytes ? s.hashedBytes * 100 / s.totalBytes : 0);
-    const top = !s ? 0 : kind === 'restore'
-      ? (s.restoreTotalBytes ? s.bytesRestored * 100 / s.restoreTotalBytes : 0)
-      : (s.totalNewBytes ? s.uploadedBytes * 100 / s.totalNewBytes : 0);
+    const layers = s ? (kind === 'restore' ? restoreBarLayers(s) : archiveBarLayers(s))
+                     : { scanned: kind === 'restore' ? 100 : 0, middle: 0, top: 0 };
+    const { scanned, middle, top } = layers;
     const phase = s ? phaseSentence(s, kind) : (job.detail ?? (kind === 'restore' ? 'Resolving snapshot…' : 'Scanning…'));
     const eta = job.status === 'rehydrating' ? 'checked periodically' : formatEta(s?.etaSeconds ?? null);
     return { job, kind, scanned, middle, top, phase, eta, meta: statusMeta(job.status) };

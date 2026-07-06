@@ -6,7 +6,7 @@ import { RealtimeService } from '../../core/api/realtime.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers } from '../../shared/job-format';
 import { Subscription } from 'rxjs';
 
 /** One stage-summary row (derived from the live snapshot). */
@@ -310,18 +310,14 @@ export class JobDetailComponent implements OnDestroy {
   });
 
   // layered-bar percentages
-  protected readonly scannedPct = computed(() => { const s = this.snap(); return s && s.totalBytes ? s.scannedBytes * 100 / s.totalBytes : (this.kind() === 'restore' ? 100 : 0); });
-  protected readonly middlePct  = computed(() => { const s = this.snap(); if (!s) return 0;
-    return this.kind() === 'restore'
-      ? (s.chunksAvailable + s.chunksRehydrated + s.chunksPending ? (s.chunksAvailable + s.chunksRehydrated) * 100 / (s.chunksAvailable + s.chunksRehydrated + s.chunksPending) : 0)
-      : (s.totalBytes ? s.hashedBytes * 100 / s.totalBytes : 0); });
-  protected readonly topPct     = computed(() => { const s = this.snap(); if (!s) return 0;
-    return this.kind() === 'restore'
-      ? (s.restoreTotalBytes ? s.bytesRestored * 100 / s.restoreTotalBytes : 0)
-      : (s.totalNewBytes ? s.uploadedBytes * 100 / s.totalNewBytes : 0); });
+  private layers = computed(() => { const s = this.snap(); if (!s) return { scanned: this.kind() === 'restore' ? 100 : 0, middle: 0, top: 0 };
+    return this.kind() === 'restore' ? restoreBarLayers(s) : archiveBarLayers(s); });
+  protected readonly scannedPct = computed(() => this.layers().scanned);
+  protected readonly middlePct  = computed(() => this.layers().middle);
+  protected readonly topPct     = computed(() => this.layers().top);
 
-  // legend / tile derivations
-  protected readonly plannedChunks = computed(() => { const s = this.snap(); return s ? s.chunksAvailable + s.chunksRehydrated + s.chunksPending : 0; });
+  // legend / tile derivations — planned uses the authoritative chunk total (includes needs-rehydration)
+  protected readonly plannedChunks = computed(() => this.snap()?.chunksTotal ?? 0);
   protected readonly readyChunks   = computed(() => { const s = this.snap(); return s ? s.chunksAvailable + s.chunksRehydrated : 0; });
 
   // header ETA / meta
