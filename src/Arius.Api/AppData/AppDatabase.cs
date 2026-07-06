@@ -490,6 +490,18 @@ public sealed class AppDatabase
         return command.ExecuteScalar() is not null;
     }
 
+    /// <summary>Test-only: wipes every app row (accounts/repositories/jobs/schedules/statistics) for cross-spec
+    /// isolation in the hermetic browser suite. Never called by production paths.</summary>
+    public void ResetAll()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "DELETE FROM jobs; DELETE FROM schedules; DELETE FROM statistics_cache; " +
+            "DELETE FROM repositories; DELETE FROM storage_accounts;";
+        command.ExecuteNonQuery();
+    }
+
     /// <summary>On Api startup, any job left <c>running</c> OR <c>awaiting-cost</c> by a crash/restart is orphaned:
     /// both carry in-process/in-memory state (the live run, resp. the in-memory approval wait) that is gone after a
     /// restart, so neither can continue in place. Mark them <c>interrupted</c> (terminal → frees the

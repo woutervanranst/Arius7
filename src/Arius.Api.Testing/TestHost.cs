@@ -21,7 +21,7 @@ public static class TestHost
         builder.AddAriusApi();
         var app = builder.Build();
         app.MapAriusApi();
-        // app.MapTestingControlEndpoints();  // added in Task 3 (TestingControlEndpoints)
+        app.MapTestingControlEndpoints();
         app.Run();
     }
 }
