@@ -64,6 +64,15 @@ public sealed class ChunkUploadedForwarder(JobSink sink) : INotificationHandler<
     }
 }
 
+public sealed class ChunkUploadingForwarder(JobSink sink) : INotificationHandler<ChunkUploadingEvent>
+{
+    public ValueTask Handle(ChunkUploadingEvent n, CancellationToken ct)
+    {
+        sink.AddQueuedNew(n.Size);   // additive "new bytes to upload" total (upload-progress denominator)
+        return ValueTask.CompletedTask;
+    }
+}
+
 public sealed class SnapshotCreatedForwarder(JobSink sink) : INotificationHandler<SnapshotCreatedEvent>
 {
     public ValueTask Handle(SnapshotCreatedEvent n, CancellationToken ct)

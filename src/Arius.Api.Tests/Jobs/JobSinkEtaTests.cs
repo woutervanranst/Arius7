@@ -17,6 +17,7 @@ public class JobSinkEtaTests
 
         // Totals known; 1 MB uploaded over 1 s = 1 MB/s; 9 MB remaining → 9 s.
         s.SetTotals(files: 10, bytes: 10_000_000);
+        s.AddQueuedNew(10_000_000);             // additive new-bytes-to-upload now known (no dedup here)
         s.SampleForEta(t0);                    // 1_000 @ t0  (warm start)
         s.AddUploaded(0, 1_000_000);           // now 1_001_000 uploaded
         s.SampleForEta(t0.AddSeconds(1));

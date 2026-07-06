@@ -7,7 +7,7 @@ public sealed record JobSnapshot
     public required string  JobId          { get; init; }
     public required string  Phase          { get; init; }
     public required long    TotalBytes     { get; init; }
-    public required long    TotalNewBytes  { get; init; }   // TotalBytes - DedupedBytes (0 until known)
+    public required long    TotalNewBytes  { get; init; }   // additive sum of queued-new-chunk bytes (0 until first chunk queued)
     public required long    ScannedBytes   { get; init; }
     public required long    HashedBytes    { get; init; }
     public required long    UploadedBytes  { get; init; }   // original units

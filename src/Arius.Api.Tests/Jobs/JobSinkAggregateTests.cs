@@ -20,6 +20,7 @@ public class JobSinkAggregateTests
         s.AddHashed(3000);
         s.AddUploaded(stored: 400, original: 2000);
         s.AddDeduped(original: 1000);
+        s.AddQueuedNew(2000);
 
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
         await Assert.That(snap.TotalBytes).IsEqualTo(3000L);
@@ -27,7 +28,7 @@ public class JobSinkAggregateTests
         await Assert.That(snap.HashedBytes).IsEqualTo(3000L);
         await Assert.That(snap.UploadedBytes).IsEqualTo(2000L);   // original units, not stored
         await Assert.That(snap.DedupedBytes).IsEqualTo(1000L);
-        await Assert.That(snap.TotalNewBytes).IsEqualTo(2000L);   // total - deduped
+        await Assert.That(snap.TotalNewBytes).IsEqualTo(2000L);   // additive queued-new bytes
     }
 
     [Test]
@@ -50,6 +51,7 @@ public class JobSinkAggregateTests
         await new FileScannedForwarder(s).Handle(new FileScannedEvent(RelativePath.Parse("a"), 2000), default);
         await new FileHashingForwarder(s).Handle(new FileHashingEvent(RelativePath.Parse("a"), 2000), default);
         await new FileDedupedForwarder(s).Handle(new FileDedupedEvent(ContentHash.Parse(new string('b', 64)), 1000), default);
+        await new ChunkUploadingForwarder(s).Handle(new ChunkUploadingEvent(ChunkHash.Parse(new string('d', 64)), 2000), default);
         await new ChunkUploadedForwarder(s).Handle(new ChunkUploadedEvent(ChunkHash.Parse(new string('c', 64)), 300, 2000), default);
 
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
@@ -57,6 +59,7 @@ public class JobSinkAggregateTests
         await Assert.That(snap.ScannedBytes).IsEqualTo(2000L);
         await Assert.That(snap.UploadedBytes).IsEqualTo(2000L);
         await Assert.That(snap.DedupedBytes).IsEqualTo(1000L);
+        await Assert.That(snap.TotalNewBytes).IsEqualTo(2000L);
     }
 
     [Test]

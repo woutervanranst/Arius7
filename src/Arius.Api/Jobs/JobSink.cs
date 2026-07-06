@@ -106,7 +106,7 @@ public sealed class JobSink
     }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
-    private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles;
+    private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes;
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
@@ -120,6 +120,10 @@ public sealed class JobSink
     public void AddScanned(long bytes) => Interlocked.Add(ref _scannedBytes, bytes);
     public void AddHashed(long bytes)  => Interlocked.Add(ref _hashedBytes, bytes);
     public void AddUploaded(long stored, long original) => Interlocked.Add(ref _uploadedBytes, original);
+    /// <summary>Accumulates the original (uncompressed) size of each new chunk queued for upload — the
+    /// additive "new bytes to upload" total. Independent of the deduped/total subtraction, so it never
+    /// underflows for pointer-only-heavy repos. Final once routing completes; 0 until the first queue.</summary>
+    public void AddQueuedNew(long originalSize) => Interlocked.Add(ref _queuedNewBytes, originalSize);
     public void AddDeduped(long original) { Interlocked.Add(ref _dedupedBytes, original); Interlocked.Increment(ref _dedupedFiles); }
     public void RememberTar(ChunkHash tarHash, long uncompressed) => _tarUncompressed[tarHash] = uncompressed;
     public void AddUploadedTar(ChunkHash tarHash) { if (_tarUncompressed.TryGetValue(tarHash, out var u)) Interlocked.Add(ref _uploadedBytes, u); }
@@ -169,7 +173,10 @@ public sealed class JobSink
         var total    = Interlocked.Read(ref _totalBytes);
         var deduped  = Interlocked.Read(ref _dedupedBytes);
         var uploaded = Interlocked.Read(ref _uploadedBytes);
-        var totalNew = total > 0 ? Math.Max(0, total - deduped) : 0;
+        var hashed   = Interlocked.Read(ref _hashedBytes);
+        // "New bytes to upload" is the sum of queued new-chunk sizes (additive) — NOT total - deduped,
+        // which underflows when pointer-only files (scanned as 0 bytes) are deduped at full size.
+        var totalNew = Interlocked.Read(ref _queuedNewBytes);
         var rate     = RateBytesPerSec(now);
 
         // A job is either archive or restore, never both — pick the active kind's totals/progress
@@ -186,7 +193,8 @@ public sealed class JobSink
             ? (int)Math.Clamp(progress * 100 / denominator, 0, 100)
             : (isRestore && restoreTotalFiles > 0
                 ? (int)Math.Clamp(Interlocked.Read(ref _filesRestored) * 100 / restoreTotalFiles, 0, 100)
-                : 0);
+                // Archive before any upload work is known: reflect scan/hash progress so the ring isn't stuck at 0.
+                : (!isRestore && total > 0 ? (int)Math.Clamp(hashed * 100 / total, 0, 100) : 0));
 
         return new JobSnapshot
         {
@@ -194,7 +202,7 @@ public sealed class JobSink
             Phase = _phase,
             TotalBytes = total, TotalNewBytes = totalNew,
             ScannedBytes = Interlocked.Read(ref _scannedBytes),
-            HashedBytes  = Interlocked.Read(ref _hashedBytes),
+            HashedBytes  = hashed,
             UploadedBytes = uploaded,
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
             EtaSeconds = eta, ThroughputBytesPerSec = rate, Pct = pct,
