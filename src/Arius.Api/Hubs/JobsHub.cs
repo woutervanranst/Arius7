@@ -197,7 +197,6 @@ public sealed class JobsHub(
 
     private Task DeclineParkedAsync(string jobId)
     {
-        database.SetJobStatus(jobId, "cancelled");                 // frees the guard; poller skips it
         database.CompleteJob(jobId, "cancelled", 0, "Cancelled.");
         return Task.CompletedTask;
     }

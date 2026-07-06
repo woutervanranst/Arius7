@@ -109,4 +109,23 @@ public sealed class JobLifecycleDbTests
         db.CompleteJob("j", "completed", 100, "done");
         db.GetJob("j")!.Status.ShouldBe("completed");
     }
+
+    [Test]
+    public async Task CompleteJob_finalizes_a_parked_awaiting_cost_row_with_finished_at()
+    {
+        // Regression for JobsHub.DeclineParkedAsync: it used to call SetJobStatus("cancelled") before the
+        // guarded CompleteJob, which flipped the row terminal FIRST and made CompleteJob's guard no-op —
+        // finished_at was never set. The fix drops that redundant call; a single guarded CompleteJob from the
+        // still-non-terminal "awaiting-cost" status must finalize status + pct + detail + finished_at.
+        var (db, repoId) = NewDatabase();
+        db.InsertJob("j", repoId, "restore", "one-off", "running");
+        db.SetJobStatus("j", "awaiting-cost", "Awaiting cost approval");
+
+        db.CompleteJob("j", "cancelled", 0, "Cancelled.");
+
+        var job = db.GetJob("j")!;
+        job.Status.ShouldBe("cancelled");
+        job.FinishedAt.ShouldNotBeNull();   // the bug left this null
+        job.Detail.ShouldBe("Cancelled.");
+    }
 }
