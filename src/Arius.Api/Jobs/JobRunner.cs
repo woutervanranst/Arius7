@@ -416,8 +416,11 @@ public sealed class JobRunner(
     /// the DB but never told the client (review #5). A fresh <see cref="JobSink"/> reuses the exact Done wire shape.</summary>
     public void CancelParked(string jobId, string summary = "Cancelled.")
     {
-        database.CompleteJob(jobId, "cancelled", 0, summary);
-        new JobSink(jobId, hub).Done("cancelled", summary);
+        // Only broadcast the terminal Done if our guarded cancel actually applied. If the rehydration poller won
+        // the race and already completed the job, CompleteJob no-ops (row stays terminal) and we must NOT tell the
+        // client it was cancelled (review #5 follow-up).
+        if (database.CompleteJob(jobId, "cancelled", 0, summary))
+            new JobSink(jobId, hub).Done("cancelled", summary);
     }
 
     /// <summary>Restart/late-answer cost fallback: records the chosen priority into the parked job's resume state,

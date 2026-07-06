@@ -385,8 +385,10 @@ public sealed class AppDatabase
     /// <summary>Transitions a job to a terminal status (<c>completed</c>/<c>failed</c>/<c>cancelled</c>/<c>interrupted</c>).
     /// Guarded: a row already in a terminal status is left untouched — this is what stops a late-arriving cancel
     /// (<see cref="Arius.Api.Hubs.JobsHub.CancelJob"/>'s fall-through branch) from racing the rehydration poller's
-    /// completion and clobbering an already-<c>completed</c> row back to <c>cancelled</c>/pct 0.</summary>
-    public void CompleteJob(string id, string status, double pct, string? detail)
+    /// completion and clobbering an already-<c>completed</c> row back to <c>cancelled</c>/pct 0. Returns <c>true</c>
+    /// when the guarded UPDATE applied the transition, <c>false</c> when the row was already terminal (guard hit) —
+    /// callers that must not act on a no-op transition (e.g. broadcasting a terminal Done) should check this.</summary>
+    public bool CompleteJob(string id, string status, double pct, string? detail)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -396,7 +398,7 @@ public sealed class AppDatabase
         command.Parameters.AddWithValue("$pct", pct);
         command.Parameters.AddWithValue("$detail", (object?)detail ?? DBNull.Value);
         command.Parameters.AddWithValue("$finishedAt", DateTimeOffset.UtcNow.ToString("O"));
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery() > 0;
     }
 
     /// <summary>Updates a job's <c>status</c> (and optional <c>detail</c>) for a NON-terminal transition
