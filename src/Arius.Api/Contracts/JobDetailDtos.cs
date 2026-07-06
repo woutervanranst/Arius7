@@ -18,7 +18,12 @@ public sealed record CostEstimateDto(
 /// <summary>The parked-restore resume facts a reattaching client needs: whether auto-resume is on, and the
 /// rehydration SLA window ("≈ hydrated by" = RehydrationStartedAt + RehydrationWindowHours). Null for jobs
 /// with no restore-resume state.</summary>
-public sealed record ResumeInfo(bool AutoResume, System.DateTimeOffset RehydrationStartedAt, double RehydrationWindowHours);
+public sealed record ResumeInfo(bool AutoResume, System.DateTimeOffset RehydrationStartedAt, double RehydrationWindowHours)
+{
+    /// <summary>Maps the persisted restore-resume state to the wire DTO (null-safe). Shared by JobsHub + JobEndpoints.</summary>
+    public static ResumeInfo? From(Arius.Api.Jobs.RestoreResumeState? r) =>
+        r is null ? null : new ResumeInfo(r.AutoResume, r.RehydrationStartedAt, r.RehydrationWindow.TotalHours);
+}
 
 /// <summary>Snapshot-on-attach payload (design §5): the job's current status, its absolute progress snapshot,
 /// the cost modal if it is awaiting-cost, and the live warning count. One round trip, one client apply-path.</summary>

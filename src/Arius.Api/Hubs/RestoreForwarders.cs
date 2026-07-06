@@ -8,11 +8,7 @@ namespace Arius.Api.Hubs;
 
 public sealed class SnapshotResolvedForwarder(JobSink sink) : INotificationHandler<SnapshotResolvedEvent>
 {
-    public ValueTask Handle(SnapshotResolvedEvent n, CancellationToken ct)
-    {
-        sink.Log($"Resolved snapshot {n.Timestamp:dd MMM yyyy HH:mm}", "meta");
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask Handle(SnapshotResolvedEvent n, CancellationToken ct) => ValueTask.CompletedTask;
 }
 
 public sealed class TreeTraversalCompleteForwarder(JobSink sink) : INotificationHandler<TreeTraversalCompleteEvent>
@@ -55,11 +51,7 @@ public sealed class RehydrationStartedForwarder(JobSink sink) : INotificationHan
 
 public sealed class ChunkDownloadStartedForwarder(JobSink sink) : INotificationHandler<ChunkDownloadStartedEvent>
 {
-    public ValueTask Handle(ChunkDownloadStartedEvent n, CancellationToken ct)
-    {
-        sink.Log($"  ↓ {n.ChunkHash.Short8} ({n.Type}) · {JobFormat.Bytes(n.ChunkSize)}", "meta");
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask Handle(ChunkDownloadStartedEvent n, CancellationToken ct) => ValueTask.CompletedTask;
 }
 
 public sealed class FileRestoredForwarder(JobSink sink) : INotificationHandler<FileRestoredEvent>

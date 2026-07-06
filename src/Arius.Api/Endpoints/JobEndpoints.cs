@@ -48,7 +48,7 @@ internal static class JobEndpoints
                 snapshot = sink.BuildSnapshot(DateTimeOffset.UtcNow);
                 warningCount = sink.WarningCount;
                 cost = sink.PendingCost;
-                resume = ToResumeInfo(sink.PendingResume);
+                resume = ResumeInfo.From(sink.PendingResume);
             }
             else if (job.StateJson is not null)
             {
@@ -58,7 +58,7 @@ internal static class JobEndpoints
                     snapshot = persisted?.Snapshot;
                     warningCount = persisted?.Snapshot.WarningCount ?? 0;
                     cost = persisted?.Cost;
-                    resume = ToResumeInfo(persisted?.Resume);
+                    resume = ResumeInfo.From(persisted?.Resume);
                 }
                 catch (JsonException) { /* leave snapshot null */ }
             }
@@ -110,7 +110,4 @@ internal static class JobEndpoints
     }
 
     private static ScheduleDto ToDto(ScheduleRecord s) => new(s.Id, s.RepositoryId, s.Cron, s.Kind, s.Enabled, s.NextRun);
-
-    private static ResumeInfo? ToResumeInfo(RestoreResumeState? r) =>
-        r is null ? null : new ResumeInfo(r.AutoResume, r.RehydrationStartedAt, r.RehydrationWindow.TotalHours);
 }

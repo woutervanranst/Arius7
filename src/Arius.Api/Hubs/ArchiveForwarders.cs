@@ -14,7 +14,6 @@ public sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<S
     {
         sink.SetTotals(n.TotalFiles, n.TotalBytes);
         sink.StageDone("scan");
-        sink.Log($"Indexed {n.TotalFiles} entries · {JobFormat.Bytes(n.TotalBytes)}", "info");
         return ValueTask.CompletedTask;
     }
 }
@@ -39,7 +38,6 @@ public sealed class TarBundleSealingForwarder(JobSink sink) : INotificationHandl
     public ValueTask Handle(TarBundleSealingEvent n, CancellationToken ct)
     {
         sink.RememberTar(n.TarHash, n.UncompressedSize);
-        sink.Log($"  sealing tar bundle · {n.EntryCount} files · {JobFormat.Bytes(n.TarByteSize)}", "meta");
         return ValueTask.CompletedTask;
     }
 }
@@ -78,7 +76,6 @@ public sealed class SnapshotCreatedForwarder(JobSink sink) : INotificationHandle
     public ValueTask Handle(SnapshotCreatedEvent n, CancellationToken ct)
     {
         sink.StageDone("snapshot");
-        sink.Log($"Writing manifest · snapshot {n.FileCount} files", "info");
         return ValueTask.CompletedTask;
     }
 }

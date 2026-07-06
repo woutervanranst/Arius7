@@ -72,12 +72,10 @@ public sealed class JobRunner(
         ServiceProvider? provider = null;
         try
         {
-            sink.Log($"Connecting to container {repo.Container}…", "meta");
             provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadWrite, sink, sink.Cts.Token);
             var mediator = provider.GetRequiredService<IMediator>();
 
             var uploadTier = Enum.TryParse<BlobTier>(tier, ignoreCase: true, out var bt) ? bt : BlobTier.Archive;
-            sink.Log($"Scanning {repo.LocalPath} …", "meta");
 
             var result = await mediator.Send(new ArchiveCommand(new ArchiveCommandOptions
             {
@@ -172,7 +170,6 @@ public sealed class JobRunner(
             // jobs for this repo under the single-active-job guard.
             Directory.CreateDirectory(destination);
 
-            sink.Log($"Connecting to container {repo.Container}…", "meta");
             provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
             // Cost-approval outcome for this run (set inside the ConfirmRehydration callback). The happy path is
             // in-run: the user answers within the window and the chosen priority feeds back into THIS run. On
@@ -222,7 +219,6 @@ public sealed class JobRunner(
                         sink.ClearPending();   // leaving the prompt — a later reattach is mid-restore, not awaiting one
                         runApprovedPriority = answer.Priority;
                         database.SetJobStatus(jobId, "running");
-                        sink.Log($"Approved · {answer.Priority} priority", "info");
                         return answer.Priority;
                     }
 
@@ -319,7 +315,6 @@ public sealed class JobRunner(
 
         foreach (var target in targets)
         {
-            sink.Log(target is null ? "Resolving whole repository…" : $"Resolving {target}…", "meta");
             var result = await mediator.Send(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory      = destination,
