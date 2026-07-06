@@ -9,6 +9,9 @@ public sealed record PersistedJobState
     public required JobSnapshot               Snapshot { get; init; }
     public required IReadOnlyList<string>      Warnings { get; init; }
     public          RestoreResumeState?        Resume   { get; init; }
+    /// <summary>The cost estimate shown at the modal, persisted so "Review cost ›" can re-render it after the
+    /// live one-shot CostEstimate message is gone (reattach to an awaiting-cost job). Null for non-cost jobs.</summary>
+    public          Arius.Api.Contracts.CostEstimateDto? Cost { get; init; }
 }
 
 /// <summary>Everything the poller / approval fallback needs to re-run a restore with the original intent — no

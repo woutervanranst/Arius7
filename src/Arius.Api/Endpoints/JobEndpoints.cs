@@ -37,10 +37,18 @@ internal static class JobEndpoints
 
             JobSnapshot? snapshot = null;
             var warningCount = 0;
+            CostEstimateDto? cost = null;
+            ResumeInfo? resume = null;
+            // A job blocked in the ConfirmRehydration callback (genuinely parked at awaiting-cost, still within
+            // the approval window) still has a LIVE sink here — JobRunner's method has not returned, so nothing
+            // has removed it from jobStates yet. Read the cost/resume the run staged on the sink for exactly
+            // this case (ReattachScenarioTests proves it) rather than hardcoding null.
             if (jobStates.TryGet(id, out var sink))
             {
                 snapshot = sink.BuildSnapshot(DateTimeOffset.UtcNow);
                 warningCount = sink.WarningCount;
+                cost = sink.PendingCost;
+                resume = ToResumeInfo(sink.PendingResume);
             }
             else if (job.StateJson is not null)
             {
@@ -49,13 +57,15 @@ internal static class JobEndpoints
                     var persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson);
                     snapshot = persisted?.Snapshot;
                     warningCount = persisted?.Snapshot.WarningCount ?? 0;
+                    cost = persisted?.Cost;
+                    resume = ToResumeInfo(persisted?.Resume);
                 }
                 catch (JsonException) { /* leave snapshot null */ }
             }
 
             return Results.Ok(new JobDetailDto(
                 job.Id, job.RepositoryId, repo?.Alias ?? "—", job.Kind, job.Trigger, job.Status,
-                job.Pct, job.Detail, job.StartedAt, job.FinishedAt, job.Outcome, snapshot, warningCount));
+                job.Pct, job.Detail, job.StartedAt, job.FinishedAt, job.Outcome, snapshot, warningCount, cost, resume));
         });
 
         app.MapGet("/jobs/{id}/warnings", (string id, AppDatabase db, JobStateRegistry jobStates) =>
@@ -100,4 +110,7 @@ internal static class JobEndpoints
     }
 
     private static ScheduleDto ToDto(ScheduleRecord s) => new(s.Id, s.RepositoryId, s.Cron, s.Kind, s.Enabled, s.NextRun);
+
+    private static ResumeInfo? ToResumeInfo(RestoreResumeState? r) =>
+        r is null ? null : new ResumeInfo(r.AutoResume, r.RehydrationStartedAt, r.RehydrationWindow.TotalHours);
 }

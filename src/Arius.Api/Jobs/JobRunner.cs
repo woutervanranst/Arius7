@@ -181,6 +181,7 @@ public sealed class JobRunner(
             var costDeclined = false;
             var costTimedOut = false;
             RestoreCostEstimate? lastEstimate = null;
+            CostEstimateDto? lastCostDto = null;
 
             var (pending, success, error) = await RunRestoreOnceAsync(
                 provider, sink, jobId, destination, version, targetPaths, overwrite, noPointers,
@@ -194,7 +195,7 @@ public sealed class JobRunner(
                     sink.Log(estimate.ChunksNeedingRehydration > 0
                         ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
                         : "Estimated restore cost — awaiting approval", "warn");
-                    sink.Cost(new CostEstimateDto(
+                    var costDto = new CostEstimateDto(
                         JobId: jobId,
                         ChunksAvailable:          estimate.ChunksAvailable + estimate.ChunksAlreadyRehydrated,
                         ChunksNeedingRehydration: estimate.ChunksNeedingRehydration,
@@ -203,13 +204,22 @@ public sealed class JobRunner(
                         TotalStandard:            estimate.TotalStandard,
                         TotalHigh:                estimate.TotalHigh,
                         StandardWaitHours:        estimate.StandardWait.TotalHours,
-                        HighWaitHours:            estimate.HighWait.TotalHours));
+                        HighWaitHours:            estimate.HighWait.TotalHours);
+                    lastCostDto = costDto;
+                    sink.Cost(costDto);
+                    // Retained on the sink (not yet persisted) so a reattach while this run is still LIVE but
+                    // blocked on the approval wait below can render the same cost + resume defaults via
+                    // AttachToJob/GET's live-sink branch (#2/#13/#14) — jobStates keeps this sink registered
+                    // until RunRestoreAsync itself returns, which does not happen until the wait resolves.
+                    sink.SetPendingResume(ResumeParamsFor(estimate, version, targetPaths, destination, overwrite,
+                        noPointers, priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow));
 
                     database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
 
                     var answer = await approvals.RegisterAsync(jobId, TimeSpan.FromMinutes(15), ct);
                     if (answer.Approved)
                     {
+                        sink.ClearPending();   // leaving the prompt — a later reattach is mid-restore, not awaiting one
                         runApprovedPriority = answer.Priority;
                         database.SetJobStatus(jobId, "running");
                         sink.Log($"Approved · {answer.Priority} priority", "info");
@@ -244,7 +254,8 @@ public sealed class JobRunner(
                 database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(
                     DateTimeOffset.UtcNow,
                     ResumeParamsFor(lastEstimate, version, targetPaths, destination, overwrite, noPointers,
-                                    priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow))));
+                                    priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow),
+                    cost: lastCostDto)));
                 return;
             }
 

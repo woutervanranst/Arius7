@@ -88,8 +88,12 @@ public sealed class JobsHub(
         var job = database.GetJob(jobId);
         if (job is null) return null;
 
+        // A job blocked in the ConfirmRehydration callback (genuinely parked at awaiting-cost, still within the
+        // approval window) still has a LIVE sink here — JobRunner's method has not returned, so nothing has
+        // removed it from jobStates yet. Read the cost/resume the run staged on the sink for exactly this case
+        // (ReattachScenarioTests proves it) rather than hardcoding null.
         if (jobStates.TryGet(jobId, out var sink))
-            return new JobAttachState(job.Status, sink.BuildSnapshot(DateTimeOffset.UtcNow), Cost: null, sink.WarningCount);
+            return new JobAttachState(job.Status, sink.BuildSnapshot(DateTimeOffset.UtcNow), sink.PendingCost, sink.WarningCount, ToResumeInfo(sink.PendingResume));
 
         if (job.StateJson is not null)
         {
@@ -97,12 +101,15 @@ public sealed class JobsHub(
             {
                 var persisted = System.Text.Json.JsonSerializer.Deserialize<PersistedJobState>(job.StateJson);
                 if (persisted is not null)
-                    return new JobAttachState(job.Status, persisted.Snapshot, Cost: null, persisted.Snapshot.WarningCount);
+                    return new JobAttachState(job.Status, persisted.Snapshot, persisted.Cost, persisted.Snapshot.WarningCount, ToResumeInfo(persisted.Resume));
             }
             catch (System.Text.Json.JsonException) { /* fall through to a bare snapshot */ }
         }
-        return new JobAttachState(job.Status, EmptySnapshot(jobId), Cost: null, WarningCount: 0);
+        return new JobAttachState(job.Status, EmptySnapshot(jobId), Cost: null, WarningCount: 0, Resume: null);
     }
+
+    private static ResumeInfo? ToResumeInfo(RestoreResumeState? r) =>
+        r is null ? null : new ResumeInfo(r.AutoResume, r.RehydrationStartedAt, r.RehydrationWindow.TotalHours);
 
     /// <summary>Leaves the job's SignalR group (the client stopped watching it).</summary>
     public Task DetachFromJob(string jobId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, jobId);

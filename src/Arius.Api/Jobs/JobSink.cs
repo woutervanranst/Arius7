@@ -1,3 +1,4 @@
+using Arius.Api.Contracts;
 using Arius.Api.Hubs;
 using Arius.Core.Shared.Hashes;
 using Microsoft.AspNetCore.SignalR;
@@ -36,7 +37,24 @@ public sealed class JobSink
         if (severity is "warn" or "error")
             CaptureWarning(text);
     }
-    public void Cost(object estimate) => Group?.SendAsync("CostEstimate", estimate);
+    /// <summary>The most recent cost estimate pushed via <see cref="Cost"/> — retained so a fresh reattach while
+    /// the run is still LIVE but blocked awaiting the client's cost-approval answer (this sink stays registered in
+    /// <see cref="JobStateRegistry"/> the whole time — <see cref="JobRunner.RunRestoreAsync"/> does not return, so
+    /// nothing removes it, until the wait resolves) can render "Review cost ›" without waiting for the eventual
+    /// persisted snapshot. Cleared by <see cref="ClearPending"/> once the prompt resolves (design §2/§5).</summary>
+    public CostEstimateDto? PendingCost { get; private set; }
+
+    /// <summary>The resume defaults (auto-resume + rehydration window) that would apply if this cost prompt times
+    /// out — surfaced alongside <see cref="PendingCost"/> for the same live-reattach window (#13/#14).</summary>
+    public RestoreResumeState? PendingResume { get; private set; }
+
+    public void Cost(CostEstimateDto estimate) { PendingCost = estimate; Group?.SendAsync("CostEstimate", estimate); }
+
+    public void SetPendingResume(RestoreResumeState resume) => PendingResume = resume;
+
+    /// <summary>Clears the pending cost/resume once the prompt resolves (approved) — a live reattach after this
+    /// point is mid-restore, not awaiting a decision, so it must not show a stale modal.</summary>
+    public void ClearPending() { PendingCost = null; PendingResume = null; }
 
     private volatile bool _done;
     /// <summary>Whether a terminal <see cref="Done"/> has been sent — suppresses any late progress emit.</summary>
@@ -247,12 +265,14 @@ public sealed class JobSink
     };
 
     /// <summary>Assembles the <see cref="PersistedJobState"/> written to <c>state_json</c> — current snapshot,
-    /// warnings tail, and (restore) the resume params. Archive jobs pass <paramref name="resume"/> = null.</summary>
-    public PersistedJobState BuildPersistedState(DateTimeOffset now, RestoreResumeState? resume) => new()
+    /// warnings tail, and (restore) the resume params + cost estimate. Archive jobs pass <paramref name="resume"/>
+    /// = null and no <paramref name="cost"/>.</summary>
+    public PersistedJobState BuildPersistedState(DateTimeOffset now, RestoreResumeState? resume, CostEstimateDto? cost = null) => new()
     {
         Snapshot = BuildSnapshot(now),
         Warnings = Warnings,
         Resume   = resume,
+        Cost     = cost,
     };
 
     /// <summary>Copies the current rehydrated chunk count into <paramref name="resume"/> (used by the poller to
