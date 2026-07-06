@@ -86,4 +86,27 @@ public sealed class JobLifecycleDbTests
         persisted.Snapshot.RestoreTotalFiles.ShouldBe(2L);
         persisted.Warnings.ShouldNotBeNull();
     }
+
+    [Test]
+    public async Task CompleteJob_does_not_overwrite_an_already_terminal_row()
+    {
+        var (db, repoId) = NewDatabase();
+        db.InsertJob("j", repoId, "restore", "one-off", "running");
+        db.CompleteJob("j", "completed", 100, "Restore complete.");   // legitimate terminal transition
+
+        db.CompleteJob("j", "cancelled", 0, "Cancelled.");            // racing cancel — must be a no-op now
+
+        var job = db.GetJob("j")!;
+        job.Status.ShouldBe("completed");   // NOT clobbered to cancelled
+        job.Pct.ShouldBe(100d);             // pct not reset to 0
+    }
+
+    [Test]
+    public async Task CompleteJob_still_transitions_a_non_terminal_row()
+    {
+        var (db, repoId) = NewDatabase();
+        db.InsertJob("j", repoId, "archive", "one-off", "running");
+        db.CompleteJob("j", "completed", 100, "done");
+        db.GetJob("j")!.Status.ShouldBe("completed");
+    }
 }

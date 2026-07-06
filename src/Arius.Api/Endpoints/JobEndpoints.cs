@@ -13,7 +13,7 @@ internal static class JobEndpoints
         app.MapGet("/jobs", (AppDatabase db, long? repositoryId, string? status) =>
         {
             var aliases = db.ListRepositories().ToDictionary(r => r.Id, r => r.Alias);
-            var nonTerminal = new HashSet<string> { "running", "awaiting-cost", "rehydrating" };
+            var nonTerminal = new HashSet<string>(JobStatuses.NonTerminal);
             return db.ListJobs()
                 .Where(j => repositoryId is null || j.RepositoryId == repositoryId)
                 .Where(j => status switch

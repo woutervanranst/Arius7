@@ -113,10 +113,10 @@ public sealed class AppDatabase
         // a new start is rejected rather than queued. Runs on every startup (IF NOT EXISTS), so it also
         // lands on databases created before this index existed.
         using var index = connection.CreateCommand();
-        index.CommandText = """
+        index.CommandText = $"""
             CREATE UNIQUE INDEX IF NOT EXISTS ux_jobs_one_active_per_repo
                 ON jobs(repo_id)
-                WHERE status IN ('running','awaiting-cost','rehydrating');
+                WHERE status IN ({JobStatuses.NonTerminalSqlList});
             """;
         index.ExecuteNonQuery();
 
@@ -382,11 +382,15 @@ public sealed class AppDatabase
         command.ExecuteNonQuery();
     }
 
+    /// <summary>Transitions a job to a terminal status (<c>completed</c>/<c>failed</c>/<c>cancelled</c>/<c>interrupted</c>).
+    /// Guarded: a row already in a terminal status is left untouched — this is what stops a late-arriving cancel
+    /// (<see cref="Arius.Api.Hubs.JobsHub.CancelJob"/>'s fall-through branch) from racing the rehydration poller's
+    /// completion and clobbering an already-<c>completed</c> row back to <c>cancelled</c>/pct 0.</summary>
     public void CompleteJob(string id, string status, double pct, string? detail)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE jobs SET status = $status, pct = $pct, detail = $detail, finished_at = $finishedAt WHERE id = $id;";
+        command.CommandText = "UPDATE jobs SET status = $status, pct = $pct, detail = $detail, finished_at = $finishedAt WHERE id = $id AND status NOT IN (" + JobStatuses.TerminalSqlList + ");";
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$status", status);
         command.Parameters.AddWithValue("$pct", pct);
@@ -481,7 +485,7 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT 1 FROM jobs WHERE repo_id = $r AND status IN ('running','awaiting-cost','rehydrating') LIMIT 1;";
+        command.CommandText = "SELECT 1 FROM jobs WHERE repo_id = $r AND status IN (" + JobStatuses.NonTerminalSqlList + ") LIMIT 1;";
         command.Parameters.AddWithValue("$r", repositoryId);
         return command.ExecuteScalar() is not null;
     }
