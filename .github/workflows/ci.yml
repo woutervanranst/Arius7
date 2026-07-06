@@ -158,3 +158,31 @@ jobs:
           name: playwright-report
           path: src/Arius.Web/e2e/playwright-report
           retention-days: 7
+
+  web-unit:
+    name: 🧪 Web unit (Vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Arius.Web
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v7
+      - name: ⚙️ Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/Arius.Web/package-lock.json
+      - name: 📦 Install dependencies
+        run: npm ci
+      - name: 🧪 Vitest with coverage
+        run: npm run test:coverage
+      - name: 📈 Upload coverage to Codecov
+        if: ${{ always() }}
+        uses: codecov/codecov-action@v7
+        with:
+          files: src/Arius.Web/coverage/lcov.info
+          flags: web
+          name: coverage-web
+          token: ${{ secrets.CODECOV_TOKEN }}
