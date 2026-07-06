@@ -423,27 +423,6 @@ public sealed class JobRunner(
             new JobSink(jobId, hub).Done("cancelled", summary);
     }
 
-    /// <summary>Restart/late-answer cost fallback: records the chosen priority into the parked job's resume state,
-    /// then re-drives it (design §8). Used when no live approval wait exists.</summary>
-    public async Task ApproveAndResumeAsync(string jobId, RehydratePriority priority)
-    {
-        var job = database.GetJob(jobId);
-        if (job?.StateJson is null) return;
-        PersistedJobState? persisted;
-        try { persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson); }
-        catch (JsonException) { return; }
-        if (persisted?.Resume is null)
-        {
-            // Parked at awaiting-cost before any resume params existed: seed a minimal resume from the row is not
-            // possible (targets unknown), so fall back to marking cancelled — the client will re-issue the restore.
-            database.CompleteJob(jobId, "cancelled", 0, "Cost approval expired; please restart the restore.");
-            return;
-        }
-        var updated = persisted.Resume with { Priority = priority.ToString(), AutoResume = true };
-        database.SaveJobState(jobId, JsonSerializer.Serialize(persisted with { Resume = updated }));
-        await ResumeRestoreAsync(jobId);
-    }
-
     private static RestoreResumeState ResumeParamsFor(
         Arius.Core.Shared.Cost.RestoreCostEstimate? estimate,
         string? version, IReadOnlyList<string> targetPaths, string destination,

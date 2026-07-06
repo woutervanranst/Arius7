@@ -168,9 +168,9 @@ public sealed class JobsHub(
         }
     }
 
-    /// <summary>Answers the restore cost modal. For a LIVE, in-run approval wait: "standard"/"high" to proceed,
-    /// anything else declines. For a PARKED job (timed out / Api restarted, no live wait): a valid priority
-    /// re-drives it via <see cref="JobRunner.ApproveAndResumeAsync"/>; anything else declines it.</summary>
+    /// <summary>Answers the restore cost modal. An <c>awaiting-cost</c> job is always LIVE within a process
+    /// lifetime (its run blocks in the approval callback), so this only ever resolves an in-run wait; a restart
+    /// reconciles any parked job to <c>interrupted</c> before it could reach here.</summary>
     public async Task ApproveRestore(string jobId, string? priority)
     {
         RehydratePriority? chosen = priority?.ToLowerInvariant() switch
@@ -180,8 +180,8 @@ public sealed class JobsHub(
             _          => null,
         };
         if (approvals.HasPending(jobId)) { approvals.Resolve(jobId, chosen); return; }   // in-run
-        if (chosen is null) { await DeclineParkedAsync(jobId); return; }
-        _ = jobRunner.ApproveAndResumeAsync(jobId, chosen.Value);                        // parked fallback
+        if (chosen is null) await DeclineParkedAsync(jobId);
+        // else: no live approval wait to answer (job already resumed/terminal) — nothing to do.
     }
 
     /// <summary>Declines the restore cost modal (equivalent to answering "cancel"). Resolves a live wait, or
