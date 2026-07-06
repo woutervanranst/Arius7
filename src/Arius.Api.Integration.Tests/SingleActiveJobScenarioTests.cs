@@ -40,24 +40,17 @@ public class SingleActiveJobScenarioTests
         var jobId = Guid.NewGuid().ToString();
 
         _ = runner.RunRestoreAsync(repoId, jobId, "test", null, [], false, false);
-        await WaitUntil(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
 
         // By design: the repo is busy while the restore is parked → HasActiveJob true, a new start is rejected.
         await Assert.That(db.HasActiveJob(repoId)).IsTrue();
 
         // Cancel the parked restore (decline) → frees the repo.
         approvals.Resolve(jobId, null);
-        await WaitUntil(() => !db.HasActiveJob(repoId), TimeSpan.FromSeconds(10));
+        await ScenarioWait.Until(() => !db.HasActiveJob(repoId), TimeSpan.FromSeconds(10));
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("cancelled");
 
         // Now a new job for the repo is accepted (guard clear).
         await Assert.That(db.HasActiveJob(repoId)).IsFalse();
-    }
-
-    private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline) { if (condition()) return; await Task.Delay(50); }
-        throw new TimeoutException("Condition not met within timeout.");
     }
 }

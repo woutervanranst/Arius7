@@ -46,7 +46,7 @@ public class ReattachScenarioTests
         // the whole time (see JobsHub.AttachToJob / JobEndpoints), which is why the reattach below must prove
         // the LIVE path, not just the persisted state_json path.
         _ = runner.RunRestoreAsync(repoId, jobId, "test", null, [], false, false);
-        await WaitUntil(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
 
         // Reattach via GET /jobs/{id} — a fresh reader, no SignalR connection of its own.
         var http = factory.CreateClient();
@@ -58,12 +58,5 @@ public class ReattachScenarioTests
 
         // Clean up the parked run's blocked task.
         factory.Services.GetRequiredService<RestoreApprovalRegistry>().Resolve(jobId, null);
-    }
-
-    private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline) { if (condition()) return; await Task.Delay(50); }
-        throw new TimeoutException("Condition not met within timeout.");
     }
 }

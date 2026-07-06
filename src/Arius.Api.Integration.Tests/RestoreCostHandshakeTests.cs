@@ -54,21 +54,10 @@ public class RestoreCostHandshakeTests
             targetPaths: [], overwrite: false, noPointers: false);
 
         // Wait for the job to park at awaiting-cost, then approve High priority.
-        await WaitUntil(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
         approvals.Resolve(jobId, RehydratePriority.High);
 
         await run;
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
-    }
-
-    private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (condition()) return;
-            await Task.Delay(50);
-        }
-        throw new TimeoutException("Condition not met within timeout.");
     }
 }
