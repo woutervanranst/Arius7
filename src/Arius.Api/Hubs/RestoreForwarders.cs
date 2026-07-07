@@ -58,7 +58,7 @@ public sealed class FileRestoredForwarder(JobSink sink) : INotificationHandler<F
 {
     public ValueTask Handle(FileRestoredEvent n, CancellationToken ct)
     {
-        sink.AddRestored(n.FileSize);
+        sink.AddRestored(n.RelativePath.ToString(), n.FileSize);
         sink.Log($"→ {n.RelativePath} ✓", "ok");
         return ValueTask.CompletedTask;
     }

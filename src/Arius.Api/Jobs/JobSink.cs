@@ -204,7 +204,30 @@ public sealed class JobSink
     }
 
     public void SetRestoreTotals(long files, long bytes) { Interlocked.Exchange(ref _restoreTotalFiles, files); Interlocked.Exchange(ref _restoreTotalBytes, bytes); }
-    public void AddRestored(long size) { Interlocked.Increment(ref _filesRestored); Interlocked.Add(ref _bytesRestored, size); }
+    /// <summary>Marks one file restored: bumps the file count and reconciles its bytes to <paramref name="size"/>.
+    /// Streaming download progress (<see cref="ReportRestoreStreamed"/>) keyed by the same relative path may already
+    /// have credited most of it, so this only tops up the remainder — no double-count.</summary>
+    public void AddRestored(string key, long size) { Interlocked.Increment(ref _filesRestored); CreditRestore(key, size); }
+
+    // ── Restore(download) progress crediting — mirrors the upload path ───────────
+    private readonly Dictionary<string, long> _restoreCredited = new();
+
+    /// <summary>Streaming restore progress: <paramref name="cumulative"/> is the running total of bytes downloaded
+    /// for one large file (Arius.Core's <c>RestoreOptions.CreateLargeFileDownloadProgress</c>). Crediting only the
+    /// per-file delta makes <see cref="_bytesRestored"/> rise CONTINUOUSLY as a large file downloads instead of
+    /// jumping only when it finishes — the coarse per-file jumps were what made the restore ETA bursty.</summary>
+    public void ReportRestoreStreamed(string key, long cumulative) => CreditRestore(key, cumulative);
+
+    private void CreditRestore(string key, long cumulative)
+    {
+        lock (_uploadLock)   // archive & restore never run on the same sink, so the crediting lock is shared
+        {
+            var prev = _restoreCredited.TryGetValue(key, out var p) ? p : 0L;
+            if (cumulative <= prev) return;
+            _restoreCredited[key] = cumulative;
+            Interlocked.Add(ref _bytesRestored, cumulative - prev);
+        }
+    }
     public void SetRehydration(int available, int rehydrated, int needs, int pending)
     { _rehydAvailable = available; _rehydRehydrated = rehydrated; _rehydNeeds = needs; _rehydPending = pending; }
 
@@ -269,7 +292,13 @@ public sealed class JobSink
         var denominator       = isRestore ? restoreTotal : totalNew;
         var progress          = isRestore ? restored     : uploaded;
 
-        long? eta = denominator > 0 && rate > 0 ? (long)Math.Ceiling(Math.Max(0L, denominator - progress) / rate) : null;
+        // ETA uses a STABLE upload-work estimate so it doesn't read "seconds" early: totalNew (queuedNewBytes) is
+        // the exact new-bytes-to-upload but is only discovered incrementally as routing queues chunks, so early on
+        // it sits far below the real total (→ absurdly low ETA). max(totalNew, total−deduped) is known from the
+        // scan, converges to the truth as routing completes, and the max() avoids the pointer-only underflow that
+        // total−deduped alone would hit (deduped can exceed scanned bytes). Restore's total is known up front.
+        var etaDenominator = isRestore ? restoreTotal : Math.Max(totalNew, Math.Max(0L, total - deduped));
+        long? eta = etaDenominator > 0 && rate > 0 ? (long)Math.Ceiling(Math.Max(0L, etaDenominator - progress) / rate) : null;
         var pct = denominator > 0
             ? (int)Math.Clamp(progress * 100 / denominator, 0, 100)
             : (isRestore && restoreTotalFiles > 0

@@ -53,6 +53,31 @@ public class JobSinkAggregateTests
     }
 
     [Test]
+    public async Task Streaming_restore_progress_credits_continuously_without_double_counting()
+    {
+        var s = new JobSink();
+        s.SetRestoreTotals(files: 2, bytes: 300);
+
+        // Large file "a" downloads in increments (cumulative), then completes.
+        s.ReportRestoreStreamed("a", 40);
+        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).BytesRestored).IsEqualTo(40L);
+        s.ReportRestoreStreamed("a", 100);
+        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).BytesRestored).IsEqualTo(100L);
+
+        // Completion reconciles to the final size (same key) — does NOT re-add the streamed bytes.
+        s.AddRestored("a", 100);
+        var snap1 = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
+        await Assert.That(snap1.BytesRestored).IsEqualTo(100L);
+        await Assert.That(snap1.FilesRestored).IsEqualTo(1L);
+
+        // Small tar-bundle file "b" never streamed — credited fully on completion.
+        s.AddRestored("b", 200);
+        var snap2 = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
+        await Assert.That(snap2.BytesRestored).IsEqualTo(300L);
+        await Assert.That(snap2.FilesRestored).IsEqualTo(2L);
+    }
+
+    [Test]
     public async Task Tar_uploaded_bytes_use_remembered_uncompressed_size()
     {
         var s = NewArchiveSink();
