@@ -212,6 +212,7 @@ public sealed class JobRunner(
                     {
                         sink.ClearPending();   // leaving the prompt — a later reattach is mid-restore, not awaiting one
                         runApprovedPriority = priority;
+                        sink.MarkRestoreApproved();   // TEMP [timing] (#7): measure approve→first-restored-byte
                         database.SetJobStatus(jobId, "running");
                         sink.SetStatus("running");
                         return priority;

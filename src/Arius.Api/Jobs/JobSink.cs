@@ -212,6 +212,12 @@ public sealed class JobSink
 
     // ── Restore(download) progress crediting — mirrors the upload path ───────────
     private readonly Dictionary<string, long> _restoreCredited = new();
+    private DateTimeOffset? _restoreApprovedAt;   // TEMP [timing] (#7): set at cost approval to measure approve→first-restored-byte
+    private bool _firstRestoreLogged;
+
+    /// <summary>TEMP diagnostic (#7): marks when the restore cost was approved, so <see cref="CreditRestore"/> can log
+    /// how long until the first byte is actually restored — isolating a real post-confirm hang from user review time.</summary>
+    public void MarkRestoreApproved() => _restoreApprovedAt = _now();
 
     /// <summary>Streaming restore progress: <paramref name="cumulative"/> is the running total of bytes downloaded
     /// for one large file (Arius.Core's <c>RestoreOptions.CreateLargeFileDownloadProgress</c>). Crediting only the
@@ -221,13 +227,16 @@ public sealed class JobSink
 
     private void CreditRestore(string key, long cumulative)
     {
+        bool logFirst = false; double elapsed = 0;
         lock (_uploadLock)   // archive & restore never run on the same sink, so the crediting lock is shared
         {
             var prev = _restoreCredited.TryGetValue(key, out var p) ? p : 0L;
             if (cumulative <= prev) return;
             _restoreCredited[key] = cumulative;
             Interlocked.Add(ref _bytesRestored, cumulative - prev);
+            if (!_firstRestoreLogged && _restoreApprovedAt is { } t) { _firstRestoreLogged = true; logFirst = true; elapsed = (_now() - t).TotalSeconds; }
         }
+        if (logFirst) _logger?.LogInformation("[timing] job={JobId} first restore byte {Elapsed:F1}s after cost approval", JobId, elapsed);
     }
     public void SetRehydration(int available, int rehydrated, int needs, int pending)
     { _rehydAvailable = available; _rehydRehydrated = rehydrated; _rehydNeeds = needs; _rehydPending = pending; }
