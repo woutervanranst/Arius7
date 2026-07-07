@@ -205,6 +205,7 @@ public sealed class JobRunner(
                         noPointers, priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow));
 
                     database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
+                    sink.SetStatus("awaiting-cost");
 
                     var priority = await approvals.RegisterAsync(jobId, ct);
                     if (priority is not null)
@@ -212,6 +213,7 @@ public sealed class JobRunner(
                         sink.ClearPending();   // leaving the prompt — a later reattach is mid-restore, not awaiting one
                         runApprovedPriority = priority;
                         database.SetJobStatus(jobId, "running");
+                        sink.SetStatus("running");
                         return priority;
                     }
 
@@ -241,6 +243,7 @@ public sealed class JobRunner(
                                              priority, autoResume: true, startedAt: DateTimeOffset.UtcNow);
                 resume = sink.WithLiveRehydrationCounts(resume);   // fold live rehydration counts into resume (Step 5)
                 database.SetJobStatus(jobId, "rehydrating", $"{pending} chunk(s) rehydrating");
+                sink.SetStatus("rehydrating");
                 database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume)));
                 sink.Log($"{pending} chunk(s) rehydrating — will auto-resume", "warn");
                 // Non-terminal: no Done. The poller (Task 7) re-drives on its cadence; the finally releases the gate.
@@ -354,6 +357,7 @@ public sealed class JobRunner(
             sink.StartReporting();
 
             database.SetJobStatus(jobId, "running", "Resuming restore…");
+            sink.SetStatus("running");
             provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
 
             var persistedPriority = resume.Priority == "High" ? RehydratePriority.High : RehydratePriority.Standard;
@@ -372,6 +376,7 @@ public sealed class JobRunner(
                 var next = resume with { LastRunAt = DateTimeOffset.UtcNow };
                 next = sink.WithLiveRehydrationCounts(next);
                 database.SetJobStatus(jobId, "rehydrating", $"{pending} chunk(s) rehydrating");
+                sink.SetStatus("rehydrating");
                 database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, next)));
                 return;
             }

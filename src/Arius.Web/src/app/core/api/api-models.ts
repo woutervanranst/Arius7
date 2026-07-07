@@ -86,6 +86,7 @@ export const isNonTerminal = (s: string): boolean => (NON_TERMINAL_STATUSES as r
 export interface JobSnapshot {
   jobId: string;
   phase: string;
+  status: string;   // live job status carried in every progress snapshot (running/awaiting-cost/rehydrating/…)
   totalBytes: number;
   totalNewBytes: number;
   scannedBytes: number;

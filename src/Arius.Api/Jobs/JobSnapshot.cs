@@ -6,6 +6,7 @@ public sealed record JobSnapshot
 {
     public required string  JobId          { get; init; }
     public required string  Phase          { get; init; }
+    public          string  Status         { get; init; } = "";   // live job status (running/awaiting-cost/rehydrating/…) so clients see transitions without a reload; "" if unknown
     public required long    TotalBytes     { get; init; }
     public required long    TotalNewBytes  { get; init; }   // additive sum of queued-new-chunk bytes (0 until first chunk queued)
     public required long    ScannedBytes   { get; init; }

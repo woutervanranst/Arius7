@@ -50,7 +50,7 @@ interface HistoryRow {
  * Jobs overview (design README §Screens 5, mockup `4a`): sectioned list — Needs your attention
  * (awaiting-cost), Active (running/rehydrating, live per-row mini-bar via SignalR attach), and
  * Scheduled & history (terminal jobs, one-line outcome). The global live console is gone; each
- * job's own log/progress lives on its detail page (`/jobs/:id`), reachable via Reattach ›.
+ * job's own log/progress lives on its detail page (`/jobs/:id`), reachable via Detail ›.
  */
 @Component({
   selector: 'arius-jobs',
@@ -115,7 +115,7 @@ interface HistoryRow {
               <div style="font-size:11.5px;color:#a1a1aa;margin-top:5px">{{ row.eta }}</div>
             </div>
             <a data-testid="job-reattach" [routerLink]="['/jobs', row.job.id]"
-               style="justify-self:end;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:9px;font-size:12.5px;font-weight:600;background:#fff;border:1px solid #e4e4e7;color:#3f3f46;text-decoration:none">Reattach &rsaquo;</a>
+               style="justify-self:end;font-size:12.5px;font-weight:600;color:#3b82f6;text-decoration:none">Detail &rsaquo;</a>
           </div>
         } @empty {
           <div style="padding:20px;text-align:center;color:#a1a1aa;font-size:13px">No active jobs.</div>
@@ -209,7 +209,7 @@ export class JobsComponent implements OnDestroy {
       kindLabel: this.kindLabel(job),
       summary: this.outcomeSummary(job, outcome),
       meta: statusMeta(job.status),
-      actionLabel: job.trigger === 'schedule' ? 'Edit ›' : 'Report ›',
+      actionLabel: job.trigger === 'schedule' ? 'Edit ›' : 'Detail ›',
     };
   }));
 

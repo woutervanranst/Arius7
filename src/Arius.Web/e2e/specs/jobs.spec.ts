@@ -37,7 +37,7 @@ test('jobs screen renders the sectioned overview, no live console', async ({ pag
 });
 
 // Destructive: creates a dedicated container so the main repo's data is never replaced (scoped like pill.spec.ts).
-test('Reattach › on an active row opens the job detail page @write', async ({ page, request, repo }) => {
+test('Detail › on an active row opens the job detail page @write', async ({ page, request, repo }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
   test.setTimeout(120_000);
 
@@ -61,12 +61,11 @@ test('Reattach › on an active row opens the job detail page @write', async ({ 
       return jobId;
     }, { timeout: 60_000 }).toBeTruthy();
 
-    // The row for this job — Active's "Reattach ›" or (if the tiny one-file archive already finished by
-    // the time we get here) History's "Report ›" — both open the same job detail page.
+    // The row for this job — Active or History both expose a "Detail ›" link to the same job detail page.
     await page.goto('/jobs');
     const row = page.getByTestId('job-row').filter({ hasText: 'E2E Jobs Overview' });
     await expect(row).toBeVisible({ timeout: 30_000 });
-    await row.getByRole('link', { name: /Reattach|Report/ }).click();
+    await row.getByRole('link', { name: /Detail/ }).click();
     await expect(page).toHaveURL(new RegExp(`/jobs/${jobId}$`));
     await expect(page.getByTestId('job-detail')).toBeVisible();
   } finally {

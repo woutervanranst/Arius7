@@ -91,10 +91,10 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
             } @else {
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#dbeafe;margin-right:6px"></span>Scanned &middot; {{ formatBytes(snap()?.scannedBytes) }} of {{ formatBytes(snap()?.totalBytes) }}</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#93c5fd;margin-right:6px"></span>Hashed &amp; routed &middot; {{ round(middlePct()) }}%</span>
-              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#2563eb;margin-right:6px"></span>Uploaded &middot; {{ formatBytes(snap()?.uploadedBytes) }} of {{ formatBytes(snap()?.totalNewBytes) }}</span>
               @if ((snap()?.dedupedBytes ?? 0) > 0) {
-                <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#60a5fa;margin-right:6px"></span>Deduplicated &middot; {{ formatBytes(snap()?.dedupedBytes) }} not re-uploaded</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#60a5fa;margin-right:6px"></span>Deduplicated &middot; {{ formatBytes(snap()?.dedupedBytes) }}</span>
               }
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#2563eb;margin-right:6px"></span>Uploaded &middot; {{ formatBytes(snap()?.uploadedBytes) }} of {{ formatBytes(snap()?.totalNewBytes) }}</span>
             }
           </div>
 
@@ -134,7 +134,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
           }
 
           <!-- KPI tiles -->
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:22px">
+          <div style="display:grid;gap:12px;margin-top:22px" [style.gridTemplateColumns]="kind() === 'restore' ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)'">
             @if (kind() === 'restore') {
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
                 <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Restored</div>
@@ -148,13 +148,8 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               </div>
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
                 <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Rehydrating</div>
-                <div style="font-size:19px;font-weight:700;color:#b45309;margin-top:3px">{{ formatCount(snap()?.chunksNeedingRehydration) }}</div>
+                <div style="font-size:19px;font-weight:700;color:#18181b;margin-top:3px">{{ formatCount(snap()?.chunksNeedingRehydration) }}</div>
                 <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">{{ formatCount(snap()?.chunksPending) }} pending</div>
-              </div>
-              <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
-                <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Priority</div>
-                <div style="font-size:19px;font-weight:700;color:#6d28d9;margin-top:3px;text-transform:capitalize">{{ priority() }}</div>
-                <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">{{ priority() === 'high' ? 'faster hydration' : 'lower cost' }}</div>
               </div>
             } @else {
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
@@ -164,7 +159,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               </div>
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
                 <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Deduplicated</div>
-                <div style="font-size:19px;font-weight:700;color:#6d28d9;margin-top:3px">{{ formatCount(snap()?.dedupedFiles) }} files</div>
+                <div style="font-size:19px;font-weight:700;color:#18181b;margin-top:3px">{{ formatCount(snap()?.dedupedFiles) }} files</div>
                 <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">{{ formatBytes(snap()?.dedupedBytes) }} not re-uploaded</div>
               </div>
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
@@ -443,7 +438,7 @@ export class JobDetailComponent implements OnDestroy {
       if (st.cost) this.cost.set(st.cost);
       if (st.resume) { this.resume.set(st.resume); this.autoResume.set(st.resume.autoResume); }
     } });
-    this.subs.push(this.realtime.jobProgress(id).subscribe(s => this.snap.set(s)));
+    this.subs.push(this.realtime.jobProgress(id).subscribe(s => { this.snap.set(s); if (s.status) this.status.set(s.status); }));
     this.subs.push(this.realtime.jobCost(id).subscribe(c => this.cost.set(c)));
     this.subs.push(this.realtime.jobDone(id).subscribe(d => { this.status.set(d.status); this.cost.set(null); this.api.getJob(id).subscribe(x => this.detail.set(x)); }));
   }

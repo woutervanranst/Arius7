@@ -157,6 +157,7 @@ public sealed class JobSink
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset Started, DateTimeOffset? Done)> _stages = new();
     private volatile string _phase = "starting";
+    private volatile string _status = "running";   // live DB-status mirror, rides along in every snapshot so the client reflects awaiting-cost→running→rehydrating without a reload
 
     /// <summary>Testable clock seam — tests inject a fixed/stepped clock; production uses real time.</summary>
     internal Func<DateTimeOffset> _now = () => DateTimeOffset.UtcNow;
@@ -238,6 +239,9 @@ public sealed class JobSink
     { _chunksTotal = totalChunks; Interlocked.Exchange(ref _chunkBytesTotal, totalChunkBytes); }
 
     public void SetPhase(string phase) => _phase = phase;
+    /// <summary>Mirror the job's DB status onto the sink so it rides along in every progress snapshot — the client
+    /// then reflects awaiting-cost→running→rehydrating transitions live instead of only on reload or at terminal.</summary>
+    public void SetStatus(string status) => _status = status;
     public void StageStarted(string stage) => _stages[stage] = (_now(), null);
     public void StageDone(string stage) { if (_stages.TryGetValue(stage, out var e)) _stages[stage] = (e.Started, _now()); else _stages[stage] = (_now(), _now()); }
 
@@ -309,7 +313,7 @@ public sealed class JobSink
         return new JobSnapshot
         {
             JobId = JobId ?? "",
-            Phase = _phase,
+            Phase = _phase, Status = _status,
             TotalBytes = total, TotalNewBytes = totalNew,
             ScannedBytes = Interlocked.Read(ref _scannedBytes),
             HashedBytes  = hashed,
