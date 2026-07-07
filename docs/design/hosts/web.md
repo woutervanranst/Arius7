@@ -108,8 +108,8 @@ sequenceDiagram
     Core->>Run: await ConfirmRehydration(estimate)
     Run->>Sink: Cost(estimate)
     Sink-->>SPA: CostEstimate  → cost modal
-    SPA->>Hub: invoke Approve(jobId, "standard"|"high"|decline)
-    Hub->>Run: approvals.Resolve(jobId, priority)
+    SPA->>Hub: invoke ApproveRestore(jobId,"standard"|"high") / DeclineRestore(jobId)
+    Hub->>Run: approvals.Resolve(jobId, priority)  (null = decline)
     Run-->>Core: returns RehydratePriority? (null = cancel)
     end
 
@@ -128,10 +128,10 @@ On the client, `RealtimeService` fans the four hub messages into RxJS subjects (
 The handshake spans Core, the runner, and the hub:
 
 1. `RestoreCommandHandler` estimates the restore cost via `IStorageCostEstimator` (region-aware; [cost estimation](../core/shared/cost.md)) and, **when the total is non-zero**, `await`s the `ConfirmRehydration` callback the `JobRunner` supplied (`RestoreCommandHandler.cs` Stage 3) — so Cool/Cold retrieval + egress now prompt too, not only archive rehydration. A `null` return cancels **before any download or rehydration** — no money spent.
-2. The runner's callback sends the estimate to the client (`sink.Cost(...)`) and parks on `RestoreApprovalRegistry.Register(jobId, connectionId)`, which returns a `Task<RehydratePriority?>` backed by a `TaskCompletionSource`.
-3. `JobsHub.Approve(jobId, priority)` maps `"standard"|"high"` → `RehydratePriority`, anything else → `null`, and calls `approvals.Resolve` to complete the parked task; Core then proceeds (or returns a zero-restore success).
+2. The runner's callback **arms the waiter first** (`approvals.Prime(jobId)` creates the `TaskCompletionSource`) *before* it tells the client it may answer (`sink.Cost(...)`), then `await`s `RestoreApprovalRegistry.RegisterAsync(jobId, ct)`. Priming ahead of the push is load-bearing — an answer that races in before the await must land on an existing waiter (see *Key invariants*). The registry is keyed by **jobId only**, so any connection may answer.
+3. `JobsHub.ApproveRestore(jobId, priority)` resolves the waiter with the chosen `RehydratePriority` — an unrecognized or missing priority defaults to **Standard**, never a decline — while `DeclineRestore(jobId)` resolves it with `null`; Core then proceeds, or (on `null`) cancels before any spend. A **parked** job with no live waiter (a resume between poller ticks) is instead terminalized directly via `JobRunner.CancelParked`.
 
-A never-answered modal cannot pin the restore — and its per-repo write lock — forever: `JobsHub.OnDisconnectedAsync` calls `approvals.CancelForConnection`, declining every approval owned by the dropped connection. The registry only tracks restores that actually reach the modal, so `_ownerByJob` can't accumulate entries for restores that never needed approval.
+A never-answered prompt cannot pin the restore — and its per-repo write lock — forever: the out-of-band `StaleApprovalSweepService` declines any `awaiting-cost` job left unanswered past its window (~24h). There is no per-connection decline — a dropped connection is just one more client that stopped answering.
 
 ### App database and secrets
 
@@ -206,7 +206,9 @@ A repository's statistics are a **pure function of its snapshot set**, and the h
 - **Mutating jobs serialize per repository.** Two archive/restore jobs on the same repo must not run concurrently (shared on-disk Core state). Enforced by the per-repo `SemaphoreSlim`; cross-repo concurrency is intentionally unrestricted.
 - **Events are isolated by provider, not by id.** Each job's `JobSink` lives in that job's provider, so a forwarder always targets the right client group. Read providers get an inert sink — the same forwarders must remain harmless there.
 - **No billable restore proceeds without confirmation through this host.** When `ConfirmRehydration` is wired (always, for web restores) and the estimate is non-zero, a `null`/declined answer cancels before any cost — archive rehydration *or* Cool/Cold retrieval + egress — is incurred.
-- **A dropped connection declines its pending restore.** `OnDisconnectedAsync` → `CancelForConnection` must release any approval the connection owned, or the restore (and its repo lock) leaks.
+- **A cost answer that races the prompt is never lost.** The approval waiter is armed (`RestoreApprovalRegistry.Prime`) *before* the estimate is pushed, so an approve/decline arriving before the run starts awaiting lands on the waiter rather than being dropped and leaking the repo lock until the sweep. `ApproveRestore` always resolves to a priority (default Standard), never a decline — only `DeclineRestore` cancels.
+- **A resume never resurrects a terminalized job.** `JobRunner.ResumeRestoreAsync` flips the row to `running` only through the guarded `AppDatabase.TryResumeToRunning` (applies only while still `rehydrating`/`awaiting-cost`), so a cancel that raced the resume can't be overwritten and driven to completion.
+- **An unanswered prompt is reclaimed out-of-band, not by disconnect.** `StaleApprovalSweepService` declines abandoned `awaiting-cost` jobs (~24h); the jobId-keyed registry has no per-connection ownership to release.
 - **Secrets never leave the server.** Account keys and passphrases are Data-Protection ciphertext at rest and are dropped from every client DTO.
 - **The statistics cache is invalidated on every snapshot-set change, never re-verified per read.** Whatever clears the read provider on a content change (archive job, properties change, delete) must also `ClearStatisticsCache`; otherwise the SPA serves figures computed against a superseded snapshot generation. (A change to the container's region metadata is not a snapshot-set change and is set out-of-band, so it does not bust this cache — see *Open seams*.)
 
