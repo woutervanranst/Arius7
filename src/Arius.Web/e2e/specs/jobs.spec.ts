@@ -10,9 +10,12 @@ import { scratchContainer } from '../support/scratch';
 test('jobs screen renders the sectioned overview, no live console', async ({ page }) => {
   await page.goto('/jobs');
   await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
-  await expect(page.getByText('running')).toBeVisible();   // the "N running" chip
-  await expect(page.getByText('waiting')).toBeVisible();   // the "N waiting" chip
-  await expect(page.getByText('scheduled')).toBeVisible(); // the "N scheduled" chip
+  // Match the "N running/waiting/scheduled" chip text specifically: a bare word substring-collides
+  // with other copy on the page (e.g. 'scheduled' with the "Scheduled & history" heading, 'waiting'
+  // with the awaiting-cost banner), which trips Playwright strict mode.
+  await expect(page.getByText(/\d+ running/)).toBeVisible();   // the "N running" chip
+  await expect(page.getByText(/\d+ waiting/)).toBeVisible();   // the "N waiting" chip
+  await expect(page.getByText(/\d+ scheduled/)).toBeVisible(); // the "N scheduled" chip
 
   // the global console is gone — from this page and everywhere else
   await expect(page.getByText('Live output')).toHaveCount(0);

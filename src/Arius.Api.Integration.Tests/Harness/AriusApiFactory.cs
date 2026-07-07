@@ -64,6 +64,25 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
 
     private static void TryDelete(string path)
     {
-        if (File.Exists(path)) File.Delete(path);
+        // Even after ClearAllPools, a just-released Sqlite handle can linger for a moment on Windows —
+        // a background poller can be mid-query when the host is torn down, and WebApplicationFactory's
+        // synchronous Dispose does not await hosted-service shutdown. Retry briefly, then give up: a
+        // leaked throwaway temp file must never fail an otherwise-passing test.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+                return;
+            }
+            catch (IOException) when (attempt < 20)
+            {
+                Thread.Sleep(50);
+            }
+            catch (IOException)
+            {
+                return;
+            }
+        }
     }
 }

@@ -22,18 +22,26 @@ test('snapshot picker numbers snapshots newest-first with the newest as LATEST +
     data: { accountId: repo.accountId, container: scratchContainer(`snaporder-${Date.now()}`), alias: 'E2E Snapshot Order', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
   })).json();
 
-  const archive = async () => {
+  // Confirm completion from the backend (the new snapshot lands), not the live "Archive complete"
+  // toast: a sub-second archive can finish before the hub re-subscribes, so that UI event races away
+  // and never shows (same reasoning as statistics-tiers.spec.ts). Each call re-opens the drawer via
+  // goto, so no explicit Close is needed.
+  const archive = async (expectedSnapshots: number) => {
+    await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.getByTestId('drawer-start').click();
-    await expect(page.getByText('Archive complete', { exact: false })).toBeVisible({ timeout: 180_000 });
-    await page.getByRole('button', { name: 'Close' }).click();
+    await expect.poll(async () => {
+      const res = await request.get(`/api/repos/${created.id}/snapshots`);
+      if (!res.ok()) return 0;
+      const s = await res.json();
+      return Array.isArray(s) ? s.length : 0;
+    }, { timeout: 180_000, message: `expected ${expectedSnapshots} snapshot(s)` }).toBeGreaterThanOrEqual(expectedSnapshots);
   };
 
   try {
-    await page.goto(`/repos/${created.id}/files`);
-    await archive();                                                 // snapshot 1
+    await archive(1);                                                // snapshot 1
     fs.writeFileSync(path.join(src, 'second.txt'), `arius e2e snap2 ${Date.now()}`);
-    await archive();                                                 // snapshot 2 (root hash changed)
+    await archive(2);                                                // snapshot 2 (root hash changed)
 
     // Wait until the backend lists both snapshots before reading the UI.
     await expect.poll(async () => {
