@@ -234,22 +234,29 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
                 <div style="font-size:15.5px;font-weight:700;color:#18181b">Confirm restore cost</div>
               </div>
               <div style="font-size:13px;color:#52525b;line-height:1.6;margin-top:12px">
-                {{ formatCount(c.chunksNeedingRehydration) }} of {{ formatCount(c.chunksAvailable + c.chunksNeedingRehydration) }} chunks ({{ formatBytes(c.bytesNeedingRehydration) }}) are in Archive tier and need rehydration before download.
+                @if (needsRehydration()) {
+                  {{ formatCount(c.chunksNeedingRehydration) }} of {{ formatCount(c.chunksAvailable + c.chunksNeedingRehydration) }} chunks ({{ formatBytes(c.bytesNeedingRehydration) }}) are in Archive tier and need rehydration before download.
+                } @else {
+                  Everything is already in an online tier — no rehydration needed. Confirm the download cost to restore.
+                }
               </div>
               <div style="margin-top:14px;border:1px solid #f0f0f2;border-radius:11px;overflow:hidden">
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px">
                   <span style="font-size:12.5px;color:#52525b">Download size</span>
                   <span style="font-size:12.5px;color:#27272a">{{ formatBytes(c.downloadBytes) }}</span>
                 </div>
+                @if (needsRehydration()) {
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid #f0f0f2">
                   <span style="font-size:12.5px;color:#52525b">In Archive tier</span>
                   <span style="font-size:12.5px;color:#27272a">{{ formatBytes(c.bytesNeedingRehydration) }}</span>
                 </div>
+                }
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid #f0f0f2;background:#fafafb">
-                  <span style="font-size:12.5px;color:#18181b;font-weight:700">Total excl. rehydration</span>
+                  <span style="font-size:12.5px;color:#18181b;font-weight:700">{{ needsRehydration() ? 'Total excl. rehydration' : 'Total' }}</span>
                   <span style="font-size:12.5px;color:#18181b;font-weight:700">{{ formatCurrency(priority() === 'high' ? c.totalHigh : c.totalStandard) }}</span>
                 </div>
               </div>
+              @if (needsRehydration()) {
               <div style="display:flex;gap:10px;margin-top:14px">
                 <button data-testid="prio-standard" type="button" (click)="priority.set('standard')"
                         [attr.aria-pressed]="priority() === 'standard'"
@@ -268,10 +275,11 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
                   <div style="font-size:11.5px;margin-top:2px" [style.color]="priority() === 'high' ? '#7c3aed' : '#a1a1aa'">up to {{ c.highWaitHours }} h</div>
                 </button>
               </div>
+              }
             </div>
             <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 24px;border-top:1px solid #f0f0f2;background:#fafafb">
               <button data-testid="cost-decline" type="button" (click)="decline()" style="height:38px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:600;color:#71717a;background:none;border:none;cursor:pointer">Cancel restore</button>
-              <button data-testid="cost-approve" type="button" (click)="approve()" style="height:38px;padding:0 16px;border-radius:9px;font-size:13px;font-weight:600;background:#7c3aed;color:#fff;border:none;cursor:pointer">Rehydrate &amp; restore</button>
+              <button data-testid="cost-approve" type="button" (click)="approve()" style="height:38px;padding:0 16px;border-radius:9px;font-size:13px;font-weight:600;background:#7c3aed;color:#fff;border:none;cursor:pointer">{{ needsRehydration() ? 'Rehydrate & restore' : 'Restore' }}</button>
             </div>
           </div>
         </div>
@@ -297,6 +305,10 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly warningsOpen = signal(false);
   protected readonly warnings = signal<string[]>([]);
   protected readonly priority = signal<'standard' | 'high'>('standard');
+  /** Whether this cost prompt involves archive-tier rehydration. When false (every chunk is already in an online
+   *  tier) the modal only confirms the download/egress cost — priority is irrelevant, so we drop the Standard/High
+   *  choice and the confirm button reads "Restore" rather than "Rehydrate & restore" (#3 UX). */
+  protected readonly needsRehydration = computed(() => (this.cost()?.chunksNeedingRehydration ?? 0) > 0);
   protected readonly autoResume = signal(true);
   protected readonly resume = signal<ResumeInfo | null>(null);
   private subs: Subscription[] = [];

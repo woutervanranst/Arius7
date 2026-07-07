@@ -60,4 +60,28 @@ public static class CanonicalScenarios
         ],
         Result = new RestoreResult { Success = true, FilesRestored = 0, FilesSkipped = 0, ChunksPendingRehydration = 282, ErrorMessage = null },
     };
+
+    /// <summary>A restore where every chunk is already in an online tier — NOTHING needs rehydration, so the cost
+    /// modal only confirms the (egress) download cost. Priority is irrelevant here (it only affects rehydration
+    /// speed), which is why the modal drops the Standard/High choice for this shape (#3).</summary>
+    public static RestoreScenario OnlineRestore(bool gated = false) => new(
+        PreCostEvents:
+        [
+            new SnapshotResolvedEvent(DateTimeOffset.UnixEpoch, default),
+            new TreeTraversalCompleteEvent(FileCount: 12, TotalOriginalSize: 500_000_000),
+            new ChunkResolutionCompleteEvent(TotalChunks: 40, LargeCount: 2, TarCount: 6, TotalChunkBytes: 480_000_000),
+            new RehydrationStatusEvent(Available: 40, Rehydrated: 0, NeedsRehydration: 0, Pending: 0),
+        ],
+        CostPrompt: new RestoreCostEstimate
+        {
+            ChunksAvailable = 40, ChunksAlreadyRehydrated = 0, ChunksNeedingRehydration = 0, ChunksPendingRehydration = 0,
+            BytesNeedingRehydration = 0, BytesPendingRehydration = 0, DownloadBytes = 480_000_000,
+            TotalStandard = 0.30, TotalHigh = 0.30, StandardWait = TimeSpan.Zero, HighWait = TimeSpan.Zero,
+        },
+        PostApproveEvents:
+        [
+            new FileRestoredEvent(RelativePath.Parse("big.bin"), 100_000_000),
+        ],
+        Result: new RestoreResult { Success = true, FilesRestored = 12, FilesSkipped = 0, ChunksPendingRehydration = 0, ErrorMessage = null },
+        Gated: gated);
 }

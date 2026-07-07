@@ -51,6 +51,9 @@ public static class TestingControlEndpoints
                 case "rehydratingRestoreStaysPending":
                     scenarios.SetRestore(req.RepoId, CanonicalScenarios.RehydratingRestoreStaysPending());
                     break;
+                case "onlineRestore":
+                    scenarios.SetRestore(req.RepoId, CanonicalScenarios.OnlineRestore(gated: req.Gated));
+                    break;
                 default:
                     return Results.BadRequest(new { error = $"Unknown scenario '{req.Name}'." });
             }
