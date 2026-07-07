@@ -431,7 +431,11 @@ public sealed class JobRunner(
     {
         if (!database.CompleteJob(jobId, "completed", 100, summary)) return;   // lost the race — another writer terminalized it
         database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
-        var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp));
+        // camelCase to match the API/SignalR JSON contract. This string is passed through to the client
+        // verbatim (GET /jobs and the SignalR Done below) and parsed there as a JobOutcome; default
+        // options emit PascalCase, so outcome.filesRestored / outcome.durationSeconds / … read as
+        // undefined on the client — the restore-roundtrip regression (filesRestored surfaced as 0).
+        var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp), JsonSerializerOptions.Web);
         database.SetJobOutcome(jobId, outcomeJson);
         sink.EmitNow();                       // final absolute progress (100%) before the terminal message
         sink.Done("completed", summary, outcomeJson);

@@ -59,5 +59,14 @@ public class RestoreCostHandshakeTests
 
         await run;
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
+
+        // The persisted outcome is handed to the web client verbatim (GET /jobs + the SignalR Done) and
+        // parsed there as a camelCase JobOutcome. Default System.Text.Json options emit PascalCase, which
+        // made outcome.filesRestored read as undefined → 0 on the client (the restore-roundtrip
+        // regression). Guard the casing at the point it is produced.
+        var outcome = db.GetJob(jobId)!.Outcome;
+        await Assert.That(outcome).IsNotNull();
+        await Assert.That(outcome!.Contains("\"filesRestored\":3")).IsTrue();
+        await Assert.That(outcome!.Contains("\"FilesRestored\"")).IsFalse();
     }
 }
