@@ -354,7 +354,9 @@ export class JobDetailComponent implements OnDestroy {
     resolveRehydrationWindowHours(this.cost(), this.resume(), this.priority()));
   protected readonly hydratedBy = computed(() => {
     const w = this.rehydrateWindowHours();
-    return w != null ? hydratedByLabel(this.detail()?.startedAt ?? null, w) : '';
+    // Anchor the ETA to when rehydration actually started (set on the resume when cost is approved), NOT the job's
+    // startedAt — otherwise a delayed cost approval makes "hydrated by" read hours too early (review #8).
+    return w != null ? hydratedByLabel(this.resume()?.rehydrationStartedAt ?? null, w) : '';
   });
   protected readonly bigEta = computed(() => {
     if (this.status() === 'rehydrating') return this.hydratedBy() || 'Waiting on Azure';
@@ -458,9 +460,22 @@ export class JobDetailComponent implements OnDestroy {
     if (this.status() === 'rehydrating' && !confirm('Rehydration is already paid — cancelling does not refund it. Cancel anyway?')) return;
     void this.realtime.cancelJob(this.currentId);
   }
-  protected approve(): void { void this.realtime.approveRestore(this.currentId, this.priority()); this.cost.set(null); this.costResolved.set(true); }
-  protected decline(): void { void this.realtime.declineRestore(this.currentId); this.cost.set(null); this.costResolved.set(true); }
-  protected toggleAutoResume(): void { const on = !this.autoResume(); this.autoResume.set(on); void this.realtime.setAutoResume(this.currentId, on); }
+  // Optimistically dismiss the modal, but roll it back if the invoke never reached the server — otherwise a
+  // transient WebSocket blip leaves the restore parked with no visible prompt or re-entry until the 24h sweep (review #10).
+  protected approve(): void {
+    const prev = this.cost();
+    this.cost.set(null); this.costResolved.set(true);
+    this.realtime.approveRestore(this.currentId, this.priority()).catch(() => { this.cost.set(prev); this.costResolved.set(false); });
+  }
+  protected decline(): void {
+    const prev = this.cost();
+    this.cost.set(null); this.costResolved.set(true);
+    this.realtime.declineRestore(this.currentId).catch(() => { this.cost.set(prev); this.costResolved.set(false); });
+  }
+  protected toggleAutoResume(): void {
+    const on = !this.autoResume(); this.autoResume.set(on);
+    this.realtime.setAutoResume(this.currentId, on).catch(() => this.autoResume.set(!on));   // revert the toggle if the invoke failed (review #10)
+  }
   protected resumeNow(): void { void this.realtime.resumeRestore(this.currentId); }
 
   ngOnDestroy(): void { if (this.currentId) void this.realtime.detachFromJob(this.currentId); this.teardown(); }

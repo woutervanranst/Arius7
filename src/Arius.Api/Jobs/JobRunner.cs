@@ -196,6 +196,11 @@ public sealed class JobRunner(
                         TotalHigh:                estimate.TotalHigh,
                         StandardWaitHours:        estimate.StandardWait.TotalHours,
                         HighWaitHours:            estimate.HighWait.TotalHours);
+                    // Arm the approval waiter BEFORE telling the client it may answer (sink.Cost below): an
+                    // approve/decline that races in ahead of RegisterAsync's await is then captured by this
+                    // pre-created waiter instead of being dropped as "no pending approval" — which had left the
+                    // restore parked on the per-repo gate until the 24h sweep (review #4).
+                    approvals.Prime(jobId);
                     sink.Cost(costDto);
                     // Retained on the sink (not yet persisted) so a reattach while this run is still LIVE but
                     // blocked on the approval wait below can render the same cost + resume defaults via
@@ -356,7 +361,12 @@ public sealed class JobRunner(
             registered = true;   // set before StartReporting so a throw there still triggers finally teardown
             sink.StartReporting();
 
-            database.SetJobStatus(jobId, "running", "Resuming restore…");
+            // Guarded flip to running: only resurrect a row that is STILL parked. A cancel that committed in the
+            // window between the under-gate re-check and here terminalized the row (CancelParked); the guarded
+            // UPDATE then matches nothing and we bail (finally releases the gate + removes the sink) instead of
+            // running a cancelled restore to completion. Registration above already routes an in-[register,flip)
+            // cancel through CancelLive (token trip), so the two paths together close the resurrection window (#1).
+            if (!database.TryResumeToRunning(jobId, "Resuming restore…")) return;
             sink.SetStatus("running");
             provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
 

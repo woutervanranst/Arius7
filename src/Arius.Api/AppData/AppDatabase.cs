@@ -418,6 +418,21 @@ public sealed class AppDatabase
         command.ExecuteNonQuery();
     }
 
+    /// <summary>Guarded flip of a parked restore to <c>running</c> for a resume: applies only while the row is still
+    /// <c>rehydrating</c>/<c>awaiting-cost</c>. Returns <c>false</c> when the row was terminalized in the meantime
+    /// (e.g. a concurrent cancel via <see cref="Arius.Api.Hubs.JobsHub.CancelJob"/>'s parked branch), so
+    /// <see cref="Arius.Api.Jobs.JobRunner.ResumeRestoreAsync"/> can bail instead of resurrecting a cancelled job to
+    /// running and driving it to completion (review #1). Unlike <see cref="SetJobStatus"/> this is conditional.</summary>
+    public bool TryResumeToRunning(string id, string? detail = null)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE jobs SET status = 'running', detail = $detail WHERE id = $id AND status IN ('rehydrating','awaiting-cost');";
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$detail", (object?)detail ?? DBNull.Value);
+        return command.ExecuteNonQuery() > 0;
+    }
+
     /// <summary>Reads a single job by id, or <c>null</c> if it does not exist. Backs <c>GET /jobs/{id}</c>
     /// and the rehydration poller's per-job due check.</summary>
     public JobRecord? GetJob(string id)

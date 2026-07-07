@@ -126,10 +126,9 @@ public sealed class JobSink
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
     private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes;
-    private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored, _chunkBytesTotal;
+    private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset Started, DateTimeOffset? Done)> _stages = new();
     private volatile string _phase = "starting";
     private volatile string _status = "running";   // live DB-status mirror, rides along in every snapshot so the client reflects awaiting-cost→running→rehydrating without a reload
 
@@ -206,18 +205,15 @@ public sealed class JobSink
     public void SetRehydration(int available, int rehydrated, int needs, int pending)
     { _rehydAvailable = available; _rehydRehydrated = rehydrated; _rehydNeeds = needs; _rehydPending = pending; }
 
-    /// <summary>Records the authoritative distinct-chunk total (and their byte total) from
-    /// ChunkResolutionCompleteEvent — the single denominator for the restore hydration bar, so it no longer
-    /// has to be (wrongly) reconstructed from a subset of the rehydration buckets.</summary>
-    public void SetChunkTotals(int totalChunks, long totalChunkBytes)
-    { _chunksTotal = totalChunks; Interlocked.Exchange(ref _chunkBytesTotal, totalChunkBytes); }
+    /// <summary>Records the authoritative distinct-chunk total from ChunkResolutionCompleteEvent — the single
+    /// denominator for the restore hydration bar, so it no longer has to be (wrongly) reconstructed from a subset
+    /// of the rehydration buckets.</summary>
+    public void SetChunkTotals(int totalChunks) => _chunksTotal = totalChunks;
 
     public void SetPhase(string phase) => _phase = phase;
     /// <summary>Mirror the job's DB status onto the sink so it rides along in every progress snapshot — the client
     /// then reflects awaiting-cost→running→rehydrating transitions live instead of only on reload or at terminal.</summary>
     public void SetStatus(string status) => _status = status;
-    public void StageStarted(string stage) => _stages[stage] = (_now(), null);
-    public void StageDone(string stage) { if (_stages.TryGetValue(stage, out var e)) _stages[stage] = (e.Started, _now()); else _stages[stage] = (_now(), _now()); }
 
     // ── Smoothed throughput (EMA over ~1s samples) → a stable ETA ────────────────
     // A job is either archive or restore, never both, so the two progress-byte counters sum into one clock.
@@ -326,7 +322,6 @@ public sealed class JobSink
             ChunksNeedingRehydration = _rehydNeeds,
             ChunksPending = _rehydPending,
             ChunksTotal = _chunksTotal,
-            ChunkBytesTotal = Interlocked.Read(ref _chunkBytesTotal),
         };
     }
 

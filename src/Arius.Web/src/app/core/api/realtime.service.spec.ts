@@ -8,7 +8,7 @@ function snapshot(jobId: string): JobSnapshot {
     uploadedBytes: 0, dedupedBytes: 0, dedupedFiles: 0, etaSeconds: null, throughputBytesPerSec: 0,
     pct: 0, warningCount: 0, stats: {}, restoreTotalFiles: 0, filesRestored: 0, restoreTotalBytes: 0,
     bytesRestored: 0, chunksAvailable: 0, chunksRehydrated: 0, chunksNeedingRehydration: 0,
-    chunksPending: 0, chunksTotal: 0, chunkBytesTotal: 0,
+    chunksPending: 0, chunksTotal: 0,
   };
 }
 

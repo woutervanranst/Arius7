@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { ApiService } from '../api/api.service';
 import { RealtimeService } from '../api/realtime.service';
-import { JobSnapshot } from '../api/api-models';
+import { JobSnapshot, isNonTerminal } from '../api/api-models';
 import { Subscription } from 'rxjs';
 
 /**
@@ -68,15 +68,24 @@ export class JobPillStore {
     this.jobId.set(jobId);
     this.kind.set(kind);
     this.status.set(status);
+    // jobDone drives the auto-hide — but a job that fails synchronously server-side broadcasts its terminal Done
+    // before startArchive/startRestore even returns the jobId, i.e. before we subscribe below (done$ doesn't replay),
+    // so that Done would be missed and the pill would hang on "Running" forever. AttachToJob closes the gap: by the
+    // time it resolves the row is already terminal — or was never inserted (null) because the job failed before the
+    // insert — either of which we treat as done (review #6).
     void this.realtime.attachToJob(jobId).then(state => {
-      if (state && this.jobId() === jobId) { this.snapshot.set(state.snapshot); this.status.set(state.status); }
+      if (this.jobId() !== jobId) return;
+      if (!state) { this.status.set('failed'); this.finish(jobId); return; }
+      this.snapshot.set(state.snapshot); this.status.set(state.status);
+      if (!isNonTerminal(state.status)) this.finish(jobId);
     }).catch(() => {});
     this.subs.push(this.realtime.jobProgress(jobId).subscribe(s => this.snapshot.set(s)));
-    this.subs.push(this.realtime.jobDone(jobId).subscribe(d => {
-      this.status.set(d.status);
-      // A terminal job auto-hides the pill shortly after (the detail page/overview carry history).
-      setTimeout(() => { if (this.jobId() === jobId) { this.jobId.set(null); this.snapshot.set(null); } }, 4000);
-    }));
+    this.subs.push(this.realtime.jobDone(jobId).subscribe(d => { this.status.set(d.status); this.finish(jobId); }));
+  }
+
+  /** A terminal job auto-hides the pill shortly after (the detail page/overview carry the history). */
+  private finish(jobId: string): void {
+    setTimeout(() => { if (this.jobId() === jobId) { this.jobId.set(null); this.snapshot.set(null); } }, 4000);
   }
 
   private teardown(): void { this.subs.forEach(s => s.unsubscribe()); this.subs = []; }

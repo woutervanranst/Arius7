@@ -25,7 +25,7 @@ public sealed class ChunkResolutionCompleteForwarder(JobSink sink) : INotificati
 {
     public ValueTask Handle(ChunkResolutionCompleteEvent n, CancellationToken ct)
     {
-        sink.SetChunkTotals(n.TotalChunks, n.TotalChunkBytes);
+        sink.SetChunkTotals(n.TotalChunks);
         return ValueTask.CompletedTask;
     }
 }
@@ -59,7 +59,6 @@ public sealed class FileRestoredForwarder(JobSink sink) : INotificationHandler<F
     public ValueTask Handle(FileRestoredEvent n, CancellationToken ct)
     {
         sink.AddRestored(n.RelativePath.ToString(), n.FileSize);
-        sink.Log($"→ {n.RelativePath} ✓", "ok");
         return ValueTask.CompletedTask;
     }
 }

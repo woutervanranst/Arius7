@@ -32,7 +32,7 @@ internal static class JobEndpoints
         {
             var job = db.GetJob(id);
             if (job is null) return Results.NotFound();
-            var repo = db.ListRepositories().FirstOrDefault(r => r.Id == job.RepositoryId);
+            var repo = db.GetRepository(job.RepositoryId);
 
             // A job blocked in the ConfirmRehydration callback (genuinely parked at awaiting-cost, still within
             // the approval window) still has a LIVE sink here — JobRunner's method has not returned, so nothing

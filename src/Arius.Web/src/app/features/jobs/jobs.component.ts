@@ -221,7 +221,7 @@ export class JobsComponent implements OnDestroy {
       for (const job of this.running()) {
         if (this.jobSubs.has(job.id)) continue;
         const sub = this.realtime.jobProgress(job.id).subscribe(snap => this.snapshots.update(m => ({ ...m, [job.id]: snap })));
-        const doneSub = this.realtime.jobDone(job.id).subscribe(() => this.reload());   // finished → re-fetch so it leaves Active + chips update
+        const doneSub = this.realtime.jobDone(job.id).subscribe(() => { this.releaseRow(job.id); this.reload(); });   // finished → tear down its live wiring, then re-fetch so it leaves Active + chips update
         this.jobSubs.set(job.id, sub);
         this.doneSubs.set(job.id, doneSub);
         void this.realtime.attachToJob(job.id)
@@ -229,6 +229,16 @@ export class JobsComponent implements OnDestroy {
           .catch(() => {});
       }
     });
+  }
+
+  /** Tear down one finished job's live wiring: its progress + done subscriptions, its client-side SignalR group
+   *  membership, and its cached snapshot. Without this, every job that starts and finishes while this page stays
+   *  mounted leaks a subscription + a group attachment that only ngOnDestroy would ever reclaim (review #7). */
+  private releaseRow(id: string): void {
+    this.jobSubs.get(id)?.unsubscribe(); this.jobSubs.delete(id);
+    this.doneSubs.get(id)?.unsubscribe(); this.doneSubs.delete(id);
+    void this.realtime.detachFromJob(id);
+    this.snapshots.update(m => { const { [id]: _removed, ...rest } = m; return rest; });
   }
 
   ngOnDestroy(): void {

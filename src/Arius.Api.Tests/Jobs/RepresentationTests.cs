@@ -55,7 +55,6 @@ public class RepresentationTests
 
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
         await Assert.That(snap.ChunksTotal).IsEqualTo(427);            // authoritative, includes needs-rehydration
-        await Assert.That(snap.ChunkBytesTotal).IsEqualTo(2_760_000_000L);
         // sanity: the four buckets sum to the authoritative total
         await Assert.That(snap.ChunksAvailable + snap.ChunksRehydrated + snap.ChunksNeedingRehydration + snap.ChunksPending)
             .IsEqualTo(snap.ChunksTotal);

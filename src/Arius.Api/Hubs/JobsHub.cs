@@ -107,7 +107,7 @@ public sealed class JobsHub(
         Stats = new Dictionary<string, string>(), WarningCount = 0,
         RestoreTotalFiles = 0, FilesRestored = 0, RestoreTotalBytes = 0, BytesRestored = 0,
         ChunksAvailable = 0, ChunksRehydrated = 0, ChunksNeedingRehydration = 0, ChunksPending = 0,
-        ChunksTotal = 0, ChunkBytesTotal = 0,
+        ChunksTotal = 0,
     };
 
     /// <summary>Requests cancellation of a job. A job parked at the cost prompt is cancelled by resolving its wait as
@@ -159,17 +159,16 @@ public sealed class JobsHub(
     /// <summary>Answers the restore cost modal. An <c>awaiting-cost</c> job is always LIVE within a process
     /// lifetime (its run blocks in the approval callback), so this only ever resolves an in-run wait; a restart
     /// reconciles any parked job to <c>interrupted</c> before it could reach here.</summary>
-    public async Task ApproveRestore(string jobId, string? priority)
+    public Task ApproveRestore(string jobId, string? priority)
     {
-        RehydratePriority? chosen = priority?.ToLowerInvariant() switch
-        {
-            "standard" => RehydratePriority.Standard,
-            "high"     => RehydratePriority.High,
-            _          => null,
-        };
-        if (approvals.HasPending(jobId)) { approvals.Resolve(jobId, chosen); return; }   // in-run
-        if (chosen is null) await DeclineParkedAsync(jobId);
+        // ApproveRestore is unambiguously "proceed" — DeclineRestore is the separate decline path. An unrecognized
+        // or missing priority therefore defaults to Standard (the cheaper tier), never null: a null here would be
+        // read by the run's ConfirmRehydration callback as a decline and silently cancel a restore the user meant
+        // to approve (review #5).
+        var chosen = priority?.ToLowerInvariant() == "high" ? RehydratePriority.High : RehydratePriority.Standard;
+        if (approvals.HasPending(jobId)) approvals.Resolve(jobId, chosen);   // in-run
         // else: no live approval wait to answer (job already resumed/terminal) — nothing to do.
+        return Task.CompletedTask;
     }
 
     /// <summary>Declines the restore cost modal (equivalent to answering "cancel"). Resolves a live wait, or
@@ -207,10 +206,6 @@ public sealed class JobsHub(
         _ = jobRunner.ResumeRestoreAsync(jobId);
         return Task.CompletedTask;
     }
-
-    /// <summary>Back-compat alias for the current Angular drawer; delegates to <see cref="ApproveRestore"/>.
-    /// Removed when the drawer is reworked in Plan 3.</summary>
-    public Task Approve(string jobId, string? priority) => ApproveRestore(jobId, priority);
 
     /// <summary>
     /// Streams the immediate children (directories + files) of a folder in a snapshot, server → client.

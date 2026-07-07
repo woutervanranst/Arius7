@@ -13,7 +13,6 @@ public sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<S
     public ValueTask Handle(ScanCompleteEvent n, CancellationToken ct)
     {
         sink.SetTotals(n.TotalFiles, n.TotalBytes);
-        sink.StageDone("scan");
         return ValueTask.CompletedTask;
     }
 }
@@ -47,7 +46,6 @@ public sealed class TarBundleUploadedForwarder(JobSink sink) : INotificationHand
     public ValueTask Handle(TarBundleUploadedEvent n, CancellationToken ct)
     {
         sink.AddUploadedTar(n.TarHash);
-        sink.Log($"  ✓ tar bundle uploaded · {n.EntryCount} files → {JobFormat.Bytes(n.StoredSize)}", "ok");
         return ValueTask.CompletedTask;
     }
 }
@@ -57,7 +55,6 @@ public sealed class ChunkUploadedForwarder(JobSink sink) : INotificationHandler<
     public ValueTask Handle(ChunkUploadedEvent n, CancellationToken ct)
     {
         sink.AddUploaded(n.ChunkHash, n.StoredSize, n.OriginalSize);
-        sink.Log($"  ✓ {n.ChunkHash.Short8} → {JobFormat.Bytes(n.StoredSize)}", "ok");
         return ValueTask.CompletedTask;
     }
 }
@@ -73,9 +70,5 @@ public sealed class ChunkUploadingForwarder(JobSink sink) : INotificationHandler
 
 public sealed class SnapshotCreatedForwarder(JobSink sink) : INotificationHandler<SnapshotCreatedEvent>
 {
-    public ValueTask Handle(SnapshotCreatedEvent n, CancellationToken ct)
-    {
-        sink.StageDone("snapshot");
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask Handle(SnapshotCreatedEvent n, CancellationToken ct) => ValueTask.CompletedTask;
 }

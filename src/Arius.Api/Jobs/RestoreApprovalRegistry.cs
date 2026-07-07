@@ -14,6 +14,14 @@ public sealed class RestoreApprovalRegistry
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<RehydratePriority?>> _pending = new();
 
+    /// <summary>Arms the pending-approval waiter for a job WITHOUT awaiting it. Call this before the client is told
+    /// it may answer (i.e. before <c>JobSink.Cost</c>) so an approve/decline that races in ahead of
+    /// <see cref="RegisterAsync"/> starting to await is captured by the waiter instead of being dropped as "no
+    /// pending approval" — which had left the restore parked on the per-repo gate until the 24h sweep (review #4).
+    /// Idempotent: <see cref="RegisterAsync"/> then awaits this same waiter (its <c>GetOrAdd</c> returns it).</summary>
+    public void Prime(string jobId) =>
+        _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously));
+
     /// <summary>Awaited by the restore command. Completes with the approved priority, or <c>null</c> on decline.
     /// Throws <see cref="OperationCanceledException"/> if <paramref name="ct"/> is cancelled. Always removes its
     /// own pending entry.</summary>
