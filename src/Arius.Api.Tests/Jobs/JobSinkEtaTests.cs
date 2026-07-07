@@ -1,4 +1,5 @@
 using Arius.Api.Jobs;
+using Arius.Core.Shared.Hashes;
 
 namespace Arius.Api.Tests.Jobs;
 
@@ -10,8 +11,8 @@ public class JobSinkEtaTests
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
 
-        // No totals yet → estimating (null).
-        s.AddUploaded(0, 1_000);
+        // No totals yet → estimating (null). Distinct chunk hashes so each call adds (real uploads are distinct chunks).
+        s.AddUploaded(ChunkHash.Parse(new string('1', 64)), 0, 1_000);
         s.SampleForEta(t0);
         await Assert.That(s.BuildSnapshot(t0).EtaSeconds).IsNull();
 
@@ -19,7 +20,7 @@ public class JobSinkEtaTests
         s.SetTotals(files: 10, bytes: 10_000_000);
         s.AddQueuedNew(10_000_000);             // additive new-bytes-to-upload now known (no dedup here)
         s.SampleForEta(t0);                    // 1_000 @ t0  (warm start)
-        s.AddUploaded(0, 1_000_000);           // now 1_001_000 uploaded
+        s.AddUploaded(ChunkHash.Parse(new string('2', 64)), 0, 1_000_000);   // distinct chunk → now 1_001_000 uploaded
         s.SampleForEta(t0.AddSeconds(1));
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
         await Assert.That(snap.EtaSeconds).IsNotNull();
@@ -34,12 +35,12 @@ public class JobSinkEtaTests
 
         // Warm start already past the (small) total — e.g. a re-baseline shrank totalNew
         // below what's already been uploaded.
-        s.AddUploaded(0, 5_000);
+        s.AddUploaded(ChunkHash.Parse(new string('3', 64)), 0, 5_000);
         s.SetTotals(files: 1, bytes: 1_000);
         s.AddQueuedNew(1_000);                 // additive new-bytes-to-upload now known (no dedup here)
         s.SampleForEta(t0);                    // 5_000 @ t0 (warm start)
 
-        s.AddUploaded(0, 2_000);               // now 7_000 uploaded; totalNew (1_000) is dwarfed
+        s.AddUploaded(ChunkHash.Parse(new string('4', 64)), 0, 2_000);   // distinct chunk → now 7_000 uploaded; totalNew (1_000) is dwarfed
         s.SampleForEta(t0.AddSeconds(1));
 
         var eta = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;

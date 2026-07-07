@@ -16,7 +16,7 @@ public class RepresentationTests
         s.SetTotals(files: 1001, bytes: 100_000_000);      // scan excludes pointer-only (0 bytes each)
         s.AddDeduped(original: 1_000_000_000);             // pointer-only dedup at full size (> total)
         s.AddQueuedNew(100_000_000);                       // one new chunk queued for upload
-        s.AddUploaded(stored: 60_000_000, original: 100_000_000);
+        s.AddUploaded(ChunkHash.Parse(new string('a', 64)), stored: 60_000_000, original: 100_000_000);
 
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
         // Additive new-bytes, NOT total - deduped (which would be Max(0, 100M - 1000M) = 0):

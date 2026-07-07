@@ -164,14 +164,44 @@ public sealed class JobSink
     public void SetTotals(long files, long bytes) { Interlocked.Exchange(ref _totalFiles, files); Interlocked.Exchange(ref _totalBytes, bytes); }
     public void AddScanned(long bytes) => Interlocked.Add(ref _scannedBytes, bytes);
     public void AddHashed(long bytes)  => Interlocked.Add(ref _hashedBytes, bytes);
-    public void AddUploaded(long stored, long original) => Interlocked.Add(ref _uploadedBytes, original);
+    /// <summary>Reconciles a completed chunk's upload to its full original size. Streaming progress
+    /// (<see cref="ReportUploadStreamed"/>) may already have credited most of it; this only tops up any remaining
+    /// delta, so the chunk contributes exactly <paramref name="original"/> whether or not streaming was reported
+    /// (scripted tests / non-streaming providers still credit the full size here).</summary>
+    public void AddUploaded(ChunkHash chunk, long stored, long original) => CreditUpload(chunk, original);
     /// <summary>Accumulates the original (uncompressed) size of each new chunk queued for upload — the
     /// additive "new bytes to upload" total. Independent of the deduped/total subtraction, so it never
     /// underflows for pointer-only-heavy repos. Final once routing completes; 0 until the first queue.</summary>
     public void AddQueuedNew(long originalSize) => Interlocked.Add(ref _queuedNewBytes, originalSize);
     public void AddDeduped(long original) { Interlocked.Add(ref _dedupedBytes, original); Interlocked.Increment(ref _dedupedFiles); }
     public void RememberTar(ChunkHash tarHash, long uncompressed) => _tarUncompressed[tarHash] = uncompressed;
-    public void AddUploadedTar(ChunkHash tarHash) { if (_tarUncompressed.TryGetValue(tarHash, out var u)) Interlocked.Add(ref _uploadedBytes, u); }
+    public void AddUploadedTar(ChunkHash tarHash) { if (_tarUncompressed.TryGetValue(tarHash, out var u)) CreditUpload(tarHash, u); }
+
+    // ── Upload progress crediting (streaming + completion, no double-count) ──────
+    private readonly Dictionary<ChunkHash, long> _uploadCredited = new();
+    private readonly object _uploadLock = new();
+
+    /// <summary>Streaming upload progress: <paramref name="cumulative"/> is the running total of bytes read from the
+    /// source for one chunk/tar (Arius.Core's ProgressStream via <c>ArchiveCommandOptions.CreateUploadProgress</c> —
+    /// the same hook the CLI taps). Crediting only the per-chunk delta makes <see cref="_uploadedBytes"/> rise
+    /// CONTINUOUSLY instead of jumping when a whole chunk/tar finishes — the coarse jumps were what made the
+    /// ETA/throughput bursty.</summary>
+    public void ReportUploadStreamed(ChunkHash chunk, long cumulative) => CreditUpload(chunk, cumulative);
+
+    /// <summary>Advances a chunk's credited-uploaded high-water mark to <paramref name="cumulative"/> and adds the
+    /// delta to the aggregate. Monotonic per chunk (a completion reconcile can only top up), so streaming reports and
+    /// the terminal completion event compose without double-counting. Serialized because <see cref="Progress{T}"/>
+    /// callbacks and the completion forwarder can run on different threadpool threads for the same chunk.</summary>
+    private void CreditUpload(ChunkHash chunk, long cumulative)
+    {
+        lock (_uploadLock)
+        {
+            var prev = _uploadCredited.TryGetValue(chunk, out var p) ? p : 0L;
+            if (cumulative <= prev) return;
+            _uploadCredited[chunk] = cumulative;
+            Interlocked.Add(ref _uploadedBytes, cumulative - prev);
+        }
+    }
 
     public void SetRestoreTotals(long files, long bytes) { Interlocked.Exchange(ref _restoreTotalFiles, files); Interlocked.Exchange(ref _restoreTotalBytes, bytes); }
     public void AddRestored(long size) { Interlocked.Increment(ref _filesRestored); Interlocked.Add(ref _bytesRestored, size); }

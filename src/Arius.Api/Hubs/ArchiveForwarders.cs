@@ -56,7 +56,7 @@ public sealed class ChunkUploadedForwarder(JobSink sink) : INotificationHandler<
 {
     public ValueTask Handle(ChunkUploadedEvent n, CancellationToken ct)
     {
-        sink.AddUploaded(n.StoredSize, n.OriginalSize);
+        sink.AddUploaded(n.ChunkHash, n.StoredSize, n.OriginalSize);
         sink.Log($"  ✓ {n.ChunkHash.Short8} → {JobFormat.Bytes(n.StoredSize)}", "ok");
         return ValueTask.CompletedTask;
     }

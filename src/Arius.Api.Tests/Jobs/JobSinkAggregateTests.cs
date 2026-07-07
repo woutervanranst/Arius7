@@ -18,7 +18,7 @@ public class JobSinkAggregateTests
         s.SetTotals(files: 3, bytes: 3000);
         s.AddScanned(3000);
         s.AddHashed(3000);
-        s.AddUploaded(stored: 400, original: 2000);
+        s.AddUploaded(ChunkHash.Parse(new string('c', 64)), stored: 400, original: 2000);
         s.AddDeduped(original: 1000);
         s.AddQueuedNew(2000);
 
@@ -29,6 +29,27 @@ public class JobSinkAggregateTests
         await Assert.That(snap.UploadedBytes).IsEqualTo(2000L);   // original units, not stored
         await Assert.That(snap.DedupedBytes).IsEqualTo(1000L);
         await Assert.That(snap.TotalNewBytes).IsEqualTo(2000L);   // additive queued-new bytes
+    }
+
+    [Test]
+    public async Task Streaming_upload_progress_credits_continuously_without_double_counting_on_completion()
+    {
+        var s = NewArchiveSink();
+        var chunk = ChunkHash.Parse(new string('e', 64));
+
+        // Streaming reports are CUMULATIVE per chunk; uploadedBytes rises by the delta each time.
+        s.ReportUploadStreamed(chunk, 30);
+        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(30L);
+        s.ReportUploadStreamed(chunk, 100);
+        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(100L);
+
+        // Completion reconciles to the final original size — it does NOT re-add the already-streamed bytes.
+        s.AddUploaded(chunk, stored: 60, original: 100);
+        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(100L);
+
+        // A chunk that never streamed still credits its full size on completion (scripted / non-streaming path).
+        s.AddUploaded(ChunkHash.Parse(new string('f', 64)), stored: 20, original: 50);
+        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(150L);
     }
 
     [Test]

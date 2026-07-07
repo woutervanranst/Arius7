@@ -83,6 +83,10 @@ public sealed class JobRunner(
                 RemoveLocal   = removeLocal,
                 WritePointers = writePointers,
                 FastHash      = fastHash,
+                // Stream per-chunk upload progress into the sink so uploadedBytes (and thus rate/ETA) advances
+                // continuously as each chunk/tar uploads, instead of only jumping when it completes — this is the
+                // same Core ProgressStream hook the CLI uses (review: ETA/throughput instability).
+                CreateUploadProgress = (chunkHash, size) => new Progress<long>(cumulative => sink.ReportUploadStreamed(chunkHash, cumulative)),
             }), sink.Cts.Token);
 
             if (result.Success)
