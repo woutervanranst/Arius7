@@ -2,6 +2,7 @@ using Arius.Api.AppData;
 using Arius.Api.Composition;
 using Arius.Api.Testing;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -46,6 +47,23 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing && File.Exists(_dbPath)) File.Delete(_dbPath);
+        if (!disposing) return;
+
+        // AppDatabase opens pooled connections (Pooling=true) and runs in WAL mode, and the background
+        // job pollers keep the pool warm right up to shutdown. On Windows a pooled physical connection
+        // holds the .sqlite file (and its -wal/-shm sidecars) open, so the deletes below throw
+        // IOException("used by another process") — Unix unlinks open files, which is why only Windows CI
+        // failed. base.Dispose above has torn down the host (stopping those pollers); clearing the Sqlite
+        // pool now releases the last handles so the throwaway files can be removed.
+        SqliteConnection.ClearAllPools();
+
+        TryDelete(_dbPath);
+        TryDelete(_dbPath + "-wal");
+        TryDelete(_dbPath + "-shm");
+    }
+
+    private static void TryDelete(string path)
+    {
+        if (File.Exists(path)) File.Delete(path);
     }
 }
