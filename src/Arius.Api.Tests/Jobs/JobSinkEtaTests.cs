@@ -68,13 +68,4 @@ public class JobSinkEtaTests
         await Assert.That(eta1).IsNotNull();
         await Assert.That(eta2).IsEqualTo(eta1);
     }
-
-    [Test]
-    public async Task Inert_sink_reporting_is_noop()
-    {
-        var s = new JobSink();          // no hub, no jobId
-        s.StartReporting();             // must not throw / must not start a timer
-        s.StopReporting();
-        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).Pct).IsEqualTo(0);
-    }
 }

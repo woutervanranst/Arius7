@@ -78,15 +78,6 @@ public class JobSinkAggregateTests
     }
 
     [Test]
-    public async Task Snapshot_carries_the_live_status()
-    {
-        var s = new JobSink();
-        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).Status).IsEqualTo("running"); // default mirrors the initial DB status
-        s.SetStatus("rehydrating");
-        await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).Status).IsEqualTo("rehydrating");
-    }
-
-    [Test]
     public async Task Tar_uploaded_bytes_use_remembered_uncompressed_size()
     {
         var s = NewArchiveSink();

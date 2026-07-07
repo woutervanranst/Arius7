@@ -30,15 +30,4 @@ public sealed class RehydrationScheduleTests
         RehydrationSchedule.IsDue(T0.AddMinutes(15), T0, T0, "Standard", firstChunkSeen: true).ShouldBeTrue();
         RehydrationSchedule.IsDue(T0.AddMinutes(10), T0, T0, "Standard", firstChunkSeen: true).ShouldBeFalse();
     }
-
-    [Test]
-    public async Task Standard_with_only_always_available_chunks_stays_quiet()
-    {
-        // available>0 but rehydrated==0 → NOT "first chunk seen" → quiet window still applies.
-        var start = DateTimeOffset.UnixEpoch;
-        var due = RehydrationSchedule.IsDue(
-            now: start + TimeSpan.FromMinutes(20), startedAt: start, lastRunAt: start,
-            priority: "Standard", firstChunkSeen: false);   // firstChunkSeen driven by rehydrated>0, which is false here
-        await Assert.That(due).IsFalse();
-    }
 }

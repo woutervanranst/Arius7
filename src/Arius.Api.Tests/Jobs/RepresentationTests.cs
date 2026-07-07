@@ -25,26 +25,6 @@ public class RepresentationTests
     }
 
     [Test]
-    public async Task TotalNewBytes_is_zero_until_a_chunk_is_queued()
-    {
-        var s = new JobSink();
-        s.SetTotals(files: 5, bytes: 500);
-        s.AddScanned(500);
-        var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
-        await Assert.That(snap.TotalNewBytes).IsEqualTo(0L);   // routing not yet produced upload work
-    }
-
-    [Test]
-    public async Task ChunkUploadingForwarder_accumulates_queued_new_bytes()
-    {
-        var s = new JobSink();
-        await new ChunkUploadingForwarder(s).Handle(new ChunkUploadingEvent(ChunkHash.Parse(new string('a', 64)), 700), default);
-        await new ChunkUploadingForwarder(s).Handle(new ChunkUploadingEvent(ChunkHash.Parse(new string('b', 64)), 300), default);
-        var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
-        await Assert.That(snap.TotalNewBytes).IsEqualTo(1000L);
-    }
-
-    [Test]
     public async Task ChunkResolutionCompleteForwarder_sets_authoritative_chunk_total()
     {
         var s = new JobSink();

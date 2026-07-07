@@ -4,6 +4,30 @@ import { Observable, Subject } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { CostEstimateMsg, DoneMsg, EntryDto, isNonTerminal, JobAttachState, JobSnapshot, ListEntriesOptions, SearchHitDto } from './api-models';
 
+/** What {@link RealtimeService.forwardReattach} re-emits for a reattached job's state. */
+export interface ReattachEmissions {
+  snapshot?: JobSnapshot;
+  cost?: CostEstimateMsg;
+  done?: DoneMsg;
+}
+
+/**
+ * Pure reattach decision: refresh absolute progress; for a still-active job also re-emit its cost estimate
+ * (the one-shot CostEstimate push can be lost while disconnected — review #6); for a finished job emit a
+ * terminal done so consumers finalize. Extracted from the service so it is unit-testable without a live
+ * SignalR connection.
+ */
+export function reattachEmissions(id: string, state: JobAttachState | null): ReattachEmissions {
+  if (!state) return {};
+  const out: ReattachEmissions = { snapshot: state.snapshot };
+  if (isNonTerminal(state.status)) {
+    if (state.cost) out.cost = state.cost;
+  } else {
+    out.done = { jobId: id, status: state.status, summary: '', outcome: null };
+  }
+  return out;
+}
+
 /**
  * SignalR client for Arius.Api's hub (/hubs/arius): file-browser entry streaming and the
  * archive/restore job streams (progress/cost/done) with the cost-approval handshake.
@@ -48,19 +72,12 @@ export class RealtimeService {
     return state;
   }
 
-  /**
-   * Re-applies a job's reattach state to the streams after a reconnect gap. Refreshes absolute progress; for a
-   * still-active job also re-emits its cost estimate (the one-shot CostEstimate push can be lost while
-   * disconnected — review #6); for a finished job emits a terminal done so consumers finalize.
-   */
+  /** Re-applies a job's reattach state to the streams after a reconnect gap (see {@link reattachEmissions}). */
   private forwardReattach(id: string, state: JobAttachState | null): void {
-    if (!state) return;
-    this.progress$.next(state.snapshot);
-    if (isNonTerminal(state.status)) {
-      if (state.cost) this.cost$.next(state.cost);
-    } else {
-      this.done$.next({ jobId: id, status: state.status, summary: '', outcome: null });
-    }
+    const { snapshot, cost, done } = reattachEmissions(id, state);
+    if (snapshot) this.progress$.next(snapshot);
+    if (cost) this.cost$.next(cost);
+    if (done) this.done$.next(done);
   }
 
   async detachFromJob(jobId: string): Promise<void> {

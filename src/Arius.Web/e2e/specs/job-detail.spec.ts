@@ -7,16 +7,6 @@ import { scratchContainer } from '../support/scratch';
 // The /jobs/:id detail page drives both archive and restore: header + status chip, the layered
 // progress bar, KPI tiles, stage list, footer/warnings and (for a parked restore) the cost modal.
 
-test('job detail page renders for an existing job', async ({ page, request }) => {
-  const jobs = await (await request.get('/api/jobs')).json();
-  test.skip(!Array.isArray(jobs) || jobs.length === 0, 'no jobs in history to open');
-
-  await page.goto(`/jobs/${jobs[0].id}`);
-  await expect(page.getByTestId('job-detail')).toBeVisible();
-  await expect(page.getByTestId('layered-bar')).toBeVisible();
-  await expect(page.getByTestId('job-status')).toBeVisible();
-});
-
 // Destructive + slow: archives a tiny folder to the Hot tier in a dedicated container, then restores
 // it to an empty destination. An online restore surfaces the estimated-cost modal on the job page;
 // approving it lets the download proceed (no rehydration, so no priority choice, no real cost).

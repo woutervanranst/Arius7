@@ -8,10 +8,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests;
 
-public class ConcurrentResumeTests
+public class ConcurrentResumeSmokeTests
 {
     // Smoke test for concurrent ResumeRestoreAsync of the same job: it verifies the fixed code path does not
-    // deadlock, does not double-complete, and leaks no registry entry under real concurrency.
+    // deadlock, does not double-complete, and leaks no registry entry under real concurrency. This is a
+    // liveness/leak smoke test, NOT a regression guard for the review-#3 clobber.
     //
     // It does NOT discriminate the review-#3 clobber (it passes with and without the Register-under-gate fix):
     // the fix's correctness is verified by inspection instead. An automated discriminator is impractical —

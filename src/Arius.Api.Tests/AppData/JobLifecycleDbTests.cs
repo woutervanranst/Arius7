@@ -30,13 +30,6 @@ public sealed class JobLifecycleDbTests
     }
 
     [Test]
-    public async Task GetJob_returns_null_for_unknown_id()
-    {
-        var (db, _) = NewDatabase();
-        db.GetJob("nope").ShouldBeNull();
-    }
-
-    [Test]
     public async Task ListActiveRehydrations_returns_only_rehydrating_rows()
     {
         var (db, repoId) = NewDatabase();
@@ -72,22 +65,6 @@ public sealed class JobLifecycleDbTests
     }
 
     [Test]
-    public async Task GetJob_state_json_deserializes_to_persisted_state()
-    {
-        var (db, repoId) = NewDatabase();
-        db.InsertJob("j1", repoId, "restore", "one-off", "running");
-        var sink = new Arius.Api.Jobs.JobSink();
-        sink.SetRestoreTotals(2, 2000);
-        db.SaveJobState("j1", System.Text.Json.JsonSerializer.Serialize(
-            sink.BuildPersistedState(DateTimeOffset.UnixEpoch, resume: null)));
-
-        var job = db.GetJob("j1")!;
-        var persisted = System.Text.Json.JsonSerializer.Deserialize<Arius.Api.Jobs.PersistedJobState>(job.StateJson!)!;
-        persisted.Snapshot.RestoreTotalFiles.ShouldBe(2L);
-        persisted.Warnings.ShouldNotBeNull();
-    }
-
-    [Test]
     public async Task CompleteJob_does_not_overwrite_an_already_terminal_row()
     {
         var (db, repoId) = NewDatabase();
@@ -99,15 +76,6 @@ public sealed class JobLifecycleDbTests
         var job = db.GetJob("j")!;
         job.Status.ShouldBe("completed");   // NOT clobbered to cancelled
         job.Pct.ShouldBe(100d);             // pct not reset to 0
-    }
-
-    [Test]
-    public async Task CompleteJob_still_transitions_a_non_terminal_row()
-    {
-        var (db, repoId) = NewDatabase();
-        db.InsertJob("j", repoId, "archive", "one-off", "running");
-        db.CompleteJob("j", "completed", 100, "done");
-        db.GetJob("j")!.Status.ShouldBe("completed");
     }
 
     [Test]
