@@ -81,7 +81,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
 
           <!-- Layered progress bar -->
           <div style="margin-top:26px">
-            <arius-layered-bar [kind]="kind()" [scanned]="scannedPct()" [middle]="middlePct()" [top]="topPct()" />
+            <arius-layered-bar [kind]="kind()" [scanned]="scannedPct()" [middle]="middlePct()" [deduped]="dedupedPct()" [top]="topPct()" />
           </div>
           <div style="display:flex;gap:20px;margin-top:10px;font-size:12.5px;color:#52525b;flex-wrap:wrap">
             @if (kind() === 'restore') {
@@ -92,6 +92,9 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#dbeafe;margin-right:6px"></span>Scanned &middot; {{ formatBytes(snap()?.scannedBytes) }} of {{ formatBytes(snap()?.totalBytes) }}</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#93c5fd;margin-right:6px"></span>Hashed &amp; routed &middot; {{ round(middlePct()) }}%</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#2563eb;margin-right:6px"></span>Uploaded &middot; {{ formatBytes(snap()?.uploadedBytes) }} of {{ formatBytes(snap()?.totalNewBytes) }}</span>
+              @if ((snap()?.dedupedBytes ?? 0) > 0) {
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#86efac;margin-right:6px"></span>Deduplicated &middot; {{ formatBytes(snap()?.dedupedBytes) }} not re-uploaded</span>
+              }
             }
           </div>
 
@@ -325,10 +328,11 @@ export class JobDetailComponent implements OnDestroy {
   });
 
   // layered-bar percentages
-  private layers = computed(() => { const s = this.snap(); if (!s) return { scanned: this.kind() === 'restore' ? 100 : 0, middle: 0, top: 0 };
+  private layers = computed(() => { const s = this.snap(); if (!s) return { scanned: this.kind() === 'restore' ? 100 : 0, middle: 0, deduped: 0, top: 0 };
     return this.kind() === 'restore' ? restoreBarLayers(s) : archiveBarLayers(s); });
   protected readonly scannedPct = computed(() => this.layers().scanned);
   protected readonly middlePct  = computed(() => this.layers().middle);
+  protected readonly dedupedPct = computed(() => this.layers().deduped);
   protected readonly topPct     = computed(() => this.layers().top);
 
   // legend / tile derivations — planned uses the authoritative chunk total (includes needs-rehydration)

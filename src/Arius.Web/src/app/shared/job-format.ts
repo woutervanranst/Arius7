@@ -71,23 +71,30 @@ export function phaseSentence(s: JobSnapshot, kind: string): string {
   return `Uploading — ${gb(s.uploadedBytes)} of ${gb(s.totalNewBytes)}`;
 }
 
-/** Archive layered-bar percentages — all three layers over the SAME dataset (totalBytes), so the bar
- *  never has a layer overtake the one below it. The Uploaded layer converges to just under 100%; the
- *  remaining gap is the deduplicated bytes (which were never uploaded). */
-export function archiveBarLayers(s: JobSnapshot): { scanned: number; middle: number; top: number } {
+/** Archive layered-bar percentages — all layers over the SAME dataset (totalBytes), so the bar never has a
+ *  layer overtake the one below it. `top` (uploaded) converges to just under 100%; `deduped`
+ *  (uploaded + deduplicated) fills the remaining gap so a completed archive reads as a full bar rather than
+ *  stalling ~5% short — the band between `top` and `deduped` is the data that deduplicated (never uploaded). */
+export function archiveBarLayers(s: JobSnapshot): { scanned: number; middle: number; deduped: number; top: number } {
   const d = s.totalBytes;
   return d > 0
-    ? { scanned: s.scannedBytes * 100 / d, middle: s.hashedBytes * 100 / d, top: s.uploadedBytes * 100 / d }
-    : { scanned: 0, middle: 0, top: 0 };
+    ? {
+        scanned: s.scannedBytes * 100 / d,
+        middle:  s.hashedBytes * 100 / d,
+        deduped: (s.uploadedBytes + s.dedupedBytes) * 100 / d,
+        top:     s.uploadedBytes * 100 / d,
+      }
+    : { scanned: 0, middle: 0, deduped: 0, top: 0 };
 }
 
 /** Restore layered-bar percentages. Two overlapping phases: hydration (chunk-space, over the authoritative
  *  chunksTotal INCLUDING chunks still needing rehydration) and download-to-disk (byte-space). Online-tier
- *  chunks download immediately, so these layers overlap rather than gate. */
-export function restoreBarLayers(s: JobSnapshot): { scanned: number; middle: number; top: number } {
+ *  chunks download immediately, so these layers overlap rather than gate. Restore has no dedup band. */
+export function restoreBarLayers(s: JobSnapshot): { scanned: number; middle: number; deduped: number; top: number } {
   return {
     scanned: 100,
     middle: s.chunksTotal > 0 ? (s.chunksAvailable + s.chunksRehydrated) * 100 / s.chunksTotal : 0,
+    deduped: 0,
     top: s.restoreTotalBytes > 0 ? s.bytesRestored * 100 / s.restoreTotalBytes : 0,
   };
 }
