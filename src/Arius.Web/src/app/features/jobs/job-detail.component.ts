@@ -93,7 +93,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#93c5fd;margin-right:6px"></span>Hashed &amp; routed &middot; {{ round(middlePct()) }}%</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#2563eb;margin-right:6px"></span>Uploaded &middot; {{ formatBytes(snap()?.uploadedBytes) }} of {{ formatBytes(snap()?.totalNewBytes) }}</span>
               @if ((snap()?.dedupedBytes ?? 0) > 0) {
-                <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#86efac;margin-right:6px"></span>Deduplicated &middot; {{ formatBytes(snap()?.dedupedBytes) }} not re-uploaded</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#60a5fa;margin-right:6px"></span>Deduplicated &middot; {{ formatBytes(snap()?.dedupedBytes) }} not re-uploaded</span>
               }
             }
           </div>
@@ -126,7 +126,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
           }
 
           <!-- Review-cost prompt: awaiting-cost reload with no live push this session (no modal replay) -->
-          @if (status() === 'awaiting-cost' && !cost()) {
+          @if (status() === 'awaiting-cost' && !cost() && !costResolved()) {
             <div style="display:flex;align-items:center;gap:12px;margin-top:20px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 18px">
               <i class="ki-filled ki-dollar" style="font-size:18px;color:#b45309"></i>
               <div style="font-size:13px;color:#92400e">This restore is paused for cost approval. The estimate is delivered live — reattach from the job stream to review and approve it.</div>
@@ -305,6 +305,10 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly snap = signal<JobSnapshot | null>(null);
   protected readonly status = signal<string>('running');
   protected readonly cost = signal<CostEstimateMsg | null>(null);
+  /** Set once the user answers the cost modal (approve/decline). Live status transitions (awaiting-cost → running)
+   *  aren't pushed to the client, so without this the "paused for cost approval" banner would linger after the
+   *  modal closes until a reload. Reset when (re)attaching to a job. */
+  protected readonly costResolved = signal(false);
   protected readonly warningsOpen = signal(false);
   protected readonly warnings = signal<string[]>([]);
   protected readonly priority = signal<'standard' | 'high'>('standard');
@@ -427,7 +431,7 @@ export class JobDetailComponent implements OnDestroy {
 
   attach(id: string): void {
     if (id === this.currentId) return;
-    this.teardown(); this.currentId = id;
+    this.teardown(); this.currentId = id; this.costResolved.set(false);
     this.api.getJob(id).subscribe(d => {
       if (this.currentId !== id) return;   // a newer attach won the race
       this.detail.set(d); this.status.set(d.status); if (d.snapshot) this.snap.set(d.snapshot);
@@ -459,8 +463,8 @@ export class JobDetailComponent implements OnDestroy {
     if (this.status() === 'rehydrating' && !confirm('Rehydration is already paid — cancelling does not refund it. Cancel anyway?')) return;
     void this.realtime.cancelJob(this.currentId);
   }
-  protected approve(): void { void this.realtime.approveRestore(this.currentId, this.priority()); this.cost.set(null); }
-  protected decline(): void { void this.realtime.declineRestore(this.currentId); this.cost.set(null); }
+  protected approve(): void { void this.realtime.approveRestore(this.currentId, this.priority()); this.cost.set(null); this.costResolved.set(true); }
+  protected decline(): void { void this.realtime.declineRestore(this.currentId); this.cost.set(null); this.costResolved.set(true); }
   protected toggleAutoResume(): void { const on = !this.autoResume(); this.autoResume.set(on); void this.realtime.setAutoResume(this.currentId, on); }
   protected resumeNow(): void { void this.realtime.resumeRestore(this.currentId); }
 

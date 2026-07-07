@@ -7,8 +7,8 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
  * uploaded + deduped bands together fill the track (the deduped band is the data that was NOT uploaded
  * because it deduplicated, so the bar reads as 100% done rather than stalling ~5% short). Restore is two
  * overlapping phases: hydration fill (chunk-space over chunksTotal) and restored fill (byte-space over
- * restoreTotalBytes), each independently monotonic 0→100; restore has no dedup band. Archive blues +
- * a green dedup band; restore purples.
+ * restoreTotalBytes), each independently monotonic 0→100; restore has no dedup band. Archive is a 4-stop
+ * blue ramp (dedup band a distinct mid-blue); restore purples.
  */
 @Component({
   selector: 'arius-layered-bar',
@@ -33,7 +33,9 @@ export class LayeredBarComponent {
    *  deduplicated data that was never uploaded, so the bar can read as complete. 0 (unused) for restore. */
   readonly deduped = input(0);
   readonly top = input(0);
+  // Archive is a 4-stop blue ramp painted darkest→lightest left-to-right (uploaded → deduped → hashed → scanned):
+  // the dedup band is a distinct mid-blue (#60a5fa), NOT green, so it reads as part of the same family.
   protected readonly palette = computed<[string, string, string, string]>(() =>
-    this.kind() === 'restore' ? ['#ede9fe', '#c4b5fd', '#ddd6fe', '#7c3aed'] : ['#dbeafe', '#93c5fd', '#86efac', '#2563eb']);
+    this.kind() === 'restore' ? ['#ede9fe', '#c4b5fd', '#ddd6fe', '#7c3aed'] : ['#dbeafe', '#93c5fd', '#60a5fa', '#2563eb']);
   protected clamp(n: number): number { return Math.max(0, Math.min(100, n)); }
 }
