@@ -2,7 +2,6 @@ using Arius.Api.Contracts;
 using Arius.Api.Hubs;
 using Arius.Core.Shared.Hashes;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.Logging;
 
 namespace Arius.Api.Jobs;
 
@@ -16,7 +15,6 @@ namespace Arius.Api.Jobs;
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
-    private readonly ILogger? _logger;   // optional diagnostic logger (ETA/throughput tracing); null on inert/read sinks
 
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
     public string? JobId { get; }
@@ -27,7 +25,7 @@ public sealed class JobSink
     public CancellationTokenSource Cts { get; } = new();
 
     public JobSink() { }                                  // inert sink for read providers
-    public JobSink(string jobId, IHubContext<JobsHub> hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
+    public JobSink(string jobId, IHubContext<JobsHub> hub) { JobId = jobId; _hub = hub; }
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
 
@@ -106,7 +104,7 @@ public sealed class JobSink
     public void StartReporting()
     {
         if (JobId is null) return;
-        _timer = new Timer(_ => { var now = _now(); SampleForEta(now); EmitNow(); LogEtaDiagnostics(now); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        _timer = new Timer(_ => { SampleForEta(_now()); EmitNow(); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
@@ -124,30 +122,6 @@ public sealed class JobSink
             if (_done) return;                   // re-check under the lock: a Done that raced in wins
             Group?.SendAsync("Progress", snapshot);
         }
-    }
-
-    /// <summary>TEMPORARY diagnostic (ETA/throughput instability): once per reporting tick, logs the sliding-window
-    /// state and the derived rate/ETA at Information under the "[ETA]" tag so the numbers driving the header can be
-    /// traced offline. No-op unless a logger was supplied. Remove once the estimator is stabilised.</summary>
-    private void LogEtaDiagnostics(DateTimeOffset now)
-    {
-        if (_logger is null || JobId is null) return;
-        int count; double spanSec; long windowDelta;
-        lock (_sampleLock)
-        {
-            count = _samples.Count;
-            var first = _samples.First;
-            var last  = _samples.Last;
-            spanSec     = first is not null && last is not null ? (last.Value.At - first.Value.At).TotalSeconds : 0;
-            windowDelta = first is not null && last is not null ? last.Value.Progress - first.Value.Progress : 0;
-        }
-        var snap = BuildSnapshot(now);
-        _logger.LogInformation(
-            "[ETA] job={JobId} phase={Phase} pct={Pct} eta={Eta}s rate={Rate:F0}B/s | window n={Count} span={Span:F1}s delta={Delta}B | archive up={Uploaded} newTotal={TotalNew} hashed={Hashed} scanned={Scanned} total={Total} deduped={Deduped} | restore restored={Restored}/{RestoreTotal}B files={FilesRestored}/{RestoreTotalFiles} chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
-            JobId, snap.Phase, snap.Pct, snap.EtaSeconds, snap.ThroughputBytesPerSec, count, spanSec, windowDelta,
-            snap.UploadedBytes, snap.TotalNewBytes, snap.HashedBytes, snap.ScannedBytes, snap.TotalBytes, snap.DedupedBytes,
-            snap.BytesRestored, snap.RestoreTotalBytes, snap.FilesRestored, snap.RestoreTotalFiles,
-            snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
     }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
@@ -212,12 +186,6 @@ public sealed class JobSink
 
     // ── Restore(download) progress crediting — mirrors the upload path ───────────
     private readonly Dictionary<string, long> _restoreCredited = new();
-    private DateTimeOffset? _restoreApprovedAt;   // TEMP [timing] (#7): set at cost approval to measure approve→first-restored-byte
-    private bool _firstRestoreLogged;
-
-    /// <summary>TEMP diagnostic (#7): marks when the restore cost was approved, so <see cref="CreditRestore"/> can log
-    /// how long until the first byte is actually restored — isolating a real post-confirm hang from user review time.</summary>
-    public void MarkRestoreApproved() => _restoreApprovedAt = _now();
 
     /// <summary>Streaming restore progress: <paramref name="cumulative"/> is the running total of bytes downloaded
     /// for one large file (Arius.Core's <c>RestoreOptions.CreateLargeFileDownloadProgress</c>). Crediting only the
@@ -227,16 +195,13 @@ public sealed class JobSink
 
     private void CreditRestore(string key, long cumulative)
     {
-        bool logFirst = false; double elapsed = 0;
         lock (_uploadLock)   // archive & restore never run on the same sink, so the crediting lock is shared
         {
             var prev = _restoreCredited.TryGetValue(key, out var p) ? p : 0L;
             if (cumulative <= prev) return;
             _restoreCredited[key] = cumulative;
             Interlocked.Add(ref _bytesRestored, cumulative - prev);
-            if (!_firstRestoreLogged && _restoreApprovedAt is { } t) { _firstRestoreLogged = true; logFirst = true; elapsed = (_now() - t).TotalSeconds; }
         }
-        if (logFirst) _logger?.LogInformation("[timing] job={JobId} first restore byte {Elapsed:F1}s after cost approval", JobId, elapsed);
     }
     public void SetRehydration(int available, int rehydrated, int needs, int pending)
     { _rehydAvailable = available; _rehydRehydrated = rehydrated; _rehydNeeds = needs; _rehydPending = pending; }
@@ -254,34 +219,48 @@ public sealed class JobSink
     public void StageStarted(string stage) => _stages[stage] = (_now(), null);
     public void StageDone(string stage) { if (_stages.TryGetValue(stage, out var e)) _stages[stage] = (e.Started, _now()); else _stages[stage] = (_now(), _now()); }
 
-    // ── Sliding-window ETA (a job is either archive or restore, never both, so the two
-    // progress-byte counters are summed into one unified clock) ────────────────────────
-    private readonly LinkedList<(DateTimeOffset At, long Progress)> _samples = new();
+    // ── Smoothed throughput (EMA over ~1s samples) → a stable ETA ────────────────
+    // A job is either archive or restore, never both, so the two progress-byte counters sum into one clock.
     private readonly object _sampleLock = new();
-    private static readonly TimeSpan EtaWindow = TimeSpan.FromSeconds(60);
+    private double _emaRate;                        // EMA-smoothed bytes/sec
+    private DateTimeOffset? _lastSampleAt;
+    private long _lastSampleProgress;
+    private const double EmaAlpha = 0.2;            // ~5-tick (≈5s) effective smoothing at the 1s cadence
 
-    /// <summary>Record an (instant, cumulative-progress-bytes) point and drop points older than the window.</summary>
+    /// <summary>Fold the latest instantaneous throughput into an EMA. Smoothing stops the ETA swinging on bursty
+    /// per-chunk crediting; a no-progress tick HOLDS the rate (rather than decaying it), so a brief between-chunk
+    /// gap can't inflate the ETA — only sustained progress moves the estimate.</summary>
     public void SampleForEta(DateTimeOffset now)
     {
         lock (_sampleLock)
         {
             var progress = Interlocked.Read(ref _uploadedBytes) + Interlocked.Read(ref _bytesRestored);
-            _samples.AddLast((now, progress));
-            while (_samples.First is { } first && now - first.Value.At > EtaWindow)
-                _samples.RemoveFirst();
+            if (_lastSampleAt is { } last)
+            {
+                var dt = (now - last).TotalSeconds;
+                if (dt > 0)
+                {
+                    var delta = progress - _lastSampleProgress;
+                    if (delta > 0)   // flat tick → hold the rate (a between-chunk gap must not inflate the ETA)
+                    {
+                        var instant = delta / dt;
+                        _emaRate = _emaRate <= 0 ? instant : EmaAlpha * instant + (1 - EmaAlpha) * _emaRate;
+                    }
+                    _lastSampleAt = now;
+                    _lastSampleProgress = progress;
+                }
+            }
+            else
+            {
+                _lastSampleAt = now;
+                _lastSampleProgress = progress;
+            }
         }
     }
 
-    private double RateBytesPerSec(DateTimeOffset now)
+    private double RateBytesPerSec()
     {
-        lock (_sampleLock)
-        {
-            if (_samples.First is not { } first || _samples.Last is not { } last) return 0;
-            var dt = (last.Value.At - first.Value.At).TotalSeconds;
-            if (dt <= 0) return 0;
-            var db = last.Value.Progress - first.Value.Progress;
-            return db > 0 ? db / dt : 0;
-        }
+        lock (_sampleLock) return _emaRate;
     }
 
     // ── Snapshot builder ─────────────────────────────────────────────────────
@@ -294,13 +273,16 @@ public sealed class JobSink
         // "New bytes to upload" is the sum of queued new-chunk sizes (additive) — NOT total - deduped,
         // which underflows when pointer-only files (scanned as 0 bytes) are deduped at full size.
         var totalNew = Interlocked.Read(ref _queuedNewBytes);
-        var rate     = RateBytesPerSec(now);
+        var rate     = RateBytesPerSec();
 
         // A job is either archive or restore, never both — pick the active kind's totals/progress
         // so both Pct and EtaSeconds are meaningful whichever kind is running.
         var restoreTotalFiles = Interlocked.Read(ref _restoreTotalFiles);
         var restored          = Interlocked.Read(ref _bytesRestored);
         var restoreTotal      = Interlocked.Read(ref _restoreTotalBytes);
+        // Streaming credits stored(compressed) download bytes, which can slightly exceed the original-byte total —
+        // cap so the tiles and bar never read over the total (pct is already clamped; this fixes the raw "on disk" value).
+        if (restoreTotal > 0 && restored > restoreTotal) restored = restoreTotal;
         var isRestore         = restoreTotal > 0 || restoreTotalFiles > 0;
         var denominator       = isRestore ? restoreTotal : totalNew;
         var progress          = isRestore ? restored     : uploaded;

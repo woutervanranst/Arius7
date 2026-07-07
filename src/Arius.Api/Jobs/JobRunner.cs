@@ -34,7 +34,7 @@ public sealed class JobRunner(
 
     public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool writePointers, bool fastHash = false, string trigger = "one-off")
     {
-        var sink = new JobSink(jobId, hub, logger);
+        var sink = new JobSink(jobId, hub);
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
@@ -124,7 +124,7 @@ public sealed class JobRunner(
 
     public async Task RunRestoreAsync(long repositoryId, string jobId, string connectionId, string? version, IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers)
     {
-        var sink = new JobSink(jobId, hub, logger);
+        var sink = new JobSink(jobId, hub);
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
@@ -212,7 +212,6 @@ public sealed class JobRunner(
                     {
                         sink.ClearPending();   // leaving the prompt — a later reattach is mid-restore, not awaiting one
                         runApprovedPriority = priority;
-                        sink.MarkRestoreApproved();   // TEMP [timing] (#7): measure approve→first-restored-byte
                         database.SetJobStatus(jobId, "running");
                         sink.SetStatus("running");
                         return priority;
@@ -337,7 +336,7 @@ public sealed class JobRunner(
         var repo = database.GetRepository(job.RepositoryId);
         if (repo is null) return;
 
-        var sink = new JobSink(jobId, hub, logger);
+        var sink = new JobSink(jobId, hub);
         var registered = false;
 
         var gate = LockFor(job.RepositoryId);

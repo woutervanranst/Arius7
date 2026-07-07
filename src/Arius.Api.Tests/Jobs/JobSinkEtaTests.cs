@@ -48,6 +48,28 @@ public class JobSinkEtaTests
     }
 
     [Test]
+    public async Task Eta_holds_steady_across_a_no_progress_tick()
+    {
+        var t0 = DateTimeOffset.UnixEpoch;
+        var s  = new JobSink();
+        s.SetTotals(files: 1, bytes: 10_000_000);
+        s.AddQueuedNew(10_000_000);
+
+        s.SampleForEta(t0);                                                    // baseline
+        s.AddUploaded(ChunkHash.Parse(new string('a', 64)), 0, 1_000_000);
+        s.SampleForEta(t0.AddSeconds(1));                                      // 1 MB/s established
+        var eta1 = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;
+
+        // No new bytes this tick → the rate is HELD, so the ETA must not inflate (with the old windowed rate it
+        // would have crept up as the window aged). Remaining and rate unchanged ⇒ ETA unchanged.
+        s.SampleForEta(t0.AddSeconds(2));
+        var eta2 = s.BuildSnapshot(t0.AddSeconds(2)).EtaSeconds;
+
+        await Assert.That(eta1).IsNotNull();
+        await Assert.That(eta2).IsEqualTo(eta1);
+    }
+
+    [Test]
     public async Task Inert_sink_reporting_is_noop()
     {
         var s = new JobSink();          // no hub, no jobId
