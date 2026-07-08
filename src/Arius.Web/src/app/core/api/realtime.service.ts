@@ -116,7 +116,7 @@ export class RealtimeService {
     }
     // Coalesce concurrent callers onto one in-flight attempt and clear it once settled, so a later
     // call re-evaluates the live connection state instead of resolving a stale already-fulfilled
-    // promise — the bug that let an invoke fire while withAutomaticReconnect had the socket in
+    // promise — otherwise an invoke could fire while withAutomaticReconnect had the socket in
     // Reconnecting/Disconnected.
     this.starting ??= this.driveToConnected().finally(() => { this.starting = undefined; });
     return this.starting;

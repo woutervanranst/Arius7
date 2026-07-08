@@ -16,7 +16,6 @@ test('jobs screen renders the sectioned overview, no live console', async ({ pag
   await expect(page.getByText(/\d+ waiting/)).toBeVisible();
   await expect(page.getByText(/\d+ scheduled/)).toBeVisible();
 
-  // no global console — on this page or anywhere else
   await expect(page.getByText('Live output')).toHaveCount(0);
   await expect(page.getByTestId('live-console')).toHaveCount(0);
 

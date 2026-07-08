@@ -95,8 +95,7 @@ export class DrawerStore {
       this.error.set(e instanceof Error ? e.message : String(e));
       return;
     }
-    // Hand off to the floating pill and dismiss the drawer. All live progress from here on flows
-    // through the pill + detail page.
+    // Live progress from here on flows through the pill + detail page.
     this.pill.show(id, kind === 'restore' ? 'restore' : 'archive');
     this.type.set(null);
   }

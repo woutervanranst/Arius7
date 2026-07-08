@@ -39,7 +39,7 @@ public sealed record UpdateRepositoryRequest(
     string? DefaultTier,
     string? Passphrase);
 
-// ── Snapshots / stats (read in Phase 2) ───────────────────────────────────────
+// ── Snapshots / stats ───────────────────────────────────────
 
 public sealed record SnapshotDto(string Version, DateTimeOffset Timestamp, long FileCount);
 

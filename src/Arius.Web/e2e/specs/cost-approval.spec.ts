@@ -36,7 +36,6 @@ test('restore of archive-tier data opens the cost-approval modal on the job page
     //    it must actually be restored, which classifies its archive-tier chunk as needing rehydration)
     await request.patch(`/api/repos/${created.id}`, { data: { localPath: '' } });
 
-    // 3) whole-repo restore from the header
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-restore').click();
     await page.getByTestId('drawer-start').click();

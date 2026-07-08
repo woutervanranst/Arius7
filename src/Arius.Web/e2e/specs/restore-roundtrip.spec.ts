@@ -39,7 +39,6 @@ test('restore writes files to an empty destination, and skips them when already 
   };
 
   try {
-    // archive the source folder
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.getByTestId('drawer-start').click();

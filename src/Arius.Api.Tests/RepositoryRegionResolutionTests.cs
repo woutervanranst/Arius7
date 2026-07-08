@@ -59,8 +59,7 @@ public sealed class RepositoryRegionResolutionTests
     public async Task Migration_AddsRegionHintColumnToAPreExistingDatabase()
     {
         // A database created before region_hint existed: CREATE TABLE IF NOT EXISTS won't add the column on
-        // upgrade, so the additive ALTER in CreateOrUpgradeSchema must. Build the old schema by hand, seed a row,
-        // then open AppDatabase (which runs the migration) and confirm the repo loads and the cache is usable.
+        // upgrade, so the additive ALTER in CreateOrUpgradeSchema must.
         var path = Path.Combine(Path.GetTempPath(), $"arius-api-tests-mig-{Guid.NewGuid():N}.db");
         var connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate }.ToString();
         using (var seed = new SqliteConnection(connectionString))

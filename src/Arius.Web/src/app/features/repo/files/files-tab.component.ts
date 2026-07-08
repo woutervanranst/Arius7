@@ -310,7 +310,7 @@ export class FilesTabComponent {
   protected readonly collectedCount = computed(() => this.collected().size);
   protected readonly collectedBytes = computed(() => [...this.collected().values()].reduce((a, b) => a + b, 0));
 
-  // ── State / tier labels (from flags — what real data provides) ──────────────
+  // ── State / tier labels (from flags) ──────────────
   protected stateMeta(f: EntryDto): { label: string; color: string } {
     const s = f.stateFlags;
     if (s.repositoryRehydrating) return { label: 'Rehydrating', color: '#6d28d9' };

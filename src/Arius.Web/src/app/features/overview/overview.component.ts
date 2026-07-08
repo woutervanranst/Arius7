@@ -7,7 +7,7 @@ import { ApiService } from '../../core/api/api.service';
 import { AccountDto } from '../../core/api/api-models';
 import { DrawerStore } from '../../core/state/drawer.store';
 
-/** Overview: KPI cards + the repositories table. Cross-repo size/dedup totals arrive with the jobs DB. */
+/** Overview: KPI cards + the repositories table. */
 @Component({
   selector: 'arius-overview',
   standalone: true,

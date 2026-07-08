@@ -38,9 +38,9 @@ test('snapshot picker numbers snapshots newest-first with the newest as LATEST +
   };
 
   try {
-    await archive(1);                                                // snapshot 1
+    await archive(1);
     fs.writeFileSync(path.join(src, 'second.txt'), `arius e2e snap2 ${Date.now()}`);
-    await archive(2);                                                // snapshot 2 (root hash changed)
+    await archive(2);
 
     // Wait until the backend lists both snapshots before reading the UI.
     await expect.poll(async () => {
@@ -55,7 +55,7 @@ test('snapshot picker numbers snapshots newest-first with the newest as LATEST +
     await expect(picker).toContainText('LATEST');
     await expect(page.getByText('Live working state')).toBeVisible();
 
-    // Open the picker: newest-first → v2 on top carrying LATEST, v1 at the bottom (not LATEST).
+    // Newest-first: v2 on top carrying LATEST, v1 at the bottom (not LATEST).
     await picker.click();
     const items = page.getByTestId('snapshot-item');
     await expect(items).toHaveCount(2);

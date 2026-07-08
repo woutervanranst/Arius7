@@ -1,6 +1,6 @@
 import { test, expect } from '../support/fixtures';
 
-// Repo shell: header actions, the tab bar, and the snapshot bar that was promoted above the tabs.
+// Repo shell: header actions, the tab bar, and the snapshot bar above the tabs.
 test.describe('repo detail shell', () => {
   test('header actions read Restore · Archive · Properties, left to right', async ({ page, repo }) => {
     await page.goto(`/repos/${repo.repoId}/files`);

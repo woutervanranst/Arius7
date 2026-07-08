@@ -27,17 +27,12 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
         services.AddSingleton(gate);
         services.AddSingleton(new ScenarioContext(connection.RepositoryId));
 
-        // Othamar Mediator's generated ContainerMetadata eagerly resolves EVERY discovered
-        // command/query handler on the first Send/Publish through this provider's IMediator — not just
-        // the one a given scenario scripts (see NotConfiguredHandlers.cs for why). Register a
-        // NotConfigured stand-in for EVERY command/query/stream-query interface Arius.Core exposes up
-        // front — this list must track the handler set AddArius() wires in
-        // src/Arius.Core/ServiceCollectionExtensions.cs — including ArchiveCommand and RestoreCommand
-        // (both are scenario-scriptable, so both need a baseline stand-in too). The scenario-driven
-        // overrides below are registered AFTER, so — with MS-DI's last-registration-wins resolution —
-        // they take over for whatever this test actually scripts, while every other handler (and either
-        // of Archive/Restore when a test scripts only one of them) safely falls back to the stand-in
-        // instead of eagerly resolving the real, un-constructable Core handler.
+        // Register a NotConfigured stand-in for EVERY command/query/stream-query interface Arius.Core
+        // exposes up front — this list must track the handler set AddArius() wires in
+        // src/Arius.Core/ServiceCollectionExtensions.cs — because Mediator eagerly resolves every
+        // discovered handler on first Send/Publish, not just the one a scenario scripts (see
+        // NotConfiguredHandlers.cs for why). ArchiveCommand and RestoreCommand are scenario-scriptable
+        // but still need a baseline stand-in for runs that don't script them.
         services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>, NotConfiguredCommandHandler<ArchiveCommand, ArchiveResult>>();
         services.AddSingleton<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>, NotConfiguredCommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>, NotConfiguredCommandHandler<RestoreCommand, RestoreResult>>();

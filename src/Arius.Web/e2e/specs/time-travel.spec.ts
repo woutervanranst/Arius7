@@ -30,7 +30,7 @@ test('snapshot dropdown is newest-first (LATEST on top) and shows no file count'
     await expect(items.last()).toContainText('v1');
   }
 
-  // The per-row file count was removed from the dropdown.
+  // No per-row file count in the dropdown.
   for (let i = 0; i < count; i++) {
     await expect(items.nth(i)).not.toContainText('files');
   }

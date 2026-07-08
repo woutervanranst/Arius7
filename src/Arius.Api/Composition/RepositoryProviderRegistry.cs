@@ -99,7 +99,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     /// </summary>
     public void Remove(long repositoryId)
     {
-        Evict(repositoryId); // dispose + drop the cached read provider (fire-and-forget, as today)
+        Evict(repositoryId); // dispose + drop the cached read provider (fire-and-forget)
 
         ILoggerFactory? factory;
         lock (_gate)

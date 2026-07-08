@@ -6,8 +6,8 @@ using Arius.Core.Shared.Hashes;
 
 namespace Arius.Api.Testing;
 
-/// <summary>Reusable representative scenarios modelled on the handoff's reference run. Kept in one place so
-/// tests exercise the same shapes the fidelity guard validates.</summary>
+/// <summary>Reusable representative scenarios, kept in one place so tests exercise the same shapes the
+/// fidelity guard validates.</summary>
 public static class CanonicalScenarios
 {
     public static ArchiveScenario RepresentativeArchive(bool gated = false) => new(

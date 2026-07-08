@@ -157,7 +157,7 @@ public sealed class JobRunner(
         ServiceProvider? provider = null;
         try
         {
-            // Inside the try (not before it): a bad LocalPath/permissions error here is now handled by
+            // Inside the try (not before it): a bad LocalPath/permissions error here is handled by
             // the catch below (marks the job "failed" + emits Done) instead of escaping this
             // fire-and-forget task and leaving the row stuck "running" — which would block all future
             // jobs for this repo under the single-active-job guard.

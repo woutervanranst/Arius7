@@ -26,7 +26,6 @@ import { CostCalculatorComponent } from '../../../shared/cost-calculator/cost-ca
       </div>
     </div>
 
-    <!-- All five KPI cards in a single row. -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px">
       @for (card of snapshotCards(); track card.label) {
         <div class="ar-card" data-testid="kpi-card" style="padding:15px 16px">

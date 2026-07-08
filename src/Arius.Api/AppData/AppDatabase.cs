@@ -124,7 +124,7 @@ public sealed class AppDatabase
     /// <summary>
     /// The serialization version of the <c>statistics_cache</c> <c>payload</c> (the <c>StatisticsDto</c> shape).
     /// Bump whenever the payload gains/loses fields so stale rows written by an older build are discarded rather
-    /// than silently deserialized with default values. v2 added per-tier and total storage-cost fields.
+    /// than silently deserialized with default values.
     /// </summary>
     private const long CachePayloadVersion = 2;
 

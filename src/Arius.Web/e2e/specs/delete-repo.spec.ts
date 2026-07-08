@@ -10,11 +10,11 @@ test('delete repository removes it from Arius and returns to the overview', asyn
 
   try {
     await page.goto(`/repos/${created.id}/files`);
-    await page.getByTestId('btn-properties').click();        // open the Properties drawer
+    await page.getByTestId('btn-properties').click();
     await expect(page.getByTestId('properties-drawer')).toBeVisible();
 
-    await page.getByTestId('prop-delete').click();           // arm the inline confirm
-    await page.getByTestId('prop-delete-confirm').click();   // confirm → DELETE + navigate
+    await page.getByTestId('prop-delete').click();
+    await page.getByTestId('prop-delete-confirm').click();
 
     await expect(page).toHaveURL(/\/overview$/);
 

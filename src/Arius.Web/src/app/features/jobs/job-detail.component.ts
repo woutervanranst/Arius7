@@ -326,7 +326,6 @@ export class JobDetailComponent implements OnDestroy {
     try { return JSON.parse(o) as JobOutcome; } catch { return null; }
   });
 
-  // layered-bar percentages
   private layers = computed(() => { const s = this.snap(); if (!s) return { scanned: this.kind() === 'restore' ? 100 : 0, middle: 0, deduped: 0, top: 0 };
     return this.kind() === 'restore' ? restoreBarLayers(s) : archiveBarLayers(s); });
   protected readonly scannedPct = computed(() => this.layers().scanned);
@@ -334,11 +333,10 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly dedupedPct = computed(() => this.layers().deduped);
   protected readonly topPct     = computed(() => this.layers().top);
 
-  // legend / tile derivations — planned uses the authoritative chunk total (includes needs-rehydration)
+  // planned uses the authoritative chunk total (includes needs-rehydration)
   protected readonly plannedChunks = computed(() => this.snap()?.chunksTotal ?? 0);
   protected readonly readyChunks   = computed(() => { const s = this.snap(); return s ? s.chunksAvailable + s.chunksRehydrated : 0; });
 
-  // header ETA / meta
   protected readonly elapsedSeconds = computed<number | null>(() => {
     const d = this.detail(); if (!d?.startedAt) return null;
     this.snap();   // recompute on each progress push for a live-ish elapsed
@@ -368,11 +366,9 @@ export class JobDetailComponent implements OnDestroy {
     return tp > 0 ? formatThroughput(tp) + ' sustained' : '';
   });
 
-  // footer warnings
   protected readonly warningCount = computed(() => this.snap()?.warningCount ?? this.detail()?.warningCount ?? 0);
   protected readonly warningsLabel = computed(() => { const n = this.warningCount(); return n === 1 ? 'There is 1 warning' : `There are ${n} warnings`; });
 
-  // stage summary rows (derived from the live snapshot + status)
   protected readonly stages = computed<Stage[]>(() => this.kind() === 'restore' ? this.restoreStages() : this.archiveStages());
 
   private archiveStages(): Stage[] {

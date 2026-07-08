@@ -21,12 +21,10 @@ test.describe('archive drawer', () => {
     await expect(keepPtrBtn).not.toHaveClass(/on/);
     await expect(replaceBtn).not.toHaveClass(/on/);
 
-    // selecting 'keep-pointers' activates only that option
     await keepPtrBtn.click();
     await expect(keepBtn).not.toHaveClass(/on/);
     await expect(keepPtrBtn).toHaveClass(/on/);
 
-    // selecting 'replace' activates only that option
     await replaceBtn.click();
     await expect(replaceBtn).toHaveClass(/on/);
     await expect(keepPtrBtn).not.toHaveClass(/on/);

@@ -13,8 +13,7 @@ namespace Arius.Api.Hubs;
 
 /// <summary>
 /// The single Arius realtime hub: repository entry streaming (file browser + time-travel) and the
-/// archive/restore job streams with the inline cost-approval handshake. Container discovery and
-/// global search are added in later phases.
+/// archive/restore job streams with the inline cost-approval handshake.
 /// </summary>
 public sealed class JobsHub(
     RepositoryProviderRegistry registry,
