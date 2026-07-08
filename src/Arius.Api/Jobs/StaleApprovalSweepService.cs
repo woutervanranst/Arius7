@@ -36,11 +36,20 @@ internal sealed class StaleApprovalSweepService(IServiceProvider services, ILogg
 
         foreach (var job in database.ListStaleAwaitingCost(cutoff))
         {
-            logger.LogInformation("Auto-cancelling abandoned awaiting-cost job {JobId} (older than {Age})", job.Id, MaxApprovalAge);
-            if (approvals.HasPending(job.Id))
-                approvals.Resolve(job.Id, null);                          // live run → decline branch marks cancelled + Done
-            else
-                runner.CancelParked(job.Id, "Cost approval abandoned.");  // no live wait → cancel + broadcast Done
+            // Isolate per-job failures: one throwing Resolve/CancelParked must not abandon the rest of the
+            // batch until the next hourly tick — log it and keep sweeping.
+            try
+            {
+                logger.LogInformation("Auto-cancelling abandoned awaiting-cost job {JobId} (older than {Age})", job.Id, MaxApprovalAge);
+                if (approvals.HasPending(job.Id))
+                    approvals.Resolve(job.Id, null);                          // live run → decline branch marks cancelled + Done
+                else
+                    runner.CancelParked(job.Id, "Cost approval abandoned.");  // no live wait → cancel + broadcast Done
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to auto-cancel stale job {JobId}", job.Id);
+            }
         }
     }
 }
