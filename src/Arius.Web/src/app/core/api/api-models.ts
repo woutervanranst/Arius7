@@ -76,7 +76,7 @@ export interface ListEntriesOptions {
   includeLocal?: boolean;
 }
 
-// ── Jobs: absolute-state realtime + REST (Plan 2 protocol) ────────────────────
+// ── Jobs: absolute-state realtime + REST ──────────────────────────────────────
 
 export const NON_TERMINAL_STATUSES = ['running', 'awaiting-cost', 'rehydrating'] as const;
 export type JobStatus = 'running' | 'awaiting-cost' | 'rehydrating' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
@@ -140,8 +140,8 @@ export interface JobOutcome {
   durationSeconds: number | null;
 }
 
-/** Persisted resume facts for a restore, mirrored from the server `ResumeInfo` (auto-resume toggle #14,
- *  rehydration-window ETA #13). Surfaced on reattach so a job past cost-approval still renders them. */
+/** Persisted resume facts for a restore, mirrored from the server `ResumeInfo`. Surfaced on reattach so a
+ *  job past cost-approval still renders them. */
 export interface ResumeInfo {
   autoResume: boolean;
   rehydrationStartedAt: string;

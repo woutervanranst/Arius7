@@ -37,7 +37,7 @@ internal static class JobEndpoints
             // A job blocked in the ConfirmRehydration callback (genuinely parked at awaiting-cost, still within
             // the approval window) still has a LIVE sink here — JobRunner's method has not returned, so nothing
             // has removed it from jobStates yet. JobViewResolver reads the cost/resume the run staged on the sink
-            // for exactly this case (ReattachScenarioTests proves it) rather than hardcoding null.
+            // for exactly this case rather than hardcoding null.
             var view = JobViewResolver.Resolve(jobStates, id, job.StateJson);
             return Results.Ok(new JobDetailDto(
                 job.Id, job.RepositoryId, repo?.Alias ?? "—", job.Kind, job.Trigger, job.Status,

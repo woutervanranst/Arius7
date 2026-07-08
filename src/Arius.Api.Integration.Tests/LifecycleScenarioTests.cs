@@ -10,11 +10,10 @@ namespace Arius.Api.Integration.Tests;
 
 public class LifecycleScenarioTests
 {
-    /// <summary>Regression for fix #12: <c>GET /jobs/{id}</c> used the ring-capped <c>Warnings.Count</c> (max 200)
-    /// instead of the true total on <c>Snapshot.WarningCount</c>, undercounting any job with more than 200
-    /// warnings. A scripted restore emitting 250 warnings is heavier than needed to exercise the endpoint's
-    /// read path, so this persists a <see cref="PersistedJobState"/> with the >200 mismatch directly (mirroring
-    /// what the ring capping would have produced) and asserts the endpoint reports the true total.</summary>
+    /// <summary>Regression: <c>GET /jobs/{id}</c> must report the true total on <c>Snapshot.WarningCount</c>,
+    /// not the ring-capped <c>Warnings.Count</c> (max 200) which undercounts any job with more than 200
+    /// warnings. Persists a <see cref="PersistedJobState"/> with the >200 mismatch directly and asserts the
+    /// endpoint reports the true total.</summary>
     [Test]
     public async Task Detail_endpoint_reports_the_true_warning_count_not_the_ring_cap()
     {

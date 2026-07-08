@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { JobPillStore } from '../../core/state/job-pill.store';
 import { formatEta, formatThroughput, phaseSentence } from '../../shared/job-format';
 
-/** Floating repo-scoped progress pill (bottom-right of the content area). Dark, 30px SVG ring + two lines + "View job ›". */
+/** Floating repo-scoped progress pill (bottom-center of the content area). Dark, 30px SVG ring + two lines + "View job ›". */
 @Component({
   selector: 'arius-job-pill',
   standalone: true,

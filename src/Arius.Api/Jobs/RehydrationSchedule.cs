@@ -1,6 +1,6 @@
 namespace Arius.Api.Jobs;
 
-/// <summary>Adaptive rehydration re-drive cadence (design §7). Pure, clock-injected so it is unit-testable.
+/// <summary>Adaptive rehydration re-drive cadence. Pure, clock-injected so it is unit-testable.
 /// High: every 15 min from start. Standard: quiet for the first ~10 h (rehydration can't finish sooner), then
 /// hourly. Once a re-run has seen ≥1 chunk become available, tighten to every 15 min regardless of priority.</summary>
 public static class RehydrationSchedule

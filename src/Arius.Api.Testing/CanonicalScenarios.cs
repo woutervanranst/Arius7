@@ -7,7 +7,7 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Api.Testing;
 
 /// <summary>Reusable representative scenarios modelled on the handoff's reference run. Kept in one place so
-/// Plans 2 &amp; 3 exercise the same shapes the fidelity guard validates.</summary>
+/// tests exercise the same shapes the fidelity guard validates.</summary>
 public static class CanonicalScenarios
 {
     public static ArchiveScenario RepresentativeArchive(bool gated = false) => new(
@@ -51,7 +51,7 @@ public static class CanonicalScenarios
         Gated: gated);
 
     /// <summary>A restore that PARKS at <c>rehydrating</c> after approval (post-approve result still reports chunks
-    /// pending), so a reattach renders the rehydration wait card + auto-resume toggle + "≈ hydrated by" (#13/#14).</summary>
+    /// pending), so a reattach renders the rehydration wait card + auto-resume toggle + "≈ hydrated by".</summary>
     public static RestoreScenario RehydratingRestoreStaysPending() => RehydratingRestore() with
     {
         PostApproveEvents =
@@ -63,7 +63,7 @@ public static class CanonicalScenarios
 
     /// <summary>A restore where every chunk is already in an online tier — NOTHING needs rehydration, so the cost
     /// modal only confirms the (egress) download cost. Priority is irrelevant here (it only affects rehydration
-    /// speed), which is why the modal drops the Standard/High choice for this shape (#3).</summary>
+    /// speed), which is why the modal drops the Standard/High choice for this shape.</summary>
     public static RestoreScenario OnlineRestore(bool gated = false) => new(
         PreCostEvents:
         [

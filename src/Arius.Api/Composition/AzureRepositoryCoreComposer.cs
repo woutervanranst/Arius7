@@ -5,8 +5,7 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Api.Composition;
 
-/// <summary>Production composer: opens the real Azure container and registers the real Arius.Core graph.
-/// This is exactly the blob-open + registration that lived inline in <see cref="RepositoryProviderRegistry"/>.</summary>
+/// <summary>Production composer: opens the real Azure container and registers the real Arius.Core graph.</summary>
 public sealed class AzureRepositoryCoreComposer(IBlobServiceFactory blobServiceFactory) : IRepositoryCoreComposer
 {
     public async Task ComposeAsync(IServiceCollection services, RepositoryConnection connection, PreflightMode mode, CancellationToken cancellationToken)

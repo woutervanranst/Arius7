@@ -7,7 +7,7 @@ namespace Arius.Api.Jobs;
 /// <see cref="AppData.AppDatabase.ListActiveRehydrations"/> (no per-job timers → survives restart; re-arms every
 /// rehydrating row on startup), and for each auto-resume job whose adaptive cadence is due, calls
 /// <see cref="JobRunner.ResumeRestoreAsync"/>. Auto-resume=off jobs are skipped (a manual "Restore now" drives them).
-/// Mirrors <see cref="SchedulerService"/>. Design §7.
+/// Mirrors <see cref="SchedulerService"/>.
 /// </summary>
 public sealed class RehydrationPollingService(IServiceProvider services, ILogger<RehydrationPollingService> logger) : BackgroundService
 {

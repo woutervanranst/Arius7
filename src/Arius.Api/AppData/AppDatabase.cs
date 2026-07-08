@@ -101,17 +101,15 @@ public sealed class AppDatabase
         EnsureColumn(connection, table: "jobs", column: "state_json", type: "TEXT");
         EnsureColumn(connection, table: "jobs", column: "outcome",    type: "TEXT");
 
-        // Reconcile orphaned "running" jobs BEFORE creating the unique index below. A database created
-        // before this guard existed can already hold two 'running' rows for the same repo (the pre-guard
-        // code inserted status='running' before taking the per-repo gate), which would make the CREATE
-        // UNIQUE INDEX fail with a constraint violation and fault AppDatabase construction — and with it,
-        // Api startup. A 'running' row found here is always an orphan from a prior process (this
-        // constructor is the only writer active right now), so reconciling first is always correct.
+        // Reconcile orphaned "running" jobs BEFORE creating the unique index below. A database can already
+        // hold two 'running' rows for the same repo, which would make the CREATE UNIQUE INDEX fail with a
+        // constraint violation and fault AppDatabase construction — and with it, Api startup. A 'running'
+        // row found here is always an orphan from a prior process (this constructor is the only writer
+        // active right now), so reconciling first is always correct.
         ReconcileRunningJobs(connection);
 
         // Enforces at most one non-terminal job per repository (running | awaiting-cost | rehydrating);
-        // a new start is rejected rather than queued. Runs on every startup (IF NOT EXISTS), so it also
-        // lands on databases created before this index existed.
+        // a new start is rejected rather than queued. Runs on every startup (IF NOT EXISTS).
         using var index = connection.CreateCommand();
         index.CommandText = $"""
             CREATE UNIQUE INDEX IF NOT EXISTS ux_jobs_one_active_per_repo
@@ -422,7 +420,7 @@ public sealed class AppDatabase
     /// <c>rehydrating</c>/<c>awaiting-cost</c>. Returns <c>false</c> when the row was terminalized in the meantime
     /// (e.g. a concurrent cancel via <see cref="Arius.Api.Hubs.JobsHub.CancelJob"/>'s parked branch), so
     /// <see cref="Arius.Api.Jobs.JobRunner.ResumeRestoreAsync"/> can bail instead of resurrecting a cancelled job to
-    /// running and driving it to completion (review #1). Unlike <see cref="SetJobStatus"/> this is conditional.</summary>
+    /// running and driving it to completion. Unlike <see cref="SetJobStatus"/> this is conditional.</summary>
     public bool TryResumeToRunning(string id, string? detail = null)
     {
         using var connection = OpenConnection();
@@ -446,7 +444,7 @@ public sealed class AppDatabase
     }
 
     /// <summary>All jobs currently in <c>rehydrating</c> — the rehydration poller's work list. Rebuilt from the
-    /// DB every tick so the poller holds no per-job timers and survives an Api restart (design §7).</summary>
+    /// DB every tick so the poller holds no per-job timers and survives an Api restart.</summary>
     public IReadOnlyList<JobRecord> ListActiveRehydrations()
     {
         using var connection = OpenConnection();
@@ -489,7 +487,7 @@ public sealed class AppDatabase
     }
 
     /// <summary>Persists the job's live <see cref="JobSnapshot"/> (serialized) so it survives a host restart
-    /// and can seed a reconnecting client (Task 7). Overwritten roughly every progress tick while the job runs.</summary>
+    /// and can seed a reconnecting client. Overwritten roughly every progress tick while the job runs.</summary>
     public void SaveJobState(string id, string stateJson)
     {
         using var connection = OpenConnection();
@@ -540,9 +538,7 @@ public sealed class AppDatabase
     /// restart, so neither can continue in place. Mark them <c>interrupted</c> (terminal → frees the
     /// <c>ux_jobs_one_active_per_repo</c> guard so the user can re-run; no paid work is lost at awaiting-cost because
     /// rehydration hasn't started yet). <c>rehydrating</c> is deliberately left untouched — the poller legitimately
-    /// re-arms it from the DB on its next tick. Redundant after construction — <see cref="CreateOrUpgradeSchema"/>
-    /// already runs this (via <see cref="ReconcileRunningJobs"/>) before the unique index is created — but kept public
-    /// because it's semantically meaningful on its own and is exercised directly by tests.</summary>
+    /// re-arms it from the DB on its next tick.</summary>
     public int ReconcileInterruptedJobs()
     {
         using var connection = OpenConnection();

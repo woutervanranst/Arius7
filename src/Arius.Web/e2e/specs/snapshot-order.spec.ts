@@ -24,8 +24,7 @@ test('snapshot picker numbers snapshots newest-first with the newest as LATEST +
 
   // Confirm completion from the backend (the new snapshot lands), not the live "Archive complete"
   // toast: a sub-second archive can finish before the hub re-subscribes, so that UI event races away
-  // and never shows (same reasoning as statistics-tiers.spec.ts). Each call re-opens the drawer via
-  // goto, so no explicit Close is needed.
+  // and never shows.
   const archive = async (expectedSnapshots: number) => {
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();

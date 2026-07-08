@@ -4,7 +4,7 @@ import * as path from 'path';
 import { test, expect } from '../support/fixtures';
 import { scratchContainer } from '../support/scratch';
 
-// Destructive: creates a dedicated container so the main repo's data is never replaced (scoped like archive.spec.ts).
+// Destructive: creates a dedicated container so the main repo's data is never replaced.
 test('pill appears after Start and opens the job detail page @write', async ({ page, request, repo }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
   test.setTimeout(120_000);

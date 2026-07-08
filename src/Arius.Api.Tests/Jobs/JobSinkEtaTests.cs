@@ -60,8 +60,8 @@ public class JobSinkEtaTests
         s.SampleForEta(t0.AddSeconds(1));                                      // 1 MB/s established
         var eta1 = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;
 
-        // No new bytes this tick → the rate is HELD, so the ETA must not inflate (with the old windowed rate it
-        // would have crept up as the window aged). Remaining and rate unchanged ⇒ ETA unchanged.
+        // No new bytes this tick → the rate is HELD, so the ETA must not inflate. Remaining and rate
+        // unchanged ⇒ ETA unchanged.
         s.SampleForEta(t0.AddSeconds(2));
         var eta2 = s.BuildSnapshot(t0.AddSeconds(2)).EtaSeconds;
 

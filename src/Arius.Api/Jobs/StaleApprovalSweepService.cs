@@ -5,7 +5,7 @@ namespace Arius.Api.Jobs;
 /// <summary>
 /// Auto-cancels restores abandoned at the cost prompt. Wakes hourly and declines any <c>awaiting-cost</c> job
 /// older than <see cref="MaxApprovalAge"/> (24h) — the single owner of "closed the modal and walked away"
-/// cleanup, deliberately off the hub/connection path (a dropped tab must not decide; design §8). A live run
+/// cleanup, deliberately off the hub/connection path (a dropped tab must not decide). A live run
 /// (pending approval) is declined via <see cref="RestoreApprovalRegistry.Resolve"/> so its own decline branch
 /// marks it cancelled + broadcasts Done; a row with no live wait is cancelled via <see cref="JobRunner.CancelParked"/>.
 /// Mirrors <see cref="SchedulerService"/>/<see cref="RehydrationPollingService"/>.

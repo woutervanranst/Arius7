@@ -17,8 +17,7 @@ public sealed class RestoreApprovalRegistry
     /// <summary>Arms the pending-approval waiter for a job WITHOUT awaiting it. Call this before the client is told
     /// it may answer (i.e. before <c>JobSink.Cost</c>) so an approve/decline that races in ahead of
     /// <see cref="RegisterAsync"/> starting to await is captured by the waiter instead of being dropped as "no
-    /// pending approval" — which had left the restore parked on the per-repo gate until the 24h sweep (review #4).
-    /// Idempotent: <see cref="RegisterAsync"/> then awaits this same waiter (its <c>GetOrAdd</c> returns it).</summary>
+    /// pending approval". Idempotent: <see cref="RegisterAsync"/> then awaits this same waiter (its <c>GetOrAdd</c> returns it).</summary>
     public void Prime(string jobId) =>
         _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously));
 

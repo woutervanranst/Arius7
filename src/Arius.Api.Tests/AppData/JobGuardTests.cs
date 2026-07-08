@@ -12,8 +12,7 @@ namespace Arius.Api.Tests.AppData;
 /// </summary>
 public sealed class JobGuardTests
 {
-    /// <summary>A fresh on-disk database with one account + repository (the FK target for a job row),
-    /// mirroring <c>StatisticsCacheTests.NewDatabase</c>.</summary>
+    /// <summary>A fresh on-disk database with one account + repository (the FK target for a job row).</summary>
     private static (AppDatabase Database, long RepositoryId) NewDatabase()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
@@ -58,12 +57,10 @@ public sealed class JobGuardTests
     }
 
     /// <summary>
-    /// Simulates a database created by pre-Task-7 code, which inserted <c>status='running'</c> before
-    /// taking the per-repo gate and so could leave TWO 'running' rows for the same <c>repo_id</c>. The
-    /// schema initializer's <c>CREATE UNIQUE INDEX ux_jobs_one_active_per_repo</c> would reject that state
-    /// unless the orphan reconciliation (running → interrupted) runs first. Reopening the same on-disk
-    /// file with a new <see cref="AppDatabase"/> must therefore neither throw nor leave any 'running' row
-    /// behind.
+    /// An on-disk database with TWO 'running' rows for the same <c>repo_id</c>. The schema initializer's
+    /// <c>CREATE UNIQUE INDEX ux_jobs_one_active_per_repo</c> would reject that state unless the orphan
+    /// reconciliation (running → interrupted) runs first. Reopening the same on-disk file with a new
+    /// <see cref="AppDatabase"/> must therefore neither throw nor leave any 'running' row behind.
     /// </summary>
     [Test]
     public async Task Reopening_a_database_with_two_pre_guard_running_rows_reconciles_before_the_index_is_created()
@@ -74,9 +71,8 @@ public sealed class JobGuardTests
         var repositoryId = seed.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
         seed.InsertJob("j1", repositoryId, "archive", "one-off", "running");
 
-        // A second 'running' row for the same repo can't go through InsertJob any more (the guard's
-        // unique index — created by `seed` above — already rejects it). Force it directly on the
-        // connection to reproduce the pre-guard on-disk state the index didn't exist to prevent.
+        // A second 'running' row for the same repo can't go through InsertJob (the guard's unique
+        // index already rejects it). Force it directly on the connection to reproduce the on-disk state.
         var connectionString = new SqliteConnectionStringBuilder { DataSource = path }.ToString();
         await using (var connection = new SqliteConnection(connectionString))
         {

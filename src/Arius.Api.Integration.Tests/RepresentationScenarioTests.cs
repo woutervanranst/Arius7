@@ -72,11 +72,8 @@ public class RepresentationScenarioTests
 
         var db = factory.Services.GetRequiredService<AppDatabase>();
         var job = db.GetJob(jobId)!;
-        // With CostPrompt: null and ChunksPendingRehydration: 0, ScriptedRestoreHandler skips the cost-approval
-        // handshake and returns success with 0 pending, so JobRunner.RunRestoreAsync takes the "completed" branch
-        // (JobRunner.cs:266-267) and persists the snapshot there — the JobSink's _chunksTotal field (set by
-        // ChunkResolutionCompleteForwarder from ChunkResolutionCompleteEvent, above) is never reset, so it survives
-        // into the terminal BuildPersistedState() call unchanged. That makes the persisted state_json snapshot the
+        // With CostPrompt null and no pending rehydration the restore completes without resetting the sink's
+        // chunk total, so it survives unchanged into the terminal persisted snapshot. That makes state_json the
         // reliable place to assert ChunksTotal == 427 (the authoritative total including chunks still needing
         // rehydration), not just a live/in-flight value.
         await Assert.That(job!.Status).IsEqualTo("completed");

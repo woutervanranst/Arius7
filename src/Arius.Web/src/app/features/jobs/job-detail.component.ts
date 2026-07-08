@@ -13,7 +13,7 @@ import { Subscription } from 'rxjs';
 interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pending'; }
 
 /**
- * `/jobs/:id` — the unified archive/restore job detail page (design README §Screens 2–4).
+ * `/jobs/:id` — the unified archive/restore job detail page.
  * ONE component drives both kinds; the palette, KPI tiles, stage list and rehydration wait card
  * switch on `kind()`. On open it loads the persisted row (`getJob`) AND attaches to the live
  * SignalR stream (`attachToJob` → snapshot, then `jobProgress` deltas); reconnect re-attach is
@@ -294,7 +294,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
 export class JobDetailComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly realtime = inject(RealtimeService);
-  readonly id = input.required<string>();   // route param (withComponentInputBinding — verified enabled)
+  readonly id = input.required<string>();   // route param (withComponentInputBinding)
 
   protected readonly detail = signal<JobDetailDto | null>(null);
   protected readonly snap = signal<JobSnapshot | null>(null);
@@ -309,7 +309,7 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly priority = signal<'standard' | 'high'>('standard');
   /** Whether this cost prompt involves archive-tier rehydration. When false (every chunk is already in an online
    *  tier) the modal only confirms the download/egress cost — priority is irrelevant, so we drop the Standard/High
-   *  choice and the confirm button reads "Restore" rather than "Rehydrate & restore" (#3 UX). */
+   *  choice and the confirm button reads "Restore" rather than "Rehydrate & restore". */
   protected readonly needsRehydration = computed(() => (this.cost()?.chunksNeedingRehydration ?? 0) > 0);
   protected readonly autoResume = signal(true);
   protected readonly resume = signal<ResumeInfo | null>(null);
@@ -355,7 +355,7 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly hydratedBy = computed(() => {
     const w = this.rehydrateWindowHours();
     // Anchor the ETA to when rehydration actually started (set on the resume when cost is approved), NOT the job's
-    // startedAt — otherwise a delayed cost approval makes "hydrated by" read hours too early (review #8).
+    // startedAt — otherwise a delayed cost approval makes "hydrated by" read hours too early.
     return w != null ? hydratedByLabel(this.resume()?.rehydrationStartedAt ?? null, w) : '';
   });
   protected readonly bigEta = computed(() => {
@@ -461,7 +461,7 @@ export class JobDetailComponent implements OnDestroy {
     void this.realtime.cancelJob(this.currentId);
   }
   // Optimistically dismiss the modal, but roll it back if the invoke never reached the server — otherwise a
-  // transient WebSocket blip leaves the restore parked with no visible prompt or re-entry until the 24h sweep (review #10).
+  // transient WebSocket blip leaves the restore parked with no visible prompt or re-entry until the 24h sweep.
   protected approve(): void {
     const prev = this.cost();
     this.cost.set(null); this.costResolved.set(true);
@@ -474,7 +474,7 @@ export class JobDetailComponent implements OnDestroy {
   }
   protected toggleAutoResume(): void {
     const on = !this.autoResume(); this.autoResume.set(on);
-    this.realtime.setAutoResume(this.currentId, on).catch(() => this.autoResume.set(!on));   // revert the toggle if the invoke failed (review #10)
+    this.realtime.setAutoResume(this.currentId, on).catch(() => this.autoResume.set(!on));   // revert the toggle if the invoke failed
   }
   protected resumeNow(): void { void this.realtime.resumeRestore(this.currentId); }
 

@@ -5,8 +5,6 @@ using Mediator;
 namespace Arius.Api.Hubs;
 
 // Each forwarder folds one Arius.Core archive event into the job's JobSink byte aggregate.
-// They no longer send Progress directly — the coalesced ~1s emit (JobRunner) does. Log lines stay
-// until the console is removed in Plan 3.
 
 public sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<ScanCompleteEvent>
 {

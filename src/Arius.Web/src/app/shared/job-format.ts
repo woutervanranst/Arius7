@@ -43,7 +43,7 @@ export function resolveRehydrationWindowHours(
 
 export interface StatusMeta { label: string; color: string; bg: string; border: string; dot: string; icon: string; pulse: boolean; }
 
-/** Chip styling per status (README §Screens; amber for waiting, blue running, etc.). */
+/** Chip styling per status (amber for waiting, blue running, etc.). */
 export function statusMeta(status: string): StatusMeta {
   switch (status) {
     case 'running':      return { label: 'Running',      color: '#1d4ed8', bg: '#eff6ff', border: 'none', dot: '#3b82f6', icon: 'ki-loading',       pulse: true };
