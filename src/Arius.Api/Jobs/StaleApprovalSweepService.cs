@@ -10,7 +10,7 @@ namespace Arius.Api.Jobs;
 /// marks it cancelled + broadcasts Done; a row with no live wait is cancelled via <see cref="JobRunner.CancelParked"/>.
 /// Mirrors <see cref="SchedulerService"/>/<see cref="RehydrationPollingService"/>.
 /// </summary>
-public sealed class StaleApprovalSweepService(IServiceProvider services, ILogger<StaleApprovalSweepService> logger) : BackgroundService
+internal sealed class StaleApprovalSweepService(IServiceProvider services, ILogger<StaleApprovalSweepService> logger) : BackgroundService
 {
     public static readonly TimeSpan MaxApprovalAge = TimeSpan.FromHours(24);
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
@@ -28,7 +28,7 @@ public sealed class StaleApprovalSweepService(IServiceProvider services, ILogger
         while (await timer.SafeWaitForNextTickAsync(stoppingToken));
     }
 
-    public void Sweep(DateTimeOffset cutoff)
+    internal void Sweep(DateTimeOffset cutoff)
     {
         var database  = services.GetRequiredService<AppDatabase>();
         var approvals = services.GetRequiredService<RestoreApprovalRegistry>();
