@@ -16,6 +16,9 @@
     <PackageReference Include="Mediator.Abstractions" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Cronos" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Serilog.Enrichers.Thread" />
     <PackageReference Include="Serilog.Expressions" />
     <PackageReference Include="Serilog.Extensions.Hosting" />

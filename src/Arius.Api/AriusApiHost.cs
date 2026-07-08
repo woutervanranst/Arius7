@@ -7,6 +7,7 @@ using Arius.AzureBlob;
 using Arius.Core.Shared;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Scalar.AspNetCore;
 
 namespace Arius.Api;
 
@@ -40,6 +41,10 @@ public static class AriusApiHost
         builder.Services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
+        // OpenAPI document generation — Development only (mapped in MapAriusApi via Scalar).
+        if (builder.Environment.IsDevelopment())
+            builder.Services.AddOpenApi();
+
         builder.Services.AddCors(options => options.AddPolicy("web", policy =>
             policy.WithOrigins("http://localhost:4200")
                   .AllowAnyHeader()
@@ -70,6 +75,15 @@ public static class AriusApiHost
         api.MapJobEndpoints();
         api.MapFilesystemEndpoints();
         app.MapHub<JobsHub>("/hubs/arius");
+
+        // Development-only API docs: raw document at /openapi/v1.json, Scalar UI at /scalar.
+        // Mapped as real routes so they resolve before the SPA fallback below.
+        if (app.Environment.IsDevelopment())
+        {
+            app.MapOpenApi();
+            app.MapScalarApiReference();
+        }
+
         app.MapFallbackToFile("index.html");
 
         return app;
