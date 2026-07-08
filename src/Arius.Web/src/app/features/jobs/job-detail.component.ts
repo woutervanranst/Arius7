@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api/api.service';
 import { RealtimeService } from '../../core/api/realtime.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
@@ -282,6 +283,11 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
           </div>
         </div>
       }
+    } @else if (loadError()) {
+      <div style="padding:40px;text-align:center;color:#a1a1aa;font-size:13px">
+        Couldn't load this job. It may have been removed, or the connection dropped.
+        <div style="margin-top:12px"><a routerLink="/jobs" style="color:#3b82f6">Back to jobs</a></div>
+      </div>
     } @else {
       <div style="padding:40px;text-align:center;color:#a1a1aa;font-size:13px">Loading job…</div>
     }
@@ -294,9 +300,12 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
 export class JobDetailComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly realtime = inject(RealtimeService);
+  private readonly notify = inject(NotificationService);
   readonly id = input.required<string>();   // route param (withComponentInputBinding)
 
   protected readonly detail = signal<JobDetailDto | null>(null);
+  /** The persisted-row load failed (404 / network) — surfaces an error state instead of hanging on "Loading job…". */
+  protected readonly loadError = signal(false);
   protected readonly snap = signal<JobSnapshot | null>(null);
   protected readonly status = signal<string>('running');
   protected readonly cost = signal<CostEstimateMsg | null>(null);
@@ -424,18 +433,21 @@ export class JobDetailComponent implements OnDestroy {
 
   attach(id: string): void {
     if (id === this.currentId) return;
-    this.teardown(); this.currentId = id; this.costResolved.set(false);
-    this.api.getJob(id).subscribe(d => {
-      if (this.currentId !== id) return;   // a newer attach won the race
-      this.detail.set(d); this.status.set(d.status); if (d.snapshot) this.snap.set(d.snapshot);
-      if (d.cost) this.cost.set(d.cost);
-      if (d.resume) { this.resume.set(d.resume); this.autoResume.set(d.resume.autoResume); }
+    this.teardown(); this.currentId = id; this.costResolved.set(false); this.loadError.set(false);
+    this.api.getJob(id).subscribe({
+      next: d => {
+        if (this.currentId !== id) return;   // a newer attach won the race
+        this.detail.set(d); this.status.set(d.status); if (d.snapshot) this.snap.set(d.snapshot);
+        if (d.cost) this.cost.set(d.cost);
+        if (d.resume) { this.resume.set(d.resume); this.autoResume.set(d.resume.autoResume); }
+      },
+      error: () => { if (this.currentId === id) this.loadError.set(true); },   // stop hanging on "Loading job…"
     });
-    void this.realtime.attachToJob(id).then(st => { if (st && this.currentId === id) {
+    this.realtime.attachToJob(id).then(st => { if (st && this.currentId === id) {
       this.snap.set(st.snapshot); this.status.set(st.status);
       if (st.cost) this.cost.set(st.cost);
       if (st.resume) { this.resume.set(st.resume); this.autoResume.set(st.resume.autoResume); }
-    } });
+    } }).catch(() => { if (this.currentId === id) this.notify.error('Live updates are unavailable — showing the last known state.'); });
     this.subs.push(this.realtime.jobProgress(id).subscribe(s => { this.snap.set(s); if (s.status) this.status.set(s.status); }));
     this.subs.push(this.realtime.jobCost(id).subscribe(c => this.cost.set(c)));
     this.subs.push(this.realtime.jobDone(id).subscribe(d => { this.status.set(d.status); this.cost.set(null); this.api.getJob(id).subscribe(x => this.detail.set(x)); }));
@@ -454,25 +466,25 @@ export class JobDetailComponent implements OnDestroy {
   protected copyWarnings(): void { void navigator.clipboard?.writeText(this.warnings().join('\n')); }
   protected cancel(): void {
     if (this.status() === 'rehydrating' && !confirm('Rehydration is already paid — cancelling does not refund it. Cancel anyway?')) return;
-    void this.realtime.cancelJob(this.currentId);
+    this.realtime.cancelJob(this.currentId).catch(() => this.notify.error("Couldn't cancel the job — it may still be running."));
   }
-  // Optimistically dismiss the modal, but roll it back if the invoke never reached the server — otherwise a
-  // transient WebSocket blip leaves the restore parked with no visible prompt or re-entry until the 24h sweep.
+  // Optimistically dismiss the modal, but roll it back (and tell the user) if the invoke never reached the server —
+  // otherwise a transient WebSocket blip leaves the restore parked with no visible prompt or re-entry until the 24h sweep.
   protected approve(): void {
     const prev = this.cost();
     this.cost.set(null); this.costResolved.set(true);
-    this.realtime.approveRestore(this.currentId, this.priority()).catch(() => { this.cost.set(prev); this.costResolved.set(false); });
+    this.realtime.approveRestore(this.currentId, this.priority()).catch(() => { this.cost.set(prev); this.costResolved.set(false); this.notify.error("Couldn't submit your restore approval — try again."); });
   }
   protected decline(): void {
     const prev = this.cost();
     this.cost.set(null); this.costResolved.set(true);
-    this.realtime.declineRestore(this.currentId).catch(() => { this.cost.set(prev); this.costResolved.set(false); });
+    this.realtime.declineRestore(this.currentId).catch(() => { this.cost.set(prev); this.costResolved.set(false); this.notify.error("Couldn't submit your restore decision — try again."); });
   }
   protected toggleAutoResume(): void {
     const on = !this.autoResume(); this.autoResume.set(on);
-    this.realtime.setAutoResume(this.currentId, on).catch(() => this.autoResume.set(!on));   // revert the toggle if the invoke failed
+    this.realtime.setAutoResume(this.currentId, on).catch(() => { this.autoResume.set(!on); this.notify.error("Couldn't update auto-resume — try again."); });   // revert the toggle if the invoke failed
   }
-  protected resumeNow(): void { void this.realtime.resumeRestore(this.currentId); }
+  protected resumeNow(): void { this.realtime.resumeRestore(this.currentId).catch(() => this.notify.error("Couldn't resume the restore — try again.")); }
 
   ngOnDestroy(): void { if (this.currentId) void this.realtime.detachFromJob(this.currentId); this.teardown(); }
   private teardown(): void { this.subs.forEach(s => s.unsubscribe()); this.subs = []; }
