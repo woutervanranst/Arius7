@@ -486,6 +486,28 @@ public sealed class AppDatabase
         return result;
     }
 
+    /// <summary>Non-terminal jobs (running/awaiting-cost/rehydrating), optionally repo-scoped, ordered newest-first.
+    /// Deliberately <b>uncapped</b>: unlike <see cref="ListJobs"/> it never hides an active job behind the newest-100
+    /// window, since a long-lived <c>awaiting-cost</c> (up to 24h) or <c>rehydrating</c> job can sit outside that
+    /// window in a busy multi-repo/scheduled system. Backs <c>GET /jobs?status=active</c> (job-pill discovery).
+    /// Bounded in practice by the single-active-job-per-repo unique index.</summary>
+    public IReadOnlyList<JobRecord> ListActiveJobs(long? repositoryId = null)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at, state_json, outcome " +
+            $"FROM jobs WHERE status IN ({JobStatuses.NonTerminalSqlList})" +
+            (repositoryId is null ? "" : " AND repo_id = $r") +
+            " ORDER BY COALESCE(started_at, '') DESC;";
+        if (repositoryId is not null) command.Parameters.AddWithValue("$r", repositoryId);
+        using var reader = command.ExecuteReader();
+        var result = new List<JobRecord>();
+        while (reader.Read())
+            result.Add(ReadJob(reader));
+        return result;
+    }
+
     /// <summary>Persists the job's live <see cref="JobSnapshot"/> (serialized) so it survives a host restart
     /// and can seed a reconnecting client. Overwritten roughly every progress tick while the job runs.</summary>
     public void SaveJobState(string id, string stateJson)
