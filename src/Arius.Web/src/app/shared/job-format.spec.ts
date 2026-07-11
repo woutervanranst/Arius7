@@ -17,7 +17,7 @@ describe('archiveBarLayers', () => {
     const l = archiveBarLayers(snap({ totalBytes: 1000, scannedBytes: 1000, hashedBytes: 1000, uploadedBytes: 400, totalNewBytes: 500 }));
     expect(l.scanned).toBe(100);
     expect(l.middle).toBe(100);
-    expect(l.top).toBe(40);          // 400/1000, NOT 400/500=80 (the old inconsistent denominator)
+    expect(l.top).toBe(40);          // 400/1000, NOT 400/500=80
     expect(l.top).toBeLessThanOrEqual(l.middle);
   });
 });
@@ -25,7 +25,7 @@ describe('archiveBarLayers', () => {
 describe('restoreBarLayers', () => {
   it('uses the authoritative chunksTotal (including needs-rehydration) as the hydration denominator', () => {
     const l = restoreBarLayers(snap({ chunksTotal: 427, chunksAvailable: 145, chunksRehydrated: 0, chunksNeedingRehydration: 282, chunksPending: 0, restoreTotalBytes: 1000, bytesRestored: 250 }));
-    expect(Math.round(l.middle)).toBe(34);   // 145/427, NOT 145/145=100 (old subset-sum omitted needs-rehydration)
+    expect(Math.round(l.middle)).toBe(34);   // 145/427, NOT 145/145=100
     expect(l.top).toBe(25);
   });
 });

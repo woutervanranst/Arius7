@@ -181,7 +181,7 @@ public class AzureRestoreCostCalculatorTests
     [Test]
     public void EgressCost_SmallTransfer_StillCharged()
         => AzureRestoreCostCalculator.Compute(_pricing, new RestoreCostRequest { DownloadBytes = 50L * 1024 * 1024 * 1024 })
-            .EgressCost.ShouldBe(4.0, tolerance: 1e-9); // 50 * 0.08 — was free under the old 100 GiB allowance, now billed
+            .EgressCost.ShouldBe(4.0, tolerance: 1e-9); // 50 * 0.08, billed from the first byte
 
     [Test]
     public void EgressCost_CountsRehydratedArchiveBytes_NotPending()

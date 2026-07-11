@@ -13,9 +13,8 @@ export interface ReattachEmissions {
 
 /**
  * Pure reattach decision: refresh absolute progress; for a still-active job also re-emit its cost estimate
- * (the one-shot CostEstimate push can be lost while disconnected — review #6); for a finished job emit a
- * terminal done so consumers finalize. Extracted from the service so it is unit-testable without a live
- * SignalR connection.
+ * (the one-shot CostEstimate push can be lost while disconnected); for a finished job emit a terminal done
+ * so consumers finalize. A pure function so it is unit-testable without a live SignalR connection.
  */
 export function reattachEmissions(id: string, state: JobAttachState | null): ReattachEmissions {
   if (!state) return {};
@@ -42,9 +41,9 @@ export class RealtimeService {
   private readonly attached = new Set<string>();
 
   /** Absolute-state progress, tagged by jobId. Subscribers filter by their own jobId. */
-  readonly progress$ = new Subject<JobSnapshot>();     // note: payload is now JobSnapshot (has .jobId)
-  readonly cost$ = new Subject<CostEstimateMsg>();      // now jobId-tagged
-  readonly done$ = new Subject<DoneMsg>();              // now jobId-tagged
+  readonly progress$ = new Subject<JobSnapshot>();
+  readonly cost$ = new Subject<CostEstimateMsg>();
+  readonly done$ = new Subject<DoneMsg>();
 
   /** Filtered view of progress$ for one job. */
   jobProgress(jobId: string): Observable<JobSnapshot> {
@@ -117,7 +116,7 @@ export class RealtimeService {
     }
     // Coalesce concurrent callers onto one in-flight attempt and clear it once settled, so a later
     // call re-evaluates the live connection state instead of resolving a stale already-fulfilled
-    // promise — the bug that let an invoke fire while withAutomaticReconnect had the socket in
+    // promise — otherwise an invoke could fire while withAutomaticReconnect had the socket in
     // Reconnecting/Disconnected.
     this.starting ??= this.driveToConnected().finally(() => { this.starting = undefined; });
     return this.starting;

@@ -1,7 +1,7 @@
 namespace Arius.Api.Integration.Tests.Harness;
 
 /// <summary>Polls a condition until it holds or the timeout elapses — the shared spin-wait used across the
-/// scenario integration tests (was a per-class copy; review #17). 50 ms cadence, throws on timeout.</summary>
+/// scenario integration tests. 50 ms cadence, throws on timeout.</summary>
 public static class ScenarioWait
 {
     public static async Task Until(Func<bool> condition, TimeSpan timeout)

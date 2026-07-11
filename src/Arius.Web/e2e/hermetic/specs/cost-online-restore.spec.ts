@@ -21,7 +21,7 @@ test('the cost modal drops the priority choice when nothing needs rehydration (#
   await page.goto(`/jobs/${restoreId}`);
   await expect(page.getByTestId('cost-modal')).toBeVisible();
 
-  // #3: nothing to rehydrate → no Standard/High choice, and the confirm button just says "Restore".
+  // nothing to rehydrate → no Standard/High choice, and the confirm button just says "Restore".
   await expect(page.getByTestId('prio-standard')).toHaveCount(0);
   await expect(page.getByTestId('prio-high')).toHaveCount(0);
   await expect(page.getByTestId('cost-approve')).toHaveText('Restore');
@@ -37,8 +37,8 @@ test('the cost modal drops the priority choice when nothing needs rehydration (#
 
 test('the awaiting-cost banner clears after approving and does not linger', async ({ page, request, control }) => {
   const repoId = await control.seedRepo({ alias: 'online-gated' });
-  // Gated: the run pauses after approval, so no live "running" transition reaches the client — the exact
-  // condition under which the "paused for cost approval" banner used to linger after the modal closed.
+  // Gated: the run pauses after approval, so no live "running" transition reaches the client — the
+  // condition under which the "paused for cost approval" banner can linger after the modal closes.
   await control.scenario(repoId, 'onlineRestore', true);
 
   await page.goto(`/repos/${repoId}`);

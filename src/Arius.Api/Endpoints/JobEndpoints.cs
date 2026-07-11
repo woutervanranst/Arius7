@@ -13,15 +13,19 @@ internal static class JobEndpoints
         {
             var aliases = db.ListRepositories().ToDictionary(r => r.Id, r => r.Alias);
             var nonTerminal = new HashSet<string>(JobStatuses.NonTerminal);
-            return db.ListJobs()
-                .Where(j => repositoryId is null || j.RepositoryId == repositoryId)
-                .Where(j => status switch
-                {
-                    null or ""  => true,
-                    "active"    => nonTerminal.Contains(j.Status),
-                    "terminal"  => !nonTerminal.Contains(j.Status),
-                    var s       => j.Status == s,
-                })
+            // "active" is served by an uncapped, repo-scoped query: filtering the globally capped ListJobs() in
+            // memory could drop a long-lived non-terminal job that fell outside the newest-100 window.
+            IEnumerable<JobRecord> jobs = status == "active"
+                ? db.ListActiveJobs(repositoryId)
+                : db.ListJobs()
+                    .Where(j => repositoryId is null || j.RepositoryId == repositoryId)
+                    .Where(j => status switch
+                    {
+                        null or ""  => true,
+                        "terminal"  => !nonTerminal.Contains(j.Status),
+                        var s       => j.Status == s,
+                    });
+            return jobs
                 .Select(j => new JobDto(
                     j.Id, j.RepositoryId, aliases.GetValueOrDefault(j.RepositoryId, "—"),
                     j.Kind, j.Trigger, j.Status, j.Pct, j.Detail, j.StartedAt, j.FinishedAt, j.Outcome))
@@ -37,7 +41,7 @@ internal static class JobEndpoints
             // A job blocked in the ConfirmRehydration callback (genuinely parked at awaiting-cost, still within
             // the approval window) still has a LIVE sink here — JobRunner's method has not returned, so nothing
             // has removed it from jobStates yet. JobViewResolver reads the cost/resume the run staged on the sink
-            // for exactly this case (ReattachScenarioTests proves it) rather than hardcoding null.
+            // for exactly this case rather than hardcoding null.
             var view = JobViewResolver.Resolve(jobStates, id, job.StateJson);
             return Results.Ok(new JobDetailDto(
                 job.Id, job.RepositoryId, repo?.Alias ?? "—", job.Kind, job.Trigger, job.Status,

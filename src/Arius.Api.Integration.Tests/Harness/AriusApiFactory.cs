@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Arius.Api.Integration.Tests.Harness;
 
-/// <summary>Boots Arius.Api in-process with a throwaway SQLite app-db and (from Task 5) a scripted Core.</summary>
+/// <summary>Boots Arius.Api in-process with a throwaway SQLite app-db and a scripted Core.</summary>
 public sealed class AriusApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"arius-itest-{Guid.NewGuid():N}.sqlite");
@@ -52,9 +52,9 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
         // AppDatabase opens pooled connections (Pooling=true) and runs in WAL mode, and the background
         // job pollers keep the pool warm right up to shutdown. On Windows a pooled physical connection
         // holds the .sqlite file (and its -wal/-shm sidecars) open, so the deletes below throw
-        // IOException("used by another process") — Unix unlinks open files, which is why only Windows CI
-        // failed. base.Dispose above has torn down the host (stopping those pollers); clearing the Sqlite
-        // pool now releases the last handles so the throwaway files can be removed.
+        // IOException("used by another process"). base.Dispose above has torn down the host (stopping
+        // those pollers); clearing the Sqlite pool now releases the last handles so the throwaway files
+        // can be removed.
         SqliteConnection.ClearAllPools();
 
         TryDelete(_dbPath);

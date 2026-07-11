@@ -13,8 +13,7 @@ namespace Arius.Api.Hubs;
 
 /// <summary>
 /// The single Arius realtime hub: repository entry streaming (file browser + time-travel) and the
-/// archive/restore job streams with the inline cost-approval handshake. Container discovery and
-/// global search are added in later phases.
+/// archive/restore job streams with the inline cost-approval handshake.
 /// </summary>
 public sealed class JobsHub(
     RepositoryProviderRegistry registry,
@@ -91,7 +90,7 @@ public sealed class JobsHub(
         // A job blocked in the ConfirmRehydration callback (genuinely parked at awaiting-cost, still within the
         // approval window) still has a LIVE sink here — JobRunner's method has not returned, so nothing has
         // removed it from jobStates yet. JobViewResolver reads the cost/resume the run staged on the sink for
-        // exactly this case (ReattachScenarioTests proves it) rather than hardcoding null.
+        // exactly this case rather than hardcoding null.
         var view = JobViewResolver.Resolve(jobStates, jobId, job.StateJson);
         return new JobAttachState(job.Status, view.Snapshot ?? EmptySnapshot(jobId), view.Cost, view.WarningCount, view.Resume);
     }
@@ -123,7 +122,7 @@ public sealed class JobsHub(
         if (approvals.HasPending(jobId)) { approvals.Resolve(jobId, null); return Task.CompletedTask; }
         if (jobStates.CancelLive(jobId)) return Task.CompletedTask;   // mid-run → cooperative CTS cancel
         approvals.Resolve(jobId, null);                               // parked/not-live safety no-op
-        jobRunner.CancelParked(jobId);                               // mark cancelled + broadcast Done (review #5)
+        jobRunner.CancelParked(jobId);                               // mark cancelled + broadcast Done
         return Task.CompletedTask;
     }
 
@@ -164,7 +163,7 @@ public sealed class JobsHub(
         // ApproveRestore is unambiguously "proceed" — DeclineRestore is the separate decline path. An unrecognized
         // or missing priority therefore defaults to Standard (the cheaper tier), never null: a null here would be
         // read by the run's ConfirmRehydration callback as a decline and silently cancel a restore the user meant
-        // to approve (review #5).
+        // to approve.
         var chosen = priority?.ToLowerInvariant() == "high" ? RehydratePriority.High : RehydratePriority.Standard;
         if (approvals.HasPending(jobId)) approvals.Resolve(jobId, chosen);   // in-run
         // else: no live approval wait to answer (job already resumed/terminal) — nothing to do.
@@ -181,7 +180,7 @@ public sealed class JobsHub(
 
     private Task DeclineParkedAsync(string jobId)
     {
-        jobRunner.CancelParked(jobId);   // mark cancelled + broadcast Done (review #5)
+        jobRunner.CancelParked(jobId);   // mark cancelled + broadcast Done
         return Task.CompletedTask;
     }
 

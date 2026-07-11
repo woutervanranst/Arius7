@@ -18,7 +18,7 @@ test('global search returns cross-repository hits and reveals the clicked file',
   await result.click();
 
   // Clicking a hit must navigate to the repo's Files tab AND carry the file path so the tab can
-  // reveal it (regression guard for ARI-4: previously the click reset the tab to the repo root).
+  // reveal it.
   await expect(page).toHaveURL(/\/repos\/\d+\/files\?path=/);
 
   // The clicked file's row must be revealed AND collected — its checkbox checked (row turns blue)
@@ -31,8 +31,8 @@ test('global search returns cross-repository hits and reveals the clicked file',
   // selector stays valid even if the path contains quotes or other special characters.
   const revealedRow = page.locator(`[data-testid="file-row"][data-rel=${JSON.stringify(revealedPath)}]`);
   await expect(revealedRow).toBeVisible();
-  await expect(revealedRow.locator('.ar-check.on')).toBeVisible();   // box is checked
-  await expect(page.getByTestId('collected-bar')).toBeVisible();      // and it joined the collector
+  await expect(revealedRow.locator('.ar-check.on')).toBeVisible();
+  await expect(page.getByTestId('collected-bar')).toBeVisible();
 });
 
 /** Opens the repo's file list (drilling into folders as needed) and returns a distinctive substring of the first file's name. */

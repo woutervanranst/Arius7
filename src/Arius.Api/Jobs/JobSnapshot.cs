@@ -1,7 +1,7 @@
 namespace Arius.Api.Jobs;
 
 /// <summary>Absolute-state progress snapshot for a job — the payload for the coalesced Progress emit and for
-/// snapshot-on-attach (Plan 2). Everything is a total, so a consumer applies latest-wins with no accumulation.</summary>
+/// snapshot-on-attach. Everything is a total, so a consumer applies latest-wins with no accumulation.</summary>
 public sealed record JobSnapshot
 {
     public required string  JobId          { get; init; }

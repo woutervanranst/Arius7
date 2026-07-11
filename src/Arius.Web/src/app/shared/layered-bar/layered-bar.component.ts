@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 /**
- * Byte-weighted layered progress bar (design README §Screens 2). ONE track, overlapping fills painted
+ * Byte-weighted layered progress bar. ONE track, overlapping fills painted
  * largest-first so each subset shows on top of the previous. Archive: scanned ⊇ hashed ⊇ (uploaded+deduped)
  * ⊇ uploaded, all % of the same dataset (totalBytes) — so it never jumps, and at completion the
  * uploaded + deduped bands together fill the track (the deduped band is the data that was NOT uploaded

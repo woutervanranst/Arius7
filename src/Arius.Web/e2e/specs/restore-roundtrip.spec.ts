@@ -5,9 +5,9 @@ import { test, expect } from '../support/fixtures';
 import { scratchContainer } from '../support/scratch';
 
 // Destructive: archives a small folder to a dedicated container, then restores it twice to contrast
-// the two restore-destination behaviours. Start dismisses the drawer immediately and hands the job to
-// the floating pill — progress, the cost modal and the restored-file count are all observed on the
-// pill / the job's `/jobs/:id` detail page, not an in-drawer stream/console.
+// the two restore-destination behaviours. Start dismisses the drawer and hands the job to the floating
+// pill — progress, the cost modal and the restored-file count are all observed on the pill / the job's
+// `/jobs/:id` detail page.
 test('restore writes files to an empty destination, and skips them when already present @write', async ({ page, request, repo }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive restore round-trip');
   test.setTimeout(300_000);
@@ -39,7 +39,6 @@ test('restore writes files to an empty destination, and skips them when already 
   };
 
   try {
-    // archive the source folder
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.getByTestId('drawer-start').click();
@@ -56,7 +55,7 @@ test('restore writes files to an empty destination, and skips them when already 
     await expect(page.getByTestId('drawer')).toBeHidden();
 
     const restoreAId = await waitForNewJobId('restore');
-    // An online (Hot-tier) restore now surfaces an estimated-cost approval modal before downloading;
+    // An online (Hot-tier) restore surfaces an estimated-cost approval modal before downloading;
     // approve it to let the download proceed. (No rehydration here, so there is no priority choice.)
     await page.goto(`/jobs/${restoreAId}`);
     await expect(page.getByTestId('cost-modal')).toBeVisible({ timeout: 120_000 });

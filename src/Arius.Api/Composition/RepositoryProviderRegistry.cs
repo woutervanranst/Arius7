@@ -99,7 +99,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     /// </summary>
     public void Remove(long repositoryId)
     {
-        Evict(repositoryId); // dispose + drop the cached read provider (fire-and-forget, as today)
+        Evict(repositoryId); // dispose + drop the cached read provider (fire-and-forget)
 
         ILoggerFactory? factory;
         lock (_gate)
@@ -127,7 +127,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // swap in a scripted fake without touching Arius.Core.
         await _coreComposer.ComposeAsync(services, connection, mode, cancellationToken).ConfigureAwait(false);
 
-        // Route Core's logging to the repository's shared rolling log file (same as before).
+        // Route Core's logging to the repository's shared rolling log file.
         var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
         services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));

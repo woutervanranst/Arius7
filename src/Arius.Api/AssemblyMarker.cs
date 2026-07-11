@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Arius.Api.Tests")]
+[assembly: InternalsVisibleTo("Arius.Api.Integration.Tests")]
 
 namespace Arius.Api;
 

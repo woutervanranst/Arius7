@@ -4,20 +4,18 @@ import * as path from 'path';
 import { test, expect } from '../support/fixtures';
 import { scratchContainer } from '../support/scratch';
 
-// The /jobs overview (design README §Screens 5, mockup 4a) replaces the old runs table + global
-// live console with three sections: Needs your attention (awaiting-cost), Active (live mini-bar +
-// Reattach ›) and Scheduled & history (one-line outcome). No console anywhere on this page anymore.
+// The /jobs overview has three sections: Needs your attention (awaiting-cost), Active (live mini-bar
+// + Reattach ›) and Scheduled & history (one-line outcome). No console on this page.
 test('jobs screen renders the sectioned overview, no live console', async ({ page }) => {
   await page.goto('/jobs');
   await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
   // Match the "N running/waiting/scheduled" chip text specifically: a bare word substring-collides
   // with other copy on the page (e.g. 'scheduled' with the "Scheduled & history" heading, 'waiting'
   // with the awaiting-cost banner), which trips Playwright strict mode.
-  await expect(page.getByText(/\d+ running/)).toBeVisible();   // the "N running" chip
-  await expect(page.getByText(/\d+ waiting/)).toBeVisible();   // the "N waiting" chip
-  await expect(page.getByText(/\d+ scheduled/)).toBeVisible(); // the "N scheduled" chip
+  await expect(page.getByText(/\d+ running/)).toBeVisible();
+  await expect(page.getByText(/\d+ waiting/)).toBeVisible();
+  await expect(page.getByText(/\d+ scheduled/)).toBeVisible();
 
-  // the global console is gone — from this page and everywhere else
   await expect(page.getByText('Live output')).toHaveCount(0);
   await expect(page.getByTestId('live-console')).toHaveCount(0);
 
@@ -39,7 +37,7 @@ test('jobs screen renders the sectioned overview, no live console', async ({ pag
   }
 });
 
-// Destructive: creates a dedicated container so the main repo's data is never replaced (scoped like pill.spec.ts).
+// Destructive: creates a dedicated container so the main repo's data is never replaced.
 test('Detail › on an active row opens the job detail page @write', async ({ page, request, repo }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
   test.setTimeout(120_000);

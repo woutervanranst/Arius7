@@ -5,7 +5,7 @@ import { JobSnapshot, isNonTerminal } from '../api/api-models';
 import { Subscription } from 'rxjs';
 
 /**
- * Repo-scoped floating-pill state. At most one active job per repo (Plan-2 guard), so the pill adapts
+ * Repo-scoped floating-pill state. At most one active job per repo, so the pill adapts
  * to that one job. Owned by RepoDetailComponent — discovers the repo's active job on mount, accepts a
  * direct hand-off from the drawer's Start, and re-attaches on revisit. "Dismiss" is view-only.
  */
@@ -72,7 +72,7 @@ export class JobPillStore {
     // before startArchive/startRestore even returns the jobId, i.e. before we subscribe below (done$ doesn't replay),
     // so that Done would be missed and the pill would hang on "Running" forever. AttachToJob closes the gap: by the
     // time it resolves the row is already terminal — or was never inserted (null) because the job failed before the
-    // insert — either of which we treat as done (review #6).
+    // insert — either of which we treat as done.
     void this.realtime.attachToJob(jobId).then(state => {
       if (this.jobId() !== jobId) return;
       if (!state) { this.status.set('failed'); this.finish(jobId); return; }

@@ -35,12 +35,10 @@ test('restore cost modal + approve flow lives on the job page @write', async ({ 
     // 2) clear localPath so the restore writes to a fresh temp dir (the file must actually be restored)
     await request.patch(`/api/repos/${created.id}`, { data: { localPath: '' } });
 
-    // 3) whole-repo restore from the header → drawer dismisses → pill appears
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-restore').click();
     await page.getByTestId('drawer-start').click();
 
-    // 4) open the restore job's detail page and assert the page + cost modal render there
     let restoreId: string | undefined;
     await expect.poll(async () => {
       const jobs = await (await request.get(`/api/jobs?repositoryId=${created.id}`)).json();

@@ -6,7 +6,7 @@ using Mediator;
 
 namespace Arius.Api.Endpoints;
 
-/// <summary>Repository CRUD over the app database. Browsing/snapshots/stats endpoints are added in later phases.</summary>
+/// <summary>Repository CRUD over the app database.</summary>
 internal static class RepositoryEndpoints
 {
     public static void MapRepositoryEndpoints(this IEndpointRouteBuilder app)

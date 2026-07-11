@@ -28,7 +28,7 @@ test('properties: passphrase requires a matching confirmation, then saves', asyn
 
   try {
     await page.goto(`/repos/${created.id}/files`);
-    await page.getByTestId('btn-properties').click();        // open the Properties drawer
+    await page.getByTestId('btn-properties').click();
     await expect(page.getByTestId('properties-drawer')).toBeVisible();
     const save = page.getByRole('button', { name: 'Save changes' });
 

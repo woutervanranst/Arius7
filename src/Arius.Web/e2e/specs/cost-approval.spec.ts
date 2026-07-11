@@ -6,9 +6,9 @@ import { scratchContainer } from '../support/scratch';
 
 // Destructive + slow: archives a file to the Archive tier in a dedicated container, then restores it
 // to an empty destination so the rehydration cost-approval modal actually triggers (declined — no
-// real rehydration is run). The cost modal now lives on the /jobs/:id detail page (moved off the
-// drawer): Start dismisses the drawer and hands the job to the pill; the detail page renders the cost
-// modal from the attach-replayed CostEstimate while the restore is parked at confirm-cost.
+// real rehydration is run). The cost modal lives on the /jobs/:id detail page: Start dismisses the
+// drawer and hands the job to the pill; the detail page renders the cost modal from the
+// attach-replayed CostEstimate while the restore is parked at confirm-cost.
 test('restore of archive-tier data opens the cost-approval modal on the job page @write', async ({ page, request, repo }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive cost-approval flow');
   test.setTimeout(300_000);
@@ -36,13 +36,11 @@ test('restore of archive-tier data opens the cost-approval modal on the job page
     //    it must actually be restored, which classifies its archive-tier chunk as needing rehydration)
     await request.patch(`/api/repos/${created.id}`, { data: { localPath: '' } });
 
-    // 3) whole-repo restore from the header → drawer dismisses → pill appears
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-restore').click();
     await page.getByTestId('drawer-start').click();
 
-    // 4) open the restore job's detail page — the cost modal renders there (moved off the drawer),
-    //    with both priority options
+    // 4) open the restore job's detail page — the cost modal renders there, with both priority options
     let restoreId: string | undefined;
     await expect.poll(async () => {
       const jobs = await (await request.get(`/api/jobs?repositoryId=${created.id}`)).json();

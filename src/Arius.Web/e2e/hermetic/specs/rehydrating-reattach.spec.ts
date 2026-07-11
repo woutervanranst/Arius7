@@ -32,7 +32,7 @@ test('a rehydrating reattach shows the auto-resume toggle (#14) and hydrated-by 
   await page.goto(`/jobs/${restoreId}`);
   await expect(page.getByTestId('job-status')).toContainText('Rehydrating');
   const toggle = page.getByTestId('autoresume-toggle');
-  await expect(toggle).toBeVisible();                                  // #14: real toggle, seeded from resume
+  await expect(toggle).toBeVisible();                                  // real toggle, seeded from resume
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText(/hydrated by/).first()).toBeVisible();   // #13: ETA from persisted window
+  await expect(page.getByText(/hydrated by/).first()).toBeVisible();   // ETA from persisted window
 });

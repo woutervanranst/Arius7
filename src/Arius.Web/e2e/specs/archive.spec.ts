@@ -21,12 +21,10 @@ test.describe('archive drawer', () => {
     await expect(keepPtrBtn).not.toHaveClass(/on/);
     await expect(replaceBtn).not.toHaveClass(/on/);
 
-    // selecting 'keep-pointers' activates only that option
     await keepPtrBtn.click();
     await expect(keepBtn).not.toHaveClass(/on/);
     await expect(keepPtrBtn).toHaveClass(/on/);
 
-    // selecting 'replace' activates only that option
     await replaceBtn.click();
     await expect(replaceBtn).toHaveClass(/on/);
     await expect(keepPtrBtn).not.toHaveClass(/on/);
@@ -41,8 +39,8 @@ test.describe('archive drawer', () => {
   });
 
   // Destructive: creates a dedicated container so the main repo's data is never replaced. Start
-  // dismisses the drawer immediately and hands the job to the floating pill — progress and completion
-  // are observed on the pill / job history, not an in-drawer stream/console.
+  // dismisses the drawer and hands the job to the floating pill — progress and completion are
+  // observed on the pill / job history.
   test('real archive of a temp folder streams to completion @write', async ({ page, request, repo }) => {
     test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
     test.setTimeout(200_000);

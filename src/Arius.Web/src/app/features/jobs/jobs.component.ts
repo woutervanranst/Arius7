@@ -47,10 +47,9 @@ interface HistoryRow {
 }
 
 /**
- * Jobs overview (design README §Screens 5, mockup `4a`): sectioned list — Needs your attention
- * (awaiting-cost), Active (running/rehydrating, live per-row mini-bar via SignalR attach), and
- * Scheduled & history (terminal jobs, one-line outcome). The global live console is gone; each
- * job's own log/progress lives on its detail page (`/jobs/:id`), reachable via Detail ›.
+ * Jobs overview: sectioned list — Needs your attention (awaiting-cost), Active (running/rehydrating,
+ * live per-row mini-bar via SignalR attach), and Scheduled & history (terminal jobs, one-line outcome).
+ * Each job's own log/progress lives on its detail page (`/jobs/:id`), reachable via Detail ›.
  */
 @Component({
   selector: 'arius-jobs',
@@ -167,14 +166,14 @@ export class JobsComponent implements OnDestroy {
   private reload(): void { this.api.getJobs().subscribe(list => this.jobsData.set(list)); }
 
   protected readonly needsAttention = computed(() => this.jobs()?.filter(j => j.status === 'awaiting-cost') ?? []);
-  // §12 list simplification: `rehydrating` (auto-resume state isn't visible on the list DTO) lives in Active, not here.
+  // `rehydrating` (auto-resume state isn't visible on the list DTO) lives in Active, not here.
   protected readonly running = computed(() => this.jobs()?.filter(j => isNonTerminal(j.status) && j.status !== 'awaiting-cost') ?? []);
   protected readonly history = computed(() => this.jobs()?.filter(j => !isNonTerminal(j.status)) ?? []);
 
   protected readonly runningCount = computed(() => this.jobs()?.filter(j => j.status === 'running').length ?? 0);
   protected readonly waitingCount = computed(() => this.jobs()?.filter(j => j.status === 'awaiting-cost' || j.status === 'rehydrating').length ?? 0);
 
-  /** Enabled-schedule count across every repository. Two small REST calls fan out from a list that's already tiny (repos), so a live count is cheap enough to compute directly rather than stub it. */
+  /** Enabled-schedule count across every repository. Two small REST calls fan out from a list that's already tiny (repos), so a live count is cheap enough to compute directly. */
   protected readonly scheduledCount = toSignal(
     this.api.listRepositories().pipe(
       switchMap(repos => repos.length
@@ -233,7 +232,7 @@ export class JobsComponent implements OnDestroy {
 
   /** Tear down one finished job's live wiring: its progress + done subscriptions, its client-side SignalR group
    *  membership, and its cached snapshot. Without this, every job that starts and finishes while this page stays
-   *  mounted leaks a subscription + a group attachment that only ngOnDestroy would ever reclaim (review #7). */
+   *  mounted leaks a subscription + a group attachment that only ngOnDestroy would ever reclaim. */
   private releaseRow(id: string): void {
     this.jobSubs.get(id)?.unsubscribe(); this.jobSubs.delete(id);
     this.doneSubs.get(id)?.unsubscribe(); this.doneSubs.delete(id);

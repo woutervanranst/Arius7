@@ -10,16 +10,8 @@ namespace Arius.Api.Integration.Tests;
 
 public class ConcurrentResumeSmokeTests
 {
-    // Smoke test for concurrent ResumeRestoreAsync of the same job: it verifies the fixed code path does not
-    // deadlock, does not double-complete, and leaks no registry entry under real concurrency. This is a
-    // liveness/leak smoke test, NOT a regression guard for the review-#3 clobber.
-    //
-    // It does NOT discriminate the review-#3 clobber (it passes with and without the Register-under-gate fix):
-    // the fix's correctness is verified by inspection instead. An automated discriminator is impractical —
-    // once the first resume flips status to "running" under the repo gate, a second resume bails at the
-    // pre-gate (rehydrating|awaiting-cost) guard and never reaches Register, so the clobber exists only in a
-    // sub-microsecond thread race that scenario-gating can't force, and the ux_jobs_one_active_per_repo unique
-    // index prevents holding the repo gate open with a second job to widen the window.
+    // Liveness/leak smoke test for concurrent ResumeRestoreAsync of the same job: it verifies the code path
+    // does not deadlock, does not double-complete, and leaks no registry entry under real concurrency.
     [Test]
     public async Task Concurrent_resumes_of_the_same_job_complete_cleanly_without_deadlock_or_leak()
     {

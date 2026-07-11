@@ -47,7 +47,6 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             if (now < schedule.NextRun.Value)
                 continue;
 
-            // Due: fire an archive job and roll the next occurrence forward.
             var repo = database.GetRepository(schedule.RepositoryId);
             if (repo is not null && !database.HasActiveJob(schedule.RepositoryId))
             {

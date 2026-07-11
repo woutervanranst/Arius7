@@ -3,10 +3,10 @@ import { StatisticsDto } from '../../core/api/api-models';
 import { formatBytes, formatCount, formatCurrency } from '../format';
 
 /**
- * Region-aware storage-cost breakdown by tier — the shared "CostCalculator" view that replaces the old
- * "Stored size by tier" section on the Statistics tab. Renders a 100%-stacked hero bar, a per-tier detail
- * table (stored size, chunks, est. cost/mo) and a grand-total footer. It does no arithmetic: per-tier and
- * total costs are computed server-side by the CostQuery/StatisticsQuery handler and arrive on the DTO.
+ * Region-aware storage-cost breakdown by tier — the shared "CostCalculator" view. Renders a 100%-stacked
+ * hero bar, a per-tier detail table (stored size, chunks, est. cost/mo) and a grand-total footer. It does
+ * no arithmetic: per-tier and total costs are computed server-side by the CostQuery/StatisticsQuery handler
+ * and arrive on the DTO.
  */
 @Component({
   selector: 'arius-cost-calculator',
@@ -70,7 +70,7 @@ export class CostCalculatorComponent {
   /** The repository statistics (carries per-tier stored size, chunk counts and the server-computed cost). */
   readonly stats = input<StatisticsDto | null>(null);
 
-  // Warm → cold, matching the existing Statistics-tab palette (and the design handoff's TIER_COLORS).
+  // Warm → cold.
   private static readonly TIER_COLORS: Record<string, string> = {
     Hot: '#ef4444', Cool: '#3b82f6', Cold: '#0ea5e9', Archive: '#64748b',
   };

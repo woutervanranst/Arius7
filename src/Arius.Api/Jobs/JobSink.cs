@@ -2,6 +2,7 @@ using Arius.Api.Contracts;
 using Arius.Api.Hubs;
 using Arius.Core.Shared.Hashes;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.Api.Jobs;
 
@@ -15,37 +16,34 @@ namespace Arius.Api.Jobs;
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
+    private readonly ILogger? _logger;   // optional diagnostic logger (ETA/throughput tracing); null on inert/read sinks
 
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
     public string? JobId { get; }
 
     /// <summary>Per-job cancellation source. <see cref="CancelJob"/> cancels this; <see cref="JobRunner"/>
-    /// threads its token into the Core command. A fresh source per sink (including inert sinks, where it is
-    /// simply never observed).</summary>
+    /// threads its token into the Core command.</summary>
     public CancellationTokenSource Cts { get; } = new();
 
     public JobSink() { }                                  // inert sink for read providers
-    public JobSink(string jobId, IHubContext<JobsHub> hub) { JobId = jobId; _hub = hub; }
+    public JobSink(string jobId, IHubContext<JobsHub> hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
 
     // ── Messages ────────────────────────────────────────────────────────────
     public void Log(string text, string severity = "meta")
     {
-        // Capture warn/error lines for the warnings panel/count. The live "Log" SignalR stream was removed
-        // with the console (Plan 3 web cutover) — there is no client handler, so we no longer broadcast it.
+        // Capture warn/error lines for the warnings panel/count.
         if (severity is "warn" or "error")
             CaptureWarning(text);
     }
-    /// <summary>The most recent cost estimate pushed via <see cref="Cost"/> — retained so a fresh reattach while
-    /// the run is still LIVE but blocked awaiting the client's cost-approval answer (this sink stays registered in
-    /// <see cref="JobStateRegistry"/> the whole time — <see cref="JobRunner.RunRestoreAsync"/> does not return, so
-    /// nothing removes it, until the wait resolves) can render "Review cost ›" without waiting for the eventual
-    /// persisted snapshot. Cleared by <see cref="ClearPending"/> once the prompt resolves (design §2/§5).</summary>
+    /// <summary>The most recent cost estimate pushed via <see cref="Cost"/>, retained so a live reattach while the
+    /// run is blocked awaiting cost-approval can render "Review cost ›" without waiting for the persisted snapshot.
+    /// Cleared by <see cref="ClearPending"/> once the prompt resolves.</summary>
     public CostEstimateDto? PendingCost { get; private set; }
 
     /// <summary>The resume defaults (auto-resume + rehydration window) that would apply if this cost prompt times
-    /// out — surfaced alongside <see cref="PendingCost"/> for the same live-reattach window (#13/#14).</summary>
+    /// out — surfaced alongside <see cref="PendingCost"/> for the same live-reattach window.</summary>
     public RestoreResumeState? PendingResume { get; private set; }
 
     public void Cost(CostEstimateDto estimate) { PendingCost = estimate; Group?.SendAsync("CostEstimate", estimate); }
@@ -104,10 +102,25 @@ public sealed class JobSink
     public void StartReporting()
     {
         if (JobId is null) return;
-        _timer = new Timer(_ => { SampleForEta(_now()); EmitNow(); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        _timer = new Timer(_ => { var now = _now(); SampleForEta(now); EmitNow(); LogEtaDiagnostics(now); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
+
+    /// <summary>Once per reporting tick, logs the EMA throughput state and the derived rate/ETA at Debug under
+    /// the "[ETA]" tag, so the numbers driving the header can be traced via ARIUS_LOG_LEVEL=Debug. No-op unless a
+    /// logger was supplied and Debug is enabled.</summary>
+    private void LogEtaDiagnostics(DateTimeOffset now)
+    {
+        if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
+        var snap = BuildSnapshot(now);
+        _logger.LogDebug(
+            "[ETA] job={JobId} phase={Phase} pct={Pct} eta={Eta}s rate={Rate:F0}B/s | archive up={Uploaded} newTotal={TotalNew} hashed={Hashed} scanned={Scanned} total={Total} deduped={Deduped} | restore restored={Restored}/{RestoreTotal}B files={FilesRestored}/{RestoreTotalFiles} chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
+            JobId, snap.Phase, snap.Pct, snap.EtaSeconds, snap.ThroughputBytesPerSec,
+            snap.UploadedBytes, snap.TotalNewBytes, snap.HashedBytes, snap.ScannedBytes, snap.TotalBytes, snap.DedupedBytes,
+            snap.BytesRestored, snap.RestoreTotalBytes, snap.FilesRestored, snap.RestoreTotalFiles,
+            snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
+    }
 
     /// <summary>Sends the current absolute snapshot immediately (used on transitions and on stop). No-ops once
     /// <see cref="Done"/> has been sent, so the timer's final <see cref="StopReporting"/> emit can never race a
@@ -115,7 +128,7 @@ public sealed class JobSink
     /// live-looking Progress after the job ended).</summary>
     public void EmitNow()
     {
-        if (_done) return;                       // cheap early-out
+        if (_done) return;
         var snapshot = BuildSnapshot(_now());    // built outside the lock (absolute-state; a stale build is fine)
         lock (_emitLock)
         {
@@ -130,7 +143,7 @@ public sealed class JobSink
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
     private volatile string _phase = "starting";
-    private volatile string _status = "running";   // live DB-status mirror, rides along in every snapshot so the client reflects awaiting-cost→running→rehydrating without a reload
+    private volatile string _status = "running";   // live DB-status mirror; rides along in every snapshot so the client sees status transitions without a reload
 
     /// <summary>Testable clock seam — tests inject a fixed/stepped clock; production uses real time.</summary>
     internal Func<DateTimeOffset> _now = () => DateTimeOffset.UtcNow;
@@ -156,10 +169,9 @@ public sealed class JobSink
     private readonly object _uploadLock = new();
 
     /// <summary>Streaming upload progress: <paramref name="cumulative"/> is the running total of bytes read from the
-    /// source for one chunk/tar (Arius.Core's ProgressStream via <c>ArchiveCommandOptions.CreateUploadProgress</c> —
-    /// the same hook the CLI taps). Crediting only the per-chunk delta makes <see cref="_uploadedBytes"/> rise
-    /// CONTINUOUSLY instead of jumping when a whole chunk/tar finishes — the coarse jumps were what made the
-    /// ETA/throughput bursty.</summary>
+    /// source for one chunk/tar (Arius.Core's ProgressStream via <c>ArchiveCommandOptions.CreateUploadProgress</c>).
+    /// Crediting only the per-chunk delta makes <see cref="_uploadedBytes"/> rise continuously instead of jumping
+    /// when a whole chunk/tar finishes.</summary>
     public void ReportUploadStreamed(ChunkHash chunk, long cumulative) => CreditUpload(chunk, cumulative);
 
     /// <summary>Advances a chunk's credited-uploaded high-water mark to <paramref name="cumulative"/> and adds the
@@ -188,8 +200,8 @@ public sealed class JobSink
 
     /// <summary>Streaming restore progress: <paramref name="cumulative"/> is the running total of bytes downloaded
     /// for one large file (Arius.Core's <c>RestoreOptions.CreateLargeFileDownloadProgress</c>). Crediting only the
-    /// per-file delta makes <see cref="_bytesRestored"/> rise CONTINUOUSLY as a large file downloads instead of
-    /// jumping only when it finishes — the coarse per-file jumps were what made the restore ETA bursty.</summary>
+    /// per-file delta makes <see cref="_bytesRestored"/> rise continuously as a large file downloads instead of
+    /// jumping only when it finishes.</summary>
     public void ReportRestoreStreamed(string key, long cumulative) => CreditRestore(key, cumulative);
 
     private void CreditRestore(string key, long cumulative)
@@ -206,13 +218,10 @@ public sealed class JobSink
     { _rehydAvailable = available; _rehydRehydrated = rehydrated; _rehydNeeds = needs; _rehydPending = pending; }
 
     /// <summary>Records the authoritative distinct-chunk total from ChunkResolutionCompleteEvent — the single
-    /// denominator for the restore hydration bar, so it no longer has to be (wrongly) reconstructed from a subset
-    /// of the rehydration buckets.</summary>
+    /// denominator for the restore hydration bar.</summary>
     public void SetChunkTotals(int totalChunks) => _chunksTotal = totalChunks;
 
     public void SetPhase(string phase) => _phase = phase;
-    /// <summary>Mirror the job's DB status onto the sink so it rides along in every progress snapshot — the client
-    /// then reflects awaiting-cost→running→rehydrating transitions live instead of only on reload or at terminal.</summary>
     public void SetStatus(string status) => _status = status;
 
     // ── Smoothed throughput (EMA over ~1s samples) → a stable ETA ────────────────
@@ -308,7 +317,7 @@ public sealed class JobSink
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
             EtaSeconds = eta, ThroughputBytesPerSec = rate, Pct = pct,
             WarningCount = WarningCount,
-            Stats = new Dictionary<string, string>   // legacy grid — drops in Plan 3
+            Stats = new Dictionary<string, string>   // legacy stat grid
             {
                 ["Uploaded"] = JobFormat.Bytes(uploaded),
                 ["Deduped"]  = Interlocked.Read(ref _dedupedFiles).ToString(),
@@ -352,8 +361,7 @@ public sealed class JobSink
 
     /// <summary>Copies the current rehydrated chunk count into <paramref name="resume"/> (used by the poller to
     /// tighten cadence once rehydration has started producing newly-ready chunks). Deliberately excludes
-    /// already-available (always-online) chunks — those must not trip the quiet window. Returns the same
-    /// instance with the count applied.</summary>
+    /// already-available (always-online) chunks — those must not trip the quiet window.</summary>
     public RestoreResumeState WithLiveRehydrationCounts(RestoreResumeState resume) =>
         resume with { RehydratedCount = _rehydRehydrated };
 }

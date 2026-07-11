@@ -3,7 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api/api.service';
 
-/** Repositories list (icon-rail "Repos"). Click a row to open the repository. */
+/** Repositories list (icon-rail "Repos"). */
 @Component({
   selector: 'arius-repos',
   standalone: true,

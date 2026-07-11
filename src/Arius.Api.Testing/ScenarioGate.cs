@@ -17,7 +17,7 @@ public sealed class ScenarioGate
     {
         // Create-or-complete: a release that arrives before the scripted handler reaches WaitForRelease must be
         // remembered, so the later WaitForRelease sees an already-completed latch instead of creating a fresh,
-        // never-signalled TCS and hanging until the Playwright timeout (review #12). Sticky until ReleaseAll().
+        // never-signalled TCS and hanging until the Playwright timeout. Sticky until ReleaseAll().
         GateFor(repositoryId).TrySetResult();
     }
 

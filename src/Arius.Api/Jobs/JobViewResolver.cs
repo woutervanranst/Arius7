@@ -9,8 +9,7 @@ namespace Arius.Api.Jobs;
 public sealed record ResolvedJobView(JobSnapshot? Snapshot, CostEstimateDto? Cost, ResumeInfo? Resume, int WarningCount, IReadOnlyList<string> Warnings);
 
 /// <summary>The one place that resolves live-sink-vs-persisted job state, shared by <c>JobsHub.AttachToJob</c> and
-/// the <c>GET /jobs/{id}</c> + <c>GET /jobs/{id}/warnings</c> endpoints — previously copy-pasted three ways
-/// (review #15), which let the SignalR and REST views drift for the same job.</summary>
+/// the <c>GET /jobs/{id}</c> + <c>GET /jobs/{id}/warnings</c> endpoints.</summary>
 public static class JobViewResolver
 {
     public static ResolvedJobView Resolve(JobStateRegistry jobStates, string jobId, string? stateJson)
