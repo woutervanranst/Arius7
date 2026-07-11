@@ -34,7 +34,7 @@ public sealed class JobRunner(
 
     public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool writePointers, bool fastHash = false, string trigger = "one-off")
     {
-        var sink = new JobSink(jobId, hub);
+        var sink = new JobSink(jobId, hub, logger);
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
@@ -123,7 +123,7 @@ public sealed class JobRunner(
 
     public async Task RunRestoreAsync(long repositoryId, string jobId, string connectionId, string? version, IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers)
     {
-        var sink = new JobSink(jobId, hub);
+        var sink = new JobSink(jobId, hub, logger);
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
@@ -337,7 +337,7 @@ public sealed class JobRunner(
         var repo = database.GetRepository(job.RepositoryId);
         if (repo is null) return;
 
-        var sink = new JobSink(jobId, hub);
+        var sink = new JobSink(jobId, hub, logger);
         var registered = false;
 
         var gate = LockFor(job.RepositoryId);
