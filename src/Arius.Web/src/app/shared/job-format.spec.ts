@@ -1,5 +1,5 @@
 import { archiveBarLayers, restoreBarLayers, phaseSentence, resolveRehydrationWindowHours,
-  formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta } from './job-format';
+  formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, scanTotalLabel } from './job-format';
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 
 function snap(p: Partial<JobSnapshot>): JobSnapshot {
@@ -47,6 +47,11 @@ describe('phaseSentence', () => {
     expect(phaseSentence(snap({ chunksNeedingRehydration: 5, bytesRestored: 10, filesRestored: 2, restoreTotalFiles: 7 }), 'restore'))
       .toBe('Restoring — 2 of 7 files');
   });
+});
+
+describe('scanTotalLabel', () => {
+  it('reads "so far" while the scan total is still unknown', () => expect(scanTotalLabel(0)).toBe('so far'));
+  it('reads "of <bytes>" once the scan total is known', () => expect(scanTotalLabel(1_000_000_000)).toBe('of 1.00 GB'));
 });
 
 describe('formatEta', () => {

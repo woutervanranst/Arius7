@@ -540,7 +540,7 @@ public class ArchiveRecoveryTests
 
         await using var fixture = await CreateArchiveFixtureAsync();
 
-        const int fileCount = 70; // > ChannelCapacity (64): fills the bounded enumerate→hash channel
+        const int fileCount = 70; // enough files in flight to exercise all HashWorkers concurrently
         for (var i = 0; i < fileCount; i++)
             await WriteRandomFileAsync(fixture, RelativePath.Parse($"files/file-{i:D3}.bin"), 256);
 

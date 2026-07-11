@@ -7,7 +7,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours, scanTotalLabel } from '../../shared/job-format';
 import { Subscription } from 'rxjs';
 
 /** One stage-summary row (derived from the live snapshot). */
@@ -90,7 +90,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#c4b5fd;margin-right:6px"></span>Hydrated &amp; ready &middot; {{ formatCount(readyChunks()) }} chunks</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#7c3aed;margin-right:6px"></span>Restored to disk &middot; {{ formatCount(snap()?.filesRestored) }} files ({{ formatBytes(snap()?.bytesRestored) }})</span>
             } @else {
-              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#dbeafe;margin-right:6px"></span>Scanned &middot; {{ formatBytes(snap()?.scannedBytes) }} of {{ formatBytes(snap()?.totalBytes) }}</span>
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#dbeafe;margin-right:6px"></span>Scanned &middot; {{ formatBytes(snap()?.scannedBytes) }} {{ scanTotalLabel(snap()?.totalBytes ?? 0) }}</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#93c5fd;margin-right:6px"></span>Hashed &amp; routed &middot; {{ round(middlePct()) }}%</span>
               @if ((snap()?.dedupedBytes ?? 0) > 0) {
                 <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#60a5fa;margin-right:6px"></span>Deduplicated &middot; {{ formatBytes(snap()?.dedupedBytes) }}</span>
@@ -454,6 +454,7 @@ export class JobDetailComponent implements OnDestroy {
   }
 
   protected phaseSentence = phaseSentence;
+  protected scanTotalLabel = scanTotalLabel;
   protected formatBytes = formatBytes; protected formatCount = formatCount; protected formatCurrency = formatCurrency;
   protected formatEta = formatEta; protected formatDuration = formatDuration;
   protected formatThroughput = formatThroughput; protected hydratedByLabel = hydratedByLabel; protected isNonTerminal = isNonTerminal;

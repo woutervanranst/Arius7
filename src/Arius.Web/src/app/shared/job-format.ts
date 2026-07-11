@@ -1,4 +1,5 @@
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
+import { formatBytes } from './format';
 
 /** "~12 min left" / "estimating…" (null until totalNewBytes is known). */
 export function formatEta(seconds: number | null | undefined): string {
@@ -69,6 +70,12 @@ export function phaseSentence(s: JobSnapshot, kind: string): string {
   if (s.totalBytes === 0 || s.hashedBytes < s.totalBytes) return 'Scanning & hashing — estimating…';
   if (s.totalNewBytes === 0) return 'No new data — finalizing snapshot';
   return `Uploading — ${gb(s.uploadedBytes)} of ${gb(s.totalNewBytes)}`;
+}
+
+/** "of 640 GB" once the scan has produced a total, else "so far" — avoids the misleading "of 0 B" that reads
+ *  while enumeration is still discovering the tree (the total isn't known until it fully completes). */
+export function scanTotalLabel(totalBytes: number): string {
+  return totalBytes > 0 ? `of ${formatBytes(totalBytes)}` : 'so far';
 }
 
 /** Archive layered-bar percentages — all layers over the SAME dataset (totalBytes), so the bar never has a

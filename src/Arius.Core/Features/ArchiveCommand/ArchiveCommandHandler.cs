@@ -58,7 +58,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 ///
 /// | Channel                  | Writer                       | Reader                     | Capacity        | Notes                                                       |
 /// |--------------------------|------------------------------|----------------------------|-----------------|-------------------------------------------------------------|
-/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | bounded (N)     | Backpressure caps how far enumeration runs ahead of hashing.|
+/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | unbounded       | Unbounded lets Enumerate reach EOF — and publish the total — as soon as the tree walk itself allows. `FilePair` is paths + an optional hash only (no content), so the backlog cost scales with file count in flight, not bytes.|
 /// | `hashedChannel`          | Hash (2)                     | Dedup + Router (3)         | unbounded       | Metadata only (path+hash); lets hashing run ahead of upload.|
 /// | `largeChannel`           | Dedup + Router (3)           | Large Upload (4a)          | unbounded       | Large-file route (≥ `SmallFileThreshold`).                  |
 /// | `smallChannel`           | Dedup + Router (3)           | Tar Builder (4b)           | unbounded       | Small-file route (&lt; `SmallFileThreshold`).               |
@@ -94,7 +94,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private const int TarUploadWorkers = 2;
     private const int ThinEntryWorkers = 64;
     private const int FileTreeUpdateWorkers = 16;
-    private const int ChannelCapacity  = 64;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
@@ -280,7 +279,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var inFlightHashes = new ConcurrentDictionary<ContentHash, long>();
 
             // Channels between stages
-            var filePairChannel        = Channel.CreateBounded<FilePair>(ChannelCapacity); // TODO be more specific about SingleWriter / MultipleReader etc
+            var filePairChannel        = Channel.CreateUnbounded<FilePair>(); // TODO be more specific about SingleWriter / MultipleReader etc
             var hashedChannel          = Channel.CreateUnbounded<HashedFilePair>();
             var largeChannel           = Channel.CreateUnbounded<FileToUpload>();
             var smallChannel           = Channel.CreateUnbounded<FileToUpload>();
