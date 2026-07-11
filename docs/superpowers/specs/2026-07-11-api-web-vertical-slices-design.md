@@ -10,8 +10,8 @@
 
 **Phase 1 — rewrite production code; tests are the regression net.**
 
-- Test files may only receive mechanical edits: `using`/namespace/import-path lines. Any other test edit required to stay green means contract drift — stop and surface it.
-- The wire contract (REST routes, DTO shapes, SignalR hub route `/hubs/arius`, method and message names) and the app SQLite schema stay identical, **except** individually enumerated "obvious vibecode debris" cleanups. The implementation plan names each cleanup explicitly before execution; anything not on the list is out of scope.
+- Test files may only receive mechanical edits (`using`/namespace/import-path lines), plus edits explicitly tied to an enumerated cleanup (below). Any other test edit required to stay green means contract drift — stop and surface it.
+- The wire contract (REST routes, DTO shapes, SignalR hub route `/hubs/arius`, method and message names) and the app SQLite schema stay identical, **except** individually enumerated "obvious vibecode debris" cleanups. The implementation plan names each cleanup explicitly before execution — including the exact test edits it entails; anything not on the list is out of scope.
 - Naming aligns with `Arius.Core` wherever the concept matches: same folder grammar, per-operation contracts colocated with their handler, slice-named services, per-slice registration extensions.
 
 **Phase 2 — restructure tests + quality pass; production code is frozen.**
@@ -106,7 +106,7 @@ src/app/
 - **Each slice conversion:** move files, split its DTOs out of `Contracts/`, rewrite grouped endpoints as REPR operation files, extract its hub partial, add `<X>Slice.cs` wiring — then build + `Arius.Api.Tests` + `Arius.Api.Integration.Tests` green before the next slice starts. `Program.cs` shrinks as slices convert.
 - **Web conversion follows the same slice-at-a-time rhythm:** per-feature `*.api.ts` + `models.ts` splits, store moves, `ng build` + `ng test` green after each.
 - **Architecture tests + ESLint boundary rule land at the end of Phase 1**, once the structure exists to assert against.
-- **Phase 1 exit gate:** all .NET test projects, `ng test`, and the hermetic Playwright e2e green with zero non-mechanical test edits — the feature-parity proof. Belt-and-braces: dump the route table + hub method inventory before/after and diff.
+- **Phase 1 exit gate:** all .NET test projects, `ng test`, and the hermetic Playwright e2e green, with no test edits beyond mechanical ones and those declared by enumerated cleanups — the feature-parity proof. Belt-and-braces: dump the route table + hub method inventory before/after and diff.
 
 ## 5. Phase 2 execution strategy
 
