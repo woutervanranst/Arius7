@@ -367,7 +367,8 @@ def _recover_cbc(f, passphrase_bytes: bytes, decompressor, out_stream) -> None:
         print(f"Error: decryption/unpadding failed — wrong passphrase? ({e})", file=sys.stderr)
         sys.exit(1)
 
-    out_stream.write(decompressor.decompress(final_unpadded))
+    if final_unpadded:
+        out_stream.write(decompressor.decompress(final_unpadded))
     out_stream.write(decompressor.flush())
 
 
