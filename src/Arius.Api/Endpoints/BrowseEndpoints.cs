@@ -5,6 +5,7 @@ using Arius.Api.Contracts;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.Snapshot;
+using Arius.Core.Shared.Storage;
 using Mediator;
 
 namespace Arius.Api.Endpoints;
@@ -16,9 +17,22 @@ internal static class BrowseEndpoints
     {
         app.MapGet("/repos/{id:long}/snapshots", async (long id, RepositoryProviderRegistry registry, CancellationToken ct) =>
         {
-            var provider = await registry.GetReadProviderAsync(id, ct);
-            var mediator = provider.GetRequiredService<IMediator>();
             var snapshots = new List<SnapshotDto>();
+
+            // A repository whose container hasn't been created yet (no archive has run) has no
+            // snapshots by definition — degrade to empty rather than surfacing a 500, mirroring
+            // RepositoryEndpoints.TryGetAccountInfoAsync.
+            ServiceProvider provider;
+            try
+            {
+                provider = await registry.GetReadProviderAsync(id, ct);
+            }
+            catch (PreflightException ex) when (ex.ErrorKind == PreflightErrorKind.ContainerNotFound)
+            {
+                return snapshots;
+            }
+
+            var mediator = provider.GetRequiredService<IMediator>();
             await foreach (var s in mediator.CreateStream(new SnapshotsListQuery(), ct))
                 snapshots.Add(new SnapshotDto(s.Version, s.Timestamp, s.FileCount));
             return snapshots;
@@ -43,7 +57,18 @@ internal static class BrowseEndpoints
             if (cached is not null)
                 return JsonSerializer.Deserialize<StatisticsDto>(cached)!;
 
-            var provider = await registry.GetReadProviderAsync(id, ct);
+            // A repository whose container hasn't been created yet (no archive has run) has no
+            // statistics by definition — degrade to zeroed-out stats rather than surfacing a 500.
+            ServiceProvider provider;
+            try
+            {
+                provider = await registry.GetReadProviderAsync(id, ct);
+            }
+            catch (PreflightException ex) when (ex.ErrorKind == PreflightErrorKind.ContainerNotFound)
+            {
+                return new StatisticsDto(0, 0, 0, 0, 0, 0, []);
+            }
+
             var mediator = provider.GetRequiredService<IMediator>();
 
             // Miss: derive the fingerprint cheaply (latest blob name only — not SnapshotsListQuery, which

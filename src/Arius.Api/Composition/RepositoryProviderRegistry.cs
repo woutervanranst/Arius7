@@ -55,7 +55,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>Gets (building once, then caching) the shared read-only provider for a repository.</summary>
-    public Task<ServiceProvider> GetReadProviderAsync(long repositoryId, CancellationToken cancellationToken)
+    public async Task<ServiceProvider> GetReadProviderAsync(long repositoryId, CancellationToken cancellationToken)
     {
         Lazy<Task<ServiceProvider>> lazy;
         lock (_gate)
@@ -68,7 +68,22 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
             }
         }
 
-        return lazy.Value;
+        try
+        {
+            return await lazy.Value.ConfigureAwait(false);
+        }
+        catch
+        {
+            // A build that failed (e.g. the container doesn't exist yet — no archive has run) must not
+            // poison the cache forever: evict it so the next call rebuilds from scratch instead of
+            // replaying the same fault indefinitely.
+            lock (_gate)
+            {
+                if (_readProviders.TryGetValue(repositoryId, out var current) && current == lazy)
+                    _readProviders.Remove(repositoryId);
+            }
+            throw;
+        }
     }
 
     /// <summary>

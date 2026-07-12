@@ -222,8 +222,20 @@ public sealed class JobsHub(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var repository = database.GetRepository(repositoryId);
-        var provider   = await registry.GetReadProviderAsync(repositoryId, cancellationToken);
-        var mediator   = provider.GetRequiredService<IMediator>();
+
+        // A repository whose container hasn't been created yet (no archive has run) has no entries
+        // by definition — degrade to an empty stream rather than surfacing a hub exception.
+        ServiceProvider provider;
+        try
+        {
+            provider = await registry.GetReadProviderAsync(repositoryId, cancellationToken);
+        }
+        catch (PreflightException ex) when (ex.ErrorKind == PreflightErrorKind.ContainerNotFound)
+        {
+            yield break;
+        }
+
+        var mediator = provider.GetRequiredService<IMediator>();
 
         var options = new ListQueryOptions
         {
