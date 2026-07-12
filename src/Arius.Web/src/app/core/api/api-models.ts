@@ -90,6 +90,7 @@ export interface JobSnapshot {
   totalBytes: number;
   totalNewBytes: number;
   scannedBytes: number;
+  scannedFiles: number;   // files enumerated so far; climbs even for pointer-only files that add 0 scannedBytes
   hashedBytes: number;
   uploadedBytes: number;
   dedupedBytes: number;

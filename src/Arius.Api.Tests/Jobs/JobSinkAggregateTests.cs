@@ -32,6 +32,22 @@ public class JobSinkAggregateTests
     }
 
     [Test]
+    public async Task ScannedFiles_counts_one_per_scanned_file_even_when_bytes_are_zero()
+    {
+        // Thin / pointer-only archive: each scanned file has no local binary, so AddScanned credits 0 bytes,
+        // yet it is still one file scanned. The file count must climb while ScannedBytes stays 0 — so the UI
+        // can show "Scanned 0 B, N files" instead of a stuck "0 B".
+        var s = NewArchiveSink();
+        s.AddScanned(0);
+        s.AddScanned(0);
+        s.AddScanned(0);
+
+        var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
+        await Assert.That(snap.ScannedBytes).IsEqualTo(0L);
+        await Assert.That(snap.ScannedFiles).IsEqualTo(3L);
+    }
+
+    [Test]
     public async Task Streaming_upload_progress_credits_continuously_without_double_counting_on_completion()
     {
         var s = NewArchiveSink();

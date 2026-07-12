@@ -101,7 +101,7 @@ public sealed class JobsHub(
     private static JobSnapshot EmptySnapshot(string jobId) => new()
     {
         JobId = jobId, Phase = "unknown",
-        TotalBytes = 0, TotalNewBytes = 0, ScannedBytes = 0, HashedBytes = 0, UploadedBytes = 0,
+        TotalBytes = 0, TotalNewBytes = 0, ScannedBytes = 0, ScannedFiles = 0, HashedBytes = 0, UploadedBytes = 0,
         DedupedBytes = 0, DedupedFiles = 0, EtaSeconds = null, ThroughputBytesPerSec = 0, Pct = 0,
         Stats = new Dictionary<string, string>(), WarningCount = 0,
         RestoreTotalFiles = 0, FilesRestored = 0, RestoreTotalBytes = 0, BytesRestored = 0,

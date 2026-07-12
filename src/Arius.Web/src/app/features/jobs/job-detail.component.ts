@@ -7,7 +7,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours, scanTotalLabel } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
 import { Subscription } from 'rxjs';
 
 /** One stage-summary row (derived from the live snapshot). */
@@ -90,7 +90,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#c4b5fd;margin-right:6px"></span>Hydrated &amp; ready &middot; {{ formatCount(readyChunks()) }} chunks</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#7c3aed;margin-right:6px"></span>Restored to disk &middot; {{ formatCount(snap()?.filesRestored) }} files ({{ formatBytes(snap()?.bytesRestored) }})</span>
             } @else {
-              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#dbeafe;margin-right:6px"></span>Scanned &middot; {{ formatBytes(snap()?.scannedBytes) }} {{ scanTotalLabel(snap()?.totalBytes ?? 0) }}</span>
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#dbeafe;margin-right:6px"></span>Scanned &middot; {{ formatBytes(snap()?.scannedBytes) }}, {{ formatCount(snap()?.scannedFiles) }} files</span>
               <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#93c5fd;margin-right:6px"></span>Hashed &amp; routed &middot; {{ round(middlePct()) }}%</span>
               @if ((snap()?.dedupedBytes ?? 0) > 0) {
                 <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#60a5fa;margin-right:6px"></span>Deduplicated &middot; {{ formatBytes(snap()?.dedupedBytes) }}</span>
@@ -394,7 +394,7 @@ export class JobDetailComponent implements OnDestroy {
     const uploadDone = s.totalNewBytes > 0 && s.uploadedBytes >= s.totalNewBytes;
     const pick = (d: boolean, r: boolean): Stage['state'] => done || d ? 'done' : r ? 'running' : 'pending';
     return [
-      { label: 'Scan', sub: `${formatBytes(s.scannedBytes)} scanned`, state: pick(scanDone, true) },
+      { label: 'Scan', sub: `${formatBytes(s.scannedBytes)} scanned · ${formatCount(s.scannedFiles)} files`, state: pick(scanDone, true) },
       { label: 'Hash & route', sub: `${formatBytes(s.hashedBytes)} hashed · ${formatCount(s.dedupedFiles)} deduped`, state: pick(hashDone, scanDone || s.hashedBytes > 0) },
       { label: 'Upload', sub: `${formatBytes(s.uploadedBytes)} of ${formatBytes(s.totalNewBytes)}`, state: pick(uploadDone, hashDone || s.uploadedBytes > 0) },
       { label: 'Snapshot', sub: 'chunk index + filetree + snapshot', state: done ? 'done' : uploadDone ? 'running' : 'pending' },
@@ -454,7 +454,6 @@ export class JobDetailComponent implements OnDestroy {
   }
 
   protected phaseSentence = phaseSentence;
-  protected scanTotalLabel = scanTotalLabel;
   protected formatBytes = formatBytes; protected formatCount = formatCount; protected formatCurrency = formatCurrency;
   protected formatEta = formatEta; protected formatDuration = formatDuration;
   protected formatThroughput = formatThroughput; protected hydratedByLabel = hydratedByLabel; protected isNonTerminal = isNonTerminal;

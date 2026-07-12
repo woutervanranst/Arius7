@@ -26,7 +26,7 @@ public class LifecycleScenarioTests
         var snapshot = new JobSnapshot
         {
             JobId = "j-warn", Phase = "done",
-            TotalBytes = 0, TotalNewBytes = 0, ScannedBytes = 0, HashedBytes = 0, UploadedBytes = 0,
+            TotalBytes = 0, TotalNewBytes = 0, ScannedBytes = 0, ScannedFiles = 0, HashedBytes = 0, UploadedBytes = 0,
             DedupedBytes = 0, DedupedFiles = 0, EtaSeconds = null, ThroughputBytesPerSec = 0, Pct = 100,
             WarningCount = 250,   // true total; the ring below only retains the last 50 lines
             Stats = new Dictionary<string, string>(),

@@ -72,12 +72,6 @@ export function phaseSentence(s: JobSnapshot, kind: string): string {
   return `Uploading — ${gb(s.uploadedBytes)} of ${gb(s.totalNewBytes)}`;
 }
 
-/** "of 640 GB" once the scan has produced a total, else "so far" — avoids the misleading "of 0 B" that reads
- *  while enumeration is still discovering the tree (the total isn't known until it fully completes). */
-export function scanTotalLabel(totalBytes: number): string {
-  return totalBytes > 0 ? `of ${formatBytes(totalBytes)}` : 'so far';
-}
-
 /** Archive layered-bar percentages — all layers over the SAME dataset (totalBytes), so the bar never has a
  *  layer overtake the one below it. `top` (uploaded) converges to just under 100%; `deduped`
  *  (uploaded + deduplicated) fills the remaining gap so a completed archive reads as a full bar rather than

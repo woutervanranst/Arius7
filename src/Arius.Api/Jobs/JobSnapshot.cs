@@ -10,6 +10,7 @@ public sealed record JobSnapshot
     public required long    TotalBytes     { get; init; }
     public required long    TotalNewBytes  { get; init; }   // additive sum of queued-new-chunk bytes (0 until first chunk queued)
     public required long    ScannedBytes   { get; init; }
+    public required long    ScannedFiles   { get; init; }   // count of files enumerated so far; climbs even for pointer-only files that contribute 0 ScannedBytes
     public required long    HashedBytes    { get; init; }
     public required long    UploadedBytes  { get; init; }   // original units
     public required long    DedupedBytes   { get; init; }

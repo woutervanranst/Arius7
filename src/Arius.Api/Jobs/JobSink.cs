@@ -138,7 +138,7 @@ public sealed class JobSink
     }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
-    private long _totalFiles, _totalBytes, _scannedBytes, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes;
+    private long _totalFiles, _totalBytes, _scannedBytes, _scannedFiles, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes;
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
@@ -149,7 +149,10 @@ public sealed class JobSink
     internal Func<DateTimeOffset> _now = () => DateTimeOffset.UtcNow;
 
     public void SetTotals(long files, long bytes) { Interlocked.Exchange(ref _totalFiles, files); Interlocked.Exchange(ref _totalBytes, bytes); }
-    public void AddScanned(long bytes) => Interlocked.Add(ref _scannedBytes, bytes);
+    /// <summary>Records one scanned file of <paramref name="bytes"/> bytes. The file count rises per call even when
+    /// <paramref name="bytes"/> is 0 (pointer-only / thin-archive files have no local binary to read), so the UI can
+    /// show "Scanned 0 B, N files" instead of a stuck "0 B".</summary>
+    public void AddScanned(long bytes) { Interlocked.Add(ref _scannedBytes, bytes); Interlocked.Increment(ref _scannedFiles); }
     public void AddHashed(long bytes)  => Interlocked.Add(ref _hashedBytes, bytes);
     /// <summary>Reconciles a completed chunk's upload to its full original size. Streaming progress
     /// (<see cref="ReportUploadStreamed"/>) may already have credited most of it; this only tops up any remaining
@@ -312,6 +315,7 @@ public sealed class JobSink
             Phase = _phase, Status = _status,
             TotalBytes = total, TotalNewBytes = totalNew,
             ScannedBytes = Interlocked.Read(ref _scannedBytes),
+            ScannedFiles = Interlocked.Read(ref _scannedFiles),
             HashedBytes  = hashed,
             UploadedBytes = uploaded,
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
