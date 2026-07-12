@@ -58,6 +58,21 @@ export function statusMeta(status: string): StatusMeta {
   }
 }
 
+/** Authoritative, forward-only job phase order (mirrors JobSink.PhaseNames). A job is either archive or
+ *  restore and drives a disjoint slice, so one flat list ranks both. Use {@link phaseAtLeast} to compare. */
+const PHASE_ORDER = [
+  'starting',
+  'scan', 'hash-route', 'upload', 'snapshot',                     // archive
+  'classify', 'confirm-cost', 'download', 'rehydrate', 'cleanup', // restore
+] as const;
+
+/** True when the snapshot's phase has reached `target` or later (unknown phases rank lowest). */
+export function phaseAtLeast(phase: string | undefined, target: string): boolean {
+  const p = PHASE_ORDER.indexOf((phase ?? '') as typeof PHASE_ORDER[number]);
+  const t = PHASE_ORDER.indexOf(target as typeof PHASE_ORDER[number]);
+  return p >= 0 && t >= 0 && p >= t;
+}
+
 /** One phase sentence for the pill / overview row / detail header. */
 export function phaseSentence(s: JobSnapshot, kind: string): string {
   const gb = (n: number) => (n / 1e9).toFixed(2) + ' GB';
@@ -65,9 +80,9 @@ export function phaseSentence(s: JobSnapshot, kind: string): string {
     if (s.chunksNeedingRehydration > 0 && s.bytesRestored === 0) return `Rehydrating — ${s.chunksNeedingRehydration} chunks from Archive tier`;
     return `Restoring — ${s.filesRestored} of ${s.restoreTotalFiles} files`;
   }
-  // Still scanning/hashing (routing hasn't produced the new-bytes total yet) → estimating.
-  // Once hashing is done (hashedBytes ≥ totalBytes), the new-bytes total is known — even if it's 0.
-  if (s.totalBytes === 0 || s.hashedBytes < s.totalBytes) return 'Scanning & hashing — estimating…';
+  // Phase-driven (authoritative), no longer the bytes ≥ total heuristic.
+  if (s.phase === 'snapshot') return 'Finalizing snapshot';
+  if (!phaseAtLeast(s.phase, 'upload')) return 'Scanning & hashing — estimating…';
   if (s.totalNewBytes === 0) return 'No new data — finalizing snapshot';
   return `Uploading — ${gb(s.uploadedBytes)} of ${gb(s.totalNewBytes)}`;
 }

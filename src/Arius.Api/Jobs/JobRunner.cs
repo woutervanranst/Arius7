@@ -64,6 +64,7 @@ public sealed class JobRunner(
 
         jobStates.Register(jobId, sink);
         sink.StartReporting();
+        sink.SetPhase("scan");   // archive's first milestone; hash-route/upload/snapshot advance from Core events
 
         var gate = LockFor(repositoryId);
         await gate.WaitAsync();
@@ -208,6 +209,7 @@ public sealed class JobRunner(
 
                     database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
                     sink.SetStatus("awaiting-cost");
+                    sink.SetPhase("confirm-cost");
 
                     var priority = await approvals.RegisterAsync(jobId, ct);
                     if (priority is not null)

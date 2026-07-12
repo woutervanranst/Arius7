@@ -7,7 +7,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
 import { Subscription } from 'rxjs';
 
 /** One stage-summary row (derived from the live snapshot). */
@@ -389,15 +389,16 @@ export class JobDetailComponent implements OnDestroy {
       { label: 'Upload', sub: 'new chunks to Azure', state: 'pending' },
       { label: 'Snapshot', sub: 'chunk index + filetree + snapshot', state: 'pending' },
     ];
-    const scanDone = s.totalBytes > 0 && s.scannedBytes >= s.totalBytes;
-    const hashDone = s.totalBytes > 0 && s.hashedBytes >= s.totalBytes;
-    const uploadDone = s.totalNewBytes > 0 && s.uploadedBytes >= s.totalNewBytes;
-    const pick = (d: boolean, r: boolean): Stage['state'] => done || d ? 'done' : r ? 'running' : 'pending';
+    // Authoritative, phase-driven state (no longer the fragile bytes ≥ total heuristic): a stage is `done`
+    // once the phase has advanced past it, `running` once its own phase is reached. Byte counts remain as the
+    // informational sub-line only. `doneAt` is the next stage's phase; null → done only when the job completes.
+    const state = (doneAt: string | null, runAt: string): Stage['state'] =>
+      done || (doneAt !== null && phaseAtLeast(s.phase, doneAt)) ? 'done' : phaseAtLeast(s.phase, runAt) ? 'running' : 'pending';
     return [
-      { label: 'Scan', sub: `${formatBytes(s.scannedBytes)} scanned · ${formatCount(s.scannedFiles)} files`, state: pick(scanDone, true) },
-      { label: 'Hash & route', sub: `${formatBytes(s.hashedBytes)} hashed · ${formatCount(s.dedupedFiles)} deduped`, state: pick(hashDone, scanDone || s.hashedBytes > 0) },
-      { label: 'Upload', sub: `${formatBytes(s.uploadedBytes)} of ${formatBytes(s.totalNewBytes)}`, state: pick(uploadDone, hashDone || s.uploadedBytes > 0) },
-      { label: 'Snapshot', sub: 'chunk index + filetree + snapshot', state: done ? 'done' : uploadDone ? 'running' : 'pending' },
+      { label: 'Scan', sub: `${formatBytes(s.scannedBytes)} scanned · ${formatCount(s.scannedFiles)} files`, state: state('hash-route', 'scan') },
+      { label: 'Hash & route', sub: `${formatBytes(s.hashedBytes)} hashed · ${formatCount(s.dedupedFiles)} deduped`, state: state('upload', 'hash-route') },
+      { label: 'Upload', sub: `${formatBytes(s.uploadedBytes)} of ${formatBytes(s.totalNewBytes)}`, state: state('snapshot', 'upload') },
+      { label: 'Snapshot', sub: 'chunk index + filetree + snapshot', state: state(null, 'snapshot') },
     ];
   }
 
@@ -413,7 +414,10 @@ export class JobDetailComponent implements OnDestroy {
       { label: 'Verify', sub: 'hash check + pointer cleanup', state: 'pending' },
     ];
     const total = this.plannedChunks();
-    const planDone = s.restoreTotalBytes > 0 || total > 0;
+    // Plan/Download states are phase-driven; Confirm cost/Rehydrate stay status/chunk-driven because the UI
+    // orders Rehydrate before Download while Core executes download (available chunks) before rehydration —
+    // the phase ordinal follows Core's temporal order, so it can't rank those two the way the stepper shows them.
+    const planDone = phaseAtLeast(s.phase, 'confirm-cost');
     const costDone = st === 'rehydrating' || st === 'running' || done;
     const rehydrateDone = total > 0 && s.chunksPending === 0;
     const downloadDone = s.restoreTotalBytes > 0 && s.bytesRestored >= s.restoreTotalBytes;
@@ -421,7 +425,7 @@ export class JobDetailComponent implements OnDestroy {
       { label: 'Plan', sub: `${formatCount(total)} chunks · ${formatBytes(s.restoreTotalBytes)}`, state: done || planDone ? 'done' : 'running' },
       { label: 'Confirm cost', sub: st === 'awaiting-cost' ? 'waiting for approval' : `${formatCount(s.chunksNeedingRehydration)} chunks need rehydration`, state: st === 'awaiting-cost' ? 'running' : costDone ? 'done' : 'pending' },
       { label: 'Rehydrate', sub: `${formatCount(this.readyChunks())} ready · ${formatCount(s.chunksPending)} pending`, state: done || rehydrateDone ? 'done' : (st === 'rehydrating' || s.chunksPending > 0 ? 'running' : 'pending') },
-      { label: 'Download', sub: `${formatBytes(s.bytesRestored)} of ${formatBytes(s.restoreTotalBytes)}`, state: done || downloadDone ? 'done' : (s.bytesRestored > 0 ? 'running' : 'pending') },
+      { label: 'Download', sub: `${formatBytes(s.bytesRestored)} of ${formatBytes(s.restoreTotalBytes)}`, state: done || downloadDone ? 'done' : (phaseAtLeast(s.phase, 'download') || s.bytesRestored > 0 ? 'running' : 'pending') },
       { label: 'Verify', sub: 'hash check + pointer cleanup', state: done ? 'done' : 'pending' },
     ];
   }

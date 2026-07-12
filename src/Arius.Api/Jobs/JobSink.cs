@@ -142,7 +142,19 @@ public sealed class JobSink
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
-    private volatile string _phase = "starting";
+
+    // Forward-only phase ordinal. A job is either archive or restore, and each command drives a disjoint,
+    // monotonically-advancing slice of PhaseNames — so the concurrent per-item forwarders that fold into
+    // `hash-route`/`upload` (or restore's `download`) can call SetPhase repeatedly and out of order without
+    // ever regressing the stepper to an earlier milestone.
+    private static readonly string[] PhaseNames =
+    {
+        "starting",
+        "scan", "hash-route", "upload", "snapshot",                     // archive
+        "classify", "confirm-cost", "download", "rehydrate", "cleanup", // restore
+    };
+    private int _phaseOrdinal;   // index into PhaseNames; 0 = "starting"
+
     private volatile string _status = "running";   // live DB-status mirror; rides along in every snapshot so the client sees status transitions without a reload
 
     /// <summary>Testable clock seam — tests inject a fixed/stepped clock; production uses real time.</summary>
@@ -224,7 +236,21 @@ public sealed class JobSink
     /// denominator for the restore hydration bar.</summary>
     public void SetChunkTotals(int totalChunks) => _chunksTotal = totalChunks;
 
-    public void SetPhase(string phase) => _phase = phase;
+    /// <summary>Advances the job phase, forward-only: a phase earlier than (or equal to) the current one is
+    /// ignored, so the concurrent per-item forwarders that drive `hash-route`/`upload`/`download` can fire in any
+    /// order without regressing the stepper. Unknown phase names are ignored — every emitted phase is in
+    /// <see cref="PhaseNames"/>.</summary>
+    public void SetPhase(string phase)
+    {
+        var next = Array.IndexOf(PhaseNames, phase);
+        if (next < 0) return;
+        int cur;
+        do
+        {
+            cur = Volatile.Read(ref _phaseOrdinal);
+            if (next <= cur) return;   // never regress; early-out keeps the per-file hot path lock-free
+        } while (Interlocked.CompareExchange(ref _phaseOrdinal, next, cur) != cur);
+    }
     public void SetStatus(string status) => _status = status;
 
     // ── Smoothed throughput (EMA over ~1s samples) → a stable ETA ────────────────
@@ -312,7 +338,7 @@ public sealed class JobSink
         return new JobSnapshot
         {
             JobId = JobId ?? "",
-            Phase = _phase, Status = _status,
+            Phase = PhaseNames[Volatile.Read(ref _phaseOrdinal)], Status = _status,
             TotalBytes = total, TotalNewBytes = totalNew,
             ScannedBytes = Interlocked.Read(ref _scannedBytes),
             ScannedFiles = Interlocked.Read(ref _scannedFiles),

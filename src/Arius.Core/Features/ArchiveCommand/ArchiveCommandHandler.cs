@@ -84,6 +84,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// | `TarBundleSealingEvent`  | Tar Builder (4b)                 |
 /// | `TarBundleUploadedEvent` | Tar Upload (4c)                  |
 /// | `SnapshotCreatedEvent`   | Create snapshot (6d)             |
+/// | `FinalizingSnapshotEvent`| End-of-pipeline entry (after 5 drains) |
 /// </summary>
 public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
 {
@@ -717,6 +718,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
             // Drain the local-state consumers, then the upstream stages.
             await Task.WhenAll(chunkIndexUpdateTask, fileTreeUpdateTask, hashTask, enumTask);
+
+            // Every streaming stage has drained; the run now finalizes into a snapshot. Publish here (not at
+            // snapshot creation) so the UI's finalize stage advances the instant uploads finish.
+            await _mediator.Publish(new FinalizingSnapshotEvent(), cancellationToken);
 
             // ── End-of-pipeline ───────────────────────────────────────────────
 

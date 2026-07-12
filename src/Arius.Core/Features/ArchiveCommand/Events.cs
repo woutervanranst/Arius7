@@ -102,6 +102,16 @@ public sealed record TarBundleUploadedEvent(ChunkHash TarHash, long StoredSize, 
 /// <summary>Snapshot creation complete.</summary>
 public sealed record SnapshotCreatedEvent(FileTreeHash RootHash, DateTimeOffset Timestamp, long FileCount) : INotification;
 
+/// <summary>
+/// The streaming pipeline (enumerate → hash → dedup/route → upload → chunk-index → filetree) has fully
+/// drained; the run now finalizes — validate filetrees, build the tree, create the snapshot, write pointers.
+/// A payload-free transition marker fired once, at the entry to the sequential end-of-pipeline. Emitted here
+/// (not at snapshot creation) so the stepper's finalize/"snapshot" stage lights up the moment uploads finish,
+/// instead of stalling through validate + tree build. Fires on every run, including no-new-data runs where
+/// <see cref="SnapshotCreatedEvent"/> is skipped.
+/// </summary>
+public sealed record FinalizingSnapshotEvent() : INotification;
+
 /// <summary>The tar builder started accumulating a new tar bundle.</summary>
 public sealed record TarBundleStartedEvent() : INotification;
 
