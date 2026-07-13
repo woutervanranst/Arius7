@@ -5,7 +5,7 @@ import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models
 function snap(p: Partial<JobSnapshot>): JobSnapshot {
   return {
     jobId: 'j', phase: 'x', status: 'running', totalBytes: 0, totalNewBytes: 0, scannedBytes: 0, scannedFiles: 0, hashedBytes: 0,
-    uploadedBytes: 0, dedupedBytes: 0, dedupedFiles: 0, etaSeconds: null, throughputBytesPerSec: 0,
+    uploadedBytes: 0, dedupedBytes: 0, dedupedFiles: 0, etaSeconds: null, throughputBytesPerSec: 0, etaIsUpperBound: false,
     pct: 0, warningCount: 0, stats: {}, restoreTotalFiles: 0, filesRestored: 0, restoreTotalBytes: 0,
     bytesRestored: 0, chunksAvailable: 0, chunksRehydrated: 0, chunksNeedingRehydration: 0,
     chunksPending: 0, chunksTotal: 0, ...p,
@@ -35,10 +35,10 @@ describe('phaseSentence', () => {
     expect(phaseSentence(snap({ totalBytes: 1000, hashedBytes: 400 }), 'archive')).toContain('estimating');
   });
   it('says "no new data" for a fully-deduped archive once hashing is done', () => {
-    expect(phaseSentence(snap({ totalBytes: 1000, hashedBytes: 1000, totalNewBytes: 0 }), 'archive')).toContain('No new data');
+    expect(phaseSentence(snap({ phase: 'upload', totalBytes: 1000, hashedBytes: 1000, totalNewBytes: 0 }), 'archive')).toContain('No new data');
   });
   it('shows the upload sentence when there is new data', () => {
-    expect(phaseSentence(snap({ totalBytes: 1000, hashedBytes: 1000, totalNewBytes: 3_110_000_000, uploadedBytes: 1_680_000_000 }), 'archive')).toContain('Uploading');
+    expect(phaseSentence(snap({ phase: 'upload', totalBytes: 1000, hashedBytes: 1000, totalNewBytes: 3_110_000_000, uploadedBytes: 1_680_000_000 }), 'archive')).toContain('Uploading');
   });
   it('reports rehydration for a restore whose archive-tier chunks have not started downloading', () => {
     expect(phaseSentence(snap({ chunksNeedingRehydration: 5, bytesRestored: 0 }), 'restore')).toBe('Rehydrating — 5 chunks from Archive tier');
@@ -57,6 +57,12 @@ describe('formatEta', () => {
   });
   it('renders minutes under an hour', () => expect(formatEta(150)).toBe('~3 min left'));
   it('renders hours to one decimal at/above an hour', () => expect(formatEta(5400)).toBe('~1.5 h left'));
+  it('prefixes ≤ when the estimate is an upper bound, and never for an unknown eta', () => {
+    expect(formatEta(7200, true)).toBe('≤ ~2.0 h left');
+    expect(formatEta(7200, false)).toBe('~2.0 h left');
+    expect(formatEta(7200)).toBe('~2.0 h left');        // default is not-bounded
+    expect(formatEta(null, true)).toBe('estimating…');   // unknown wins over the bound
+  });
 });
 
 describe('formatDuration', () => {

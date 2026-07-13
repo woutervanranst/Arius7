@@ -353,9 +353,12 @@ export class JobDetailComponent implements OnDestroy {
     return Math.max(0, (end.getTime() - new Date(d.startedAt).getTime()) / 1000);
   });
   protected readonly finishTime = computed(() => {
-    const eta = this.snap()?.etaSeconds;
+    const s = this.snap();
+    if (s?.phase === 'snapshot') return 'Finishing up';   // uploads drained; only metadata finalize remains
+    const eta = s?.etaSeconds;
     if (eta == null) return 'estimating…';
-    return new Date(Date.now() + eta * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const clock = new Date(Date.now() + eta * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return s?.etaIsUpperBound ? `≤ ${clock}` : clock;
   });
   protected readonly rehydrateWindowHours = computed<number | null>(() =>
     resolveRehydrationWindowHours(this.cost(), this.resume(), this.priority()));
@@ -367,7 +370,8 @@ export class JobDetailComponent implements OnDestroy {
   });
   protected readonly bigEta = computed(() => {
     if (this.status() === 'rehydrating') return this.hydratedBy() || 'Waiting on Azure';
-    return formatEta(this.snap()?.etaSeconds);
+    if (this.snap()?.phase === 'snapshot') return 'Finishing up';
+    return formatEta(this.snap()?.etaSeconds, this.snap()?.etaIsUpperBound ?? false);
   });
   protected readonly subEta = computed(() => {
     if (this.status() === 'rehydrating') return 'Status checked periodically';

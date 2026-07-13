@@ -97,6 +97,7 @@ export interface JobSnapshot {
   dedupedFiles: number;
   etaSeconds: number | null;
   throughputBytesPerSec: number;
+  etaIsUpperBound: boolean;   // archive: true while hashing incomplete → the estimate is an upper bound ("≤")
   pct: number;
   warningCount: number;
   stats: Record<string, string>;

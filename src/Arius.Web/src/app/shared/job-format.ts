@@ -1,12 +1,15 @@
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 import { formatBytes } from './format';
 
-/** "~12 min left" / "estimating…" (null until totalNewBytes is known). */
-export function formatEta(seconds: number | null | undefined): string {
+/** "~12 min left" / "≤ ~2.0 h left" (bounded) / "estimating…" (null until known).
+ *  `isUpperBound` (archive, pre-hash-complete) prefixes "≤ " to signal the estimate is provisional. */
+export function formatEta(seconds: number | null | undefined, isUpperBound = false): string {
   if (seconds == null) return 'estimating…';
-  if (seconds < 60) return `~${Math.max(1, Math.round(seconds))} sec left`;
-  if (seconds < 3600) return `~${Math.round(seconds / 60)} min left`;
-  return `~${(seconds / 3600).toFixed(1)} h left`;
+  const body =
+    seconds < 60   ? `~${Math.max(1, Math.round(seconds))} sec left`
+  : seconds < 3600 ? `~${Math.round(seconds / 60)} min left`
+  :                  `~${(seconds / 3600).toFixed(1)} h left`;
+  return isUpperBound ? `≤ ${body}` : body;
 }
 
 /** "11 min" / "1.4 h" / "48 s" — elapsed/duration display. */
