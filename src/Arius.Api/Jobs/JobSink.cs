@@ -115,8 +115,8 @@ public sealed class JobSink
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
         var snap = BuildSnapshot(now);
         _logger.LogDebug(
-            "[ETA] job={JobId} phase={Phase} pct={Pct} eta={Eta}s rate={Rate:F0}B/s | archive up={Uploaded} newTotal={TotalNew} hashed={Hashed} scanned={Scanned} total={Total} deduped={Deduped} | restore restored={Restored}/{RestoreTotal}B files={FilesRestored}/{RestoreTotalFiles} chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
-            JobId, snap.Phase, snap.Pct, snap.EtaSeconds, snap.ThroughputBytesPerSec,
+            "[ETA] job={JobId} phase={Phase} pct={Pct} eta={Eta}s bound={Bound} rate={Rate:F0}B/s | archive up={Uploaded} newTotal={TotalNew} hashed={Hashed} scanned={Scanned} total={Total} deduped={Deduped} | restore restored={Restored}/{RestoreTotal}B files={FilesRestored}/{RestoreTotalFiles} chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
+            JobId, snap.Phase, snap.Pct, snap.EtaSeconds, snap.EtaIsUpperBound, snap.ThroughputBytesPerSec,
             snap.UploadedBytes, snap.TotalNewBytes, snap.HashedBytes, snap.ScannedBytes, snap.TotalBytes, snap.DedupedBytes,
             snap.BytesRestored, snap.RestoreTotalBytes, snap.FilesRestored, snap.RestoreTotalFiles,
             snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
@@ -253,48 +253,69 @@ public sealed class JobSink
     }
     public void SetStatus(string status) => _status = status;
 
-    // ── Smoothed throughput (EMA over ~1s samples) → a stable ETA ────────────────
-    // A job is either archive or restore, never both, so the two progress-byte counters sum into one clock.
+    // ── Smoothed throughput (two EMAs, adaptive window) → a stable, phase-aware ETA ──
+    // Archive work is two concurrent streams: local hashing and upload. Restore has one (download),
+    // which rides the transfer EMA (upload==0 for restore). Each EMA is continuous-time — its alpha is
+    // derived from the real gap dt and a time constant τ that widens with elapsed time, so a 2-minute job
+    // stays responsive while a multi-hour job settles.
     private readonly object _sampleLock = new();
-    private double _emaRate;                        // EMA-smoothed bytes/sec
+    private double _transferRate;                   // EMA bytes/sec of uploaded+restored (network)
+    private double _hashRate;                        // EMA bytes/sec of hashed (local)
+    private DateTimeOffset? _startedAt;              // first-sample anchor for the elapsed-scaled window
     private DateTimeOffset? _lastSampleAt;
-    private long _lastSampleProgress;
-    private const double EmaAlpha = 0.2;            // ~5-tick (≈5s) effective smoothing at the 1s cadence
+    private long _lastTransferProgress;
+    private long _lastHashProgress;
+    private const double EmaTauElapsedFraction = 0.1;   // τ grows at 1/10 of elapsed…
+    private const double EmaTauMinSeconds      = 3.0;   // …floored (small jobs stay responsive)…
+    private const double EmaTauMaxSeconds      = 600.0; // …and capped at 10 min (long jobs stay steady).
 
-    /// <summary>Fold the latest instantaneous throughput into an EMA. Smoothing stops the ETA swinging on bursty
-    /// per-chunk crediting; a no-progress tick HOLDS the rate (rather than decaying it), so a brief between-chunk
-    /// gap can't inflate the ETA — only sustained progress moves the estimate.</summary>
+    /// <summary>Fold the latest instantaneous throughput into two EMAs (transfer = upload+restore, and hash).
+    /// A flat tick HOLDS a rate rather than decaying it, so a between-chunk gap can't inflate the ETA — only
+    /// sustained progress moves an estimate. The smoothing alpha is derived from the real gap and a time
+    /// constant τ that widens with elapsed time, so short jobs react quickly and long jobs stop swinging.</summary>
     public void SampleForEta(DateTimeOffset now)
     {
         lock (_sampleLock)
         {
-            var progress = Interlocked.Read(ref _uploadedBytes) + Interlocked.Read(ref _bytesRestored);
+            var transfer = Interlocked.Read(ref _uploadedBytes) + Interlocked.Read(ref _bytesRestored);
+            var hashed   = Interlocked.Read(ref _hashedBytes);
+            _startedAt ??= now;
             if (_lastSampleAt is { } last)
             {
                 var dt = (now - last).TotalSeconds;
                 if (dt > 0)
                 {
-                    var delta = progress - _lastSampleProgress;
-                    if (delta > 0)   // flat tick → hold the rate (a between-chunk gap must not inflate the ETA)
-                    {
-                        var instant = delta / dt;
-                        _emaRate = _emaRate <= 0 ? instant : EmaAlpha * instant + (1 - EmaAlpha) * _emaRate;
-                    }
+                    var elapsed = (now - _startedAt.Value).TotalSeconds;
+                    var tau     = Math.Clamp(elapsed * EmaTauElapsedFraction, EmaTauMinSeconds, EmaTauMaxSeconds);
+                    var alpha   = 1 - Math.Exp(-dt / tau);
+                    _transferRate = FoldRate(_transferRate, transfer - _lastTransferProgress, dt, alpha);
+                    _hashRate     = FoldRate(_hashRate,     hashed   - _lastHashProgress,     dt, alpha);
                     _lastSampleAt = now;
-                    _lastSampleProgress = progress;
+                    _lastTransferProgress = transfer;
+                    _lastHashProgress     = hashed;
                 }
             }
             else
             {
                 _lastSampleAt = now;
-                _lastSampleProgress = progress;
+                _lastTransferProgress = transfer;
+                _lastHashProgress     = hashed;
             }
         }
     }
 
-    private double RateBytesPerSec()
+    /// <summary>One EMA fold. A non-positive delta (flat tick) holds the prior rate; the first positive sample
+    /// seeds the EMA with the raw instantaneous rate (so a single observation isn't damped from zero).</summary>
+    private static double FoldRate(double rate, long delta, double dt, double alpha)
     {
-        lock (_sampleLock) return _emaRate;
+        if (delta <= 0) return rate;
+        var instant = delta / dt;
+        return rate <= 0 ? instant : alpha * instant + (1 - alpha) * rate;
+    }
+
+    private (double transfer, double hash) Rates()
+    {
+        lock (_sampleLock) return (_transferRate, _hashRate);
     }
 
     // ── Snapshot builder ─────────────────────────────────────────────────────
@@ -307,7 +328,7 @@ public sealed class JobSink
         // "New bytes to upload" is the sum of queued new-chunk sizes (additive) — NOT total - deduped,
         // which underflows when pointer-only files (scanned as 0 bytes) are deduped at full size.
         var totalNew = Interlocked.Read(ref _queuedNewBytes);
-        var rate     = RateBytesPerSec();
+        var (transferRate, hashRate) = Rates();
 
         // A job is either archive or restore, never both — pick the active kind's totals/progress
         // so both Pct and EtaSeconds are meaningful whichever kind is running.
@@ -321,13 +342,40 @@ public sealed class JobSink
         var denominator       = isRestore ? restoreTotal : totalNew;
         var progress          = isRestore ? restored     : uploaded;
 
-        // ETA uses a STABLE upload-work estimate so it doesn't read "seconds" early: totalNew (queuedNewBytes) is
-        // the exact new-bytes-to-upload but is only discovered incrementally as routing queues chunks, so early on
-        // it sits far below the real total (→ absurdly low ETA). max(totalNew, total−deduped) is known from the
-        // scan, converges to the truth as routing completes, and the max() avoids the pointer-only underflow that
-        // total−deduped alone would hit (deduped can exceed scanned bytes). Restore's total is known up front.
-        var etaDenominator = isRestore ? restoreTotal : Math.Max(totalNew, Math.Max(0L, total - deduped));
-        long? eta = etaDenominator > 0 && rate > 0 ? (long)Math.Ceiling(Math.Max(0L, etaDenominator - progress) / rate) : null;
+        // ETA models the run as concurrent constraints and takes the slower (max):
+        //  • upload: (upperBoundNewBytes − uploaded) / transferRate. The denominator max(totalNew, total−deduped)
+        //    is a scan-known UPPER bound that tightens to the exact new-bytes as routing/dedup completes, and the
+        //    max() avoids the pointer-only underflow total−deduped alone would hit.
+        //  • local (archive only): (total − hashed) / hashRate — the read/hash backlog. This is what makes a
+        //    fully-deduped archive read its true (hash-bound) time instead of "seconds".
+        // Restore has no local term (its bytes are known up front and only download). While the scan is still
+        // running (total == 0) an archive stays "estimating" — a partial totalNew would under-read.
+        long? eta;
+        double reportedRate;
+        var etaIsUpperBound = false;
+        if (isRestore)
+        {
+            eta = restoreTotal > 0 && transferRate > 0
+                ? (long)Math.Ceiling(Math.Max(0L, restoreTotal - restored) / transferRate)
+                : null;
+            reportedRate = transferRate;
+        }
+        else if (total == 0)
+        {
+            eta = null;                    // scan not complete → estimating
+            reportedRate = transferRate;
+        }
+        else
+        {
+            var uploadDenom = Math.Max(totalNew, Math.Max(0L, total - deduped));
+            long? uploadEta = transferRate > 0 ? (long)Math.Ceiling(Math.Max(0L, uploadDenom - uploaded) / transferRate) : null;
+            long? localEta  = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
+            // Bind on the slower constraint. Report that constraint's rate so "sustained N MB/s" always explains
+            // the ETA (upload rate when upload-bound, hash rate when hash-bound).
+            if (localEta is { } l && (uploadEta is not { } u || l >= u)) { eta = localEta;  reportedRate = hashRate; }
+            else                                                          { eta = uploadEta; reportedRate = transferRate; }
+            etaIsUpperBound = eta is not null && hashed < total;   // new-bytes total not final until hashing done
+        }
         var pct = denominator > 0
             ? (int)Math.Clamp(progress * 100 / denominator, 0, 100)
             : (isRestore && restoreTotalFiles > 0
@@ -345,7 +393,7 @@ public sealed class JobSink
             HashedBytes  = hashed,
             UploadedBytes = uploaded,
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
-            EtaSeconds = eta, ThroughputBytesPerSec = rate, Pct = pct,
+            EtaSeconds = eta, ThroughputBytesPerSec = reportedRate, Pct = pct, EtaIsUpperBound = etaIsUpperBound,
             WarningCount = WarningCount,
             Stats = new Dictionary<string, string>   // legacy stat grid
             {
