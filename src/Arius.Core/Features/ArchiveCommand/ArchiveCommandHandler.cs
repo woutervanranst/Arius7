@@ -58,7 +58,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 ///
 /// | Channel                  | Writer                       | Reader                     | Capacity        | Notes                                                       |
 /// |--------------------------|------------------------------|----------------------------|-----------------|-------------------------------------------------------------|
-/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | unbounded       | Unbounded lets Enumerate reach EOF — and publish the total — as soon as the tree walk itself allows. `FilePair` is paths + an optional hash only (no content), so the backlog cost scales with file count in flight, not bytes.|
+/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | unbounded       | Unbounded lets Enumerate reach EOF and publish the total as soon as the tree walk itself allows. |
 /// | `hashedChannel`          | Hash (2)                     | Dedup + Router (3)         | unbounded       | Metadata only (path+hash); lets hashing run ahead of upload.|
 /// | `largeChannel`           | Dedup + Router (3)           | Large Upload (4a)          | unbounded       | Large-file route (≥ `SmallFileThreshold`).                  |
 /// | `smallChannel`           | Dedup + Router (3)           | Tar Builder (4b)           | unbounded       | Small-file route (&lt; `SmallFileThreshold`).               |
@@ -479,9 +479,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
-                                var pointerSize = isKnown ? known[hashed.ContentHash].OriginalSize : inFlightHashes[hashed.ContentHash];
-                                Interlocked.Add(ref originalSize, pointerSize);
-                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, pointerSize), cancellationToken);
+                                var size = isKnown ? known[hashed.ContentHash].OriginalSize : inFlightHashes[hashed.ContentHash];
+                                Interlocked.Add(ref originalSize, size);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, size), cancellationToken);
                                 continue;
                             }
 
@@ -491,9 +491,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
-                                var dedupedSize = fs.GetFileSize(hashed.FilePair.RelativePath);
-                                Interlocked.Add(ref originalSize, dedupedSize);
-                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, dedupedSize), cancellationToken);
+                                var size = fs.GetFileSize(hashed.FilePair.RelativePath);
+                                Interlocked.Add(ref originalSize, size);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, size), cancellationToken);
                             }
                             else
                             {
@@ -719,11 +719,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             // Drain the local-state consumers, then the upstream stages.
             await Task.WhenAll(chunkIndexUpdateTask, fileTreeUpdateTask, hashTask, enumTask);
 
-            // Every streaming stage has drained; the run now finalizes into a snapshot. Publish here (not at
-            // snapshot creation) so the UI's finalize stage advances the instant uploads finish.
-            await _mediator.Publish(new FinalizingSnapshotEvent(), cancellationToken);
-
             // ── End-of-pipeline ───────────────────────────────────────────────
+
+            await _mediator.Publish(new FinalizingSnapshotEvent(), cancellationToken);
 
             // ── Stage 6a: Validate filetrees ──────────────────────────────────
             _logger.LogInformation("[phase] validate-filetrees");
