@@ -4,10 +4,8 @@
 # ── Stage 1: build the Angular SPA ──────────────────────────────────────────
 FROM node:22-alpine AS web
 WORKDIR /web
-# .npmrc carries legacy-peer-deps=true (@angular/build declares a peerOptional on vitest 4 while the
-# project pins vitest 3); without it this node:22-alpine image's npm re-resolves and fails npm ci with
-# ERESOLVE. package*.json's glob doesn't match dotfiles, so copy it explicitly alongside.
-COPY src/Arius.Web/package*.json src/Arius.Web/.npmrc ./
+# Copy manifests first so `npm ci` caches as its own layer, independent of source changes.
+COPY src/Arius.Web/package*.json ./
 RUN npm ci
 COPY src/Arius.Web/ ./
 RUN npx ng build --configuration production
