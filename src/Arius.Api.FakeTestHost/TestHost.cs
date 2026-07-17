@@ -1,4 +1,3 @@
-using Arius.Api;
 using Arius.Api.Composition;
 
 namespace Arius.Api.FakeTestHost;

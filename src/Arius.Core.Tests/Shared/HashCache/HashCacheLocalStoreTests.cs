@@ -1,7 +1,5 @@
 using Arius.Core.Shared;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.HashCache;
-using Arius.Core.Shared.Hashes;
 using Microsoft.Data.Sqlite;
 
 namespace Arius.Core.Tests.Shared.HashCache;

@@ -1,4 +1,3 @@
-using Arius.Api.Contracts;
 using Arius.Api.Jobs;
 
 namespace Arius.Api.Integration.Tests;

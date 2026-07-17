@@ -1,6 +1,4 @@
 using System.Runtime.InteropServices;
-using Arius.Core.Shared.FileSystem;
-using Arius.Core.Shared.HashCache;
 
 namespace Arius.Core.Tests.Shared.FileSystem;
 

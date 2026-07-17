@@ -1,7 +1,4 @@
 using Arius.Api.AppData;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 
 namespace Arius.Api.FakeTestHost;
 

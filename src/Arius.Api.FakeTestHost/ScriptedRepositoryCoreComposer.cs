@@ -12,7 +12,6 @@ using Arius.Core.Features.StorageAccountInfoQuery;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
 using Mediator;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.FakeTestHost;
 

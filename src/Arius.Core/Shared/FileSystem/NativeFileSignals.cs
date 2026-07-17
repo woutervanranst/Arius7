@@ -1,6 +1,6 @@
-using Microsoft.Win32.SafeHandles;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Arius.Core.Shared.FileSystem;
 

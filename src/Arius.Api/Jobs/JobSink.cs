@@ -2,7 +2,6 @@ using Arius.Api.Contracts;
 using Arius.Api.Hubs;
 using Arius.Core.Shared.Hashes;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.Logging;
 
 namespace Arius.Api.Jobs;
 

@@ -1,3 +1,4 @@
+using System.CommandLine;
 using Arius.Core.Features.SnapshotDiffQuery;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Shared.Encryption;
@@ -6,7 +7,6 @@ using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Spectre.Console;
-using System.CommandLine;
 
 namespace Arius.Cli.Tests.Commands.Snapshot;
 

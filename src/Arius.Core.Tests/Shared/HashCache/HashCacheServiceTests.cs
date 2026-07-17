@@ -1,7 +1,5 @@
 using Arius.Core.Shared;
-using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.HashCache;
-using Arius.Core.Shared.Hashes;
 
 namespace Arius.Core.Tests.Shared.HashCache;
 

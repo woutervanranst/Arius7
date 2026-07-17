@@ -1,5 +1,4 @@
 using Arius.Core.Shared.Compression;
-using Arius.Core.Shared.Encryption;
 using Arius.Core.Shared.Snapshot;
 using Arius.Tests.Shared;
 

@@ -1,6 +1,5 @@
 using Arius.Api.Hubs;
 using Arius.Api.Jobs;
-using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Api.Tests.Jobs;
