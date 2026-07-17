@@ -17,7 +17,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Arius.Api\Arius.Api.csproj" />
-		<ProjectReference Include="..\Arius.Api.Testing\Arius.Api.Testing.csproj" />
+		<ProjectReference Include="..\Arius.Api.FakeTestHost\Arius.Api.FakeTestHost.csproj" />
 		<ProjectReference Include="..\Arius.Tests.Shared\Arius.Tests.Shared.csproj" />
 	</ItemGroup>
 

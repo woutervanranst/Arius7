@@ -14,7 +14,7 @@ using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>Test composer: registers a scripted Core (scenario-driven command handlers + a deterministic
 /// cost estimator) into the per-repo provider. Never opens a real container.</summary>

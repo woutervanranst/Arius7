@@ -5,7 +5,7 @@ const stateDir = path.resolve(__dirname, 'e2e/hermetic/.state');
 
 /**
  * Hermetic browser E2E: Playwright boots the real Arius.Api pipeline with a SCRIPTED Arius.Core
- * (the Arius.Api.Testing host) + ng serve (proxying REST + SignalR) — no Azure. Specs seed a repo +
+ * (the Arius.Api.FakeTestHost host) + ng serve (proxying REST + SignalR) — no Azure. Specs seed a repo +
  * pick a named scenario over /api/testing, then drive the real UI. Serial (workers: 1); each spec
  * resets the app db via the control endpoint for isolation.
  */
@@ -34,7 +34,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: 'dotnet run --project ../Arius.Api.Testing',
+      command: 'dotnet run --project ../Arius.Api.FakeTestHost',
       url: 'http://localhost:5080/api/health',
       reuseExistingServer: false,   // always boot the SCRIPTED host, not a stray real Api on :5080
       timeout: 180_000,

@@ -1,6 +1,6 @@
 using Mediator;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>
 /// Stand-ins for the Mediator commands/queries the scripted harness doesn't script.

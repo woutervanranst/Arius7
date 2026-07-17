@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>Per-repository release latch so a scripted run can be held mid-flight (e.g. an archive kept
 /// "running" so a browser test can observe it in the Active list) until a control endpoint releases it.

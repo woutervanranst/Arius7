@@ -1,7 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Mediator;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>Fake restore handler: publishes scripted restore events and drives the run's ConfirmRehydration
 /// cost handshake exactly as the real handler would, so JobRunner's awaiting-cost path runs unchanged.</summary>

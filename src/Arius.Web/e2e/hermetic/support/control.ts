@@ -1,6 +1,6 @@
 import { APIRequestContext } from '@playwright/test';
 
-/** Thin client for the Arius.Api.Testing control endpoints (reached through the ng proxy at /api/testing). */
+/** Thin client for the Arius.Api.FakeTestHost control endpoints (reached through the ng proxy at /api/testing). */
 export class Control {
   constructor(private readonly request: APIRequestContext) {}
 

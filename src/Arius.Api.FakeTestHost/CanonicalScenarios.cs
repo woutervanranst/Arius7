@@ -4,7 +4,7 @@ using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>Reusable representative scenarios, kept in one place so tests exercise the same shapes the
 /// fidelity guard validates.</summary>

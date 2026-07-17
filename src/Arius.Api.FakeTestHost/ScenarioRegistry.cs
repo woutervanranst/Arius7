@@ -4,7 +4,7 @@ using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Cost;
 using Mediator;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>A scripted archive run: publish <paramref name="Events"/> in order, then return <paramref name="Result"/>.
 /// When <paramref name="Gated"/> the handler holds after the events until <see cref="ScenarioGate"/> releases the

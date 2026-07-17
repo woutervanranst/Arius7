@@ -3,10 +3,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>Out-of-process control surface for the hermetic Playwright suite — the runtime equivalent of the
-/// in-process AriusApiFactory.SeedRepository + factory.Scenarios.Set*. Only mapped by the Arius.Api.Testing host,
+/// in-process AriusApiFactory.SeedRepository + factory.Scenarios.Set*. Only mapped by the Arius.Api.FakeTestHost host,
 /// so production never exposes it. Jobs still START through the real hub (StartArchive/StartRestore) — this only
 /// seeds a repo, picks a named scenario, and releases gated runs.</summary>
 public static class TestingControlEndpoints

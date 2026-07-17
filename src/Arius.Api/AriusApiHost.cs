@@ -12,7 +12,7 @@ using Scalar.AspNetCore;
 namespace Arius.Api;
 
 /// <summary>Shared composition for the Arius.Api pipeline, reused by the production host (Program.cs) and the
-/// out-of-process Testing host (Arius.Api.Testing). The Core seam — <see cref="IRepositoryCoreComposer"/> — is
+/// out-of-process Testing host (Arius.Api.FakeTestHost). The Core seam — <see cref="IRepositoryCoreComposer"/> — is
 /// registered with <c>TryAdd</c>, so a host that pre-registers a scripted composer wins without any environment
 /// branch here (mirrors the CliHarness "inject the factory" pattern).</summary>
 public static class AriusApiHost

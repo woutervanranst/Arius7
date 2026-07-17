@@ -2,7 +2,7 @@ using Arius.Core.Shared.ChunkIndex;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>Deterministic <see cref="IStorageCostEstimator"/> for the scripted host — no pricing data, no cloud.
 /// Identical arithmetic to the Core unit-test fake (kept independent so the shipped-only-in-test-host graph

@@ -1,7 +1,7 @@
 using Arius.Api;
 using Arius.Api.Composition;
 
-namespace Arius.Api.Testing;
+namespace Arius.Api.FakeTestHost;
 
 /// <summary>Executable entry point for the scripted-Core host that Playwright boots out-of-process. Uses an
 /// explicitly-named class (not top-level statements) so no global <c>Program</c> is emitted — that would clash

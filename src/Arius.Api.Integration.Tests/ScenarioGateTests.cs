@@ -1,4 +1,4 @@
-using Arius.Api.Testing;
+using Arius.Api.FakeTestHost;
 
 namespace Arius.Api.Integration.Tests;
 

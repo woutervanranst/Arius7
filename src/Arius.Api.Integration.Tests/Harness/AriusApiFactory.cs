@@ -1,6 +1,6 @@
 using Arius.Api.AppData;
 using Arius.Api.Composition;
-using Arius.Api.Testing;
+using Arius.Api.FakeTestHost;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Mvc.Testing;
