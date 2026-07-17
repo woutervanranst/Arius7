@@ -69,20 +69,14 @@ public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INoti
 
 /// <summary>A chunk upload completed.</summary>
 /// <param name="ChunkHash">Content hash of the uploaded chunk.</param>
-/// <param name="StoredSize">Bytes written to storage (compressed + encrypted); the upload denominator.</param>
-/// <param name="OriginalSize">
-/// Uncompressed size in bytes of the chunk's source content, so a byte-progress consumer can express the
-/// uploaded layer in the same original-dataset units as the scanned/hashed layers (stored size understates
-/// progress because of compression). For a large chunk this is the file's original size; tar bundles carry
-/// their own uncompressed total on <see cref="TarBundleSealingEvent"/>.
+/// <param name="StoredSize">Bytes written to storage (compressed + encrypted).</param>
+/// <param name="OriginalSize">Uncompressed size in bytes of the chunk's source content. For a large chunk this is the file's original size; tar bundles carry their own uncompressed total on <see cref="TarBundleSealingEvent"/>.
 /// </param>
 public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long StoredSize, long OriginalSize) : INotification;
 
 /// <summary>
-/// A hashed file's content was found already stored — a hit in the chunk index or the in-run in-flight-hashes
-/// set at the Dedup + Router stage — so it is <i>not</i> re-uploaded and contributes only a filetree entry.
-/// Consumers tally it as deduplicated (bytes not re-uploaded). Contrast <see cref="ChunkUploadedEvent"/>,
-/// which fires for content that <i>is</i> uploaded.
+/// A file's contents are already present in the remote.
+/// Contrast <see cref="ChunkUploadedEvent"/>, which fires for content that <i>is</i> uploaded.
 /// </summary>
 /// <param name="ContentHash">Content hash of the deduplicated file (already present in the repository).</param>
 /// <param name="OriginalSize">Uncompressed size in bytes of the file whose content was not re-uploaded.</param>
@@ -104,11 +98,8 @@ public sealed record SnapshotCreatedEvent(FileTreeHash RootHash, DateTimeOffset 
 
 /// <summary>
 /// The streaming pipeline (enumerate → hash → dedup/route → upload → chunk-index → filetree) has fully
-/// drained; the run now finalizes — validate filetrees, build the tree, create the snapshot, write pointers.
-/// A payload-free transition marker fired once, at the entry to the sequential end-of-pipeline. Emitted here
-/// (not at snapshot creation) so the stepper's finalize/"snapshot" stage lights up the moment uploads finish,
-/// instead of stalling through validate + tree build. Fires on every run, including no-new-data runs where
-/// <see cref="SnapshotCreatedEvent"/> is skipped.
+/// drained; the run now finalizes (validate filetrees, build the tree, create the snapshot, write pointers).
+/// Fires on every run, including no-new-data runs where <see cref="SnapshotCreatedEvent"/> is skipped.
 /// </summary>
 public sealed record FinalizingSnapshotEvent() : INotification;
 
