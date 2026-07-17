@@ -19,7 +19,7 @@ The pipeline carries a small chain of immutable records, one per stage boundary:
 
 ### Stage / channel pipeline
 
-Each stage drains its input channel(s), does its work, and completes its output writer in a `finally` so downstream stages drain to completion in turn. Concurrency is fixed per stage (`HashWorkers=4`, `UploadWorkers=4`, `TarUploadWorkers=2`, `ThinEntryWorkers=64`, `FileTreeUpdateWorkers=16`), and most inter-stage channels are unbounded — **backpressure is concentrated at the two channels that carry real bytes**: `filePairChannel` (bounded `ChannelCapacity=64`, caps how far enumeration runs ahead of hashing) and `sealedTarChannel` (bounded `TarUploadWorkers`, caps how many full tar bundles sit in memory).
+Each stage drains its input channel(s), does its work, and completes its output writer in a `finally` so downstream stages drain to completion in turn. Concurrency is fixed per stage (`HashWorkers=4`, `UploadWorkers=4`, `TarUploadWorkers=2`, `ThinEntryWorkers=64`, `FileTreeUpdateWorkers=16`), and every inter-stage channel is unbounded **except the one that carries real bytes**: `sealedTarChannel` (bounded `TarUploadWorkers`, caps how many full tar bundles sit in memory). `filePairChannel` (Enumerate → Hash) is deliberately unbounded too, despite scaling with file count in flight — `FilePair` carries only paths + an optional hash (no content), and bounding it would throttle enumeration's ability to reach EOF and publish `ScanCompleteEvent` (the scan total) before hashing catches up.
 
 ```mermaid
 flowchart LR
@@ -38,7 +38,7 @@ flowchart LR
       FT["5b Filetree ×16<br/>AppendFileEntryAsync"]
     end
 
-    E -->|"filePairChannel (bounded 64)"| H
+    E -->|"filePairChannel (unbounded)"| H
     H -->|"hashedChannel (unbounded)"| D
     D -->|"largeChannel"| LU
     D -->|"smallChannel"| TB
@@ -83,7 +83,7 @@ Single-threaded by design: it owns `inFlightHashes` without locking.
 
 ### Fan-in and end-of-pipeline
 
-The handler awaits the upload producers (`Task.WhenAll(largeUploadTask, tarBuilderTask, tarUploadTask, dedupTask)`), then in a `finally` completes `chunkIndexEntryChannel` and `fileTreeEntryChannel`, then drains the two consumers and the upstream stages. After everything drains, it runs the commit sequence:
+The handler awaits the upload producers (`Task.WhenAll(largeUploadTask, tarBuilderTask, tarUploadTask, dedupTask)`), then in a `finally` completes `chunkIndexEntryChannel` and `fileTreeEntryChannel`, then drains the two consumers and the upstream stages. Once every stage has drained, the handler publishes a payload-free `FinalizingSnapshotEvent` — before the commit sequence starts, not at snapshot creation — so a progress consumer's finalize stage advances the instant uploads finish rather than stalling through validate/tree-build ([events-and-progress](../../cross-cutting/events-and-progress.md#the-published-event-set)). It then runs the commit sequence:
 
 ```mermaid
 flowchart LR
@@ -118,7 +118,7 @@ flowchart LR
 - **`--remove-local` requires `--write-pointers`.** The handler resolves `writePointers = opts.WritePointers` and rejects `RemoveLocal && !WritePointers` up front (mirrored by the CLI). Removing the binary without a pointer would lose the path entirely, so the combination is refused rather than silently enabling pointers. The old `--no-pointers` flag on `archive` is gone; pointers are now **opt-in** (`--write-pointers`, default off).
 - **`--fast-hash` populates the hashcache on every full-hash run** — both when `--fast-hash` is active (miss path) and when it is not. Any normal archive run warms the cache for a future `--fast-hash` run.
 - **`ValidateAsync` must run before the tree build** — `ExistsInRemote` throws otherwise.
-- Memory is bounded by the two byte-carrying bounded channels, *not* by file count: enumeration/hashing/upload-routing metadata flows through unbounded channels but stays small (path + hash).
+- Memory is bounded by the one byte-carrying bounded channel (`sealedTarChannel`), *not* by file count: enumeration/hashing/upload-routing metadata flows through unbounded channels (`filePairChannel` included) but stays small (path + hash).
 
 ## Why this shape
 

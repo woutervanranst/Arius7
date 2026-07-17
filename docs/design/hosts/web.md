@@ -55,6 +55,8 @@ There are **two provider lifetimes**, and this distinction is load-bearing:
 
 A read provider is **evicted and disposed** (`Evict`) whenever its repository's connection material or content might have changed: on a properties `PATCH`, a delete, and after every archive job (the snapshot moved, so cached read state is stale). The same three triggers also clear the repository's [statistics cache](#statistics-cache) — the two invalidations are deliberately co-located so a stale snapshot can never survive in either.
 
+A freshly created repository has no blob container until its first archive creates one (archive preflights `ReadWrite`). The three read paths that build a `ReadOnly` provider before that point — `GET /repos/{id}/snapshots`, `/stats`, and `JobsHub.StreamEntries` — catch `PreflightException(ContainerNotFound)` and degrade to an empty result rather than surfacing a 500 (mirroring `RepositoryEndpoints.TryGetAccountInfoAsync`). `GetReadProviderAsync` also evicts a build that faulted for *any* reason, so a transient failure doesn't poison the cache and get replayed on every call until an unrelated properties-change/delete happens to evict it.
+
 Both provider lifetimes route Core's `ILogger<T>` output to a **per-repository rolling log file** — the same `~/.arius/{account}-{container}/logs/` directory the CLI writes to — via a shared logger factory cached in the registry (`GetOrCreateRepoLoggerFactory`). So every Web-launched operation (queries *and* jobs) is captured on disk in the CLI's line format, not just on the API console. The logger's lifetime is deliberately **decoupled** from the providers: it is registered as an externally-owned singleton, so neither `Evict` nor a job disposing its provider closes the repo's log — only `DisposeAsync` at app shutdown, or a repository **delete** (`Remove`, which evicts the provider *and* disposes the logger), does. See [cross-cutting/logging.md](../cross-cutting/logging.md#per-host-setup).
 
 ### The job model
@@ -122,6 +124,23 @@ sequenceDiagram
 ```
 
 On the client, `RealtimeService` fans the four hub messages into RxJS subjects (`log$`, `progress$`, `cost$`, `done$`); `DrawerStore` subscribes to all four and projects them into signals (`lines`, `progress`, `stats`, `cost`, `streamState`). A `CostEstimate` flips `streamState` to `'cost'`, which renders the approval modal; the user's choice calls back through `RealtimeService.approveRestore(jobId, priority)` / `declineRestore(jobId)`.
+
+### Stage stepper: phase tracking + adaptive ETA
+
+The `/jobs/:id` detail page's stage stepper and "Est. finish" panel both derive from two `JobSink` mechanisms, neither of which Core knows about.
+
+**Phase** (`JobSink.SetPhase`) is a forward-only ordinal over one flat `PhaseNames` array covering both commands' disjoint slices:
+
+| Command | Phase sequence |
+|---|---|
+| Archive | `scan` → `hash-route` → `upload` → `snapshot` |
+| Restore | `classify` → `confirm-cost` → `download` → `rehydrate` → `cleanup` |
+
+`SetPhase` CASes the ordinal forward only — a phase at or before the current one is a no-op — so the concurrent per-item forwarders racing across `HashWorkers`/`UploadWorkers` can call it repeatedly, out of order, without ever regressing the stepper. Archive phases advance on first-arrival signals rather than the burst-fired `[phase] …` log tags: `JobRunner` seeds `scan` at job start, the first `FileHashingEvent`/`ChunkUploadingEvent` forwarder advances to `hash-route`/`upload`, and the payload-free `FinalizingSnapshotEvent` ([events-and-progress](../cross-cutting/events-and-progress.md#the-published-event-set)) — published once every streaming stage has drained, before validate/tree-build/snapshot — advances to `snapshot`, so the finalize stage lights up the instant uploads finish rather than stalling through the commit sequence. Restore reuses its existing sequential events (`SnapshotResolvedEvent`, the cost prompt, `ChunkDownloadStartedEvent`, `RehydrationStartedEvent`) — no new Core events.
+
+`job-detail.component.ts`'s `archiveStages`/`restoreStages` and `job-format.ts`'s `phaseAtLeast`/`phaseSentence` derive each stage's `done`/`running`/`pending` state from `snap.phase` (mirrored client-side as a flat `PHASE_ORDER`), replacing a `bytes ≥ total` heuristic that read wrong for zero-byte and fully-deduped runs. Restore's Confirm-cost/Rehydrate stages are the one exception, staying status/chunk-driven: the UI orders Rehydrate before Download, but Core executes download-before-rehydrate, so the phase ordinal — which follows Core's real execution order — can't rank those two the way the stepper displays them.
+
+**Adaptive ETA** (`JobSink.BuildSnapshot`) models an archive run as two concurrent constraints and reports the max: `EtaSeconds = max(uploadEta, hashEta)` (restore keeps a single download-rate term), so a dedup-heavy archive reads its true hash-bound remaining time instead of near-zero once there is nothing left to upload. Two independent EMAs feed it, `_transferRate` (upload + restore) and `_hashRate`, each **continuous-time**: the smoothing time-constant τ widens with elapsed run time (`τ = clamp(elapsed × 0.1, 3s, 600s)`), so a short job stays responsive while a multi-hour job settles instead of jittering per sample. Whichever term is larger binds the ETA; `ThroughputBytesPerSec` always reports that binding constraint's rate, and `EtaIsUpperBound` is set whenever hashing isn't complete (the upload-bytes denominator is still provisional until routing finishes). The web renders a bounded estimate as "≤ ~2.0 h left" (`formatEta`) and "Finishing up" once `phase === 'snapshot'`, in both the big ETA and the finish-time clock.
 
 ### The restore cost handshake (server side)
 
@@ -205,6 +224,9 @@ A repository's statistics are a **pure function of its snapshot set**, and the h
 - **A job provider is single-use and self-disposed.** Reusing a job provider would reuse a chunk index that is single-shot after `FlushAsync`; the `JobRunner` disposes it in `finally`. Read providers, by contrast, are cached and must be **evicted** (`Evict`) on properties change, delete, or after an archive — otherwise the SPA serves a stale snapshot.
 - **Mutating jobs serialize per repository.** Two archive/restore jobs on the same repo must not run concurrently (shared on-disk Core state). Enforced by the per-repo `SemaphoreSlim`; cross-repo concurrency is intentionally unrestricted.
 - **Events are isolated by provider, not by id.** Each job's `JobSink` lives in that job's provider, so a forwarder always targets the right client group. Read providers get an inert sink — the same forwarders must remain harmless there.
+- **`JobSink.Phase` never regresses.** `SetPhase` only advances the ordinal; concurrent per-item forwarders calling it out of order can never rewind the stage stepper to an earlier milestone.
+- **An archive ETA marked `EtaIsUpperBound` understates remaining work, never overstates it.** It is set whenever hashing is incomplete (the upload-bytes denominator is still provisional); restore's single-term ETA is never marked as a bound.
+- **A faulted read-provider build never sticks.** `RepositoryProviderRegistry.GetReadProviderAsync` evicts on any build failure (e.g. `ContainerNotFound` before a repository's first archive) so the next call retries instead of replaying the same fault.
 - **No billable restore proceeds without confirmation through this host.** When `ConfirmRehydration` is wired (always, for web restores) and the estimate is non-zero, a `null`/declined answer cancels before any cost — archive rehydration *or* Cool/Cold retrieval + egress — is incurred.
 - **A cost answer that races the prompt is never lost.** The approval waiter is armed (`RestoreApprovalRegistry.Prime`) *before* the estimate is pushed, so an approve/decline arriving before the run starts awaiting lands on the waiter rather than being dropped and leaking the repo lock until the sweep. `ApproveRestore` always resolves to a priority (default Standard), never a decline — only `DeclineRestore` cancels.
 - **A resume never resurrects a terminalized job.** `JobRunner.ResumeRestoreAsync` flips the row to `running` only through the guarded `AppDatabase.TryResumeToRunning` (applies only while still `rehydrating`/`awaiting-cost`), so a cancel that raced the resume can't be overwritten and driven to completion.

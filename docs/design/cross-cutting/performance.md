@@ -39,12 +39,13 @@ Long-running handlers are channel-connected stages with **bounded** channels so 
 
 | Bound | Const | Value | Role |
 |---|---|---:|---|
-| Archive file-pair channel | `ChannelCapacity` | 64 | feeds dedup/router; caps in-flight files |
 | Archive sealed-tar channel | (= `TarUploadWorkers`) | 2 | one slot per tar uploader |
 | Restore chunk channel | (= `DownloadWorkers`) | 4 | one slot per download worker |
 | Filetree upload channel | `UploadChannelCapacity` | 16 | caps in-flight filetree blob writes |
 | Inline verify pipe (pause) | `PauseWriterThreshold` | `1<<20` (~1 MiB) | caps compressed bytes buffered mid-verify |
 | Inline verify pipe (resume) | `ResumeWriterThreshold` | `1<<19` | hysteresis so the writer is not toggled per byte |
+
+The archive file-pair channel (Enumerate → Hash) is deliberately **unbounded**, not listed above: bounding it throttled enumeration to hashing's pace, delaying the scan-total event on large trees ([archive-command](../core/features/archive-command.md#stage-channel-pipeline)).
 
 The `RoundTripVerifier` pipe bound is the one that keeps a *single chunk* bounded regardless of its size: the verifier tees compressed bytes to a `System.IO.Pipelines.Pipe` whose `PauseWriterThreshold` parks the upload tee once ~1 MiB is buffered, so a multi-GB [large chunk](../../glossary.md#large-chunk) verifies in flat memory while it streams to blob storage. See [chunk-storage](../core/shared/chunk-storage.md) and [compression](../core/shared/compression.md) for the tee/verify shape; ADR-0012 records why every new zstd chunk is verified inline.
 
@@ -101,5 +102,5 @@ The zstd-level and `MaxShardEntryCount` numbers themselves come from the measure
 
 - **The constants are uncalibrated against production telemetry.** ADR-0015 states `1024` is grounded in a model (rewrite-whole-shard × ~200 touched roots), not long-horizon telemetry, so the value could shift with a different touched-root distribution at multi-million-chunk scale. The fan-out counts are similarly engineering estimates the benchmarks confirm rather than derive.
 - **No adaptive tuning.** Worker counts do not scale with machine core count or measured link bandwidth; a fast multi-core host with a fat pipe leaves the narrow upload/download stages under-driven. An auto-scaling fan-out is the natural next change and would slot into the same per-stage `const` sites.
-- **`ChannelCapacity = 64` carries a `TODO`** about pinning `SingleWriter`/`MultipleReader` semantics (`ArchiveCommandHandler.cs`) — tightening those channel options is a low-risk follow-up.
+- **The unbounded `filePairChannel` carries a `TODO`** about pinning `SingleWriter`/`MultipleReader` semantics (`ArchiveCommandHandler.cs`) — tightening those channel options is a low-risk follow-up.
 - **zstd level vs memory at higher `HashWorkers`.** Because per-compressor memory grows steeply with level (~85 MB at 19), any future raise of either `HashWorkers` or the level should be measured together against the bounded-memory invariant.
