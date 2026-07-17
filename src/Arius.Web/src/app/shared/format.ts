@@ -1,4 +1,4 @@
-/** Bytes → human-readable size (mirrors the prototype's fmtSize). */
+/** Bytes → human-readable size. */
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null) return '—';
   if (bytes >= 1e12) return (bytes / 1e12).toFixed(2) + ' TB';
@@ -26,7 +26,7 @@ export function formatCount(n: number | null | undefined): string {
 
 /**
  * Money → display string in EUR (the only currency Arius supports). Whole units at/above 10
- * (e.g. €182), two decimals below (e.g. €8.14), matching the cost-breakdown design.
+ * (e.g. €182), two decimals below (e.g. €8.14).
  */
 export function formatCurrency(amount: number | null | undefined): string {
   if (amount == null) return '—';

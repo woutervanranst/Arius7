@@ -278,7 +278,7 @@ public class NotificationHandlerTests
         await hashingH.Handle(new FileHashingEvent(path, 5000), CancellationToken.None);
         await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('9'), false, false), CancellationToken.None);
         await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('9'), 5000), CancellationToken.None);
-        await uploadedH.Handle(new ChunkUploadedEvent(FakeChunkHash('9'), 4000), CancellationToken.None);
+        await uploadedH.Handle(new ChunkUploadedEvent(FakeChunkHash('9'), 4000, 5000), CancellationToken.None);
 
         state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
         state.ChunksUploaded.ShouldBe(1L);

@@ -32,11 +32,13 @@ public sealed record JobRecord(
     long            RepositoryId,
     string          Kind,        // archive | restore
     string          Trigger,     // one-off | schedule
-    string          Status,      // queued | running | rehydrating | completed | failed | cancelled
+    string          Status,      // non-terminal: running | awaiting-cost | rehydrating — terminal: completed | failed | cancelled | interrupted
     double          Pct,
     string?         Detail,
     DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt);
+    DateTimeOffset? FinishedAt,
+    string?         StateJson = null,   // serialized live JobSnapshot, refreshed while the job runs
+    string?         Outcome = null);    // serialized terminal JobOutcome, written on completion
 
 /// <summary>A cron schedule that fires archive jobs for a repository.</summary>
 public sealed record ScheduleRecord(

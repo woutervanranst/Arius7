@@ -68,7 +68,7 @@ public class MediatorEventRoutingIntegrationTests
         await mediator.Publish(new FileHashingEvent(RelativePath.Parse("large.bin"), 200));
         await mediator.Publish(new FileHashedEvent(RelativePath.Parse("large.bin"), FakeContentHash('d'), false, false));
         await mediator.Publish(new ChunkUploadingEvent(FakeChunkHash('d'), 200));
-        await mediator.Publish(new ChunkUploadedEvent(FakeChunkHash('d'), 150));
+        await mediator.Publish(new ChunkUploadedEvent(FakeChunkHash('d'), 150, 200));
 
         await mediator.Publish(new SnapshotCreatedEvent(FakeFileTreeHash('c'), DateTimeOffset.UtcNow, 1));
 

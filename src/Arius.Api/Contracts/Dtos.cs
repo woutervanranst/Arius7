@@ -39,7 +39,7 @@ public sealed record UpdateRepositoryRequest(
     string? DefaultTier,
     string? Passphrase);
 
-// ── Snapshots / stats (read in Phase 2) ───────────────────────────────────────
+// ── Snapshots / stats ───────────────────────────────────────
 
 public sealed record SnapshotDto(string Version, DateTimeOffset Timestamp, long FileCount);
 
@@ -67,7 +67,8 @@ public sealed record JobDto(
     double          Pct,
     string?         Detail,
     DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt);
+    DateTimeOffset? FinishedAt,
+    string?         Outcome = null);
 
 public sealed record ScheduleDto(long Id, long RepoId, string Cron, string Kind, bool Enabled, DateTimeOffset? NextRun);
 

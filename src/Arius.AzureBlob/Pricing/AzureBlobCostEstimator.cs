@@ -15,6 +15,13 @@ public sealed class AzureBlobCostEstimator : IStorageCostEstimator
 {
     private const double BytesPerGiB = 1024.0 * 1024.0 * 1024.0;
 
+    /// <summary>Azure rehydration SLA (objects &lt; 10 GB) at Standard priority. Single source of truth for the
+    /// rehydration wait window; surfaced to hosts via <see cref="RestoreCostEstimate.StandardWait"/> (ADR-0020).</summary>
+    public static readonly TimeSpan StandardRehydrationWait = TimeSpan.FromHours(15);
+
+    /// <summary>Azure rehydration SLA (objects &lt; 10 GB) at High priority.</summary>
+    public static readonly TimeSpan HighRehydrationWait = TimeSpan.FromHours(1);
+
     private readonly string        _region;
     private readonly RegionPricing _pricing;
 
@@ -65,6 +72,8 @@ public sealed class AzureBlobCostEstimator : IStorageCostEstimator
             DownloadBytes            = request.DownloadBytes,
             TotalStandard            = cost.TotalStandard,
             TotalHigh                = cost.TotalHigh,
+            StandardWait             = StandardRehydrationWait,
+            HighWait                 = HighRehydrationWait,
         };
     }
 }

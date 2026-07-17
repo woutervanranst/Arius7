@@ -58,7 +58,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 ///
 /// | Channel                  | Writer                       | Reader                     | Capacity        | Notes                                                       |
 /// |--------------------------|------------------------------|----------------------------|-----------------|-------------------------------------------------------------|
-/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | bounded (N)     | Backpressure caps how far enumeration runs ahead of hashing.|
+/// | `filePairChannel`        | Enumerate (1)                | Hash (2)                   | unbounded       | Unbounded lets Enumerate reach EOF and publish the total as soon as the tree walk itself allows. |
 /// | `hashedChannel`          | Hash (2)                     | Dedup + Router (3)         | unbounded       | Metadata only (path+hash); lets hashing run ahead of upload.|
 /// | `largeChannel`           | Dedup + Router (3)           | Large Upload (4a)          | unbounded       | Large-file route (≥ `SmallFileThreshold`).                  |
 /// | `smallChannel`           | Dedup + Router (3)           | Tar Builder (4b)           | unbounded       | Small-file route (&lt; `SmallFileThreshold`).               |
@@ -84,6 +84,7 @@ namespace Arius.Core.Features.ArchiveCommand;
 /// | `TarBundleSealingEvent`  | Tar Builder (4b)                 |
 /// | `TarBundleUploadedEvent` | Tar Upload (4c)                  |
 /// | `SnapshotCreatedEvent`   | Create snapshot (6d)             |
+/// | `FinalizingSnapshotEvent`| End-of-pipeline entry (after 5 drains) |
 /// </summary>
 public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, ArchiveResult>
 {
@@ -94,7 +95,6 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
     private const int TarUploadWorkers = 2;
     private const int ThinEntryWorkers = 64;
     private const int FileTreeUpdateWorkers = 16;
-    private const int ChannelCapacity  = 64;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
@@ -280,7 +280,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             var inFlightHashes = new ConcurrentDictionary<ContentHash, long>();
 
             // Channels between stages
-            var filePairChannel        = Channel.CreateBounded<FilePair>(ChannelCapacity); // TODO be more specific about SingleWriter / MultipleReader etc
+            var filePairChannel        = Channel.CreateUnbounded<FilePair>(); // TODO be more specific about SingleWriter / MultipleReader etc
             var hashedChannel          = Channel.CreateUnbounded<HashedFilePair>();
             var largeChannel           = Channel.CreateUnbounded<FileToUpload>();
             var smallChannel           = Channel.CreateUnbounded<FileToUpload>();
@@ -479,8 +479,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[dedup] {Path} -> hit (pointer-only)", hashed.FilePair.RelativePath);
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
-                                var pointerSize = isKnown ? known[hashed.ContentHash].OriginalSize : inFlightHashes[hashed.ContentHash];
-                                Interlocked.Add(ref originalSize, pointerSize);
+                                var size = isKnown ? known[hashed.ContentHash].OriginalSize : inFlightHashes[hashed.ContentHash];
+                                Interlocked.Add(ref originalSize, size);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, size), cancellationToken);
                                 continue;
                             }
 
@@ -490,7 +491,9 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
-                                Interlocked.Add(ref originalSize, fs.GetFileSize(hashed.FilePair.RelativePath));
+                                var size = fs.GetFileSize(hashed.FilePair.RelativePath);
+                                Interlocked.Add(ref originalSize, size);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, size), cancellationToken);
                             }
                             else
                             {
@@ -562,7 +565,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         if (!uploadResult.AlreadyExisted)
                             Interlocked.Add(ref incrementalStoredSize, storedSize);
 
-                        await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize), ct);
+                        await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize, originalSize), ct);
 
                         _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, stored={Stored})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), storedSize.Bytes().Humanize());
                     }
@@ -717,6 +720,8 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
             await Task.WhenAll(chunkIndexUpdateTask, fileTreeUpdateTask, hashTask, enumTask);
 
             // ── End-of-pipeline ───────────────────────────────────────────────
+
+            await _mediator.Publish(new FinalizingSnapshotEvent(), cancellationToken);
 
             // ── Stage 6a: Validate filetrees ──────────────────────────────────
             _logger.LogInformation("[phase] validate-filetrees");

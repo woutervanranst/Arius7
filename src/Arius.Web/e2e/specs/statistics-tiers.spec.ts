@@ -5,8 +5,7 @@ import { test, expect } from '../support/fixtures';
 import { scratchContainer } from '../support/scratch';
 
 // Destructive: archives four distinct files into one repo, each at a different access tier, so the
-// statistics tier breakdown has more than the single tier the shared seed produces — the multi-tier
-// coverage the old statistics-tab unit test held but the live suite couldn't reach. Per-run-unique
+// statistics tier breakdown has more than the single tier the shared seed produces. Per-run-unique
 // container; the global teardown deletes scratch containers afterwards.
 test('statistics tier breakdown lists every archived tier, in API order @write', async ({ page, request, repo }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive multi-tier archive');

@@ -1,11 +1,35 @@
 import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
-import { CostEstimateMsg, DoneMsg, EntryDto, ListEntriesOptions, LogLine, ProgressMsg, SearchHitDto } from './api-models';
+import { filter } from 'rxjs/operators';
+import { CostEstimateMsg, DoneMsg, EntryDto, isNonTerminal, JobAttachState, JobSnapshot, ListEntriesOptions, SearchHitDto } from './api-models';
+
+/** What {@link RealtimeService.forwardReattach} re-emits for a reattached job's state. */
+export interface ReattachEmissions {
+  snapshot?: JobSnapshot;
+  cost?: CostEstimateMsg;
+  done?: DoneMsg;
+}
+
+/**
+ * Pure reattach decision: refresh absolute progress; for a still-active job also re-emit its cost estimate
+ * (the one-shot CostEstimate push can be lost while disconnected); for a finished job emit a terminal done
+ * so consumers finalize. A pure function so it is unit-testable without a live SignalR connection.
+ */
+export function reattachEmissions(id: string, state: JobAttachState | null): ReattachEmissions {
+  if (!state) return {};
+  const out: ReattachEmissions = { snapshot: state.snapshot };
+  if (isNonTerminal(state.status)) {
+    if (state.cost) out.cost = state.cost;
+  } else {
+    out.done = { jobId: id, status: state.status, summary: '', outcome: null };
+  }
+  return out;
+}
 
 /**
  * SignalR client for Arius.Api's hub (/hubs/arius): file-browser entry streaming and the
- * archive/restore job streams (log/progress/cost/done) with the cost-approval handshake.
+ * archive/restore job streams (progress/cost/done) with the cost-approval handshake.
  */
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
@@ -13,10 +37,59 @@ export class RealtimeService {
   private starting?: Promise<void>;
   private handlersBound = false;
 
-  readonly log$ = new Subject<LogLine>();
-  readonly progress$ = new Subject<ProgressMsg>();
+  /** jobIds this client is attached to — re-issued on reconnect (withAutomaticReconnect drops group membership). */
+  private readonly attached = new Set<string>();
+
+  /** Absolute-state progress, tagged by jobId. Subscribers filter by their own jobId. */
+  readonly progress$ = new Subject<JobSnapshot>();
   readonly cost$ = new Subject<CostEstimateMsg>();
   readonly done$ = new Subject<DoneMsg>();
+
+  /** Filtered view of progress$ for one job. */
+  jobProgress(jobId: string): Observable<JobSnapshot> {
+    return this.progress$.pipe(filter(s => s.jobId === jobId));
+  }
+  jobCost(jobId: string): Observable<CostEstimateMsg> {
+    return this.cost$.pipe(filter(c => c.jobId === jobId));
+  }
+  jobDone(jobId: string): Observable<DoneMsg> {
+    return this.done$.pipe(filter(d => d.jobId === jobId));
+  }
+
+  /**
+   * Joins the job's group and returns the current snapshot (live or persisted). Tracks it for
+   * reconnect re-attach — but only once the invoke actually succeeds, so a failed attach (e.g. an
+   * unknown jobId) doesn't stay in `attached` and get spuriously re-invoked on every reconnect.
+   */
+  async attachToJob(jobId: string): Promise<JobAttachState | null> {
+    await this.ensureStarted();
+    const state = await this.connection!.invoke<JobAttachState | null>('AttachToJob', jobId).catch(e => {
+      this.attached.delete(jobId);
+      throw e;
+    });
+    this.attached.add(jobId);
+    return state;
+  }
+
+  /** Re-applies a job's reattach state to the streams after a reconnect gap (see {@link reattachEmissions}). */
+  private forwardReattach(id: string, state: JobAttachState | null): void {
+    const { snapshot, cost, done } = reattachEmissions(id, state);
+    if (snapshot) this.progress$.next(snapshot);
+    if (cost) this.cost$.next(cost);
+    if (done) this.done$.next(done);
+  }
+
+  async detachFromJob(jobId: string): Promise<void> {
+    this.attached.delete(jobId);
+    if (this.connection?.state === signalR.HubConnectionState.Connected)
+      await this.connection.invoke('DetachFromJob', jobId);
+  }
+
+  async cancelJob(jobId: string): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('CancelJob', jobId); }
+  async approveRestore(jobId: string, priority: 'standard' | 'high'): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('ApproveRestore', jobId, priority); }
+  async declineRestore(jobId: string): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('DeclineRestore', jobId); }
+  async setAutoResume(jobId: string, autoResume: boolean): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('SetAutoResume', jobId, autoResume); }
+  async resumeRestore(jobId: string): Promise<void> { await this.ensureStarted(); await this.connection!.invoke('ResumeRestore', jobId); }
 
   private ensureStarted(): Promise<void> {
     if (!this.connection) {
@@ -26,12 +99,16 @@ export class RealtimeService {
         .build();
     }
     if (!this.handlersBound) {
-      const now = () => new Date().toLocaleTimeString('en-GB', { hour12: false });
-      this.connection.on('Log', (m: { text: string; severity: LogLine['severity'] }) =>
-        this.log$.next({ ts: now(), text: m.text, severity: m.severity }));
-      this.connection.on('Progress', (m: ProgressMsg) => this.progress$.next(m));
+      this.connection.on('Progress', (m: JobSnapshot) => this.progress$.next(m));
       this.connection.on('CostEstimate', (m: CostEstimateMsg) => this.cost$.next(m));
       this.connection.on('Done', (m: DoneMsg) => this.done$.next(m));
+      this.connection.onreconnected(() => {
+        for (const id of this.attached) {
+          this.connection!.invoke<JobAttachState | null>('AttachToJob', id)
+            .then(state => this.forwardReattach(id, state))
+            .catch(() => {});
+        }
+      });
       this.handlersBound = true;
     }
     if (this.connection.state === signalR.HubConnectionState.Connected) {
@@ -39,7 +116,7 @@ export class RealtimeService {
     }
     // Coalesce concurrent callers onto one in-flight attempt and clear it once settled, so a later
     // call re-evaluates the live connection state instead of resolving a stale already-fulfilled
-    // promise — the bug that let an invoke fire while withAutomaticReconnect had the socket in
+    // promise — otherwise an invoke could fire while withAutomaticReconnect had the socket in
     // Reconnecting/Disconnected.
     this.starting ??= this.driveToConnected().finally(() => { this.starting = undefined; });
     return this.starting;
@@ -62,7 +139,7 @@ export class RealtimeService {
     }
   }
 
-  /** Starts an archive; returns the job id. Subscribe to log$/progress$/done$ for the stream. */
+  /** Starts an archive; returns the job id. Subscribe to progress$/done$ (via jobProgress/jobDone) for the stream. */
   async startArchive(repositoryId: number, opts: { tier: string; removeLocal: boolean; writePointers: boolean; fastHash: boolean }): Promise<string> {
     await this.ensureStarted();
     return this.connection!.invoke<string>('StartArchive', repositoryId, opts.tier, opts.removeLocal, opts.writePointers, opts.fastHash);
@@ -72,12 +149,6 @@ export class RealtimeService {
   async startRestore(repositoryId: number, opts: { version: string | null; targetPaths: string[]; overwrite: boolean; noPointers: boolean }): Promise<string> {
     await this.ensureStarted();
     return this.connection!.invoke<string>('StartRestore', repositoryId, opts.version, opts.targetPaths, opts.overwrite, opts.noPointers);
-  }
-
-  /** Answers the restore cost modal. priority = 'standard' | 'high'; null/'' declines. */
-  async approve(jobId: string, priority: string | null): Promise<void> {
-    await this.ensureStarted();
-    await this.connection!.invoke('Approve', jobId, priority);
   }
 
   /** Streams cross-repository search hits (filename filter across every repository). */

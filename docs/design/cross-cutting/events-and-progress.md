@@ -19,6 +19,7 @@ Two slices publish events, both `sealed record … : INotification` declared in 
 | `FileHashingEvent` / `FileHashedEvent` / `FileSkippedEvent` | hashing lifecycle of one file; `FileSkippedEvent` drops an already-scanned file mid-pipeline (vs `EntryExcludedEvent` above) |
 | `TarBundleStartedEvent` / `TarEntryAddedEvent` / `TarBundleSealingEvent` / `TarBundleUploadedEvent` | [tar-chunk](../../glossary.md#tar-chunk) bundle lifecycle |
 | `ChunkUploadingEvent` / `ChunkUploadedEvent` | [chunk](../../glossary.md#chunk) upload start / done (carries `ChunkHash`) |
+| `FinalizingSnapshotEvent` | payload-free marker: every streaming stage has drained, the run now finalizes (validate → build tree → create snapshot → write pointers). Fires once per run, including no-new-data runs where `SnapshotCreatedEvent` is skipped |
 | `SnapshotCreatedEvent` | the [snapshot](../../glossary.md#snapshot) was written |
 
 | Restore — `Features/RestoreCommand/Events.cs` | Meaning |

@@ -84,4 +84,12 @@ public sealed record RestoreCostEstimate
 
     /// <summary>Total estimated cost at High rehydration priority (== Standard when no archive rehydration is involved).</summary>
     public required double TotalHigh { get; init; }
+
+    /// <summary>Provider rehydration SLA at Standard priority — the upper bound on how long archive-tier
+    /// chunks take to rehydrate before their files can be restored. Lets the UI render "up to {StandardWait}"
+    /// and the Api compute a "≈ hydrated by" heuristic, without any host hardcoding a provider constant.</summary>
+    public required TimeSpan StandardWait { get; init; }
+
+    /// <summary>Provider rehydration SLA at High priority (faster, costlier). See <see cref="StandardWait"/>.</summary>
+    public required TimeSpan HighWait { get; init; }
 }

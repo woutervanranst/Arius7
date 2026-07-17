@@ -20,7 +20,7 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             try { Tick(); }
             catch (Exception ex) { logger.LogError(ex, "Scheduler tick failed"); }
         }
-        while (await SafeWaitAsync(timer, stoppingToken));
+        while (await timer.SafeWaitForNextTickAsync(stoppingToken));
     }
 
     private void Tick()
@@ -47,13 +47,16 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             if (now < schedule.NextRun.Value)
                 continue;
 
-            // Due: fire an archive job and roll the next occurrence forward.
             var repo = database.GetRepository(schedule.RepositoryId);
-            if (repo is not null)
+            if (repo is not null && !database.HasActiveJob(schedule.RepositoryId))
             {
                 var jobId = Guid.NewGuid().ToString();
                 logger.LogInformation("Firing scheduled archive for repository {RepositoryId} (job {JobId})", schedule.RepositoryId, jobId);
                 _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, repo.DefaultTier, removeLocal: false, writePointers: false, fastHash: false, trigger: "schedule");
+            }
+            else if (repo is not null)
+            {
+                logger.LogWarning("Skipped scheduled archive for repository {RepositoryId} — a job is already in progress", schedule.RepositoryId);
             }
             database.SetScheduleNextRun(schedule.Id, expression.GetNextOccurrence(now, TimeZoneInfo.Utc));
         }
@@ -63,11 +66,5 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
     {
         try { expression = CronExpression.Parse(cron); return true; }
         catch (CronFormatException) { expression = null!; return false; }
-    }
-
-    private static async Task<bool> SafeWaitAsync(PeriodicTimer timer, CancellationToken token)
-    {
-        try { return await timer.WaitForNextTickAsync(token); }
-        catch (OperationCanceledException) { return false; }
     }
 }

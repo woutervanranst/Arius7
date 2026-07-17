@@ -28,5 +28,5 @@ Read the root [`../../AGENTS.md`](../../AGENTS.md) first — it owns the cross-c
 - **Secrets at rest**: account keys and passphrases go through `SecretProtector` (ASP.NET Data Protection, key ring on the mounted volume) — *not* Core's passphrase content encryption. Never store plaintext keys; always `Protect`/`Unprotect`.
 
 ## Run & test
-- Run: `dotnet run --project src/Arius.Api` (dev state under `.appstate/`; CORS allows `http://localhost:4200` for `ng serve`).
+- Run: `dotnet run --project src/Arius.Api` (dev state under `.appstate/`; CORS allows `http://localhost:4200` for `ng serve`). In Development only, the OpenAPI doc is at `/openapi/v1.json` and the Scalar UI at `/scalar` (wired in `AriusApiHost`, gated on `IsDevelopment()`; nothing registers in Production).
 - No dedicated Api unit project: this host is exercised via `src/Arius.Integration.Tests`, `src/Arius.E2E.Tests`, and the ArchUnit rules in `src/Arius.Architecture.Tests`. Build the host after any Core contract change — see the root contract's testing section.

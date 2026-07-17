@@ -1,3 +1,7 @@
 ignore:
   - "src/*.Tests/**"
   - "src/Arius.Tests.Shared/**"
+  # Test scaffolding (scripted Core, control endpoints, fakes) used by the integration-test project and
+  # the hermetic e2e suite — production Arius.Api does not reference it. Same category as *.Tests above;
+  # measuring coverage of the test doubles themselves is meaningless and only drags patch coverage down.
+  - "src/Arius.Api.FakeTestHost/**"

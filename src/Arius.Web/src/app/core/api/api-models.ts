@@ -76,31 +76,86 @@ export interface ListEntriesOptions {
   includeLocal?: boolean;
 }
 
-// ── Job streaming (archive / restore) ─────────────────────────────────────────
+// ── Jobs: absolute-state realtime + REST ──────────────────────────────────────
 
-export interface LogLine {
-  ts: string;
-  text: string;
-  severity: 'ok' | 'warn' | 'dedup' | 'meta' | 'info';
-}
+export const NON_TERMINAL_STATUSES = ['running', 'awaiting-cost', 'rehydrating'] as const;
+export type JobStatus = 'running' | 'awaiting-cost' | 'rehydrating' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+export const isNonTerminal = (s: string): boolean => (NON_TERMINAL_STATUSES as readonly string[]).includes(s);
 
-export interface ProgressMsg {
+/** Absolute-state progress snapshot — the `Progress` message payload AND the `AttachToJob` snapshot. Apply latest-wins. */
+export interface JobSnapshot {
+  jobId: string;
+  phase: string;
+  status: string;   // live job status carried in every progress snapshot (running/awaiting-cost/rehydrating/…)
+  totalBytes: number;
+  totalNewBytes: number;
+  scannedBytes: number;
+  scannedFiles: number;   // files enumerated so far; climbs even for pointer-only files that add 0 scannedBytes
+  hashedBytes: number;
+  uploadedBytes: number;
+  dedupedBytes: number;
+  dedupedFiles: number;
+  etaSeconds: number | null;
+  throughputBytesPerSec: number;
+  etaIsUpperBound: boolean;   // archive: true while hashing incomplete → the estimate is an upper bound ("≤")
   pct: number;
-  stats: Record<string, string> | null;
+  warningCount: number;
+  stats: Record<string, string>;
+  // restore layers
+  restoreTotalFiles: number;
+  filesRestored: number;
+  restoreTotalBytes: number;
+  bytesRestored: number;
+  chunksAvailable: number;
+  chunksRehydrated: number;
+  chunksNeedingRehydration: number;
+  chunksPending: number;
+  chunksTotal: number;
 }
 
 export interface CostEstimateMsg {
+  jobId: string;
   chunksAvailable: number;
   chunksNeedingRehydration: number;
   bytesNeedingRehydration: number;
   downloadBytes: number;
   totalStandard: number;
   totalHigh: number;
+  standardWaitHours: number;
+  highWaitHours: number;
 }
 
 export interface DoneMsg {
-  status: string;   // completed | failed
+  jobId: string;
+  status: string;
   summary: string;
+  outcome: string | null;   // JSON of JobOutcome, or null
+}
+
+export interface JobOutcome {
+  fileCount: number | null;
+  uploadedBytes: number | null;
+  dedupedBytes: number | null;
+  filesRestored: number | null;
+  downloadedBytes: number | null;
+  snapshotTimestamp: string | null;
+  durationSeconds: number | null;
+}
+
+/** Persisted resume facts for a restore, mirrored from the server `ResumeInfo`. Surfaced on reattach so a
+ *  job past cost-approval still renders them. */
+export interface ResumeInfo {
+  autoResume: boolean;
+  rehydrationStartedAt: string;
+  rehydrationWindowHours: number;
+}
+
+export interface JobAttachState {
+  status: string;
+  snapshot: JobSnapshot;
+  cost: CostEstimateMsg | null;
+  warningCount: number;
+  resume: ResumeInfo | null;
 }
 
 export interface JobDto {
@@ -109,11 +164,36 @@ export interface JobDto {
   repo: string;
   kind: string;     // archive | restore
   trigger: string;  // one-off | schedule
-  status: string;   // queued | running | rehydrating | completed | failed | cancelled
+  status: string;   // JobStatus
   pct: number;
   detail: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  outcome: string | null;   // JSON of JobOutcome (history rows), or null
+}
+
+export interface JobDetailDto {
+  id: string;
+  repoId: number;
+  repo: string;
+  kind: string;
+  trigger: string;
+  status: string;
+  pct: number;
+  detail: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  outcome: string | null;
+  snapshot: JobSnapshot | null;
+  warningCount: number;
+  cost: CostEstimateMsg | null;
+  resume: ResumeInfo | null;
+}
+
+export interface JobWarningsDto {
+  count: number;
+  lines: string[];
+  truncated: boolean;
 }
 
 export interface ScheduleDto {

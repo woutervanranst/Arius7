@@ -134,5 +134,6 @@ nav:
       - decisions/adr-0019-central-file-exclusion-configuration.md
       - decisions/adr-0020-provider-agnostic-cost-estimation.md
       - decisions/adr-0021-opt-in-change-detection-hashcache.md
+      - decisions/adr-0022-scripted-fake-core-test-harness.md
   - Glossary: glossary.md
   - History: history/INDEX.md

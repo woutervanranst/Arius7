@@ -29,6 +29,10 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'jobs/:id',
+    loadComponent: () => import('./features/jobs/job-detail.component').then(m => m.JobDetailComponent),
+  },
+  {
     path: 'jobs',
     loadComponent: () => import('./features/jobs/jobs.component').then(m => m.JobsComponent),
   },

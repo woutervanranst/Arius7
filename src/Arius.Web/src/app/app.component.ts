@@ -97,7 +97,7 @@ export class AppComponent {
   protected readonly appVersion = toSignal(inject(ApiService).getAppVersion());
 
   protected readonly currentSegment = signal('overview');
-  protected readonly searchVisible = () => this.currentSegment() !== 'overview'; // hidden on Overview (per spec)
+  protected readonly searchVisible = () => this.currentSegment() !== 'overview'; // hidden on Overview
 
   protected readonly nav: RailItem[] = [
     { label: 'Overview', icon: 'ki-element-11', link: '/overview' },

@@ -19,7 +19,7 @@ test('statistics tab shows the five KPI cards with real figures', async ({ page,
   await expect(page.getByText('Deduplicated size')).toBeVisible();
   await expect(page.getByText('Unique chunks')).toBeVisible();
 
-  // The dedup/compression "savings" banner was removed for good.
+  // The dedup/compression "savings" banner is intentionally absent.
   await expect(page.getByTestId('savings')).toHaveCount(0);
 });
 
@@ -70,8 +70,7 @@ test('statistics are cached server-side: repeated loads serve identical figures'
 });
 
 test('statistics tab shows the stored-size-by-tier breakdown', async ({ page, repo }) => {
-  // The repository-storage figures (and the tier breakdown) load the full chunk index server-side, so
-  // they no longer depend on having browsed the Files tab first.
+  // The repository-storage figures (and the tier breakdown) load the full chunk index server-side.
   await page.goto(`/repos/${repo.repoId}/statistics`);
   await expect(page.getByTestId('storage-loading')).toBeHidden({ timeout: 60_000 });
 

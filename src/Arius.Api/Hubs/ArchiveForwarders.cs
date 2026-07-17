@@ -4,36 +4,37 @@ using Mediator;
 
 namespace Arius.Api.Hubs;
 
-// Each forwarder pushes one Arius.Core archive event to the running job's SignalR group as a console
-// log line + a progress update. Resolved from the per-job provider (so they target that job's sink).
-// The provider source generator auto-registers these INotificationHandler<T> implementations.
+// Each forwarder folds one Arius.Core archive event into the job's JobSink byte aggregate.
 
 public sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<ScanCompleteEvent>
 {
     public ValueTask Handle(ScanCompleteEvent n, CancellationToken ct)
     {
-        sink.SetTotalFiles(n.TotalFiles);
-        sink.Log($"Indexed {n.TotalFiles} entries · {JobFormat.Bytes(n.TotalBytes)}", "info");
-        sink.ReportArchive(5);
+        sink.SetTotals(n.TotalFiles, n.TotalBytes);
         return ValueTask.CompletedTask;
     }
 }
 
-public sealed class FileHashedForwarder(JobSink sink) : INotificationHandler<FileHashedEvent>
+public sealed class FileScannedForwarder(JobSink sink) : INotificationHandler<FileScannedEvent>
 {
-    public ValueTask Handle(FileHashedEvent n, CancellationToken ct)
-    {
-        sink.IncHashed();
-        sink.ReportArchive();
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask Handle(FileScannedEvent n, CancellationToken ct) { sink.AddScanned(n.FileSize); return ValueTask.CompletedTask; }
+}
+
+public sealed class FileHashingForwarder(JobSink sink) : INotificationHandler<FileHashingEvent>
+{
+    public ValueTask Handle(FileHashingEvent n, CancellationToken ct) { sink.SetPhase("hash-route"); sink.AddHashed(n.FileSize); return ValueTask.CompletedTask; }
+}
+
+public sealed class FileDedupedForwarder(JobSink sink) : INotificationHandler<FileDedupedEvent>
+{
+    public ValueTask Handle(FileDedupedEvent n, CancellationToken ct) { sink.AddDeduped(n.OriginalSize); return ValueTask.CompletedTask; }
 }
 
 public sealed class TarBundleSealingForwarder(JobSink sink) : INotificationHandler<TarBundleSealingEvent>
 {
     public ValueTask Handle(TarBundleSealingEvent n, CancellationToken ct)
     {
-        sink.Log($"  sealing tar bundle · {n.EntryCount} files · {JobFormat.Bytes(n.TarByteSize)}", "meta");
+        sink.RememberTar(n.TarHash, n.UncompressedSize);
         return ValueTask.CompletedTask;
     }
 }
@@ -42,9 +43,7 @@ public sealed class TarBundleUploadedForwarder(JobSink sink) : INotificationHand
 {
     public ValueTask Handle(TarBundleUploadedEvent n, CancellationToken ct)
     {
-        sink.IncUploaded(n.StoredSize);
-        sink.Log($"  ✓ tar bundle uploaded · {n.EntryCount} files → {JobFormat.Bytes(n.StoredSize)}", "ok");
-        sink.ReportArchive();
+        sink.AddUploadedTar(n.TarHash);
         return ValueTask.CompletedTask;
     }
 }
@@ -53,19 +52,27 @@ public sealed class ChunkUploadedForwarder(JobSink sink) : INotificationHandler<
 {
     public ValueTask Handle(ChunkUploadedEvent n, CancellationToken ct)
     {
-        sink.IncUploaded(n.StoredSize);
-        sink.Log($"  ✓ {n.ChunkHash.Short8} → {JobFormat.Bytes(n.StoredSize)}", "ok");
-        sink.ReportArchive();
+        sink.AddUploaded(n.ChunkHash, n.StoredSize, n.OriginalSize);
+        return ValueTask.CompletedTask;
+    }
+}
+
+public sealed class ChunkUploadingForwarder(JobSink sink) : INotificationHandler<ChunkUploadingEvent>
+{
+    public ValueTask Handle(ChunkUploadingEvent n, CancellationToken ct)
+    {
+        sink.SetPhase("upload");
+        sink.AddQueuedNew(n.Size);   // additive "new bytes to upload" total (upload-progress denominator)
         return ValueTask.CompletedTask;
     }
 }
 
 public sealed class SnapshotCreatedForwarder(JobSink sink) : INotificationHandler<SnapshotCreatedEvent>
 {
-    public ValueTask Handle(SnapshotCreatedEvent n, CancellationToken ct)
-    {
-        sink.Log($"Writing manifest · snapshot {n.FileCount} files", "info");
-        sink.ReportArchive(100);
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask Handle(SnapshotCreatedEvent n, CancellationToken ct) => ValueTask.CompletedTask;
+}
+
+public sealed class FinalizingSnapshotForwarder(JobSink sink) : INotificationHandler<FinalizingSnapshotEvent>
+{
+    public ValueTask Handle(FinalizingSnapshotEvent n, CancellationToken ct) { sink.SetPhase("snapshot"); return ValueTask.CompletedTask; }
 }

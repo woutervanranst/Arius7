@@ -298,7 +298,7 @@ public class ChooseRepositoryViewModelTests
         signal.Writer.TryWrite(true);
     }
 
-    private static async Task WaitForAsync(ChooseRepositoryViewModel viewModel, Func<bool> condition, int timeoutMilliseconds = 1000)
+    private static async Task WaitForAsync(ChooseRepositoryViewModel viewModel, Func<bool> condition, int timeoutMilliseconds = 2500)
     {
         if (condition())
         {

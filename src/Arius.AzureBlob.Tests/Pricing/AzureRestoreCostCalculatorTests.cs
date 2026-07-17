@@ -63,22 +63,24 @@ public class AzureRestoreCostCalculatorTests
 
     [Test]
     public void TotalStandard_SumsAllComponents()
-        => Rehydrate(1, OneGBBytes).TotalStandard.ShouldBe(1.50021, tolerance: 1e-9); // 1 + 0.0002 + 0.00001 + 0.5
+        => Rehydrate(1, OneGBBytes).TotalStandard.ShouldBe(1.58021, tolerance: 1e-9); // 1 + 0.0002 + 0.00001 + 0.5 + 0.08 egress (1 GiB rehydrated)
 
     [Test]
     public void TotalHigh_SumsAllComponents()
-        => Rehydrate(1, OneGBBytes).TotalHigh.ShouldBe(5.50101, tolerance: 1e-9); // 5 + 0.001 + 0.00001 + 0.5
+        => Rehydrate(1, OneGBBytes).TotalHigh.ShouldBe(5.58101, tolerance: 1e-9); // 5 + 0.001 + 0.00001 + 0.5 + 0.08 egress (1 GiB rehydrated)
 
     [Test]
-    public void ZeroChunks_AllCostsAreZero()
+    public void DownloadBytes_WithoutTierBreakdown_ChargeEgressOnly()
     {
+        // Aggregate DownloadBytes with no per-tier chunk split → no read-ops/retrieval, but egress is billed.
         var cost = AzureRestoreCostCalculator.Compute(_pricing, new RestoreCostRequest { ChunksAvailable = 5, DownloadBytes = OneGBBytes });
         cost.RetrievalCostStandard.ShouldBe(0.0);
         cost.ReadOpsCostStandard.ShouldBe(0.0);
         cost.WriteOpsCost.ShouldBe(0.0);
         cost.StorageCost.ShouldBe(0.0);
-        cost.TotalStandard.ShouldBe(0.0); // 1 GiB download with no per-tier breakdown → 0
-        cost.TotalHigh.ShouldBe(0.0);
+        cost.EgressCost.ShouldBe(0.08, tolerance: 1e-9);    // 1 GiB * 0.08, billed from the first byte
+        cost.TotalStandard.ShouldBe(0.08, tolerance: 1e-9);
+        cost.TotalHigh.ShouldBe(0.08, tolerance: 1e-9);
     }
 
     [Test]
@@ -150,8 +152,9 @@ public class AzureRestoreCostCalculatorTests
         cost.DownloadReadOpsCost.ShouldBe(0.16, tolerance: 1e-9);   // 0.04 + 0.05 + 0.07
         cost.DownloadRetrievalCost.ShouldBe(1.5, tolerance: 1e-9);  // 0.6 + 0.9 (hot none)
         cost.RetrievalCostStandard.ShouldBe(0.0);
-        cost.TotalStandard.ShouldBe(1.66, tolerance: 1e-9);
-        cost.TotalHigh.ShouldBe(1.66, tolerance: 1e-9);
+        cost.EgressCost.ShouldBe(0.24, tolerance: 1e-9);           // 3 GiB * 0.08, billed from the first byte
+        cost.TotalStandard.ShouldBe(1.90, tolerance: 1e-9);        // 0.16 + 1.5 + 0.24
+        cost.TotalHigh.ShouldBe(1.90, tolerance: 1e-9);
     }
 
     [Test]
@@ -165,20 +168,20 @@ public class AzureRestoreCostCalculatorTests
         cost.DownloadReadOpsCost.ShouldBe(0.04, tolerance: 1e-9);
     }
 
-    // ── Internet egress (first 100 GiB/month free) ──────────────────────────────
+    // ── Internet egress (billed from the first byte — free monthly allowance not assumed) ────────
 
     [Test]
-    public void EgressCost_BeyondFreeAllowance_ChargedPerGiB()
+    public void EgressCost_ChargedPerGiB_FromFirstByte()
     {
         var cost = AzureRestoreCostCalculator.Compute(_pricing, new RestoreCostRequest { DownloadBytes = 200L * 1024 * 1024 * 1024 });
-        cost.EgressCost.ShouldBe(8.0, tolerance: 1e-9); // (200-100) * 0.08
-        cost.TotalStandard.ShouldBe(8.0, tolerance: 1e-9);
+        cost.EgressCost.ShouldBe(16.0, tolerance: 1e-9); // 200 * 0.08 (no free allowance subtracted)
+        cost.TotalStandard.ShouldBe(16.0, tolerance: 1e-9);
     }
 
     [Test]
-    public void EgressCost_WithinFreeAllowance_IsZero()
+    public void EgressCost_SmallTransfer_StillCharged()
         => AzureRestoreCostCalculator.Compute(_pricing, new RestoreCostRequest { DownloadBytes = 50L * 1024 * 1024 * 1024 })
-            .EgressCost.ShouldBe(0.0);
+            .EgressCost.ShouldBe(4.0, tolerance: 1e-9); // 50 * 0.08, billed from the first byte
 
     [Test]
     public void EgressCost_CountsRehydratedArchiveBytes_NotPending()
@@ -189,7 +192,7 @@ public class AzureRestoreCostCalculatorTests
             ChunksPendingRehydration = 1, BytesPendingRehydration = 500L * 1024 * 1024 * 1024,
             DownloadBytes = 80L * 1024 * 1024 * 1024,
         });
-        cost.EgressCost.ShouldBe(3.2, tolerance: 1e-9); // (80+60-100) * 0.08
+        cost.EgressCost.ShouldBe(11.2, tolerance: 1e-9); // (80+60) * 0.08 — pending 500 GiB still excluded, no free allowance
     }
 
     // ── Embedded catalog (real West Europe rates) ───────────────────────────────

@@ -4,40 +4,47 @@ using Arius.Core.Shared.Storage;
 namespace Arius.Api.Jobs;
 
 /// <summary>
-/// Parks a restore's <c>ConfirmRehydration</c> callback on a <see cref="TaskCompletionSource{T}"/>
-/// until the client answers the cost modal via <c>JobsHub.Approve</c>. <c>null</c> = decline/cancel.
-/// A pending approval is also declined when its owning connection drops (closed tab / lost socket),
-/// so a never-answered modal can't park the restore — and the per-repo write lock — indefinitely.
+/// Parks a restore's <c>ConfirmRehydration</c> callback until the client answers the cost modal
+/// (<c>JobsHub.ApproveRestore</c>/<c>DeclineRestore</c>) or the run's token is cancelled. Keyed by jobId, so ANY
+/// connection may answer. There is no in-process timeout: an unanswered prompt keeps the run live (holding its
+/// read provider) until answered, until the run's token is cancelled (process shutdown), or until the
+/// out-of-band <see cref="StaleApprovalSweepService"/> declines it after 24h. <c>null</c> = decline.
 /// </summary>
 public sealed class RestoreApprovalRegistry
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<RehydratePriority?>> _pending = new();
-    private readonly ConcurrentDictionary<string, string> _ownerByJob = new();   // jobId → connectionId
 
-    /// <summary>
-    /// Awaited by the restore command; completes when the client approves or declines. Records the
-    /// owning connection here — only restores that actually reach the cost modal are tracked, so the
-    /// owner map can't accumulate entries for restores that never need approval.
-    /// </summary>
-    public Task<RehydratePriority?> Register(string jobId, string connectionId)
+    /// <summary>Arms the pending-approval waiter for a job WITHOUT awaiting it. Call this before the client is told
+    /// it may answer (i.e. before <c>JobSink.Cost</c>) so an approve/decline that races in ahead of
+    /// <see cref="RegisterAsync"/> starting to await is captured by the waiter instead of being dropped as "no
+    /// pending approval". Idempotent: <see cref="RegisterAsync"/> then awaits this same waiter (its <c>GetOrAdd</c> returns it).</summary>
+    public void Prime(string jobId) =>
+        _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously));
+
+    /// <summary>Awaited by the restore command. Completes with the approved priority, or <c>null</c> on decline.
+    /// Throws <see cref="OperationCanceledException"/> if <paramref name="ct"/> is cancelled. Always removes its
+    /// own pending entry.</summary>
+    public async Task<RehydratePriority?> RegisterAsync(string jobId, CancellationToken ct)
     {
-        _ownerByJob[jobId] = connectionId;
-        return _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        var tcs = _pending.GetOrAdd(jobId, _ => new TaskCompletionSource<RehydratePriority?>(TaskCreationOptions.RunContinuationsAsynchronously));
+        try
+        {
+            return await tcs.Task.WaitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _pending.TryRemove(jobId, out _);
+        }
     }
 
-    /// <summary>Completes the pending approval for a job (priority, or null to decline).</summary>
+    /// <summary>Completes the pending approval for a job (priority to proceed, or <c>null</c> to decline). No-op
+    /// if nothing is waiting.</summary>
     public void Resolve(string jobId, RehydratePriority? priority)
     {
-        _ownerByJob.TryRemove(jobId, out _);
-        if (_pending.TryRemove(jobId, out var tcs))
+        if (_pending.TryGetValue(jobId, out var tcs))
             tcs.TrySetResult(priority);
     }
 
-    /// <summary>Declines every pending approval owned by a disconnected connection (treats it as cancel).</summary>
-    public void CancelForConnection(string connectionId)
-    {
-        foreach (var (jobId, owner) in _ownerByJob)
-            if (owner == connectionId)
-                Resolve(jobId, null);
-    }
+    /// <summary>Whether a live wait is currently parked for this job.</summary>
+    public bool HasPending(string jobId) => _pending.ContainsKey(jobId);
 }

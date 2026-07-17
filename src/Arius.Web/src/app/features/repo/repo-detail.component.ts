@@ -5,6 +5,7 @@ import { of, switchMap } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { ApiService } from '../../core/api/api.service';
 import { DrawerStore } from '../../core/state/drawer.store';
+import { JobPillComponent } from '../pill/job-pill.component';
 import { SnapshotBarComponent } from './snapshot-bar.component';
 
 /** Repository detail shell: header (alias, chips, Properties/Restore/Archive) + snapshot bar + tab bar + child outlet. */
@@ -12,7 +13,7 @@ import { SnapshotBarComponent } from './snapshot-bar.component';
   selector: 'arius-repo-detail',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, SnapshotBarComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, SnapshotBarComponent, JobPillComponent],
   template: `
     @if (repo(); as r) {
       <!-- Header -->
@@ -51,6 +52,8 @@ import { SnapshotBarComponent } from './snapshot-bar.component';
       <div style="margin-top:18px">
         <router-outlet></router-outlet>
       </div>
+
+      <arius-job-pill [repoId]="numericId()" />
     } @else {
       <div style="padding:40px;text-align:center;color:#a1a1aa;font-size:13px">Loading repository…</div>
     }
