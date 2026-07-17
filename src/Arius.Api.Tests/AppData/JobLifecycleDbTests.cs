@@ -7,7 +7,7 @@ public sealed class JobLifecycleDbTests
 {
     private static (AppDatabase Database, long RepositoryId) NewDatabase()
     {
-        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
+        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db"); // TODO scan codebase for GetTempPath and use canonical test paths
         var database = new AppDatabase(path);
         var accountId = database.InsertAccount("acc", encryptedAccountKey: null);
         var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
