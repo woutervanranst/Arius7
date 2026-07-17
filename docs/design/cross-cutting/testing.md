@@ -1,10 +1,10 @@
 # Testing
 
-> **Code:** `src/Arius.Architecture.Tests`, `src/Arius.Tests.Shared`, `src/Arius.E2E.Tests/Workflows`, `src/Arius.Integration.Tests`, `src/Arius.Core.Tests`, `src/Arius.Cli.Tests`, `src/Arius.Api.Tests`  ·  **Decisions:** [ADR-0001](../../decisions/adr-0001-structure-representative-e2e-coverage.md) · [ADR-0005](../../decisions/adr-0005-adopt-scoped-stryker-mutation-testing.md) · [ADR-0009](../../decisions/adr-0009-clarify-test-fixture-boundaries.md) · [ADR-0011](../../decisions/adr-0011-require-90-percent-production-line-coverage.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [tar chunk](../../glossary.md#tar-chunk) · [storage tier hint](../../glossary.md#storage-tier-hint)
+> **Code:** `src/Arius.Architecture.Tests`, `src/Arius.Tests.Shared`, `src/Arius.E2E.Tests/Workflows`, `src/Arius.Integration.Tests`, `src/Arius.Core.Tests`, `src/Arius.Cli.Tests`, `src/Arius.Api.Tests`, `src/Arius.Api.Integration.Tests`, `src/Arius.Api.FakeTestHost`, `src/Arius.Web/src/app/**/*.spec.ts`, `src/Arius.Web/e2e`  ·  **Decisions:** [ADR-0001](../../decisions/adr-0001-structure-representative-e2e-coverage.md) · [ADR-0005](../../decisions/adr-0005-adopt-scoped-stryker-mutation-testing.md) · [ADR-0009](../../decisions/adr-0009-clarify-test-fixture-boundaries.md) · [ADR-0011](../../decisions/adr-0011-require-90-percent-production-line-coverage.md) · [ADR-0022](../../decisions/adr-0022-scripted-fake-core-test-harness.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [tar chunk](../../glossary.md#tar-chunk) · [storage tier hint](../../glossary.md#storage-tier-hint)
 
 ## Purpose
 
-Arius is a backup tool, so tests are the primary review surface for correctness, durability, and recoverability — not an afterthought. This doc describes how the suite is *shaped*: how fixtures layer Azurite/Azure/in-memory backends under one repository service graph, why there is exactly **one** representative end-to-end workflow rather than a scenario matrix, how architecture tests enforce the Core⊥hosts boundary as an executable contract, and how mutation testing and the coverage floor act as quality gates. It is intentionally not a how-to-run guide (that lives in `AGENTS.md`).
+Arius is a backup tool, so tests are the primary review surface for correctness, durability, and recoverability — not an afterthought. This doc describes how the suite is *shaped*: how fixtures layer Azurite/Azure/in-memory backends under one repository service graph, why there is exactly **one** representative end-to-end workflow rather than a scenario matrix, how a scripted-fake `Arius.Core` gives the Api/Web host deterministic offline HTTP/hub/browser coverage, how architecture tests enforce the Core⊥hosts boundary as an executable contract, and how mutation testing and the coverage floor act as quality gates. It is intentionally not a how-to-run guide (that lives in `AGENTS.md`).
 
 ## How it works
 
@@ -13,15 +13,122 @@ Arius is a backup tool, so tests are the primary review surface for correctness,
 | Project | Scope | Backend |
 |---|---|---|
 | `Arius.Core.Tests` | Fast unit/behavior tests for Core feature handlers and shared services | in-memory (`FakeInMemoryBlobContainerService`) |
+| `Arius.AzureBlob.Tests` | Azure adapter logic — container discovery/listing, cost estimator/calculator | fake `BlobServiceClient`/`BlobContainerClient` (no real Azure) |
 | `Arius.Cli.Tests` | CLI parsing, option validation, account/key resolution, DI wiring | none (no Azure, no network) |
-| `Arius.Api.Tests` | Web-host logic in isolation — the `AppDatabase` and its statistics cache (hit/miss, fingerprint-based pruning, clear) | host SQLite only (no Azure, no Core) |
+| `Arius.Api.Tests` | Web-host logic in isolation — `AppDatabase`/statistics cache, `JobSink` aggregate/ETA/warnings, `JobStateRegistry`, `RehydrationSchedule` | host SQLite only (no Azure, no Core) |
+| `Arius.Api.Integration.Tests` | HTTP/hub-level Api behavior — job lifecycle, reattach, cost handshake, single-active-job guard, stale-approval sweep | in-process `WebApplicationFactory<Program>` + scripted Core |
+| `Arius.Api.FakeTestHost` | **Not a test project** — the scripted-fake `Arius.Core` substitute (scenario-driven command handlers + deterministic cost estimator) and `Testing` control endpoints; reused in-process (above) and out-of-process by hermetic Playwright | n/a |
 | `Arius.Integration.Tests` | Repository pipeline behavior against a real blob backend; crash recovery, faulting, rehydration simulation | Azurite (Docker) |
 | `Arius.E2E.Tests` | One representative archive→restore lifecycle; live-Azure-only probes | Azurite **and** real Azure |
 | `Arius.Architecture.Tests` | Dependency/boundary rules as executable contracts | reflection only (no I/O) |
 | `Arius.Tests.Shared` | **Not a test project** — reusable fixture/backend infrastructure | n/a |
 | `Arius.Explorer.Tests` | WPF host (Windows-only) | n/a |
 
-`Arius.Tests.Shared` is deliberately a non-test library. It was extracted so `Arius.E2E.Tests` could stop referencing `Arius.Integration.Tests` just to reuse `AzuriteFixture` — a test project depending on another test project made CI Docker-requirement discovery fragile. Reusable Azurite and repository-fixture wiring belongs here, not inside a test assembly.
+### The whole-solution project graph
+
+Every project in `src/` (plus `Arius.Web`'s three test suites, which live inside that one npm project rather than as separate projects), grouped into **production**, **test infrastructure** (non-test, but test-only), **benchmarks** (non-test), and **test projects**. An arrow is a `ProjectReference` (or, for `Arius.Web`, the equivalent app/spec relationship) — for a test project that reference *is* what it exercises; for a non-test project it is an ordinary compile-time dependency.
+
+```mermaid
+graph LR
+    subgraph tests["Test projects"]
+        CORETESTS["Arius.Core.Tests"]
+        AZBLOBTESTS["Arius.AzureBlob.Tests"]
+        CLITESTS["Arius.Cli.Tests"]
+        APITESTS["Arius.Api.Tests"]
+        APIINTTESTS["Arius.Api.Integration.Tests"]
+        INTTESTS["Arius.Integration.Tests"]
+        E2ETESTS["Arius.E2E.Tests"]
+        ARCHTESTS["Arius.Architecture.Tests"]
+        EXPLORERTESTS["Arius.Explorer.Tests"]
+        VITEST["Arius.Web:<br/>Vitest unit specs"]
+        PWREAL["Arius.Web:<br/>Playwright e2e/specs<br/>(real Azure)"]
+        PWHERM["Arius.Web:<br/>Playwright e2e/hermetic<br/>(scripted Core)"]
+    end
+
+    subgraph infra["Test infrastructure - not test projects"]
+        TESTSHARED["Arius.Tests.Shared"]
+        FAKEHOST["Arius.Api.FakeTestHost"]
+    end
+
+    subgraph bench["Benchmarks - not tests"]
+        AZBENCH["Arius.AzureBlob.Benchmarks"]
+        BENCH["Arius.Benchmarks"]
+    end
+
+    subgraph prod["Production"]
+        CORE["Arius.Core"]
+        AZBLOB["Arius.AzureBlob"]
+        CLI["Arius.Cli"]
+        API["Arius.Api"]
+        EXPLORER["Arius.Explorer"]
+        MIGRATION["Arius.Migration"]
+        WEBAPP["Arius.Web app code<br/>(components/stores/services)"]
+    end
+
+    %% production-internal references
+    AZBLOB --> CORE
+    CLI --> CORE
+    CLI --> AZBLOB
+    API --> CORE
+    API --> AZBLOB
+    EXPLORER --> CORE
+    EXPLORER --> AZBLOB
+    MIGRATION --> CORE
+    MIGRATION --> AZBLOB
+
+    %% test infrastructure -> production
+    TESTSHARED --> CORE
+    TESTSHARED --> AZBLOB
+    FAKEHOST --> API
+    FAKEHOST --> CORE
+
+    %% benchmarks
+    AZBENCH --> AZBLOB
+    AZBENCH --> CORE
+    BENCH --> E2ETESTS
+
+    %% test projects -> what they test (production) + what they depend on (other tests/infra)
+    CORETESTS --> CORE
+    CORETESTS --> TESTSHARED
+
+    AZBLOBTESTS --> AZBLOB
+    AZBLOBTESTS --> TESTSHARED
+
+    CLITESTS --> CLI
+    CLITESTS --> CORE
+    CLITESTS --> TESTSHARED
+
+    APITESTS --> API
+
+    APIINTTESTS --> API
+    APIINTTESTS --> FAKEHOST
+    APIINTTESTS --> TESTSHARED
+
+    INTTESTS --> CORE
+    INTTESTS --> AZBLOB
+    INTTESTS --> TESTSHARED
+
+    E2ETESTS --> CORE
+    E2ETESTS --> AZBLOB
+    E2ETESTS --> CLI
+    E2ETESTS --> TESTSHARED
+
+    ARCHTESTS --> CORE
+    ARCHTESTS --> AZBLOB
+    ARCHTESTS --> CLI
+    ARCHTESTS --> TESTSHARED
+
+    EXPLORERTESTS --> EXPLORER
+    EXPLORERTESTS --> TESTSHARED
+
+    VITEST --> WEBAPP
+    PWREAL --> WEBAPP
+    PWREAL --> API
+    PWHERM --> WEBAPP
+    PWHERM --> FAKEHOST
+```
+
+A few things this makes visible: `Arius.Api.Tests` is the only .NET test project with a **single** production dependency (`Arius.Api` only — it never touches Core, by design, see the table above); `Arius.Benchmarks` is the one place a **non-test** project depends on a **test** project (it reuses `Arius.E2E.Tests`' representative-workflow fixtures/datasets for its own harness); and `Arius.Migration` has **no dedicated test project** at all (an open seam, noted below).
 
 ### Fixture hierarchy
 
@@ -107,6 +214,49 @@ Assertions favor stable product behavior over storage-layout details. `AssertRem
 
 Dataset scale is one explicit knob: `SyntheticRepositoryDefinitionFactory.RepresentativeScaleDivisor`. The workflow definition stays independent of scale, so the same canonical story runs against a development-sized (~32 MB / ~254 files) repository now and a larger one later by changing one constant. `E2ETests.cs` keeps the narrow live-Azure credential sanity check plus hot-tier pointer/large-file probes that the representative workflow doesn't cover directly.
 
+### The Api/Web scripted-fake-Core harness
+
+`Arius.Api` has no analog of the Core-side fixture hierarchy above — it talks to Core only through `IMediator`, never through `IBlobContainerService` directly — so it needed a different vehicle to get deterministic, offline coverage of tier/cost/rehydration/warning scenarios ([ADR-0022](../../decisions/adr-0022-scripted-fake-core-test-harness.md)). The seam is `IRepositoryCoreComposer` (`src/Arius.Api/Composition/`), extracted from `RepositoryProviderRegistry.BuildAsync`: the registry always runs `AddMediator()` itself (the Api's auto-registered event forwarders live in this assembly), then delegates the rest of the per-repository Core composition to the composer.
+
+```mermaid
+graph LR
+    reg["RepositoryProviderRegistry.BuildAsync<br/>AddMediator() always"] --> seam["IRepositoryCoreComposer.ComposeAsync"]
+    seam -->|production| azc["AzureRepositoryCoreComposer<br/>AddAzureBlobStorage() + AddArius(...)<br/>byte-identical to pre-extraction"]
+    seam -->|test| sfc["ScriptedRepositoryCoreComposer<br/>(Arius.Api.FakeTestHost)"]
+    sfc --> sar["ScriptedArchiveHandler /<br/>ScriptedRestoreHandler<br/>publish real Core INotifications<br/>from a per-repo ScenarioRegistry"]
+    sfc --> nc["NotConfigured*Handler stand-ins<br/>for every other Core command/query"]
+    sfc --> sce[ScriptedStorageCostEstimator]
+```
+
+- **The fake replaces only the storage-touching handlers**, not the pipeline around them: `ScriptedArchiveHandler`/`ScriptedRestoreHandler` publish a scripted, ordered list of the **real** Core `INotification` types (`ScanCompleteEvent`, `ChunkUploadedEvent`, `ChunkResolutionCompleteEvent`, `RehydrationStatusEvent`, …) from a per-repository `ScenarioRegistry`, then return the scripted `ArchiveResult`/`RestoreResult`. The real Mediator pipeline, the Api's event forwarders, `JobSink`, and the SignalR hub all run unchanged — a scenario reproduces a finding exactly because everything downstream of Core is production code.
+- **`NotConfiguredCommandHandler`/`NotConfiguredQueryHandler`/`NotConfiguredStreamQueryHandler`** stand in for every Core command/query a scenario doesn't script. Othamar Mediator eagerly resolves *every* discovered handler on first `Send`/`Publish`, not just the invoked one, and the scripted composer never calls `AddArius()` — so without a stand-in, an unrelated call fails DI resolution instead of throwing the intended `NotSupportedException`.
+- **`ScenarioGate`** is a per-repository sticky latch: a scenario marked `Gated` holds the scripted handler in-flight (still "running") until a control endpoint calls `Release` — release-before-wait is remembered, so both orderings resolve. This is what lets a browser test observe a job sitting in the Active list before completing it.
+- **`ScriptedStorageCostEstimator`** replicates `Arius.Tests.Shared`'s `FakeStorageCostEstimator` arithmetic independently, so the shipped-to-a-real-process `Arius.Api.FakeTestHost` never references TUnit/NSubstitute/Azurite.
+- **Fidelity today is compile-time only**: the fake emits/consumes the real Core event, result, and DTO types, so a renamed field breaks the build. There is no runtime check that a canonical scenario's event *sequence* still matches what real Core would actually emit (open seam, below).
+
+The harness is consumed two ways, both wired through the same `AriusApiHost.AddAriusApi()`/`MapAriusApi()` extension methods that production `Program.cs` calls:
+
+| Consumer | How the scripted composer wins | Vehicle |
+|---|---|---|
+| `Arius.Api.Integration.Tests` | `AriusApiFactory : WebApplicationFactory<Program>` calls `RemoveAll<IRepositoryCoreComposer>()` then registers `ScriptedRepositoryCoreComposer` | in-process TUnit tests |
+| Hermetic Playwright | `Arius.Api.FakeTestHost` (`TestHost.Main`) registers the scripted composer **before** `AddAriusApi()` runs, so its `TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>()` is a no-op | out-of-process `dotnet run`, driven by a real browser |
+
+`Arius.Api.FakeTestHost` also maps `Testing`-only control endpoints (`POST /api/testing/{reset,seed-repo,scenario,release/{repoId}}`) — the out-of-process equivalent of the in-process factory's `SeedRepository`/`Scenarios.Set*` — so Playwright can seed a repo, select one of `CanonicalScenarios`' named scenarios, and release a gate, all before driving the real UI. Production `Arius.Api` never references `Arius.Api.FakeTestHost` and has no environment branch: the scripted composer is selected purely by registration order in a separate host.
+
+### Web test tiers
+
+`Arius.Web` splits unit and browser coverage across two runners, both under `src/Arius.Web`:
+
+- **Vitest** (`vitest.config.ts`, `globals: true`, `environment: 'node'`) runs pure-function and store specs matching `src/app/**/*.spec.ts` — `job-format.spec.ts`, `drawer.store.spec.ts`, `job-pill.store.spec.ts`, `realtime.service.spec.ts` — with `v8` coverage uploaded to Codecov under the `web` flag. It replaced the deprecated Karma/Jasmine runner and deliberately does **not** render Angular components (that would need `@analogjs/vitest-angular`); component rendering is Playwright's job.
+- **Playwright** runs two independent suites from the same `e2e/` root:
+
+| Suite | Config | Backend | CI gate |
+|---|---|---|---|
+| `e2e/specs/**` | `playwright.config.ts` | real Azure Blob Storage, real archive | full-stack behavioral gate; needs Azure secrets |
+| `e2e/hermetic/specs/**` | `playwright.hermetic.config.ts` | `Arius.Api.FakeTestHost` + `ng serve`, no Azure | `web-e2e-hermetic`, runs on every PR |
+
+The hermetic suite's `support/{control.ts,fixtures.ts,global-setup.ts}` wrap the `Testing` control endpoints into a `control` fixture (`seedRepo`/`scenario`/`release`) that each spec uses to set up a canonical scenario before driving the real UI: `jobs-live-update.spec.ts` (list reloads when a job finishes), `cost-reattach.spec.ts`/`cost-online-restore.spec.ts` (the cost modal survives a fresh reattach), `rehydrating-reattach.spec.ts` (auto-resume toggle + "≈ hydrated by" ETA persist across reattach), and `single-active-job.spec.ts` (a busy repo rejects a second job, by design).
+
 ### Architecture tests as contract enforcement
 
 `Arius.Architecture.Tests` turns the [design overview's](../../design/README.md) structural rules into executable ArchUnitNET assertions — the mechanical enforcement layer that complements behavior tests and design review. `DependencyTests` loads `Arius.Core`, `Arius.AzureBlob`, and `Arius.Cli` and enforces:
@@ -122,7 +272,7 @@ Dataset scale is one explicit knob: `SyntheticRepositoryDefinitionFactory.Repres
 Two quality gates sit on top of the tests, deliberately at different strengths:
 
 - **Mutation testing (advisory, [ADR-0005](../../decisions/adr-0005-adopt-scoped-stryker-mutation-testing.md)):** `stryker-config.json` scopes Stryker to `Arius.Core` (mutated) driven by `Arius.Core.Tests` via the MTP runner. Runs are local/manual; scores are diagnostic guidance for finding weak assertions, **not** a CI gate, because the preview MTP runner produces fluctuating scores and runtime is high.
-- **Coverage floor (enforced, [ADR-0011](../../decisions/adr-0011-require-90-percent-production-line-coverage.md)):** 90% overall *production* line coverage. `codecov.yml` excludes `src/*.Tests/**` and `src/Arius.Tests.Shared/**` from the denominator, so test code and reusable test infrastructure never inflate the number. CI collects coverage with `dotnet-coverage` and uploads to Codecov.
+- **Coverage floor (enforced, [ADR-0011](../../decisions/adr-0011-require-90-percent-production-line-coverage.md)):** 90% overall *production* line coverage. `codecov.yml` excludes `src/*.Tests/**`, `src/Arius.Tests.Shared/**`, and `src/Arius.Api.FakeTestHost/**` from the denominator, so test code and test scaffolding never inflate the number. CI collects coverage with `dotnet-coverage` and uploads to Codecov; Vitest uploads its own `web`-flagged coverage separately (see [Web test tiers](#web-test-tiers)).
 
 ## Key invariants
 
@@ -134,7 +284,9 @@ Two quality gates sit on top of the tests, deliberately at different strengths:
 - **Representative assertions target stable behavior, not storage layout.** Assert snapshot lineage, file counts, dedup/tar lookups, pointer presence/absence, and cleanup — not exact chunk/tar/filetree blob counts.
 - **Azurite/E2E suites self-skip at runtime when Docker or Azure credentials are absent**, with a visible reason in the report, rather than being filtered out of the CI matrix (`AzuriteFixture.EnsureAvailable` → `Skip.Test`).
 - **Architecture rules are executable.** The Core⊥host boundary, the Azure-isolation rule, the Mediator-only exposure, and the chunk-index/SQLite facades are enforced by `Arius.Architecture.Tests`, not just by convention.
-- **The coverage denominator excludes test code.** Test projects and `Arius.Tests.Shared` are ignored in `codecov.yml`; the 90% floor applies to production code only.
+- **The coverage denominator excludes test code.** Test projects, `Arius.Tests.Shared`, and `Arius.Api.FakeTestHost` are ignored in `codecov.yml`; the 90% floor applies to production code only.
+- **Production `Arius.Api` has zero references to `Arius.Api.FakeTestHost` and no environment branch.** The scripted `IRepositoryCoreComposer` wins only because the separate out-of-process host pre-registers it before `AddAriusApi()`'s `TryAddSingleton` runs — never by an `IsEnvironment` check in production code.
+- **The real-Azure Playwright suite (`e2e/specs`) remains the full-stack behavioral gate.** The hermetic suite (`e2e/hermetic/specs`) is additive scripted-Core coverage for scenarios real Azure can't deterministically fabricate, not a replacement.
 
 ## Why this shape
 
@@ -143,6 +295,7 @@ Two quality gates sit on top of the tests, deliberately at different strengths:
 - **Scoped advisory mutation testing** — see [ADR-0005](../../decisions/adr-0005-adopt-scoped-stryker-mutation-testing.md). Mutation pressure goes where it matters most (Core) without making an unstable preview runner a release gate.
 - **Enforced overall coverage floor** — see [ADR-0011](../../decisions/adr-0011-require-90-percent-production-line-coverage.md). An overall gate fails loudly on regressions without the noise of per-file thresholds; reviews still judge assertion quality, since the percentage alone is not proof that behavior is tested.
 - **Architecture tests as the mechanical layer.** They catch boundary erosion (an Azure `using` in the CLI, a leaked chunk-index internal) deterministically, freeing behavior tests and design review to focus on intent and correctness.
+- **Scripted-fake Core over a storage-layer fake or real-Azure-only** — see [ADR-0022](../../decisions/adr-0022-scripted-fake-core-test-harness.md). Replaying real Core's `INotification`/result/DTO types lets Api/Web scenarios (tier, cost, rehydration, warnings) be driven deterministically offline, while the real Mediator pipeline, forwarders, `JobSink`, and SignalR hub stay exercised unchanged — a fidelity a deep storage-layer fake or a hybrid strategy couldn't offer without duplicating the Core-level fixture hierarchy above.
 
 ## Open seams / future
 
@@ -151,3 +304,6 @@ Two quality gates sit on top of the tests, deliberately at different strengths:
 - **Dataset scale is one knob.** `RepresentativeScaleDivisor` tunes runtime cost; raising the representative profile toward production scale is a tuning decision, not a redesign.
 - **ArchUnitNET cannot see usages inside lambdas / async state machines** (noted in both `DependencyTests` and `ModulithTests`). Boundary violations hidden in closures are not caught by the architecture suite and rely on review.
 - **Some wrapper fixtures retain duplicated access paths by design** for ergonomics; keeping new responsibilities from drifting into the wrong fixture layer relies on discipline rather than a hard rule.
+- **The scripted fake's only fidelity guard is compile-time coupling.** A runtime drift check — replay real Core's emitted event sequence and diff it against the canonical scripted scenarios — was scoped in the harness design but not built; a scripted scenario can silently diverge from what real Core would actually emit.
+- **Vitest covers pure functions and stores only.** Angular component-level rendering is exercised by Playwright, not a component-test harness (`@analogjs/vitest-angular` would be needed for that).
+- **`Arius.Migration` has no dedicated test project** ([whole-solution graph](#the-whole-solution-project-graph)) — the v5→v7 migration path relies on the legacy-format coverage inside `Arius.Core.Tests`/`Arius.Integration.Tests` rather than a harness of its own.

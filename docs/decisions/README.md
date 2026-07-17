@@ -25,3 +25,6 @@ New decision? Copy [`adr-template.md`](adr-template.md).
 | [0017](adr-0017-idempotent-non-distributed-recovery.md) | Idempotent, non-distributed crash recovery via metadata-presence commit |
 | [0018](adr-0018-archive-tier-metadata-sidecar.md) | v5→v7 migration only: carry Archive-tier chunk metadata in a sidecar |
 | [0019](adr-0019-central-file-exclusion-configuration.md) | Centralize file/folder exclusion defaults in Arius.Core (embedded `appsettings.json` + options pattern) |
+| [0020](adr-0020-provider-agnostic-cost-estimation.md) | Cost estimation behind a provider-agnostic interface |
+| [0021](adr-0021-opt-in-change-detection-hashcache.md) | Opt-in change-detection hashcache for fast-hash archive runs |
+| [0022](adr-0022-scripted-fake-core-test-harness.md) | Scripted-fake-Core harness for Api/Web test coverage |
