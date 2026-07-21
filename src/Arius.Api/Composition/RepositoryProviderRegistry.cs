@@ -28,30 +28,26 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private readonly IRepositoryCoreComposer _coreComposer;
     private readonly ILoggerFactory      _loggerFactory;
     private readonly ILogger<RepositoryProviderRegistry> _logger;
-    private readonly Serilog.ILogger     _rootLogger;   // the one process-wide logger; per-repo factories are repo-tagged views of it
 
     private readonly object _gate = new();
     private readonly Dictionary<long, Lazy<Task<ServiceProvider>>> _readProviders = new();
 
-    // One repo-tagged logger factory per repository (a view of the shared root logger, not an owner of any
-    // file). Cached only to avoid rebuilding the wrapper per provider. The rolling file itself is owned by
-    // the root logger's Map sink and flushed at process shutdown, so disposing a factory here is cheap and
-    // never touches the file.
+    // One logger factory per repository, each OWNING its own Serilog logger writing to that repo's rolling file
+    // (see AriusLogging.CreateRepositoryLoggerFactory). Cached both to avoid rebuilding it per provider and so
+    // Remove can dispose it — which flushes and closes the repo's log file, releasing the handle on delete.
     private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
 
     public RepositoryProviderRegistry(
         AppDatabase database,
         SecretProtector secrets,
         IRepositoryCoreComposer coreComposer,
-        ILoggerFactory loggerFactory,
-        Serilog.ILogger rootLogger)
+        ILoggerFactory loggerFactory)
     {
         _database           = database;
         _secrets            = secrets;
         _coreComposer       = coreComposer;
         _loggerFactory      = loggerFactory;
         _logger             = loggerFactory.CreateLogger<RepositoryProviderRegistry>();
-        _rootLogger         = rootLogger;
     }
 
     /// <summary>Gets (building once, then caching) the shared read-only provider for a repository.</summary>
@@ -107,24 +103,48 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Fully removes a repository from the registry: evicts its cached read provider AND drops its cached
-    /// repo-tagged logger factory. Use on repository <b>delete</b> — unlike <see cref="Evict"/>, which is for
-    /// archive/properties changes where the repo lives on. The rolling log file is owned by the shared root
-    /// logger's Map sink (flushed at process shutdown), so removal drops the wrapper but does not close the
-    /// file mid-process — acceptable for a deleted repo.
+    /// Fully removes a repository from the registry: drops its cached read provider AND its per-repo logger
+    /// factory, disposing both. Use on repository <b>delete</b> — unlike <see cref="Evict"/>, which is for
+    /// archive/properties changes where the repo lives on. Disposing the factory flushes and closes the repo's
+    /// rolling log file, releasing the handle. The delete endpoint refuses while a job is active, and the
+    /// provider is disposed before its factory (see <see cref="DisposeProviderThenFactoryAsync"/>), so no live
+    /// provider is left logging through a disposed factory.
     /// </summary>
     public void Remove(long repositoryId)
     {
-        Evict(repositoryId); // dispose + drop the cached read provider (fire-and-forget)
-
+        Lazy<Task<ServiceProvider>>? provider;
         ILoggerFactory? factory;
         lock (_gate)
         {
-            if (!_repoLoggerFactories.Remove(repositoryId, out factory))
-                return;
+            _readProviders.Remove(repositoryId, out provider);
+            _repoLoggerFactories.Remove(repositoryId, out factory);
         }
 
-        factory.Dispose(); // MEL wrapper only — the shared root logger keeps ownership of the rolling file
+        // Fire-and-forget, but the await chain keeps the ordering: the provider (which resolves loggers FROM the
+        // factory) is disposed first, then the factory. Any concurrent build re-reads the dictionaries under the
+        // gate and gets a fresh factory, never this one.
+        _ = DisposeProviderThenFactoryAsync(provider, factory);
+    }
+
+    /// <summary>Wires the repository's diagnostics logger onto a job sink BEFORE its provider is built, so the
+    /// <c>[ETA]</c> trace fires from the first reporting tick — including during the (potentially slow/hanging)
+    /// provider-build phase. Best-effort: a failure here never fails the job, it just leaves the sink's [ETA]
+    /// trace silent. No-op for an inert (non-job) sink.</summary>
+    public void AttachJobDiagnostics(JobSink sink, long repositoryId)
+    {
+        if (sink.JobId is null)
+            return;
+
+        try
+        {
+            var connection = LoadConnection(repositoryId);
+            var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
+            sink.AttachDiagnosticsLogger(repoLoggerFactory.CreateLogger<JobSink>());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not attach the diagnostics logger for repository {RepositoryId}; [ETA] tracing will be off for this job", repositoryId);
+        }
     }
 
     private async Task<ServiceProvider> BuildAsync(long repositoryId, PreflightMode mode, JobSink jobSink, CancellationToken cancellationToken)
@@ -143,28 +163,22 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // swap in a scripted fake without touching Arius.Core.
         await _coreComposer.ComposeAsync(services, connection, mode, cancellationToken).ConfigureAwait(false);
 
-        // Route Core's logging to the repository's shared rolling log file.
+        // Route Core's logging to the repository's own rolling log file. The job sink's [ETA]/throughput
+        // diagnostics are wired to the SAME factory up front by AttachJobDiagnostics (before the provider build,
+        // so tracing covers the build phase); it is idempotent with this shared, cached factory.
         var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
         services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
-
-        // Route the job sink's [ETA]/throughput diagnostics to the SAME per-repo rolling file as Core's
-        // events, so ARIUS_LOG_LEVEL=Debug surfaces them in arius-{date}.txt (not just the API host console,
-        // which is invisible under the desktop/Explorer host). Inert read sinks never report, so skip them.
-        if (jobSink.JobId is not null)
-            jobSink.AttachDiagnosticsLogger(repoLoggerFactory.CreateLogger<JobSink>());
 
         _logger.LogInformation("Built {Mode} provider for repository {RepositoryId} ({Account}/{Container})", mode, repositoryId, connection.AccountName, connection.Container);
         return services.BuildServiceProvider();
     }
 
     /// <summary>
-    /// Gets (building once, then caching) the logger factory a repository's providers use. It is a
-    /// repo-tagged view of the one process-wide logger (<see cref="AriusLogging"/>): every event is stamped
-    /// with the repo's logs directory so the root logger's <c>WriteTo.Map</c> sink routes it into that repo's
-    /// rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c> — the same file the
-    /// CLI writes beside, in the same format. The factory does NOT own the root logger, so it is cheap to
-    /// build/dispose; the file sink is owned and flushed by the root logger at shutdown.
+    /// Gets (building once, then caching) the logger factory a repository's providers use. It owns a Serilog
+    /// logger that writes the repo's rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c>
+    /// — the same file the CLI writes beside, in the same format (<see cref="AriusLogging"/>). Because the factory
+    /// owns the file, disposing it (on <see cref="Remove"/> or <see cref="DisposeAsync"/>) closes the handle.
     /// </summary>
     private ILoggerFactory GetOrCreateRepoLoggerFactory(long repositoryId, string accountName, string containerName)
     {
@@ -174,9 +188,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
                 return existing;
 
             var logDir = RepositoryLocalStatePaths.GetLogsDirectory(accountName, containerName);
-            Directory.CreateDirectory(logDir);
-
-            var factory = AriusLogging.CreateRepositoryLoggerFactory(_rootLogger, logDir);
+            var factory = AriusLogging.CreateRepositoryLoggerFactory(logDir);
             _repoLoggerFactories[repositoryId] = factory;
             return factory;
         }
@@ -231,6 +243,16 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         {
             // A provider that never built successfully has nothing to dispose.
         }
+    }
+
+    /// <summary>Disposes a removed repository's read provider and then its logger factory, in that order: the
+    /// provider resolves loggers from the factory, so awaiting its (in-flight or completed) build+disposal before
+    /// disposing the factory keeps a still-live provider from logging through a disposed factory.</summary>
+    private static async Task DisposeProviderThenFactoryAsync(Lazy<Task<ServiceProvider>>? provider, ILoggerFactory? factory)
+    {
+        if (provider is not null)
+            await DisposeProviderAsync(provider).ConfigureAwait(false);
+        factory?.Dispose();
     }
 }
 

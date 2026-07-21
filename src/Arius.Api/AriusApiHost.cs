@@ -26,27 +26,27 @@ public static class AriusApiHost
                       ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "keys");
         Directory.CreateDirectory(keysDir);
 
-        // The single process-wide logger (see AriusLogging for the routing design), set as the static
-        // Log.Logger so UseSerilog() binds this exact instance and Program.cs's Log.Fatal/CloseAndFlush act
-        // on it — one owner, one flush on shutdown.
+        // The app-wide root logger (console + a rolling file for host/startup events — see AriusLogging). Set as
+        // the static Log.Logger so Program.cs's Log.Fatal/CloseAndFlush act on it, and handed to UseSerilog with
+        // dispose:true so the HOST owns it and flushes+closes it on shutdown (no leaked logger, no orphaned file
+        // handle). Per-repository files are owned by the registry's per-repo loggers, not by this one.
         var appLogDir  = Path.Combine(Path.GetDirectoryName(dbPath)!, "logs");
         var rootLogger = AriusLogging.BuildRootLogger(appLogDir);
         Log.Logger = rootLogger;
-        builder.Host.UseSerilog();
+        builder.Host.UseSerilog(rootLogger, dispose: true);
 
         builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
         builder.Services.AddSingleton(new AppDatabase(dbPath));
         builder.Services.AddSingleton<SecretProtector>();
         builder.Services.AddAzureBlobStorage();
         builder.Services.TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
-        // Hand the same root logger to the registry (by closure, so DI never disposes it) — it derives the
-        // per-repo-routed logger factories for each job/read provider from it.
+        // The registry builds each repository's own logger factory on demand (from the repo's logs directory), so
+        // it needs no logger handed in beyond the host ILoggerFactory it uses for its own operational messages.
         builder.Services.AddSingleton(sp => new RepositoryProviderRegistry(
             sp.GetRequiredService<AppDatabase>(),
             sp.GetRequiredService<SecretProtector>(),
             sp.GetRequiredService<IRepositoryCoreComposer>(),
-            sp.GetRequiredService<ILoggerFactory>(),
-            rootLogger));
+            sp.GetRequiredService<ILoggerFactory>()));
         builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
         builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
         builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();

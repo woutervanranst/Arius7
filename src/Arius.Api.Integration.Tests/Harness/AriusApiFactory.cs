@@ -12,14 +12,19 @@ namespace Arius.Api.Integration.Tests.Harness;
 /// <summary>Boots Arius.Api in-process with a throwaway SQLite app-db and a scripted Core.</summary>
 public sealed class AriusApiFactory : WebApplicationFactory<Program>
 {
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"arius-itest-{Guid.NewGuid():N}.sqlite");
+    // A unique DIRECTORY per test, not just a unique file name: AddAriusApi derives the app-wide log dir (and the
+    // data-protection keys dir) from Path.GetDirectoryName(dbPath). A shared parent would collapse every test's
+    // app-wide log to one {temp}/logs/arius-*.txt — a single-writer file the parallel hosts would fight over.
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"arius-itest-{Guid.NewGuid():N}");
+    private string DbPath => Path.Combine(_root, "arius-app.sqlite");
 
     public ScenarioRegistry Scenarios { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        Directory.CreateDirectory(_root);
         builder.UseEnvironment("Testing");
-        builder.UseSetting("Arius:AppDbPath", _dbPath);
+        builder.UseSetting("Arius:AppDbPath", DbPath);
         builder.ConfigureServices(services =>
         {
             services.AddSingleton(Scenarios);
@@ -51,35 +56,34 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
 
         // AppDatabase opens pooled connections (Pooling=true) and runs in WAL mode, and the background
         // job pollers keep the pool warm right up to shutdown. On Windows a pooled physical connection
-        // holds the .sqlite file (and its -wal/-shm sidecars) open, so the deletes below throw
+        // holds the .sqlite file (and its -wal/-shm sidecars) open, so the delete below throws
         // IOException("used by another process"). base.Dispose above has torn down the host (stopping
-        // those pollers); clearing the Sqlite pool now releases the last handles so the throwaway files
-        // can be removed.
+        // those pollers AND, via UseSerilog(dispose:true), disposing the root logger + the registry's
+        // per-repo loggers so their rolling files are closed); clearing the Sqlite pool now releases the
+        // last DB handles so the whole throwaway directory can be removed.
         SqliteConnection.ClearAllPools();
 
-        TryDelete(_dbPath);
-        TryDelete(_dbPath + "-wal");
-        TryDelete(_dbPath + "-shm");
+        TryDeleteDirectory(_root);
     }
 
-    private static void TryDelete(string path)
+    private static void TryDeleteDirectory(string path)
     {
         // Even after ClearAllPools, a just-released Sqlite handle can linger for a moment on Windows —
         // a background poller can be mid-query when the host is torn down, and WebApplicationFactory's
         // synchronous Dispose does not await hosted-service shutdown. Retry briefly, then give up: a
-        // leaked throwaway temp file must never fail an otherwise-passing test.
+        // leaked throwaway temp directory must never fail an otherwise-passing test.
         for (var attempt = 0; ; attempt++)
         {
             try
             {
-                if (File.Exists(path)) File.Delete(path);
+                if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
                 return;
             }
-            catch (IOException) when (attempt < 20)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 20)
             {
                 Thread.Sleep(50);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 return;
             }

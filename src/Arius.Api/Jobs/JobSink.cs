@@ -15,9 +15,11 @@ namespace Arius.Api.Jobs;
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
-    private ILogger? _logger;   // per-repo diagnostic logger (ETA/throughput tracing); attached by
-                                // RepositoryProviderRegistry.BuildAsync so [ETA] lands in the repo's rolling
-                                // log alongside Core events. null on inert/read sinks and until attached.
+    // Per-repo diagnostic logger (ETA/throughput tracing) so [ETA] lands in the repo's rolling log alongside
+    // Core events. Written once via AttachDiagnosticsLogger on the job-start thread and read on the reporting
+    // timer's threadpool thread — volatile so that cross-thread write is visible without a lock. null on
+    // inert/read sinks and until attached.
+    private volatile ILogger? _logger;
 
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
     public string? JobId { get; }
@@ -32,8 +34,9 @@ public sealed class JobSink
     /// <summary>Attaches the per-repository diagnostics logger (the same rolling-file factory Arius.Core's
     /// handlers use) after construction, so the <c>[ETA]</c> trace lands in the repo's <c>arius-{date}.txt</c>
     /// (surfaced by <c>ARIUS_LOG_LEVEL=Debug</c>) rather than only the API host console. Wired by
-    /// <see cref="Arius.Api.Composition.RepositoryProviderRegistry"/> once the per-repo factory exists — the
-    /// job sink is created before its provider, so the logger can't be a constructor argument.</summary>
+    /// <see cref="Arius.Api.Composition.RepositoryProviderRegistry.AttachJobDiagnostics"/> up front — before
+    /// <see cref="StartReporting"/> — so tracing covers the provider-build phase; the job sink is created before
+    /// its provider, so the logger can't be a constructor argument.</summary>
     public void AttachDiagnosticsLogger(ILogger logger) => _logger = logger;
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
