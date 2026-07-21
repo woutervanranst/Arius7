@@ -26,12 +26,9 @@ public static class AriusApiHost
                       ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "keys");
         Directory.CreateDirectory(keysDir);
 
-        // ── Single process-wide logger (owned by the composition root) ───────────
-        // One Serilog pipeline for the whole API — host startup, scheduler, browse queries, Core
-        // archive/restore handlers, and the job sinks' [ETA] trace all flow through it. Repo-scoped events
-        // route to each repo's arius-{date}.txt; host/startup events land in the app-wide file beside the
-        // app DB. Set as the static Log.Logger so UseSerilog() binds this exact instance and Program.cs's
-        // Log.Fatal/CloseAndFlush act on it (single owner → single flush on shutdown, no double dispose).
+        // The single process-wide logger (see AriusLogging for the routing design), set as the static
+        // Log.Logger so UseSerilog() binds this exact instance and Program.cs's Log.Fatal/CloseAndFlush act
+        // on it — one owner, one flush on shutdown.
         var appLogDir  = Path.Combine(Path.GetDirectoryName(dbPath)!, "logs");
         var rootLogger = AriusLogging.BuildRootLogger(appLogDir);
         Log.Logger = rootLogger;

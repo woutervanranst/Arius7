@@ -6,16 +6,6 @@ namespace Arius.Api.Tests.Jobs;
 
 public class JobSinkEtaTests
 {
-    // ── [ETA] diagnostics logging ────────────────────────────────────────────
-    // Regression guard for the progress-header trace that ships behind ARIUS_LOG_LEVEL=Debug.
-    // It was added as temporary Information-level instrumentation (5d72b83d), removed as "temp"
-    // (e94670af), and re-added at Debug (7b25e92a) — but wired to the API host logger, so it never
-    // reached the per-repository arius-{date}.txt file. RepositoryProviderRegistry.BuildAsync now
-    // attaches the per-repo logger via AttachDiagnosticsLogger; these lock the contract in:
-    //   • the tick emits an [ETA] line at Debug (not removed, not Information),
-    //   • nothing is emitted when Debug is disabled, and
-    //   • a logger attached AFTER construction (as BuildAsync does) starts producing lines.
-
     [Test]
     public async Task Eta_diagnostics_emit_an_eta_line_at_debug()
     {

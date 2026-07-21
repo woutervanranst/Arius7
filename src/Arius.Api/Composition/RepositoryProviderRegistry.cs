@@ -36,8 +36,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     // One repo-tagged logger factory per repository (a view of the shared root logger, not an owner of any
     // file). Cached only to avoid rebuilding the wrapper per provider. The rolling file itself is owned by
     // the root logger's Map sink and flushed at process shutdown, so disposing a factory here is cheap and
-    // never touches the file — the Evict/Remove/DisposeAsync distinctions below are retained but no longer
-    // gate a file handle.
+    // never touches the file.
     private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
 
     public RepositoryProviderRegistry(

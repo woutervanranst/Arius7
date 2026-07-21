@@ -6,8 +6,7 @@ namespace Arius.Api.Tests.Composition;
 
 /// <summary>
 /// Drives the real Serilog pipeline built by <see cref="AriusLogging"/> to lock in the routing contract:
-/// one logger, per-repository files via WriteTo.Map, host/startup events to the app-wide fallback file —
-/// the behavior this change exists to guarantee (host logs used to be console-only).
+/// one logger, per-repository files via WriteTo.Map, host/startup events to the app-wide fallback file.
 /// </summary>
 public class AriusLoggingTests
 {
@@ -62,7 +61,7 @@ public class AriusLoggingTests
         try
         {
             var root = AriusLogging.BuildRootLogger(appWideDir, LogEventLevel.Information);
-            root.Debug("debug-should-be-dropped-{M}", "X");     // below Information
+            root.Debug("debug-should-be-dropped-{M}", "X");
             root.Information("info-should-appear-{M}", "Y");
             root.Dispose();
 
