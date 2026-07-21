@@ -15,7 +15,9 @@ namespace Arius.Api.Jobs;
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
-    private readonly ILogger? _logger;   // optional diagnostic logger (ETA/throughput tracing); null on inert/read sinks
+    private ILogger? _logger;   // per-repo diagnostic logger (ETA/throughput tracing); attached by
+                                // RepositoryProviderRegistry.BuildAsync so [ETA] lands in the repo's rolling
+                                // log alongside Core events. null on inert/read sinks and until attached.
 
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
     public string? JobId { get; }
@@ -25,7 +27,14 @@ public sealed class JobSink
     public CancellationTokenSource Cts { get; } = new();
 
     public JobSink() { }                                  // inert sink for read providers
-    public JobSink(string jobId, IHubContext<JobsHub> hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
+    public JobSink(string jobId, IHubContext<JobsHub>? hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
+
+    /// <summary>Attaches the per-repository diagnostics logger (the same rolling-file factory Arius.Core's
+    /// handlers use) after construction, so the <c>[ETA]</c> trace lands in the repo's <c>arius-{date}.txt</c>
+    /// (surfaced by <c>ARIUS_LOG_LEVEL=Debug</c>) rather than only the API host console. Wired by
+    /// <see cref="Arius.Api.Composition.RepositoryProviderRegistry"/> once the per-repo factory exists — the
+    /// job sink is created before its provider, so the logger can't be a constructor argument.</summary>
+    public void AttachDiagnosticsLogger(ILogger logger) => _logger = logger;
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
 
@@ -109,7 +118,7 @@ public sealed class JobSink
     /// <summary>Once per reporting tick, logs the EMA throughput state and the derived rate/ETA at Debug under
     /// the "[ETA]" tag, so the numbers driving the header can be traced via ARIUS_LOG_LEVEL=Debug. No-op unless a
     /// logger was supplied and Debug is enabled.</summary>
-    private void LogEtaDiagnostics(DateTimeOffset now)
+    internal void LogEtaDiagnostics(DateTimeOffset now)
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
         var snap = BuildSnapshot(now);

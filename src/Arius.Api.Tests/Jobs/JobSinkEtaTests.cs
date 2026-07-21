@@ -1,10 +1,71 @@
 using Arius.Api.Jobs;
 using Arius.Core.Shared.Hashes;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.Api.Tests.Jobs;
 
 public class JobSinkEtaTests
 {
+    // ── [ETA] diagnostics logging ────────────────────────────────────────────
+    // Regression guard for the progress-header trace that ships behind ARIUS_LOG_LEVEL=Debug.
+    // It was added as temporary Information-level instrumentation (5d72b83d), removed as "temp"
+    // (e94670af), and re-added at Debug (7b25e92a) — but wired to the API host logger, so it never
+    // reached the per-repository arius-{date}.txt file. RepositoryProviderRegistry.BuildAsync now
+    // attaches the per-repo logger via AttachDiagnosticsLogger; these lock the contract in:
+    //   • the tick emits an [ETA] line at Debug (not removed, not Information),
+    //   • nothing is emitted when Debug is disabled, and
+    //   • a logger attached AFTER construction (as BuildAsync does) starts producing lines.
+
+    [Test]
+    public async Task Eta_diagnostics_emit_an_eta_line_at_debug()
+    {
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Debug);
+        var s   = new JobSink("job-1", hub: null, logger: log);
+        s.SetTotals(files: 10, bytes: 10_000_000);
+        s.AddQueuedNew(10_000_000);
+        s.SampleForEta(t0);
+
+        s.LogEtaDiagnostics(t0);
+
+        await Assert.That(log.Entries).Count().IsEqualTo(1);
+        await Assert.That(log.Entries[0].Level).IsEqualTo(LogLevel.Debug);
+        await Assert.That(log.Entries[0].Message).StartsWith("[ETA]");
+        await Assert.That(log.Entries[0].Message).Contains("job=job-1");
+    }
+
+    [Test]
+    public async Task Eta_diagnostics_are_suppressed_when_debug_is_disabled()
+    {
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Information);   // Debug off
+        var s   = new JobSink("job-1", hub: null, logger: log);
+        s.SampleForEta(t0);
+
+        s.LogEtaDiagnostics(t0);
+
+        await Assert.That(log.Entries).IsEmpty();
+    }
+
+    [Test]
+    public async Task AttachDiagnosticsLogger_starts_diagnostics_for_a_sink_built_without_one()
+    {
+        // Mirrors the wiring: JobRunner builds the sink with no logger, then
+        // RepositoryProviderRegistry.BuildAsync attaches the per-repo logger.
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Debug);
+        var s   = new JobSink("job-1", hub: null);   // no logger yet → no output
+        s.SampleForEta(t0);
+        s.LogEtaDiagnostics(t0);
+        await Assert.That(log.Entries).IsEmpty();
+
+        s.AttachDiagnosticsLogger(log);
+        s.LogEtaDiagnostics(t0);
+
+        await Assert.That(log.Entries).Count().IsEqualTo(1);
+        await Assert.That(log.Entries[0].Message).StartsWith("[ETA]");
+    }
+
     [Test]
     public async Task Eta_is_null_until_total_new_bytes_known_then_uses_windowed_rate()
     {
@@ -157,5 +218,20 @@ public class JobSinkEtaTests
         await Assert.That(early).IsGreaterThan(1_000_000.0);
         await Assert.That(late).IsGreaterThan(1_000_000.0);
         await Assert.That(late).IsLessThan(early);               // wider window = steadier
+    }
+
+    /// <summary>Minimal in-memory <see cref="ILogger"/> that records rendered messages at/above a level,
+    /// so a test can assert the [ETA] diagnostic fires (and at Debug).</summary>
+    private sealed class ListLogger(LogLevel minimum) : ILogger
+    {
+        public readonly List<(LogLevel Level, string Message)> Entries = new();
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= minimum;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (IsEnabled(logLevel)) Entries.Add((logLevel, formatter(state, exception)));
+        }
+
+        private sealed class NullScope : IDisposable { public static readonly NullScope Instance = new(); public void Dispose() { } }
     }
 }

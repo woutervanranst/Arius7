@@ -3,9 +3,6 @@ using Arius.Api.Jobs;
 using Arius.Core;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
-using Serilog;
-using Serilog.Events;
-using Serilog.Templates;
 
 namespace Arius.Api.Composition;
 
@@ -31,27 +28,31 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private readonly IRepositoryCoreComposer _coreComposer;
     private readonly ILoggerFactory      _loggerFactory;
     private readonly ILogger<RepositoryProviderRegistry> _logger;
+    private readonly Serilog.ILogger     _rootLogger;   // the one process-wide logger; per-repo factories are repo-tagged views of it
 
     private readonly object _gate = new();
     private readonly Dictionary<long, Lazy<Task<ServiceProvider>>> _readProviders = new();
 
-    // One shared logger factory per repository, writing a rolling file into the repo's CLI logs
-    // directory. Cached independently of providers: a job disposing its provider (or Evict) must
-    // not close the repo's rolling log. Disposed only at registry shutdown (DisposeAsync) or when
-    // the repository is removed for good (Remove) — never on a plain Evict.
+    // One repo-tagged logger factory per repository (a view of the shared root logger, not an owner of any
+    // file). Cached only to avoid rebuilding the wrapper per provider. The rolling file itself is owned by
+    // the root logger's Map sink and flushed at process shutdown, so disposing a factory here is cheap and
+    // never touches the file — the Evict/Remove/DisposeAsync distinctions below are retained but no longer
+    // gate a file handle.
     private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
 
     public RepositoryProviderRegistry(
         AppDatabase database,
         SecretProtector secrets,
         IRepositoryCoreComposer coreComposer,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        Serilog.ILogger rootLogger)
     {
         _database           = database;
         _secrets            = secrets;
         _coreComposer       = coreComposer;
         _loggerFactory      = loggerFactory;
         _logger             = loggerFactory.CreateLogger<RepositoryProviderRegistry>();
+        _rootLogger         = rootLogger;
     }
 
     /// <summary>Gets (building once, then caching) the shared read-only provider for a repository.</summary>
@@ -107,10 +108,11 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Fully removes a repository from the registry: evicts its cached read provider AND disposes its
-    /// shared rolling-log factory (releasing the file handle). Use on repository <b>delete</b> — unlike
-    /// <see cref="Evict"/>, which is for archive/properties changes where the repo lives on and its log
-    /// must keep writing.
+    /// Fully removes a repository from the registry: evicts its cached read provider AND drops its cached
+    /// repo-tagged logger factory. Use on repository <b>delete</b> — unlike <see cref="Evict"/>, which is for
+    /// archive/properties changes where the repo lives on. The rolling log file is owned by the shared root
+    /// logger's Map sink (flushed at process shutdown), so removal drops the wrapper but does not close the
+    /// file mid-process — acceptable for a deleted repo.
     /// </summary>
     public void Remove(long repositoryId)
     {
@@ -123,7 +125,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
                 return;
         }
 
-        factory.Dispose(); // disposes the SerilogLoggerProvider → flushes & closes the rolling file
+        factory.Dispose(); // MEL wrapper only — the shared root logger keeps ownership of the rolling file
     }
 
     private async Task<ServiceProvider> BuildAsync(long repositoryId, PreflightMode mode, JobSink jobSink, CancellationToken cancellationToken)
@@ -147,15 +149,23 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
 
+        // Route the job sink's [ETA]/throughput diagnostics to the SAME per-repo rolling file as Core's
+        // events, so ARIUS_LOG_LEVEL=Debug surfaces them in arius-{date}.txt (not just the API host console,
+        // which is invisible under the desktop/Explorer host). Inert read sinks never report, so skip them.
+        if (jobSink.JobId is not null)
+            jobSink.AttachDiagnosticsLogger(repoLoggerFactory.CreateLogger<JobSink>());
+
         _logger.LogInformation("Built {Mode} provider for repository {RepositoryId} ({Account}/{Container})", mode, repositoryId, connection.AccountName, connection.Container);
         return services.BuildServiceProvider();
     }
 
     /// <summary>
-    /// Gets (building once, then caching) the shared logger factory for a repository. It writes a
-    /// per-repository rolling log file into <c>~/.arius/{account}-{container}/logs/</c> — the same
-    /// directory the CLI uses — plus the console. The line format mirrors
-    /// <c>Arius.Cli.CliBuilder.ConfigureAuditLogging</c> so CLI and Web logs read identically.
+    /// Gets (building once, then caching) the logger factory a repository's providers use. It is a
+    /// repo-tagged view of the one process-wide logger (<see cref="AriusLogging"/>): every event is stamped
+    /// with the repo's logs directory so the root logger's <c>WriteTo.Map</c> sink routes it into that repo's
+    /// rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c> — the same file the
+    /// CLI writes beside, in the same format. The factory does NOT own the root logger, so it is cheap to
+    /// build/dispose; the file sink is owned and flushed by the root logger at shutdown.
     /// </summary>
     private ILoggerFactory GetOrCreateRepoLoggerFactory(long repositoryId, string accountName, string containerName)
     {
@@ -167,28 +177,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
             var logDir = RepositoryLocalStatePaths.GetLogsDirectory(accountName, containerName);
             Directory.CreateDirectory(logDir);
 
-            var formatter = new ExpressionTemplate(
-                "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}");
-
-            // Global log level: ARIUS_LOG_LEVEL (Serilog level name; default Information)
-            var level = Enum.TryParse<LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : LogEventLevel.Information;
-            var serilog = new LoggerConfiguration()
-                .MinimumLevel.Is(level)
-                .Enrich.WithThreadId()
-                .WriteTo.Console()
-                .WriteTo.File(
-                    formatter,
-                    Path.Combine(logDir, "arius-.txt"),
-                    rollingInterval:        RollingInterval.Day,
-                    fileSizeLimitBytes:     100L * 1024 * 1024,
-                    rollOnFileSizeLimit:    true,
-                    retainedFileCountLimit: 366,
-                    restrictedToMinimumLevel: level)
-                .CreateLogger();
-
-            // dispose: true → disposing this factory disposes the Serilog logger, flushing the file.
-            // SetMinimumLevel(Trace) stops MEL from pre-filtering below Serilog's level (its default is Information), so Serilog's level above is the single authoritative gate.
-            var factory = LoggerFactory.Create(b => b.AddSerilog(serilog, dispose: true).SetMinimumLevel(LogLevel.Trace));
+            var factory = AriusLogging.CreateRepositoryLoggerFactory(_rootLogger, logDir);
             _repoLoggerFactories[repositoryId] = factory;
             return factory;
         }

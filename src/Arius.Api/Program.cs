@@ -1,19 +1,19 @@
 using Arius.Api;
+using Arius.Api.Composition;
 using Arius.Core.Shared;
 using Serilog;
-using Serilog.Events;
 
-// Global log level: ARIUS_LOG_LEVEL (Verbose/Debug/Information/Warning/Error/Fatal); default Information.
-var logLevel = Enum.TryParse<LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : LogEventLevel.Information;
+// Bootstrap logger — captures any failure during host build. AddAriusApi replaces Log.Logger with the one
+// process-wide pipeline (repo-routed rolling file + console) once the app paths are known, and wires it to
+// the host via UseSerilog. Both honor ARIUS_LOG_LEVEL (default Information).
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Is(logLevel)
+    .MinimumLevel.Is(AriusLogging.ResolveLevel())
     .WriteTo.Console()
     .CreateLogger();
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
-    builder.Host.UseSerilog();
 
     builder.AddAriusApi();
     var app = builder.Build();
