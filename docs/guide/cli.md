@@ -45,9 +45,11 @@ rather than a cryptic decompression failure.
 
 **Logging — `ARIUS_LOG_LEVEL`.** A single environment variable controls log verbosity across every
 Arius host (CLI, API/Web, Explorer), using Serilog's level names (case-insensitive): `Verbose`,
-`Debug`, `Information` (default), `Warning`, `Error`, `Fatal`. The CLI writes to its per-run audit log
-file; the API/Web container logs to stdout (`docker logs`). Set `Debug` to see per-file `[fast-hash]`
-decisions (`-> reused (ctime match)` vs `(size+fp match)`).
+`Debug`, `Information` (default), `Warning`, `Error`, `Fatal`; an unrecognized value warns once on stderr
+and falls back to `Information`. The CLI writes to its per-run audit log file; the API/Web container writes
+to stdout (`docker logs`) **and** to files — per repository under `/data/.arius/{account}-{container}/logs/`,
+everything else under `/data/logs/`. Set `Debug` to see per-file `[fast-hash]` decisions
+(`-> reused (ctime match)` vs `(size+fp match)`), and the API's `[ETA]` progress trace.
 
 > **One account + container = one repository.** All local state, the deduplication index, and
 > the audit logs are keyed on the `account`/`container` pair. See [Where state lives](#where-state-lives).

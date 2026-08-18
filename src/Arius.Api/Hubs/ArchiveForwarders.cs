@@ -33,7 +33,7 @@ public sealed class FileHashedForwarder(JobSink sink) : INotificationHandler<Fil
 }
 
 // The dedup/route stage has drained, so the new-byte upload total is final: the upload-progress denominator
-// switches off the still-growing "queued so far" estimate and the ETA stops being an upper bound.
+// switches off the still-growing "queued so far" estimate and the ETA stops being provisional.
 public sealed class RoutingCompleteForwarder(JobSink sink) : INotificationHandler<RoutingCompleteEvent>
 {
     public ValueTask Handle(RoutingCompleteEvent n, CancellationToken ct) { sink.SetNewByteTotal(n.NewByteTotal); return ValueTask.CompletedTask; }

@@ -69,7 +69,7 @@ When `opts.FastHash` is `false` (default), Stage 2 always performs `FullHashAndR
 - **pointer-only with a missing chunk** → logged and dropped.
 - **new** → `TryAdd` to `inFlightHashes`, then route by `FileSize` vs `opts.SmallFileThreshold` (default 1 MB): `largeChannel` if `≥`, else `smallChannel`.
 
-Single-threaded by design: it owns `inFlightHashes` without locking.
+Single-threaded by design: it owns `inFlightHashes` without locking. On drain it publishes `RoutingCompleteEvent(incrementalSize)` — the point at which every scanned file is classified, so this run's new-byte total is final and a progress consumer can stop estimating it ([events-and-progress](../../cross-cutting/events-and-progress.md#the-published-event-set)).
 
 **4a Large Upload** (×4) — one [large chunk](../../../glossary.md#large-chunk) per file via `IChunkStorageService.UploadLargeAsync` (stream the file → compress → optionally encrypt → blob `chunks/<content-hash>`; for a large chunk, chunk hash == content hash). Emits a `ShardEntry` to `chunkIndexEntryChannel` and the `HashedFilePair` to `fileTreeEntryChannel`.
 
