@@ -25,13 +25,15 @@ public class AriusLoggingTests
 
         try
         {
-            using var root = AriusLogging.BuildRootLogger(appWideDir, LogEventLevel.Information);
+            // Both loggers are disposed before the files are read: a live Serilog file sink holds its file
+            // with FileShare.Read, which excludes the writer, so File.ReadAllText fails on Windows.
+            using (var root = AriusLogging.BuildRootLogger(appWideDir, LogEventLevel.Information))
             using (var repoFactory = AriusLogging.CreateRepositoryLoggerFactory(repoDir, LogEventLevel.Information))
             {
                 repoFactory.CreateLogger("RepoScoped").LogInformation("repo-line-{Marker}", "ALPHA");
                 // Host/startup logging has no repository logger → app-wide fallback file.
                 root.Information("host-line-{Marker}", "BETA");
-            }   // disposed → the repo's rolling file is flushed & closed
+            }   // disposed → both rolling files are flushed & closed
 
             var repoLog    = ReadLogFile(repoDir);
             var appWideLog = ReadLogFile(appWideDir);
