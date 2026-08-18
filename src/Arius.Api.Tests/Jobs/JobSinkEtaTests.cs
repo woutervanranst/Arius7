@@ -25,6 +25,36 @@ public class JobSinkEtaTests
     }
 
     [Test]
+    public async Task Eta_diagnostics_line_mirrors_the_snapshot_wire_fields()
+    {
+        // The [ETA] line is the raw SnapshotDto the web receives, so every field the client reads must be present
+        // (and carry the snapshot's value) — a debugger can then reproduce exactly what Arius.Web renders.
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Debug);
+        var s   = new JobSink("job-1", hub: null, logger: log);
+        s.SetPhase("upload");
+        s.SetStatus("running");
+        s.SetTotals(files: 10, bytes: 10_000_000);
+        s.AddQueuedNew(4_000_000);
+        s.AddScanned(10_000_000);
+        s.AddHashed(6_000_000);
+        s.AddDeduped(2_000_000);
+        s.AddUploaded(ChunkHash.Parse(new string('a', 64)), stored: 0, original: 1_000_000);
+        s.SampleForEta(t0);
+
+        s.LogEtaDiagnostics(t0);
+        var msg = log.Entries[0].Message;
+
+        foreach (var token in new[]
+                 {
+                     "phase=upload", "status=running", "pct=", "eta=", "bound=", "tp=", "warnings=",
+                     "total=10000000", "totalNew=4000000", "scanned=10000000/1f", "hashed=6000000",
+                     "uploaded=1000000", "deduped=2000000/1f", "chunksTotal=", "avail=", "pending=",
+                 })
+            await Assert.That(msg).Contains(token);
+    }
+
+    [Test]
     public async Task Eta_diagnostics_are_suppressed_when_debug_is_disabled()
     {
         var t0  = DateTimeOffset.UnixEpoch;
@@ -143,8 +173,11 @@ public class JobSinkEtaTests
     }
 
     [Test]
-    public async Task Eta_is_upper_bound_until_hashing_completes()
+    public async Task Eta_is_an_upper_bound_until_routing_completes()
     {
+        // The exact new-byte total is only known once the dedup/route stage drains (RoutingCompleteEvent →
+        // SetNewByteTotal). Until then the ETA is a provisional upper bound ("≤"), even if hashing has finished
+        // — hashing completing is NOT the gate (skipped/unreadable files mean hashed may never reach total).
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 10, bytes: 10_000_000);
@@ -152,13 +185,12 @@ public class JobSinkEtaTests
 
         s.SampleForEta(t0);
         s.AddUploaded(ChunkHash.Parse(new string('b', 64)), 0, 1_000_000);
-        s.AddHashed(4_000_000);                                   // 4 MB of 10 MB hashed
+        s.AddHashed(10_000_000);                                  // hashing complete…
         s.SampleForEta(t0.AddSeconds(1));
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsUpperBound).IsTrue();
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsUpperBound).IsTrue();   // …but routing hasn't
 
-        s.AddHashed(6_000_000);                                   // hashing now complete (10 MB = total)
-        s.SampleForEta(t0.AddSeconds(2));
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(2)).EtaIsUpperBound).IsFalse();
+        s.SetNewByteTotal(10_000_000);                            // routing done → exact total known
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsUpperBound).IsFalse();
     }
 
     [Test]

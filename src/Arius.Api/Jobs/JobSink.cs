@@ -118,18 +118,22 @@ public sealed class JobSink
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
 
-    /// <summary>Once per reporting tick, logs the EMA throughput state and the derived rate/ETA at Debug under
-    /// the "[ETA]" tag, so the numbers driving the header can be traced via ARIUS_LOG_LEVEL=Debug. No-op unless a
+    /// <summary>Once per reporting tick, logs the FULL progress snapshot — every field of the <see cref="JobSnapshot"/>
+    /// the web client receives over SignalR — at Debug under the "[ETA]" tag. Logging the raw wire payload (rather than
+    /// a re-derived subset) means a log line captured with ARIUS_LOG_LEVEL=Debug is exactly what Arius.Web renders
+    /// from: the bar layers, the ETA/throughput strings, and the tiles are all reproducible from it. No-op unless a
     /// logger was supplied and Debug is enabled.</summary>
     internal void LogEtaDiagnostics(DateTimeOffset now)
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
         var snap = BuildSnapshot(now);
         _logger.LogDebug(
-            "[ETA] job={JobId} phase={Phase} pct={Pct} eta={Eta}s bound={Bound} rate={Rate:F0}B/s | archive up={Uploaded} newTotal={TotalNew} hashed={Hashed} scanned={Scanned} total={Total} deduped={Deduped} | restore restored={Restored}/{RestoreTotal}B files={FilesRestored}/{RestoreTotalFiles} chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
-            JobId, snap.Phase, snap.Pct, snap.EtaSeconds, snap.EtaIsUpperBound, snap.ThroughputBytesPerSec,
-            snap.UploadedBytes, snap.TotalNewBytes, snap.HashedBytes, snap.ScannedBytes, snap.TotalBytes, snap.DedupedBytes,
-            snap.BytesRestored, snap.RestoreTotalBytes, snap.FilesRestored, snap.RestoreTotalFiles,
+            "[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s bound={EtaIsUpperBound} tp={ThroughputBytesPerSec:F0}B/s warnings={WarningCount}"
+            + " | archive total={TotalBytes} totalNew={TotalNewBytes} scanned={ScannedBytes}/{ScannedFiles}f hashed={HashedBytes} uploaded={UploadedBytes} deduped={DedupedBytes}/{DedupedFiles}f"
+            + " | restore restoreTotal={RestoreTotalBytes}/{RestoreTotalFiles}f restored={BytesRestored}/{FilesRestored}f chunksTotal={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
+            snap.JobId, snap.Phase, snap.Status, snap.Pct, snap.EtaSeconds, snap.EtaIsUpperBound, snap.ThroughputBytesPerSec, snap.WarningCount,
+            snap.TotalBytes, snap.TotalNewBytes, snap.ScannedBytes, snap.ScannedFiles, snap.HashedBytes, snap.UploadedBytes, snap.DedupedBytes, snap.DedupedFiles,
+            snap.RestoreTotalBytes, snap.RestoreTotalFiles, snap.BytesRestored, snap.FilesRestored,
             snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
     }
 
@@ -149,7 +153,8 @@ public sealed class JobSink
     }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
-    private long _totalFiles, _totalBytes, _scannedBytes, _scannedFiles, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes;
+    private long _totalFiles, _totalBytes, _scannedBytes, _scannedFiles, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes, _newByteTotal;
+    private volatile bool _newByteTotalFinal;   // set once RoutingCompleteEvent has fixed the exact new-byte total
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
@@ -186,6 +191,11 @@ public sealed class JobSink
     /// additive "new bytes to upload" total. Independent of the deduped/total subtraction, so it never
     /// underflows for pointer-only-heavy repos. Final once routing completes; 0 until the first queue.</summary>
     public void AddQueuedNew(long originalSize) => Interlocked.Add(ref _queuedNewBytes, originalSize);
+    /// <summary>Records the authoritative, final count of new (non-deduped) original bytes to upload, from
+    /// <c>RoutingCompleteEvent</c> once the dedup/route stage has drained. Until this fires the upload ETA
+    /// uses the still-growing <see cref="_queuedNewBytes"/> as a provisional (upper-bound) denominator; after
+    /// it, the denominator is exact and the ETA is no longer flagged as an upper bound.</summary>
+    public void SetNewByteTotal(long newByteTotal) { Interlocked.Exchange(ref _newByteTotal, newByteTotal); _newByteTotalFinal = true; }
     public void AddDeduped(long original) { Interlocked.Add(ref _dedupedBytes, original); Interlocked.Increment(ref _dedupedFiles); }
     public void RememberTar(ChunkHash tarHash, long uncompressed) => _tarUncompressed[tarHash] = uncompressed;
     public void AddUploadedTar(ChunkHash tarHash) { if (_tarUncompressed.TryGetValue(tarHash, out var u)) CreditUpload(tarHash, u); }
@@ -350,13 +360,11 @@ public sealed class JobSink
         // cap so the tiles and bar never read over the total (pct is already clamped; this fixes the raw "on disk" value).
         if (restoreTotal > 0 && restored > restoreTotal) restored = restoreTotal;
         var isRestore         = restoreTotal > 0 || restoreTotalFiles > 0;
-        var denominator       = isRestore ? restoreTotal : totalNew;
-        var progress          = isRestore ? restored     : uploaded;
 
         // ETA models the run as concurrent constraints and takes the slower (max):
-        //  • upload: (upperBoundNewBytes − uploaded) / transferRate. The denominator max(totalNew, total−deduped)
-        //    is a scan-known UPPER bound that tightens to the exact new-bytes as routing/dedup completes, and the
-        //    max() avoids the pointer-only underflow total−deduped alone would hit.
+        //  • upload: (newBytes − uploaded) / transferRate. newBytes is the queued-new total (a converging lower
+        //    bound) until RoutingCompleteEvent fixes the exact figure — NEVER total−deduped, which lagged dedup
+        //    right after scan and produced a multi-hour ETA spike.
         //  • local (archive only): (total − hashed) / hashRate — the read/hash backlog. This is what makes a
         //    fully-deduped archive read its true (hash-bound) time instead of "seconds".
         // Restore has no local term (its bytes are known up front and only download). While the scan is still
@@ -378,21 +386,31 @@ public sealed class JobSink
         }
         else
         {
-            var uploadDenom = Math.Max(totalNew, Math.Max(0L, total - deduped));
+            var newByteTotalFinal = _newByteTotalFinal;
+            // Upload denominator: the exact new-byte total once RoutingCompleteEvent has fixed it, else the
+            // still-growing queued-new total (a converging lower bound). NEVER total−deduped — that lags dedup
+            // badly right after scan and was the sole source of the 58 h ETA spike.
+            var uploadDenom = newByteTotalFinal ? Interlocked.Read(ref _newByteTotal) : totalNew;
             long? uploadEta = transferRate > 0 ? (long)Math.Ceiling(Math.Max(0L, uploadDenom - uploaded) / transferRate) : null;
-            long? localEta  = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
-            // Bind on the slower constraint. Report that constraint's rate so "sustained N MB/s" always explains
-            // the ETA (upload rate when upload-bound, hash rate when hash-bound).
-            if (localEta is { } l && (uploadEta is not { } u || l >= u)) { eta = localEta;  reportedRate = hashRate; }
-            else                                                          { eta = uploadEta; reportedRate = transferRate; }
-            etaIsUpperBound = eta is not null && hashed < total;   // new-bytes total not final until hashing done
+            long? hashEta   = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
+            // Bind on the slower constraint and report THAT constraint's rate, so "sustained N MB/s" always
+            // explains the ETA. A tie resolves to upload (strict > on the hash term), so the end of an
+            // upload-bound job — both terms 0 — reports the transfer rate, never the stale/inflated hash rate.
+            if (hashEta is { } h && (uploadEta is not { } u || h > u)) { eta = hashEta;   reportedRate = hashRate; }
+            else                                                        { eta = uploadEta; reportedRate = transferRate; }
+            // Provisional ("≤") until routing fixes the exact new-byte total; exact (no longer a bound) after.
+            etaIsUpperBound = eta is not null && !newByteTotalFinal;
         }
-        var pct = denominator > 0
-            ? (int)Math.Clamp(progress * 100 / denominator, 0, 100)
-            : (isRestore && restoreTotalFiles > 0
-                ? (int)Math.Clamp(Interlocked.Read(ref _filesRestored) * 100 / restoreTotalFiles, 0, 100)
-                // Archive before any upload work is known: reflect scan/hash progress so the ring isn't stuck at 0.
-                : (!isRestore && total > 0 ? (int)Math.Clamp(hashed * 100 / total, 0, 100) : 0));
+        // Archive pct is the monotonic "filled fraction" (uploaded + deduplicated) over the fixed scan total —
+        // the same value the detail-page layered bar shows. Unlike uploaded/totalNew it never regresses when
+        // more new chunks are discovered; the clamp absorbs the pointer-only case where deduped alone > total.
+        var pct = isRestore
+            ? (restoreTotal > 0
+                ? (int)Math.Clamp(restored * 100 / restoreTotal, 0, 100)
+                : restoreTotalFiles > 0
+                    ? (int)Math.Clamp(Interlocked.Read(ref _filesRestored) * 100 / restoreTotalFiles, 0, 100)
+                    : 0)
+            : total > 0 ? (int)Math.Clamp((uploaded + deduped) * 100 / total, 0, 100) : 0;
 
         return new JobSnapshot
         {

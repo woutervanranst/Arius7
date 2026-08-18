@@ -394,7 +394,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                     return;
                                 }
 
-                                await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash, fileHashReused, fileHashRehashed), ct);
+                                await _mediator.Publish(new FileHashedEvent(pair.RelativePath, contentHash, fileHashReused, fileHashRehashed, fileSize), ct);
 
                                 _logger.LogInformation("[hash] {Path} -> {Hash} ({Size})", pair.RelativePath, contentHash.Short8, fileSize.Bytes().Humanize());
 
@@ -513,6 +513,10 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             }
                         }
                     }
+
+                    // Dedup/route has drained: every scanned file is now classified (deduped or routed), so the
+                    // new-byte upload total is final. Progress consumers switch to the exact denominator here.
+                    await _mediator.Publish(new RoutingCompleteEvent(Interlocked.Read(ref incrementalSize)), cancellationToken);
                 }
                 finally
                 {
