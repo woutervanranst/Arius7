@@ -5,6 +5,7 @@ using Arius.Core;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -63,8 +64,14 @@ public class RepositoryProviderRegistryRemovalTests
         }
         finally
         {
+            // TrimEnd first: GetDirectoryName of a path with a trailing separator returns the path itself,
+            // which would leave the repository root (the .arius child directory) behind.
             if (Directory.Exists(logsDirectory))
-                Directory.Delete(Path.GetDirectoryName(logsDirectory)!, recursive: true);
+                Directory.Delete(Path.GetDirectoryName(logsDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))!, recursive: true);
+
+            // AppDatabase pools its connections; on Windows a pooled physical handle keeps app.sqlite open
+            // and the delete below throws IOException("used by another process").
+            SqliteConnection.ClearAllPools();
             Directory.Delete(Path.GetDirectoryName(databasePath)!, recursive: true);
         }
     }
