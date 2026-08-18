@@ -108,18 +108,26 @@ public sealed class JobSink
     public void StartReporting()
     {
         if (JobId is null) return;
-        _timer = new Timer(_ => { var now = _now(); SampleForEta(now); EmitNow(); LogEtaDiagnostics(now); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        // One snapshot per tick, shared by the wire and the log: building a second one for the diagnostics
+        // would let concurrent events make the logged line disagree with the payload the client received.
+        _timer = new Timer(_ =>
+        {
+            var now = _now();
+            SampleForEta(now);
+            var snapshot = BuildSnapshot(now);
+            Emit(snapshot);
+            LogEtaDiagnostics(snapshot);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
 
-    /// <summary>Once per reporting tick, logs the full <see cref="JobSnapshot"/> the web client receives over
-    /// SignalR at Debug under the "[ETA]" tag, so what Arius.Web renders is reproducible from the log alone.
-    /// No-op unless a logger was supplied and Debug is enabled.</summary>
-    internal void LogEtaDiagnostics(DateTimeOffset now)
+    /// <summary>Logs <paramref name="snap"/> — the very <see cref="JobSnapshot"/> instance emitted to the web
+    /// client over SignalR this tick — at Debug under the "[ETA]" tag, so what Arius.Web renders is reproducible
+    /// from the log alone. No-op unless a logger was supplied and Debug is enabled.</summary>
+    internal void LogEtaDiagnostics(JobSnapshot snap)
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
-        var snap = BuildSnapshot(now);
         _logger.LogDebug(
             "[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s bound={EtaIsUpperBound} tp={ThroughputBytesPerSec:F0}B/s warnings={WarningCount}"
             + " | archive total={TotalBytes} totalNew={TotalNewBytes} scanned={ScannedBytes}/{ScannedFiles}f hashed={HashedBytes} uploaded={UploadedBytes} deduped={DedupedBytes}/{DedupedFiles}f"
@@ -137,7 +145,13 @@ public sealed class JobSink
     public void EmitNow()
     {
         if (_done) return;
-        var snapshot = BuildSnapshot(_now());    // built outside the lock (absolute-state; a stale build is fine)
+        Emit(BuildSnapshot(_now()));             // built outside the lock (absolute-state; a stale build is fine)
+    }
+
+    /// <summary>Sends an already-built snapshot, so a caller that also needs it (the reporting timer, which logs
+    /// the same instance) never has to build a second one.</summary>
+    private void Emit(JobSnapshot snapshot)
+    {
         lock (_emitLock)
         {
             if (_done) return;                   // re-check under the lock: a Done that raced in wins

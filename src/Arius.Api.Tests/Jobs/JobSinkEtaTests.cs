@@ -16,7 +16,7 @@ public class JobSinkEtaTests
         s.AddQueuedNew(10_000_000);
         s.SampleForEta(t0);
 
-        s.LogEtaDiagnostics(t0);
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
 
         await Assert.That(log.Entries).Count().IsEqualTo(1);
         await Assert.That(log.Entries[0].Level).IsEqualTo(LogLevel.Debug);
@@ -41,7 +41,7 @@ public class JobSinkEtaTests
         s.AddUploaded(ChunkHash.Parse(new string('a', 64)), stored: 0, original: 1_000_000);
         s.SampleForEta(t0);
 
-        s.LogEtaDiagnostics(t0);
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
         var msg = log.Entries[0].Message;
 
         foreach (var token in new[]
@@ -61,7 +61,7 @@ public class JobSinkEtaTests
         var s   = new JobSink("job-1", hub: null, logger: log);
         s.SampleForEta(t0);
 
-        s.LogEtaDiagnostics(t0);
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
 
         await Assert.That(log.Entries).IsEmpty();
     }
@@ -74,11 +74,11 @@ public class JobSinkEtaTests
         var log = new ListLogger(LogLevel.Debug);
         var s   = new JobSink("job-1", hub: null);
         s.SampleForEta(t0);
-        s.LogEtaDiagnostics(t0);
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
         await Assert.That(log.Entries).IsEmpty();
 
         s.AttachDiagnosticsLogger(log);
-        s.LogEtaDiagnostics(t0);
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
 
         await Assert.That(log.Entries).Count().IsEqualTo(1);
         await Assert.That(log.Entries[0].Message).StartsWith("[ETA]");
