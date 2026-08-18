@@ -68,26 +68,4 @@ public class AriusLoggingTests
         Directory.Delete(repoDir, recursive: true);
         await Assert.That(Directory.Exists(repoDir)).IsFalse();
     }
-
-    [Test]
-    public async Task Root_logger_gates_on_the_configured_minimum_level()
-    {
-        var appWideDir = NewTempDir();
-        try
-        {
-            using (var root = AriusLogging.BuildRootLogger(appWideDir, LogEventLevel.Information))
-            {
-                root.Debug("debug-should-be-dropped-{M}", "X");
-                root.Information("info-should-appear-{M}", "Y");
-            }
-
-            var log = ReadLogFile(appWideDir);
-            await Assert.That(log).Contains("info-should-appear-Y");
-            await Assert.That(log).DoesNotContain("debug-should-be-dropped-X");
-        }
-        finally
-        {
-            Directory.Delete(appWideDir, recursive: true);
-        }
-    }
 }

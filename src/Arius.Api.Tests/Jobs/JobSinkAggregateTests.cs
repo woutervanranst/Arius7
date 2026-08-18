@@ -112,6 +112,16 @@ public class JobSinkAggregateTests
         await new ScanCompleteForwarder(s).Handle(new ScanCompleteEvent(2, 3000), default);
         await new FileScannedForwarder(s).Handle(new FileScannedEvent(RelativePath.Parse("a"), 2000), default);
         await new FileHashingForwarder(s).Handle(new FileHashingEvent(RelativePath.Parse("a"), 2000), default);
+
+        // Hash start only advances the phase: crediting bytes here would make the hashed total — and the hash
+        // rate and ETA derived from it — lead reality by the files still in flight.
+        var hashing = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
+        await Assert.That(hashing.Phase).IsEqualTo("hash-route");
+        await Assert.That(hashing.HashedBytes).IsEqualTo(0L);
+
+        await new FileHashedForwarder(s).Handle(
+            new FileHashedEvent(RelativePath.Parse("a"), ContentHash.Parse(new string('a', 64)),
+                FastHashReused: false, FastHashRehashed: true, FileSize: 2000), default);
         await new FileDedupedForwarder(s).Handle(new FileDedupedEvent(ContentHash.Parse(new string('b', 64)), 1000), default);
         await new ChunkUploadingForwarder(s).Handle(new ChunkUploadingEvent(ChunkHash.Parse(new string('d', 64)), 2000), default);
         await new ChunkUploadedForwarder(s).Handle(new ChunkUploadedEvent(ChunkHash.Parse(new string('c', 64)), 300, 2000), default);
@@ -119,9 +129,24 @@ public class JobSinkAggregateTests
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
         await Assert.That(snap.TotalBytes).IsEqualTo(3000L);
         await Assert.That(snap.ScannedBytes).IsEqualTo(2000L);
+        await Assert.That(snap.HashedBytes).IsEqualTo(2000L);        // credited on completion
         await Assert.That(snap.UploadedBytes).IsEqualTo(2000L);
         await Assert.That(snap.DedupedBytes).IsEqualTo(1000L);
         await Assert.That(snap.TotalNewBytes).IsEqualTo(2000L);
+    }
+
+    [Test]
+    public async Task Archive_pct_is_uploaded_plus_deduped_over_total()
+    {
+        // The monotonic "filled fraction" the pill and the detail-page layered bar show: dividing by the
+        // still-growing new-byte total instead would make pct run backwards as more work is discovered.
+        var s = new JobSink();
+        s.SetTotals(files: 1, bytes: 1000);
+        s.AddDeduped(original: 600);
+        s.AddUploaded(ChunkHash.Parse(new string('a', 64)), stored: 0, original: 100);
+
+        var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
+        await Assert.That(snap.Pct).IsEqualTo(70);   // (100 + 600) / 1000
     }
 
     [Test]
