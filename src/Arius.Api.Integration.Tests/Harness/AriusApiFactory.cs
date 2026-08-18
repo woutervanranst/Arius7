@@ -83,6 +83,10 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Report rather than swallow: silence here would hide exactly the file-locking regression
+                // this retry loop exists to absorb (a handle we forgot to close), and the leftovers
+                // accumulate across CI runs.
+                Console.Error.WriteLine($"[AriusApiFactory] could not clean up '{path}': {ex.Message}");
                 return;
             }
         }
