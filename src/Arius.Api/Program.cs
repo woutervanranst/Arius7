@@ -3,9 +3,8 @@ using Arius.Api.Composition;
 using Arius.Core.Shared;
 using Serilog;
 
-// Bootstrap logger — captures any failure during host build. AddAriusApi replaces Log.Logger with the one
-// process-wide pipeline (repo-routed rolling file + console) once the app paths are known, and wires it to
-// the host via UseSerilog. Both honor ARIUS_LOG_LEVEL (default Information).
+// Bootstrap logger — captures any failure during host build; AddAriusApi replaces it with the root logger
+// once the app paths are known.
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Is(AriusLogging.ResolveLevel())
     .WriteTo.Console()

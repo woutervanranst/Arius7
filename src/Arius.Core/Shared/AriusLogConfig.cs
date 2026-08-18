@@ -1,12 +1,10 @@
 namespace Arius.Core.Shared;
 
 /// <summary>
-/// Cross-host logging conventions shared by the CLI, API, and Explorer: the <c>ARIUS_LOG_LEVEL</c> contract and
-/// the audit-log line format. Deliberately free of any Serilog dependency (the domain library uses only the MEL
-/// abstractions) — the level is exposed as a validated Serilog level <b>name</b> that each host maps to its own
-/// <c>LogEventLevel</c>, and the line format is a plain template string each host feeds to a Serilog
-/// <c>ExpressionTemplate</c>. Centralizing it here keeps the three hosts from silently diverging on the env-var
-/// name, the default level, or the format.
+/// The logging conventions the CLI, API, and Explorer share: the <c>ARIUS_LOG_LEVEL</c> contract and the
+/// audit-log line format. Serilog-free (the domain library only depends on the MEL abstractions), so the level
+/// is exposed as a validated level <b>name</b> and the format as a plain template string, for each host to
+/// feed to its own Serilog configuration.
 /// </summary>
 public static class AriusLogConfig
 {
@@ -22,15 +20,13 @@ public static class AriusLogConfig
     public const string LineTemplate =
         "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}";
 
-    // The six Serilog LogEventLevel names, ascending severity. Kept as strings (not the Serilog enum) so this
-    // shared type stays dependency-free; hosts Enum.Parse the returned name into Serilog.Events.LogEventLevel.
+    // The Serilog LogEventLevel names, ascending severity.
     private static readonly string[] levelNames = { "Verbose", "Debug", "Information", "Warning", "Error", "Fatal" };
 
     private static int warned;
 
-    /// <summary>Resolves <see cref="LevelEnvironmentVariable"/> to a canonical Serilog level name. Unset or blank
-    /// → <see cref="DefaultLevelName"/>. An unrecognized or out-of-range value also falls back to the default
-    /// (it never silently disables logging) and warns once to stderr.</summary>
+    /// <summary>Resolves <see cref="LevelEnvironmentVariable"/> to a canonical Serilog level name. Unset, blank
+    /// or unrecognized → <see cref="DefaultLevelName"/>.</summary>
     public static string ResolveLevelName() =>
         ResolveLevelName(Environment.GetEnvironmentVariable(LevelEnvironmentVariable));
 
@@ -45,8 +41,7 @@ public static class AriusLogConfig
             if (string.Equals(name, value, StringComparison.OrdinalIgnoreCase))
                 return name;
 
-        // Fall back rather than throw or feed an undefined enum value downstream (which would filter out every
-        // event and silently disable all logging). Warn once so a misconfiguration is visible without spamming.
+        // Warn once so a misconfiguration is visible without spamming.
         if (Interlocked.Exchange(ref warned, 1) == 0)
             Console.Error.WriteLine(
                 $"[Arius] {LevelEnvironmentVariable}='{rawValue}' is not a valid log level " +

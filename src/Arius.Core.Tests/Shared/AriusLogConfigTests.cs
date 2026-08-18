@@ -18,7 +18,7 @@ public class AriusLogConfigTests
     [Arguments(null)]        // unset
     [Arguments("")]
     [Arguments("   ")]
-    [Arguments("6")]         // numeric — Enum.TryParse<LogEventLevel> used to accept this as (LogEventLevel)6, silencing ALL logging
+    [Arguments("6")]         // numeric — never an out-of-range enum value, which would silence all logging
     [Arguments("99")]
     [Arguments("Trace")]     // an MEL level name, not a Serilog level
     [Arguments("Critical")]  // ditto

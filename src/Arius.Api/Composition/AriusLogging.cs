@@ -7,49 +7,38 @@ using Arius.Core.Shared;
 namespace Arius.Api.Composition;
 
 /// <summary>
-/// Logging composition for the whole API. Two kinds of logger, both built here and both in the shared CLI
-/// line format (<see cref="AriusLogConfig.LineTemplate"/>):
+/// Logging composition for the API. Two kinds of logger, both in the shared CLI line format
+/// (<see cref="AriusLogConfig.LineTemplate"/>) and both gated at the single <c>ARIUS_LOG_LEVEL</c> level:
 /// <list type="bullet">
-///   <item><b>Root logger</b> (<see cref="BuildRootLogger(string)"/>) — console + an app-wide rolling file;
-///   carries host/startup/scheduler events and events without a repository context. Wired to the host via
-///   <c>UseSerilog</c> and owned by the composition root.</item>
+///   <item><b>Root logger</b> (<see cref="BuildRootLogger(string)"/>) — console + an app-wide rolling file for
+///   host/startup/scheduler events and anything without a repository context.</item>
 ///   <item><b>Per-repository logger</b> (<see cref="CreateRepositoryLoggerFactory(string)"/>) — console + that
-///   repository's rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c> (the same
-///   file the CLI writes beside). Each repository owns its own logger, so <see cref="RepositoryProviderRegistry"/>
-///   disposing it on repository <b>delete</b> flushes and CLOSES the file — releasing the handle rather than
-///   holding it for the whole process.</item>
+///   repository's rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c>, beside the
+///   file the CLI writes. Owned by <see cref="RepositoryProviderRegistry"/>, which disposes it on repository
+///   delete to release the file handle.</item>
 /// </list>
-/// One minimum level, from <c>ARIUS_LOG_LEVEL</c> (default Information), gates every logger; nothing is gated on
-/// Debug.
 /// </summary>
 internal static class AriusLogging
 {
-    // Mirrors the CLI's audit-log line format so CLI and API logs read identically; [SourceContext] is rendered
-    // as the class name (last '.'-segment).
     private static readonly ExpressionTemplate LineTemplate = new(AriusLogConfig.LineTemplate);
 
-    /// <summary>Global minimum level from <c>ARIUS_LOG_LEVEL</c> (Verbose/Debug/Information/Warning/Error/Fatal);
-    /// default Information. An invalid value falls back to Information (see <see cref="AriusLogConfig"/>) — the
-    /// resolved name is always a defined level, so this parse never yields an out-of-range enum.</summary>
+    /// <summary>Global minimum level from <c>ARIUS_LOG_LEVEL</c>; <see cref="AriusLogConfig"/> guarantees a
+    /// defined Serilog level name, so this parse always succeeds.</summary>
     internal static LogEventLevel ResolveLevel() =>
         Enum.Parse<LogEventLevel>(AriusLogConfig.ResolveLevelName(), ignoreCase: true);
 
     /// <summary>Builds the app-wide root logger (console + a rolling file in <paramref name="appWideLogDir"/>) for
-    /// host/startup events. The caller owns its lifetime (flush on shutdown). Minimum level from
-    /// <c>ARIUS_LOG_LEVEL</c>.</summary>
+    /// host/startup events. The caller owns its lifetime (flush on shutdown).</summary>
     internal static Serilog.Core.Logger BuildRootLogger(string appWideLogDir) =>
         BuildRootLogger(appWideLogDir, ResolveLevel());
 
-    /// <summary>As <see cref="BuildRootLogger(string)"/> but with an explicit minimum level (test seam — the
-    /// production call site reads <c>ARIUS_LOG_LEVEL</c>).</summary>
+    /// <summary>As <see cref="BuildRootLogger(string)"/> but with an explicit minimum level (test seam).</summary>
     internal static Serilog.Core.Logger BuildRootLogger(string appWideLogDir, LogEventLevel minimumLevel) =>
         BuildFileLogger(appWideLogDir, minimumLevel);
 
-    /// <summary>Builds a repository's OWN logger factory: console + a rolling file in <paramref name="repoLogDir"/>,
-    /// same format and level as the root logger. The returned factory OWNS the Serilog logger (<c>dispose: true</c>)
-    /// — disposing it flushes and closes the repo's rolling file, so a deleted repository releases its handle.
-    /// <c>SetMinimumLevel(Trace)</c> defers all filtering to Serilog's single global level rather than MEL's
-    /// Information default.</summary>
+    /// <summary>Builds a repository's own logger factory: console + a rolling file in <paramref name="repoLogDir"/>.
+    /// The factory owns the Serilog logger, so disposing it flushes and closes the repository's file.
+    /// <c>SetMinimumLevel(Trace)</c> defers all filtering to Serilog's global level rather than MEL's default.</summary>
     internal static ILoggerFactory CreateRepositoryLoggerFactory(string repoLogDir) =>
         CreateRepositoryLoggerFactory(repoLogDir, ResolveLevel());
 

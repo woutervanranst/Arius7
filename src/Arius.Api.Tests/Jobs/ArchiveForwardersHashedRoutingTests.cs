@@ -7,9 +7,9 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Api.Tests.Jobs;
 
 /// <summary>
-/// Locks down the forwarder wiring for the progress fixes: hashed bytes are credited on completion
-/// (<see cref="FileHashedEvent"/>), not at hash start (<see cref="FileHashingEvent"/>), and the exact new-byte
-/// upload total arrives via <see cref="RoutingCompleteEvent"/>.
+/// Locks down the forwarder wiring: hashed bytes are credited on completion (<see cref="FileHashedEvent"/>),
+/// not at hash start (<see cref="FileHashingEvent"/>), and the exact new-byte upload total arrives via
+/// <see cref="RoutingCompleteEvent"/>.
 /// </summary>
 public class ArchiveForwardersHashedRoutingTests
 {
@@ -28,8 +28,8 @@ public class ArchiveForwardersHashedRoutingTests
     [Test]
     public async Task FileHashingForwarder_advances_phase_but_does_not_credit_hashed_bytes()
     {
-        // Hashed bytes are now credited on completion, so hash START must only move the phase stepper —
-        // otherwise the hash counter (and the hash-rate/ETA) would lead reality by the in-flight files.
+        // Crediting at hash start would make the hash counter — and the hash rate and ETA — lead reality by
+        // the files still in flight.
         var s = new JobSink();
         await new FileHashingForwarder(s).Handle(new FileHashingEvent(RelativePath.Parse("a.bin"), 4096), default);
 

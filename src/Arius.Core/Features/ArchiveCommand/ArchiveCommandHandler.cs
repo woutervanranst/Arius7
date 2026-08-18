@@ -514,8 +514,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         }
                     }
 
-                    // Dedup/route has drained: every scanned file is now classified (deduped or routed), so the
-                    // new-byte upload total is final. Progress consumers switch to the exact denominator here.
+                    // Every scanned file is now classified (deduped or routed), so the new-byte total is final.
                     await _mediator.Publish(new RoutingCompleteEvent(Interlocked.Read(ref incrementalSize)), cancellationToken);
                 }
                 finally

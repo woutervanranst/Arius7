@@ -23,7 +23,6 @@ internal static class Program
 
         // Global log level: ARIUS_LOG_LEVEL (Serilog level name: Verbose/Debug/Information/Warning/Error/Fatal);
         // defaults to Information across all Arius hosts (CLI, API/Web, Explorer); an invalid value → Information.
-        // The env-var contract is shared via Arius.Core.Shared.AriusLogConfig so the hosts can't silently diverge.
         var logLevel = Enum.Parse<Serilog.Events.LogEventLevel>(Arius.Core.Shared.AriusLogConfig.ResolveLevelName(), ignoreCase: true);
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Is(logLevel)

@@ -26,13 +26,12 @@ public class AriusLoggingTests
         try
         {
             using var root = AriusLogging.BuildRootLogger(appWideDir, LogEventLevel.Information);
-            // Each repository owns its own logger/file (the per-job providers use exactly this factory).
             using (var repoFactory = AriusLogging.CreateRepositoryLoggerFactory(repoDir, LogEventLevel.Information))
             {
                 repoFactory.CreateLogger("RepoScoped").LogInformation("repo-line-{Marker}", "ALPHA");
                 // Host/startup logging has no repository logger → app-wide fallback file.
                 root.Information("host-line-{Marker}", "BETA");
-            }   // repo factory disposed → its rolling file flushed & closed
+            }   // disposed → the repo's rolling file is flushed & closed
 
             var repoLog    = ReadLogFile(repoDir);
             var appWideLog = ReadLogFile(appWideDir);
@@ -56,10 +55,8 @@ public class AriusLoggingTests
     [Test]
     public async Task Disposing_a_repo_factory_releases_its_log_file_so_the_folder_can_be_deleted()
     {
-        // Regression guard for the repo-delete handle leak: the per-repo factory OWNS the rolling file, so
-        // disposing it must close the handle. (On Windows an open handle would block the delete below; on
-        // POSIX the delete would succeed regardless — the assertion documents the intended contract and
-        // fails on Windows CI if the file is ever left open again.)
+        // The per-repo factory owns the rolling file, so disposing it must close the handle. Only Windows
+        // actually blocks a delete on an open handle; on POSIX this asserts the contract without enforcing it.
         var repoDir = NewTempDir();
 
         var factory = AriusLogging.CreateRepositoryLoggerFactory(repoDir, LogEventLevel.Information);

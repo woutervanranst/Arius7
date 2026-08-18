@@ -12,9 +12,8 @@ namespace Arius.Api.Integration.Tests.Harness;
 /// <summary>Boots Arius.Api in-process with a throwaway SQLite app-db and a scripted Core.</summary>
 public sealed class AriusApiFactory : WebApplicationFactory<Program>
 {
-    // A unique DIRECTORY per test, not just a unique file name: AddAriusApi derives the app-wide log dir (and the
-    // data-protection keys dir) from Path.GetDirectoryName(dbPath). A shared parent would collapse every test's
-    // app-wide log to one {temp}/logs/arius-*.txt — a single-writer file the parallel hosts would fight over.
+    // A unique directory per test, not just a unique file name: AddAriusApi derives the app-wide log and
+    // data-protection key directories from the db path, and parallel hosts must not share those.
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"arius-itest-{Guid.NewGuid():N}");
     private string DbPath => Path.Combine(_root, "arius-app.sqlite");
 
@@ -58,8 +57,7 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
         // job pollers keep the pool warm right up to shutdown. On Windows a pooled physical connection
         // holds the .sqlite file (and its -wal/-shm sidecars) open, so the delete below throws
         // IOException("used by another process"). base.Dispose above has torn down the host (stopping
-        // those pollers AND, via UseSerilog(dispose:true), disposing the root logger + the registry's
-        // per-repo loggers so their rolling files are closed); clearing the Sqlite pool now releases the
+        // those pollers and closing the root/per-repo log files); clearing the Sqlite pool now releases the
         // last DB handles so the whole throwaway directory can be removed.
         SqliteConnection.ClearAllPools();
 

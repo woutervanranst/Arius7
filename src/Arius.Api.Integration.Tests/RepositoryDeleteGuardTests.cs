@@ -20,13 +20,13 @@ public class RepositoryDeleteGuardTests
 
         var repoId = factory.SeedRepository();
         var jobId  = Guid.NewGuid().ToString();
-        db.InsertJob(jobId, repoId, "archive", "one-off", "running");   // repo now has an active job
+        db.InsertJob(jobId, repoId, "archive", "one-off", "running");
 
         var blocked = await client.DeleteAsync($"/api/repos/{repoId}");
         await Assert.That(blocked.StatusCode).IsEqualTo(HttpStatusCode.Conflict);
-        await Assert.That(db.GetRepository(repoId)).IsNotNull();          // still there — not deleted
+        await Assert.That(db.GetRepository(repoId)).IsNotNull();
 
-        db.CompleteJob(jobId, "completed", 100, "done");                 // job ends → guard clears
+        db.CompleteJob(jobId, "completed", 100, "done");
         await Assert.That(db.HasActiveJob(repoId)).IsFalse();
 
         var allowed = await client.DeleteAsync($"/api/repos/{repoId}");

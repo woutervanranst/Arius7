@@ -136,8 +136,8 @@ public class ArchiveFastHashTests
         var result = await ArchiveAsync(fixture, new FakeLogger<ArchiveCommandHandler>(), fastHash: true);
         result.Success.ShouldBeTrue(result.ErrorMessage);
 
-        hashed.ShouldHaveSingleItem().FileSize.ShouldBe((long)LargeFileSize);       // size carried on completion
-        routing.ShouldHaveSingleItem().NewByteTotal.ShouldBe((long)LargeFileSize);  // one new large file → exact total
+        hashed.ShouldHaveSingleItem().FileSize.ShouldBe((long)LargeFileSize);
+        routing.ShouldHaveSingleItem().NewByteTotal.ShouldBe((long)LargeFileSize);   // one new large file
     }
 
     private static async Task<ArchiveResult> ArchiveAsync(

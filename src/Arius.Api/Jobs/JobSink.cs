@@ -15,10 +15,8 @@ namespace Arius.Api.Jobs;
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
-    // Per-repo diagnostic logger (ETA/throughput tracing) so [ETA] lands in the repo's rolling log alongside
-    // Core events. Written once via AttachDiagnosticsLogger on the job-start thread and read on the reporting
-    // timer's threadpool thread — volatile so that cross-thread write is visible without a lock. null on
-    // inert/read sinks and until attached.
+    // Per-repo diagnostic logger (ETA/throughput tracing); null on inert/read sinks and until attached.
+    // Volatile: attached on the job-start thread, read on the reporting timer's threadpool thread.
     private volatile ILogger? _logger;
 
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
@@ -31,12 +29,9 @@ public sealed class JobSink
     public JobSink() { }                                  // inert sink for read providers
     public JobSink(string jobId, IHubContext<JobsHub>? hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
 
-    /// <summary>Attaches the per-repository diagnostics logger (the same rolling-file factory Arius.Core's
-    /// handlers use) after construction, so the <c>[ETA]</c> trace lands in the repo's <c>arius-{date}.txt</c>
-    /// (surfaced by <c>ARIUS_LOG_LEVEL=Debug</c>) rather than only the API host console. Wired by
-    /// <see cref="Arius.Api.Composition.RepositoryProviderRegistry.AttachJobDiagnostics"/> up front — before
-    /// <see cref="StartReporting"/> — so tracing covers the provider-build phase; the job sink is created before
-    /// its provider, so the logger can't be a constructor argument.</summary>
+    /// <summary>Attaches the per-repository diagnostics logger, so the <c>[ETA]</c> trace lands in the repo's
+    /// <c>arius-{date}.txt</c> alongside Core's events. Set after construction because the sink is created
+    /// before the repository's provider (and its logger factory) exists.</summary>
     public void AttachDiagnosticsLogger(ILogger logger) => _logger = logger;
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
@@ -118,11 +113,9 @@ public sealed class JobSink
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
 
-    /// <summary>Once per reporting tick, logs the FULL progress snapshot — every field of the <see cref="JobSnapshot"/>
-    /// the web client receives over SignalR — at Debug under the "[ETA]" tag. Logging the raw wire payload (rather than
-    /// a re-derived subset) means a log line captured with ARIUS_LOG_LEVEL=Debug is exactly what Arius.Web renders
-    /// from: the bar layers, the ETA/throughput strings, and the tiles are all reproducible from it. No-op unless a
-    /// logger was supplied and Debug is enabled.</summary>
+    /// <summary>Once per reporting tick, logs the full <see cref="JobSnapshot"/> the web client receives over
+    /// SignalR at Debug under the "[ETA]" tag, so what Arius.Web renders is reproducible from the log alone.
+    /// No-op unless a logger was supplied and Debug is enabled.</summary>
     internal void LogEtaDiagnostics(DateTimeOffset now)
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
@@ -191,10 +184,9 @@ public sealed class JobSink
     /// additive "new bytes to upload" total. Independent of the deduped/total subtraction, so it never
     /// underflows for pointer-only-heavy repos. Final once routing completes; 0 until the first queue.</summary>
     public void AddQueuedNew(long originalSize) => Interlocked.Add(ref _queuedNewBytes, originalSize);
-    /// <summary>Records the authoritative, final count of new (non-deduped) original bytes to upload, from
-    /// <c>RoutingCompleteEvent</c> once the dedup/route stage has drained. Until this fires the upload ETA
-    /// uses the still-growing <see cref="_queuedNewBytes"/> as a provisional (upper-bound) denominator; after
-    /// it, the denominator is exact and the ETA is no longer flagged as an upper bound.</summary>
+    /// <summary>Records the exact, final count of new (non-deduped) original bytes to upload, from
+    /// <c>RoutingCompleteEvent</c>. Until this fires the upload ETA uses the still-growing
+    /// <see cref="_queuedNewBytes"/> as a provisional (upper-bound) denominator.</summary>
     public void SetNewByteTotal(long newByteTotal) { Interlocked.Exchange(ref _newByteTotal, newByteTotal); _newByteTotalFinal = true; }
     public void AddDeduped(long original) { Interlocked.Add(ref _dedupedBytes, original); Interlocked.Increment(ref _dedupedFiles); }
     public void RememberTar(ChunkHash tarHash, long uncompressed) => _tarUncompressed[tarHash] = uncompressed;
@@ -363,8 +355,7 @@ public sealed class JobSink
 
         // ETA models the run as concurrent constraints and takes the slower (max):
         //  • upload: (newBytes − uploaded) / transferRate. newBytes is the queued-new total (a converging lower
-        //    bound) until RoutingCompleteEvent fixes the exact figure — NEVER total−deduped, which lagged dedup
-        //    right after scan and produced a multi-hour ETA spike.
+        //    bound) until RoutingCompleteEvent fixes the exact figure.
         //  • local (archive only): (total − hashed) / hashRate — the read/hash backlog. This is what makes a
         //    fully-deduped archive read its true (hash-bound) time instead of "seconds".
         // Restore has no local term (its bytes are known up front and only download). While the scan is still
@@ -387,23 +378,20 @@ public sealed class JobSink
         else
         {
             var newByteTotalFinal = _newByteTotalFinal;
-            // Upload denominator: the exact new-byte total once RoutingCompleteEvent has fixed it, else the
-            // still-growing queued-new total (a converging lower bound). NEVER total−deduped — that lags dedup
-            // badly right after scan and was the sole source of the 58 h ETA spike.
             var uploadDenom = newByteTotalFinal ? Interlocked.Read(ref _newByteTotal) : totalNew;
             long? uploadEta = transferRate > 0 ? (long)Math.Ceiling(Math.Max(0L, uploadDenom - uploaded) / transferRate) : null;
             long? hashEta   = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
             // Bind on the slower constraint and report THAT constraint's rate, so "sustained N MB/s" always
-            // explains the ETA. A tie resolves to upload (strict > on the hash term), so the end of an
-            // upload-bound job — both terms 0 — reports the transfer rate, never the stale/inflated hash rate.
+            // explains the ETA. Ties resolve to upload, so a finished job reports the transfer rate rather than
+            // a stale hash rate.
             if (hashEta is { } h && (uploadEta is not { } u || h > u)) { eta = hashEta;   reportedRate = hashRate; }
             else                                                        { eta = uploadEta; reportedRate = transferRate; }
-            // Provisional ("≤") until routing fixes the exact new-byte total; exact (no longer a bound) after.
+            // Provisional ("≤") until routing fixes the exact new-byte total.
             etaIsUpperBound = eta is not null && !newByteTotalFinal;
         }
         // Archive pct is the monotonic "filled fraction" (uploaded + deduplicated) over the fixed scan total —
-        // the same value the detail-page layered bar shows. Unlike uploaded/totalNew it never regresses when
-        // more new chunks are discovered; the clamp absorbs the pointer-only case where deduped alone > total.
+        // the same value the detail-page layered bar shows. The clamp absorbs the pointer-only case where
+        // deduped alone exceeds the total.
         var pct = isRestore
             ? (restoreTotal > 0
                 ? (int)Math.Clamp(restored * 100 / restoreTotal, 0, 100)

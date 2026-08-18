@@ -4,18 +4,16 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Api.Tests.Jobs;
 
 /// <summary>
-/// Locks down the archive progress/ETA fixes derived from the arius-20260721.txt [ETA] trace:
-///  A. pct is the monotonic filled fraction (uploaded+deduped)/total — the pill/list stop running backwards.
-///  B. the ETA never spikes (drops total−deduped as the denominator) and becomes exact/non-upper-bound once
-///     routing completes.
-///  C. the reported "sustained" throughput is the binding term's rate — never the stale/inflated hash rate at
-///     the end of an upload-bound job.
+/// Locks down the archive progress/ETA contract:
+///  A. pct is the monotonic filled fraction (uploaded+deduped)/total, so the pill and list never run backwards.
+///  B. the ETA is driven by the queued-new bytes and becomes exact once routing completes.
+///  C. the reported "sustained" throughput is the binding term's rate, never a stale hash rate.
 /// </summary>
 public class JobSinkProgressFixesTests
 {
     private static ChunkHash Chunk(char c) => ChunkHash.Parse(new string(c, 64));
 
-    // ── Fix A: monotonic pct ────────────────────────────────────────────────
+    // ── Monotonic pct ───────────────────────────────────────────────────────
     [Test]
     public async Task Archive_pct_is_uploaded_plus_deduped_over_total()
     {
@@ -31,8 +29,7 @@ public class JobSinkProgressFixesTests
     [Test]
     public async Task Archive_pct_never_regresses_when_new_work_is_discovered()
     {
-        // The backwards-bar reproduction: uploaded is flat while the queued-new total grows (as more
-        // chunks start uploading). The OLD pct = uploaded/totalNew regressed 90 → 36; the new pct must not.
+        // Uploaded is flat while the queued-new total grows as more chunks start uploading.
         var s = new JobSink();
         s.SetTotals(files: 1, bytes: 1_000_000_000);
         s.AddQueuedNew(200_000_000);
@@ -45,12 +42,12 @@ public class JobSinkProgressFixesTests
         await Assert.That(p2).IsGreaterThanOrEqualTo(p1);
     }
 
-    // ── Fix B: ETA no longer spikes; routing-complete makes it exact ─────────
+    // ── ETA denominator; routing-complete makes it exact ────────────────────
     [Test]
     public async Task Eta_before_routing_uses_queued_new_bytes_not_total_minus_deduped()
     {
-        // Mirrors the trace right after scan completes: total known, deduped lags badly, only a little is
-        // actually queued-new. total−deduped (the OLD denominator) produced the 58 h spike.
+        // Right after scan completes: total is known, deduped lags badly, and only a little is truly
+        // queued-new — total−deduped as the denominator would read multiple hours too long.
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 1, bytes: 1_000_000_000);
@@ -63,8 +60,7 @@ public class JobSinkProgressFixesTests
         s.SampleForEta(t0.AddSeconds(1));
 
         var eta = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;
-        // NEW: (totalNew 10M − 1M) / 1 MB/s ≈ 9 s.   OLD: (400M − 1M) / 1 MB/s ≈ 399 s.
-        await Assert.That(eta!.Value).IsBetween(8, 10);
+        await Assert.That(eta!.Value).IsBetween(8, 10);   // (totalNew 10M − 1M) / 1 MB/s ≈ 9 s
     }
 
     [Test]
@@ -87,12 +83,12 @@ public class JobSinkProgressFixesTests
         await Assert.That(snap.EtaIsUpperBound).IsFalse();
     }
 
-    // ── Fix C: throughput is the binding term's rate, never the stale hash rate ──
+    // ── Throughput is the binding term's rate, never the stale hash rate ────
     [Test]
     public async Task Throughput_at_upload_completion_is_transfer_rate_not_stale_hash_rate()
     {
-        // Reproduces the 16 GB/s reading: the hash EMA is inflated by a huge instantaneous jump and never
-        // decays; at eta==0 the OLD tie-break surfaced it as the throughput. It must report the transfer rate.
+        // A huge instantaneous jump inflates the hash EMA, which never decays; once the upload is done
+        // (eta == 0) the reported rate must still be the transfer rate.
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 1, bytes: 1_000_000_000);

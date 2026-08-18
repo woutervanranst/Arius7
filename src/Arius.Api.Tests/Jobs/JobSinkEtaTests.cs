@@ -27,8 +27,7 @@ public class JobSinkEtaTests
     [Test]
     public async Task Eta_diagnostics_line_mirrors_the_snapshot_wire_fields()
     {
-        // The [ETA] line is the raw SnapshotDto the web receives, so every field the client reads must be present
-        // (and carry the snapshot's value) — a debugger can then reproduce exactly what Arius.Web renders.
+        // The [ETA] line is the raw snapshot the web receives, so every field the client reads must be in it.
         var t0  = DateTimeOffset.UnixEpoch;
         var log = new ListLogger(LogLevel.Debug);
         var s   = new JobSink("job-1", hub: null, logger: log);
@@ -70,11 +69,10 @@ public class JobSinkEtaTests
     [Test]
     public async Task AttachDiagnosticsLogger_starts_diagnostics_for_a_sink_built_without_one()
     {
-        // Mirrors the wiring: JobRunner builds the sink with no logger, then
-        // RepositoryProviderRegistry.BuildAsync attaches the per-repo logger.
+        // Mirrors the wiring: JobRunner builds the sink without a logger, the registry attaches it after.
         var t0  = DateTimeOffset.UnixEpoch;
         var log = new ListLogger(LogLevel.Debug);
-        var s   = new JobSink("job-1", hub: null);   // no logger yet → no output
+        var s   = new JobSink("job-1", hub: null);
         s.SampleForEta(t0);
         s.LogEtaDiagnostics(t0);
         await Assert.That(log.Entries).IsEmpty();
@@ -175,9 +173,8 @@ public class JobSinkEtaTests
     [Test]
     public async Task Eta_is_an_upper_bound_until_routing_completes()
     {
-        // The exact new-byte total is only known once the dedup/route stage drains (RoutingCompleteEvent →
-        // SetNewByteTotal). Until then the ETA is a provisional upper bound ("≤"), even if hashing has finished
-        // — hashing completing is NOT the gate (skipped/unreadable files mean hashed may never reach total).
+        // Routing draining is the gate, not hashing: skipped/unreadable files mean hashed may never reach
+        // the total, so until SetNewByteTotal the ETA stays a provisional upper bound ("≤").
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 10, bytes: 10_000_000);

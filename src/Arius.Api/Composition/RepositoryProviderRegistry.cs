@@ -32,9 +32,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private readonly object _gate = new();
     private readonly Dictionary<long, Lazy<Task<ServiceProvider>>> _readProviders = new();
 
-    // One logger factory per repository, each OWNING its own Serilog logger writing to that repo's rolling file
-    // (see AriusLogging.CreateRepositoryLoggerFactory). Cached both to avoid rebuilding it per provider and so
-    // Remove can dispose it — which flushes and closes the repo's log file, releasing the handle on delete.
+    // One logger factory per repository, each owning the Serilog logger that writes that repo's rolling file.
+    // Cached so every provider shares one file handle, and so Remove can dispose it on repository delete.
     private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
 
     public RepositoryProviderRegistry(
@@ -105,10 +104,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     /// <summary>
     /// Fully removes a repository from the registry: drops its cached read provider AND its per-repo logger
     /// factory, disposing both. Use on repository <b>delete</b> — unlike <see cref="Evict"/>, which is for
-    /// archive/properties changes where the repo lives on. Disposing the factory flushes and closes the repo's
-    /// rolling log file, releasing the handle. The delete endpoint refuses while a job is active, and the
-    /// provider is disposed before its factory (see <see cref="DisposeProviderThenFactoryAsync"/>), so no live
-    /// provider is left logging through a disposed factory.
+    /// archive/properties changes where the repo lives on. Disposing the factory closes the repo's rolling log
+    /// file, so its logs can be deleted along with it.
     /// </summary>
     public void Remove(long repositoryId)
     {
@@ -120,16 +117,14 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
             _repoLoggerFactories.Remove(repositoryId, out factory);
         }
 
-        // Fire-and-forget, but the await chain keeps the ordering: the provider (which resolves loggers FROM the
-        // factory) is disposed first, then the factory. Any concurrent build re-reads the dictionaries under the
-        // gate and gets a fresh factory, never this one.
+        // Fire-and-forget; the await chain keeps the ordering. A concurrent build re-reads the dictionaries
+        // under the gate and gets a fresh factory, never this one.
         _ = DisposeProviderThenFactoryAsync(provider, factory);
     }
 
-    /// <summary>Wires the repository's diagnostics logger onto a job sink BEFORE its provider is built, so the
-    /// <c>[ETA]</c> trace fires from the first reporting tick — including during the (potentially slow/hanging)
-    /// provider-build phase. Best-effort: a failure here never fails the job, it just leaves the sink's [ETA]
-    /// trace silent. No-op for an inert (non-job) sink.</summary>
+    /// <summary>Wires the repository's diagnostics logger onto a job sink before its provider is built, so the
+    /// <c>[ETA]</c> trace covers the (potentially slow) provider-build phase too. Best-effort: a failure only
+    /// leaves the trace silent, it never fails the job. No-op for an inert (non-job) sink.</summary>
     public void AttachJobDiagnostics(JobSink sink, long repositoryId)
     {
         if (sink.JobId is null)
@@ -163,9 +158,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // swap in a scripted fake without touching Arius.Core.
         await _coreComposer.ComposeAsync(services, connection, mode, cancellationToken).ConfigureAwait(false);
 
-        // Route Core's logging to the repository's own rolling log file. The job sink's [ETA]/throughput
-        // diagnostics are wired to the SAME factory up front by AttachJobDiagnostics (before the provider build,
-        // so tracing covers the build phase); it is idempotent with this shared, cached factory.
+        // Route Core's logging to the repository's own rolling log file — the same cached factory
+        // AttachJobDiagnostics already wired onto the job sink.
         var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
         services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
@@ -175,10 +169,9 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets (building once, then caching) the logger factory a repository's providers use. It owns a Serilog
-    /// logger that writes the repo's rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c>
-    /// — the same file the CLI writes beside, in the same format (<see cref="AriusLogging"/>). Because the factory
-    /// owns the file, disposing it (on <see cref="Remove"/> or <see cref="DisposeAsync"/>) closes the handle.
+    /// Gets (building once, then caching) the logger factory a repository's providers use. It writes the repo's
+    /// rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c> — the same directory and
+    /// format the CLI uses (<see cref="AriusLogging"/>).
     /// </summary>
     private ILoggerFactory GetOrCreateRepoLoggerFactory(long repositoryId, string accountName, string containerName)
     {
@@ -245,9 +238,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         }
     }
 
-    /// <summary>Disposes a removed repository's read provider and then its logger factory, in that order: the
-    /// provider resolves loggers from the factory, so awaiting its (in-flight or completed) build+disposal before
-    /// disposing the factory keeps a still-live provider from logging through a disposed factory.</summary>
+    /// <summary>Disposes a removed repository's read provider and then its logger factory. The order matters:
+    /// the provider resolves loggers from the factory, so it must be gone before the factory is.</summary>
     private static async Task DisposeProviderThenFactoryAsync(Lazy<Task<ServiceProvider>>? provider, ILoggerFactory? factory)
     {
         if (provider is not null)

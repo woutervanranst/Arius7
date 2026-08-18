@@ -63,8 +63,7 @@ public sealed class JobRunner(
         }
 
         jobStates.Register(jobId, sink);
-        // Attach the [ETA] diagnostics logger BEFORE StartReporting so tracing covers the provider-build phase
-        // (LoadConnection + Core compose), which is exactly where a slow/hanging archive would sit.
+        // Before StartReporting, so [ETA] tracing also covers the provider-build phase.
         registry.AttachJobDiagnostics(sink, repositoryId);
         sink.StartReporting();
         sink.SetPhase("scan");   // archive's first milestone; hash-route/upload/snapshot advance from Core events
@@ -154,7 +153,7 @@ public sealed class JobRunner(
             : repo.LocalPath!;
 
         jobStates.Register(jobId, sink);
-        // Attach the [ETA] diagnostics logger BEFORE StartReporting so tracing covers the provider-build phase.
+        // Before StartReporting, so [ETA] tracing also covers the provider-build phase.
         registry.AttachJobDiagnostics(sink, repositoryId);
         sink.StartReporting();
 
@@ -362,7 +361,7 @@ public sealed class JobRunner(
             // the registry never holds a sink whose run isn't the current gate holder.
             jobStates.Register(jobId, sink);
             registered = true;   // set before StartReporting so a throw there still triggers finally teardown
-            // Attach the [ETA] diagnostics logger BEFORE StartReporting so tracing covers the provider-build phase.
+            // Before StartReporting, so [ETA] tracing also covers the provider-build phase.
             registry.AttachJobDiagnostics(sink, job.RepositoryId);
             sink.StartReporting();
 

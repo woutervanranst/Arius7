@@ -26,10 +26,9 @@ public static class AriusApiHost
                       ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "keys");
         Directory.CreateDirectory(keysDir);
 
-        // The app-wide root logger (console + a rolling file for host/startup events — see AriusLogging). Set as
-        // the static Log.Logger so Program.cs's Log.Fatal/CloseAndFlush act on it, and handed to UseSerilog with
-        // dispose:true so the HOST owns it and flushes+closes it on shutdown (no leaked logger, no orphaned file
-        // handle). Per-repository files are owned by the registry's per-repo loggers, not by this one.
+        // The app-wide root logger for host/startup events (per-repository files are owned by the registry).
+        // Also the static Log.Logger, so Program.cs's Log.Fatal/CloseAndFlush act on it; the host owns its
+        // lifetime and flushes it on shutdown.
         var appLogDir  = Path.Combine(Path.GetDirectoryName(dbPath)!, "logs");
         var rootLogger = AriusLogging.BuildRootLogger(appLogDir);
         Log.Logger = rootLogger;
@@ -40,8 +39,6 @@ public static class AriusApiHost
         builder.Services.AddSingleton<SecretProtector>();
         builder.Services.AddAzureBlobStorage();
         builder.Services.TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
-        // The registry builds each repository's own logger factory on demand (from the repo's logs directory), so
-        // it needs no logger handed in beyond the host ILoggerFactory it uses for its own operational messages.
         builder.Services.AddSingleton(sp => new RepositoryProviderRegistry(
             sp.GetRequiredService<AppDatabase>(),
             sp.GetRequiredService<SecretProtector>(),

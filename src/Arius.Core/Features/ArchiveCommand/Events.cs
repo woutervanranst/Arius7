@@ -30,11 +30,8 @@ public sealed record FileHashingEvent(RelativePath RelativePath, long FileSize) 
 /// <c>true</c> when the file was fully read and its hash recorded to the hashcache.
 /// <c>false</c> for pointer-only files (hash taken from the pointer) and for cache hits.
 /// </param>
-/// <param name="FileSize">
-/// File size in bytes (0 for pointer-only files). Progress consumers credit "hashed bytes" here, on
-/// completion, rather than on <see cref="FileHashingEvent"/> at hash start — so the hashed total (and the
-/// hash-rate/ETA derived from it) reflects work actually finished, not merely enqueued.
-/// </param>
+/// <param name="FileSize">File size in bytes (0 for pointer-only files), so progress consumers can credit
+/// hashed bytes on completion rather than at hash start.</param>
 public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash, bool FastHashReused, bool FastHashRehashed, long FileSize = 0) : INotification;
 
 /// <summary>
@@ -70,12 +67,10 @@ public enum ExclusionReason
 public sealed record EntryExcludedEvent(RelativePath RelativePath, ExclusionReason Reason) : INotification;
 
 /// <summary>
-/// The dedup/route stage has drained: every scanned file has been classified as deduplicated or routed for
-/// upload, so the count of new (non-deduplicated) original bytes to upload is now final. Fires once per run.
-/// Progress consumers switch the upload-progress denominator from the still-growing "queued so far" estimate
-/// to this exact total, which also flips the archive ETA from a provisional upper bound to an exact estimate.
+/// The dedup/route stage has drained: every scanned file is classified as deduplicated or routed for upload,
+/// so the number of new bytes to upload is final. Fires once per run.
 /// </summary>
-/// <param name="NewByteTotal">Exact original (uncompressed) bytes routed for upload this run (0 for a fully
+/// <param name="NewByteTotal">Original (uncompressed) bytes routed for upload this run (0 for a fully
 /// deduplicated run).</param>
 public sealed record RoutingCompleteEvent(long NewByteTotal) : INotification;
 
