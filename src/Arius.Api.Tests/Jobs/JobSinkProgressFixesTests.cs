@@ -64,7 +64,7 @@ public class JobSinkProgressFixesTests
     }
 
     [Test]
-    public async Task Routing_complete_makes_eta_exact_and_not_an_upper_bound()
+    public async Task Routing_complete_makes_eta_exact_and_no_longer_provisional()
     {
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
@@ -74,13 +74,15 @@ public class JobSinkProgressFixesTests
         s.AddUploaded(Chunk('3'), stored: 0, original: 1_000_000);   // 1 MB/s
         s.SampleForEta(t0.AddSeconds(1));
 
-        // Before routing completes the estimate is provisional (upper bound).
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsUpperBound).IsTrue();
+        // Before routing completes the estimate is provisional — and, as the 4 s → 19 s jump below shows,
+        // it is NOT an upper bound: `totalNew` only counts what routing has discovered so far.
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds!.Value).IsBetween(3, 5);
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsTrue();
 
         s.SetNewByteTotal(20_000_000);         // routing done: the exact new-byte total is 20 MB
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(18, 20);   // (20M − 1M) / 1 MB/s ≈ 19 s
-        await Assert.That(snap.EtaIsUpperBound).IsFalse();
+        await Assert.That(snap.EtaIsProvisional).IsFalse();
     }
 
     // ── Throughput is the binding term's rate, never the stale hash rate ────

@@ -5,7 +5,7 @@ import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models
 function snap(p: Partial<JobSnapshot>): JobSnapshot {
   return {
     jobId: 'j', phase: 'x', status: 'running', totalBytes: 0, totalNewBytes: 0, scannedBytes: 0, scannedFiles: 0, hashedBytes: 0,
-    uploadedBytes: 0, dedupedBytes: 0, dedupedFiles: 0, etaSeconds: null, throughputBytesPerSec: 0, etaIsUpperBound: false,
+    uploadedBytes: 0, dedupedBytes: 0, dedupedFiles: 0, etaSeconds: null, throughputBytesPerSec: 0, etaIsProvisional: false,
     pct: 0, warningCount: 0, stats: {}, restoreTotalFiles: 0, filesRestored: 0, restoreTotalBytes: 0,
     bytesRestored: 0, chunksAvailable: 0, chunksRehydrated: 0, chunksNeedingRehydration: 0,
     chunksPending: 0, chunksTotal: 0, ...p,
@@ -57,11 +57,11 @@ describe('formatEta', () => {
   });
   it('renders minutes under an hour', () => expect(formatEta(150)).toBe('~3 min left'));
   it('renders hours to one decimal at/above an hour', () => expect(formatEta(5400)).toBe('~1.5 h left'));
-  it('prefixes ≤ when the estimate is an upper bound, and never for an unknown eta', () => {
-    expect(formatEta(7200, true)).toBe('≤ ~2.0 h left');
+  it('marks a provisional estimate, and never for an unknown eta', () => {
+    expect(formatEta(7200, true)).toBe('~2.0 h left (estimating)');
     expect(formatEta(7200, false)).toBe('~2.0 h left');
-    expect(formatEta(7200)).toBe('~2.0 h left');        // default is not-bounded
-    expect(formatEta(null, true)).toBe('estimating…');   // unknown wins over the bound
+    expect(formatEta(7200)).toBe('~2.0 h left');            // default is final
+    expect(formatEta(null, true)).toBe('estimating…');      // unknown wins over provisional
   });
 });
 

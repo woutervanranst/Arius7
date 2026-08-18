@@ -77,10 +77,14 @@ eta         = (archive && total == 0) ? null : max(hashTerm, uploadTerm)   // nu
   (Stage 3) drains (after the `await foreach` at `ArchiveCommandHandler.cs:515`), carrying
   `incrementalSize` (the exact original bytes routed for upload). The **sink** gains
   `SetNewByteTotal(long)` → stores `_newByteTotal`, sets `_newByteTotalFinal = true`. After it fires the
-  denominator is **exact**, so the ETA tightens and stops being an upper bound. This is skip-safe (it
-  is an event, not `hashed >= total`, so unreadable/skipped files can't wedge the gate).
-- **`etaIsUpperBound = archive && !_newByteTotalFinal`** — provisional "≤" until routing completes,
-  exact after. (Replaces the old `hashed < total`, which was fragile once `hashed` is credited on
+  denominator is **exact**. This is skip-safe (it is an event, not `hashed >= total`, so
+  unreadable/skipped files can't wedge the gate).
+- **`etaIsProvisional = archive && !_newByteTotalFinal`** — the estimate is *provisional*, not bounded,
+  until routing completes. Dropping `total − deduped` also dropped the only genuinely conservative
+  denominator: `totalNew` counts just the chunks routing has found so far, so the pre-routing ETA is if
+  anything a **lower** bound (a 4 s estimate becomes 19 s once routing finishes). The web therefore
+  renders "(estimating)" rather than the old "≤ ", which would now claim a bound in the wrong direction.
+  (The gate replaces the old `hashed < total`, which was fragile once `hashed` is credited on
   completion.)
 - **`reportedRate`** (the user-facing "sustained" throughput) = **the rate of whichever term binds**:
   `hashTerm` strictly the larger ⇒ `hashRate`; otherwise ⇒ `transferRate`. Two consequences: a
@@ -122,13 +126,15 @@ field the Angular client reads, in wire (camelCase-ish) order, so a log line can
 the UI renders:
 
 ```
-[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s bound={EtaIsUpperBound} tp={ThroughputBytesPerSec}B/s
+[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s provisional={EtaIsProvisional} tp={ThroughputBytesPerSec}B/s
       | archive total={TotalBytes} totalNew={TotalNewBytes} scanned={ScannedBytes}/{ScannedFiles}f hashed={HashedBytes} uploaded={UploadedBytes} deduped={DedupedBytes}/{DedupedFiles}f warnings={WarningCount}
       | restore restoreTotal={RestoreTotalBytes}/{RestoreTotalFiles}f restored={BytesRestored}/{FilesRestored}f chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}
 ```
 
-The log logs the exact `JobSnapshot` values (no client-side re-derivation), so what the web computes
-from them (bar layers, `formatEta`, `formatThroughput`) is reproducible from the line.
+The reporting tick builds **one** `JobSnapshot` and passes that same instance to both the SignalR emit
+and this log line, so the trace can never disagree with the payload the client received. The log logs
+the snapshot's exact values (no client-side re-derivation), so what the web computes from them (bar
+layers, `formatEta`, `formatThroughput`) is reproducible from the line.
 
 ## Testing (lock-down)
 
@@ -137,8 +143,8 @@ from them (bar layers, `formatEta`, `formatThroughput`) is reproducible from the
 - **A monotonic pct:** drive scan→hash→dedup→upload with a growing `totalNew`; assert `pct` never
   decreases and equals `(uploaded+deduped)/total`.
 - **B no spike:** reproduce the log's ordering (total known while deduped lags); assert ETA before
-  `RoutingComplete` is the small hash-term with `EtaIsUpperBound=true`, never a huge value; after
-  `RoutingComplete` assert exact `(_newByteTotal−uploaded)/rate` and `EtaIsUpperBound=false`.
+  `RoutingComplete` is the small hash-term with `EtaIsProvisional=true`, never a huge value; after
+  `RoutingComplete` assert exact `(_newByteTotal−uploaded)/rate` and `EtaIsProvisional=false`.
 - **C throughput:** with an inflated `hashRate` and modest `transferRate`, assert
   `throughputBytesPerSec == transferRate` including at `eta==0`.
 - **Core hashed-on-completion:** assert `AddHashed` is driven by `FileHashedEvent`, not
@@ -153,13 +159,13 @@ from them (bar layers, `formatEta`, `formatThroughput`) is reproducible from the
 ## Actual test inventory
 
 - `JobSinkProgressFixesTests` (5): pct is `(uploaded+deduped)/total`; pct never regresses; ETA uses the
-  queued-new denominator not `total−deduped`; routing-complete makes the ETA exact and drops the "≤";
-  throughput at completion is the transfer rate not the stale hash rate.
+  queued-new denominator not `total−deduped`; routing-complete makes the ETA exact and drops the
+  provisional marker; throughput at completion is the transfer rate not the stale hash rate.
 - `ArchiveForwardersHashedRoutingTests` (3): `FileHashedForwarder` credits hashed bytes;
   `FileHashingForwarder` only advances the phase; `RoutingCompleteForwarder` fixes the exact total.
 - `ArchiveFastHashTests` (+1, Core): a real archive run publishes `FileHashedEvent` with the file size and
   one `RoutingCompleteEvent` carrying the exact new-byte total (`incrementalSize`).
-- `JobSinkEtaTests`: `Eta_is_an_upper_bound_until_routing_completes` (updated to the new gate) and a new
+- `JobSinkEtaTests`: `Eta_is_provisional_until_routing_completes` (updated to the new gate) and a new
   `Eta_diagnostics_line_mirrors_the_snapshot_wire_fields`.
 
 ## Out of scope

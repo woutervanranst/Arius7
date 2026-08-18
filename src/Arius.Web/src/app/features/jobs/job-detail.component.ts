@@ -358,7 +358,7 @@ export class JobDetailComponent implements OnDestroy {
     const eta = s?.etaSeconds;
     if (eta == null) return 'estimating…';
     const clock = new Date(Date.now() + eta * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    return s?.etaIsUpperBound ? `≤ ${clock}` : clock;
+    return s?.etaIsProvisional ? `${clock} (est.)` : clock;
   });
   protected readonly rehydrateWindowHours = computed<number | null>(() =>
     resolveRehydrationWindowHours(this.cost(), this.resume(), this.priority()));
@@ -371,7 +371,7 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly bigEta = computed(() => {
     if (this.status() === 'rehydrating') return this.hydratedBy() || 'Waiting on Azure';
     if (this.snap()?.phase === 'snapshot') return 'Finishing up';
-    return formatEta(this.snap()?.etaSeconds, this.snap()?.etaIsUpperBound ?? false);
+    return formatEta(this.snap()?.etaSeconds, this.snap()?.etaIsProvisional ?? false);
   });
   protected readonly subEta = computed(() => {
     if (this.status() === 'rehydrating') return 'Status checked periodically';

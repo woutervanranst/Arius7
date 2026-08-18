@@ -129,10 +129,10 @@ public sealed class JobSink
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
         _logger.LogDebug(
-            "[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s bound={EtaIsUpperBound} tp={ThroughputBytesPerSec:F0}B/s warnings={WarningCount}"
+            "[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s provisional={EtaIsProvisional} tp={ThroughputBytesPerSec:F0}B/s warnings={WarningCount}"
             + " | archive total={TotalBytes} totalNew={TotalNewBytes} scanned={ScannedBytes}/{ScannedFiles}f hashed={HashedBytes} uploaded={UploadedBytes} deduped={DedupedBytes}/{DedupedFiles}f"
             + " | restore restoreTotal={RestoreTotalBytes}/{RestoreTotalFiles}f restored={BytesRestored}/{FilesRestored}f chunksTotal={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
-            snap.JobId, snap.Phase, snap.Status, snap.Pct, snap.EtaSeconds, snap.EtaIsUpperBound, snap.ThroughputBytesPerSec, snap.WarningCount,
+            snap.JobId, snap.Phase, snap.Status, snap.Pct, snap.EtaSeconds, snap.EtaIsProvisional, snap.ThroughputBytesPerSec, snap.WarningCount,
             snap.TotalBytes, snap.TotalNewBytes, snap.ScannedBytes, snap.ScannedFiles, snap.HashedBytes, snap.UploadedBytes, snap.DedupedBytes, snap.DedupedFiles,
             snap.RestoreTotalBytes, snap.RestoreTotalFiles, snap.BytesRestored, snap.FilesRestored,
             snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
@@ -376,7 +376,7 @@ public sealed class JobSink
         // running (total == 0) an archive stays "estimating" — a partial totalNew would under-read.
         long? eta;
         double reportedRate;
-        var etaIsUpperBound = false;
+        var etaIsProvisional = false;
         if (isRestore)
         {
             eta = restoreTotal > 0 && transferRate > 0
@@ -400,8 +400,10 @@ public sealed class JobSink
             // a stale hash rate.
             if (hashEta is { } h && (uploadEta is not { } u || h > u)) { eta = hashEta;   reportedRate = hashRate; }
             else                                                        { eta = uploadEta; reportedRate = transferRate; }
-            // Provisional ("≤") until routing fixes the exact new-byte total.
-            etaIsUpperBound = eta is not null && !newByteTotalFinal;
+            // Provisional until routing fixes the exact new-byte total. NOT a bound in either direction:
+            // `totalNew` only counts chunks discovered so far, so the estimate can still grow as routing
+            // finds more new bytes — and shrinks if the hash term binds and drains faster than sampled.
+            etaIsProvisional = eta is not null && !newByteTotalFinal;
         }
         // Archive pct is the monotonic "filled fraction" (uploaded + deduplicated) over the fixed scan total —
         // the same value the detail-page layered bar shows. The clamp absorbs the pointer-only case where
@@ -424,7 +426,7 @@ public sealed class JobSink
             HashedBytes  = hashed,
             UploadedBytes = uploaded,
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
-            EtaSeconds = eta, ThroughputBytesPerSec = reportedRate, Pct = pct, EtaIsUpperBound = etaIsUpperBound,
+            EtaSeconds = eta, ThroughputBytesPerSec = reportedRate, Pct = pct, EtaIsProvisional = etaIsProvisional,
             WarningCount = WarningCount,
             Stats = new Dictionary<string, string>   // legacy stat grid
             {

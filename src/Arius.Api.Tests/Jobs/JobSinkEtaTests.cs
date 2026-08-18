@@ -46,7 +46,7 @@ public class JobSinkEtaTests
 
         foreach (var token in new[]
                  {
-                     "phase=upload", "status=running", "pct=", "eta=", "bound=", "tp=", "warnings=",
+                     "phase=upload", "status=running", "pct=", "eta=", "provisional=", "tp=", "warnings=",
                      "total=10000000", "totalNew=4000000", "scanned=10000000/1f", "hashed=6000000",
                      "uploaded=1000000", "deduped=2000000/1f", "chunksTotal=", "avail=", "pending=",
                  })
@@ -167,14 +167,14 @@ public class JobSinkEtaTests
         await Assert.That(snap.EtaSeconds).IsNotNull();
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(8, 10);
         await Assert.That(snap.ThroughputBytesPerSec).IsBetween(9_500_000, 10_500_000);  // reports the HASH rate
-        await Assert.That(snap.EtaIsUpperBound).IsTrue();                                  // hashing not done
+        await Assert.That(snap.EtaIsProvisional).IsTrue();                                 // hashing not done
     }
 
     [Test]
-    public async Task Eta_is_an_upper_bound_until_routing_completes()
+    public async Task Eta_is_provisional_until_routing_completes()
     {
         // Routing draining is the gate, not hashing: skipped/unreadable files mean hashed may never reach
-        // the total, so until SetNewByteTotal the ETA stays a provisional upper bound ("≤").
+        // the total, so until SetNewByteTotal the ETA stays provisional.
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 10, bytes: 10_000_000);
@@ -184,14 +184,14 @@ public class JobSinkEtaTests
         s.AddUploaded(ChunkHash.Parse(new string('b', 64)), 0, 1_000_000);
         s.AddHashed(10_000_000);                                  // hashing complete…
         s.SampleForEta(t0.AddSeconds(1));
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsUpperBound).IsTrue();   // …but routing hasn't
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsTrue();   // …but routing hasn't
 
         s.SetNewByteTotal(10_000_000);                            // routing done → exact total known
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsUpperBound).IsFalse();
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsFalse();
     }
 
     [Test]
-    public async Task Restore_eta_uses_download_rate_and_is_not_an_upper_bound()
+    public async Task Restore_eta_uses_download_rate_and_is_never_provisional()
     {
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
@@ -203,7 +203,7 @@ public class JobSinkEtaTests
 
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(8, 10);
-        await Assert.That(snap.EtaIsUpperBound).IsFalse();
+        await Assert.That(snap.EtaIsProvisional).IsFalse();
     }
 
     [Test]
