@@ -46,7 +46,7 @@ public class JobSinkEtaTests
 
         foreach (var token in new[]
                  {
-                     "phase=upload", "status=running", "pct=", "eta=", "provisional=", "tp=", "warnings=",
+                     "phase=upload", "status=running", "pct=", "eta=", "provisional=", "tp=", "hashTp=", "upTp=", "warnings=",
                      "total=10000000", "totalNew=4000000", "scanned=10000000/1f", "hashed=6000000",
                      "uploaded=1000000", "deduped=2000000/1f", "chunksTotal=", "avail=", "pending=",
                  })

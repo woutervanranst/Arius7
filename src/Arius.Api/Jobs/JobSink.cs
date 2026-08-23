@@ -129,10 +129,10 @@ public sealed class JobSink
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
         _logger.LogDebug(
-            "[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s provisional={EtaIsProvisional} tp={ThroughputBytesPerSec:F0}B/s warnings={WarningCount}"
+            "[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s provisional={EtaIsProvisional} tp={ThroughputBytesPerSec:F0}B/s hashTp={HashThroughputBytesPerSec:F0}B/s upTp={UploadThroughputBytesPerSec:F0}B/s warnings={WarningCount}"
             + " | archive total={TotalBytes} totalNew={TotalNewBytes} scanned={ScannedBytes}/{ScannedFiles}f hashed={HashedBytes} uploaded={UploadedBytes} deduped={DedupedBytes}/{DedupedFiles}f"
             + " | restore restoreTotal={RestoreTotalBytes}/{RestoreTotalFiles}f restored={BytesRestored}/{FilesRestored}f chunksTotal={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
-            snap.JobId, snap.Phase, snap.Status, snap.Pct, snap.EtaSeconds, snap.EtaIsProvisional, snap.ThroughputBytesPerSec, snap.WarningCount,
+            snap.JobId, snap.Phase, snap.Status, snap.Pct, snap.EtaSeconds, snap.EtaIsProvisional, snap.ThroughputBytesPerSec, snap.HashThroughputBytesPerSec, snap.UploadThroughputBytesPerSec, snap.WarningCount,
             snap.TotalBytes, snap.TotalNewBytes, snap.ScannedBytes, snap.ScannedFiles, snap.HashedBytes, snap.UploadedBytes, snap.DedupedBytes, snap.DedupedFiles,
             snap.RestoreTotalBytes, snap.RestoreTotalFiles, snap.BytesRestored, snap.FilesRestored,
             snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
