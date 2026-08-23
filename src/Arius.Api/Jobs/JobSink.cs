@@ -386,8 +386,11 @@ public sealed class JobSink
         }
         else if (total == 0)
         {
-            eta = null;                    // scan not complete → estimating
-            reportedRate = transferRate;
+            // Scan not complete → no ETA ("estimating"). But hashing runs concurrently with the scan, so
+            // report whichever stream is actually moving bytes rather than a misleading 0 B/s: on a large,
+            // dedup-heavy repo the transfer stream is idle for many minutes while hashing churns steadily.
+            eta = null;
+            reportedRate = Math.Max(hashRate, transferRate);
         }
         else
         {

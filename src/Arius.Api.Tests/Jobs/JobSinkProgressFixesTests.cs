@@ -108,4 +108,23 @@ public class JobSinkProgressFixesTests
         await Assert.That(snap.ThroughputBytesPerSec).IsLessThan(100_000_000.0);  // NOT the ~1 GB/s hash rate
         await Assert.That(snap.ThroughputBytesPerSec).IsGreaterThan(1_000_000.0); // ~10 MB/s transfer
     }
+
+    [Test]
+    public async Task Throughput_during_scan_reports_the_hash_rate_not_zero()
+    {
+        // Scan still running (total == 0) while files are hashed concurrently. On a large, dedup-heavy
+        // repo this window lasts many minutes with nothing uploaded yet — the reported throughput must
+        // reflect the live hashing, not read 0 B/s just because the transfer stream is idle.
+        var t0 = DateTimeOffset.UnixEpoch;
+        var s  = new JobSink();               // no SetTotals → total == 0 (enumeration not complete)
+
+        s.SampleForEta(t0);                   // baseline
+        s.AddHashed(20_000_000);              // 20 MB hashed over 1 s = 20 MB/s hash rate
+        s.SampleForEta(t0.AddSeconds(1));
+
+        var snap = s.BuildSnapshot(t0.AddSeconds(1));
+        await Assert.That(snap.TotalBytes).IsEqualTo(0L);                                // still scanning
+        await Assert.That(snap.EtaSeconds).IsNull();                                     // estimating, by design
+        await Assert.That(snap.ThroughputBytesPerSec).IsBetween(19_000_000, 21_000_000); // the HASH rate, not 0
+    }
 }
