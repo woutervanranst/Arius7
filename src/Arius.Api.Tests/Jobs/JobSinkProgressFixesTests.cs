@@ -85,36 +85,12 @@ public class JobSinkProgressFixesTests
         await Assert.That(snap.EtaIsProvisional).IsFalse();
     }
 
-    // ── Throughput is the binding term's rate, never the stale hash rate ────
-    [Test]
-    public async Task Throughput_at_upload_completion_is_transfer_rate_not_stale_hash_rate()
-    {
-        // A huge instantaneous jump inflates the hash EMA, which never decays; once the upload is done
-        // (eta == 0) the reported rate must still be the transfer rate.
-        var t0 = DateTimeOffset.UnixEpoch;
-        var s  = new JobSink();
-        s.SetTotals(files: 1, bytes: 1_000_000_000);
-
-        s.SampleForEta(t0);
-        s.AddHashed(1_000_000_000);            // 1 GB "hashed" in 1 s → ~1 GB/s hash EMA
-        s.SampleForEta(t0.AddSeconds(1));
-
-        s.SetNewByteTotal(10_000_000);
-        s.AddUploaded(Chunk('4'), stored: 0, original: 10_000_000);   // all 10 MB over 1 s = 10 MB/s
-        s.SampleForEta(t0.AddSeconds(2));
-
-        var snap = s.BuildSnapshot(t0.AddSeconds(2));
-        await Assert.That(snap.EtaSeconds).IsEqualTo(0L);                          // upload complete
-        await Assert.That(snap.ThroughputBytesPerSec).IsLessThan(100_000_000.0);  // NOT the ~1 GB/s hash rate
-        await Assert.That(snap.ThroughputBytesPerSec).IsGreaterThan(1_000_000.0); // ~10 MB/s transfer
-    }
-
+    // ── Throughput: two independently-honest streams, each zeroed when idle/done ────
     [Test]
     public async Task Throughput_during_scan_reports_the_hash_rate_not_zero()
     {
         // Scan still running (total == 0) while files are hashed concurrently. On a large, dedup-heavy
-        // repo this window lasts many minutes with nothing uploaded yet — the reported throughput must
-        // reflect the live hashing, not read 0 B/s just because the transfer stream is idle.
+        // repo this window lasts many minutes with nothing uploaded yet — the hash stream must be shown.
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();               // no SetTotals → total == 0 (enumeration not complete)
 
@@ -123,8 +99,73 @@ public class JobSinkProgressFixesTests
         s.SampleForEta(t0.AddSeconds(1));
 
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
-        await Assert.That(snap.TotalBytes).IsEqualTo(0L);                                // still scanning
-        await Assert.That(snap.EtaSeconds).IsNull();                                     // estimating, by design
-        await Assert.That(snap.ThroughputBytesPerSec).IsBetween(19_000_000, 21_000_000); // the HASH rate, not 0
+        await Assert.That(snap.TotalBytes).IsEqualTo(0L);                                    // still scanning
+        await Assert.That(snap.EtaSeconds).IsNull();                                         // estimating, by design
+        await Assert.That(snap.HashThroughputBytesPerSec).IsBetween(19_000_000, 21_000_000); // live hashing surfaced
+        await Assert.That(snap.UploadThroughputBytesPerSec).IsEqualTo(0.0);                  // nothing uploaded yet
+        await Assert.That(snap.ThroughputBytesPerSec).IsBetween(19_000_000, 21_000_000);     // dominant = hash
+    }
+
+    [Test]
+    public async Task Throughput_reports_the_upload_rate_while_hashing_is_done_and_upload_runs()
+    {
+        var t0 = DateTimeOffset.UnixEpoch;
+        var s  = new JobSink();
+        s.SetTotals(files: 1, bytes: 1_000_000_000);
+
+        s.SampleForEta(t0);
+        s.AddHashed(1_000_000_000);            // hashing complete (hashed == total) with a big hash EMA
+        s.SampleForEta(t0.AddSeconds(1));
+
+        s.SetNewByteTotal(100_000_000);        // 100 MB new to upload
+        s.AddUploaded(Chunk('5'), stored: 0, original: 10_000_000);   // 10 MB over 1 s = 10 MB/s, 90 MB remain
+        s.SampleForEta(t0.AddSeconds(2));
+
+        var snap = s.BuildSnapshot(t0.AddSeconds(2));
+        await Assert.That(snap.HashThroughputBytesPerSec).IsEqualTo(0.0);                     // hashing done → not shown
+        await Assert.That(snap.UploadThroughputBytesPerSec).IsBetween(9_000_000, 11_000_000); // ~10 MB/s upload
+        await Assert.That(snap.ThroughputBytesPerSec).IsBetween(9_000_000, 11_000_000);       // dominant = upload
+    }
+
+    [Test]
+    public async Task Throughput_is_zero_once_both_streams_are_done()
+    {
+        // A huge instantaneous hash jump inflates the hash EMA (which never decays). Once hashing has
+        // caught up to the total AND the upload has drained, BOTH streams read "done" (rate 0) — never
+        // the stale ~1 GB/s hash rate the old tie-break surfaced.
+        var t0 = DateTimeOffset.UnixEpoch;
+        var s  = new JobSink();
+        s.SetTotals(files: 1, bytes: 1_000_000_000);
+
+        s.SampleForEta(t0);
+        s.AddHashed(1_000_000_000);            // 1 GB "hashed" in 1 s → ~1 GB/s hash EMA; hashed == total (done)
+        s.SampleForEta(t0.AddSeconds(1));
+
+        s.SetNewByteTotal(10_000_000);
+        s.AddUploaded(Chunk('4'), stored: 0, original: 10_000_000);   // all 10 MB uploaded (done)
+        s.SampleForEta(t0.AddSeconds(2));
+
+        var snap = s.BuildSnapshot(t0.AddSeconds(2));
+        await Assert.That(snap.EtaSeconds).IsEqualTo(0L);                    // both terms drained
+        await Assert.That(snap.HashThroughputBytesPerSec).IsEqualTo(0.0);   // hashing done, not ~1 GB/s
+        await Assert.That(snap.UploadThroughputBytesPerSec).IsEqualTo(0.0); // upload done
+        await Assert.That(snap.ThroughputBytesPerSec).IsEqualTo(0.0);
+    }
+
+    [Test]
+    public async Task Restore_throughput_reports_the_download_rate_on_the_upload_stream()
+    {
+        var t0 = DateTimeOffset.UnixEpoch;
+        var s  = new JobSink();
+        s.SetRestoreTotals(files: 5, bytes: 10_000_000);
+
+        s.SampleForEta(t0);
+        s.ReportRestoreStreamed("f", 1_000_000);   // 1 MB downloaded over 1 s = 1 MB/s
+        s.SampleForEta(t0.AddSeconds(1));
+
+        var snap = s.BuildSnapshot(t0.AddSeconds(1));
+        await Assert.That(snap.HashThroughputBytesPerSec).IsEqualTo(0.0);                  // no hashing on restore
+        await Assert.That(snap.UploadThroughputBytesPerSec).IsBetween(900_000, 1_100_000); // download rate
+        await Assert.That(snap.ThroughputBytesPerSec).IsBetween(900_000, 1_100_000);
     }
 }

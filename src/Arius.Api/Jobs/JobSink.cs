@@ -374,40 +374,48 @@ public sealed class JobSink
         //    fully-deduped archive read its true (hash-bound) time instead of "seconds".
         // Restore has no local term (its bytes are known up front and only download). While the scan is still
         // running (total == 0) an archive stays "estimating" — a partial totalNew would under-read.
+        var newByteTotalFinal = _newByteTotalFinal;
+        var uploadDenom       = newByteTotalFinal ? Interlocked.Read(ref _newByteTotal) : totalNew;
+
+        // ── ETA (prediction): one number, binding on the slower constraint. Unchanged behaviour. ──
         long? eta;
-        double reportedRate;
         var etaIsProvisional = false;
         if (isRestore)
         {
             eta = restoreTotal > 0 && transferRate > 0
                 ? (long)Math.Ceiling(Math.Max(0L, restoreTotal - restored) / transferRate)
                 : null;
-            reportedRate = transferRate;
         }
         else if (total == 0)
         {
-            // Scan not complete → no ETA ("estimating"). But hashing runs concurrently with the scan, so
-            // report whichever stream is actually moving bytes rather than a misleading 0 B/s: on a large,
-            // dedup-heavy repo the transfer stream is idle for many minutes while hashing churns steadily.
-            eta = null;
-            reportedRate = Math.Max(hashRate, transferRate);
+            eta = null;                        // scan not complete → estimating
         }
         else
         {
-            var newByteTotalFinal = _newByteTotalFinal;
-            var uploadDenom = newByteTotalFinal ? Interlocked.Read(ref _newByteTotal) : totalNew;
             long? uploadEta = transferRate > 0 ? (long)Math.Ceiling(Math.Max(0L, uploadDenom - uploaded) / transferRate) : null;
             long? hashEta   = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
-            // Bind on the slower constraint and report THAT constraint's rate, so "sustained N MB/s" always
-            // explains the ETA. Ties resolve to upload, so a finished job reports the transfer rate rather than
-            // a stale hash rate.
-            if (hashEta is { } h && (uploadEta is not { } u || h > u)) { eta = hashEta;   reportedRate = hashRate; }
-            else                                                        { eta = uploadEta; reportedRate = transferRate; }
-            // Provisional until routing fixes the exact new-byte total. NOT a bound in either direction:
-            // `totalNew` only counts chunks discovered so far, so the estimate can still grow as routing
-            // finds more new bytes — and shrinks if the hash term binds and drains faster than sampled.
+            // Bind on the slower constraint (ties resolve to upload, so a finished job doesn't read a stale hash term).
+            eta = (hashEta is { } h && (uploadEta is not { } u || h > u)) ? hashEta : uploadEta;
             etaIsProvisional = eta is not null && !newByteTotalFinal;
         }
+
+        // ── Throughput (observation): two independently-honest rates, each zeroed when its stream is idle/done. ──
+        // The rates come from the two EMAs; liveness only gates WHETHER an already-smoothed rate is shown, so a
+        // finished stream can never surface a stale value and the scan window shows live hashing (not 0).
+        double hashTp, uploadTp;
+        if (isRestore)
+        {
+            hashTp   = 0;                                                                 // restore never hashes
+            uploadTp = restoreTotal > 0 && restored < restoreTotal ? transferRate : 0;   // the download rides the transfer EMA
+        }
+        else
+        {
+            var hashLive   = total == 0 || hashed < total;
+            var uploadLive = uploadDenom > 0 && uploaded < uploadDenom;
+            hashTp   = hashLive   ? hashRate     : 0;
+            uploadTp = uploadLive ? transferRate : 0;
+        }
+        var dominantTp = Math.Max(hashTp, uploadTp);
         // Archive pct is the monotonic "filled fraction" (uploaded + deduplicated) over the fixed scan total —
         // the same value the detail-page layered bar shows. The clamp absorbs the pointer-only case where
         // deduped alone exceeds the total.
@@ -429,7 +437,9 @@ public sealed class JobSink
             HashedBytes  = hashed,
             UploadedBytes = uploaded,
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
-            EtaSeconds = eta, ThroughputBytesPerSec = reportedRate, Pct = pct, EtaIsProvisional = etaIsProvisional,
+            EtaSeconds = eta, ThroughputBytesPerSec = dominantTp,
+            HashThroughputBytesPerSec = hashTp, UploadThroughputBytesPerSec = uploadTp,
+            Pct = pct, EtaIsProvisional = etaIsProvisional,
             WarningCount = WarningCount,
             Stats = new Dictionary<string, string>   // legacy stat grid
             {
