@@ -781,14 +781,25 @@ internal sealed class ChunkIndexLocalStore
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
-        // `synchronous` lives on the connection handle, not the file, so it is reapplied on every open —
-        // cheap, in-memory only. NORMAL is corruption-safe under WAL; worst case is losing the last few
-        // uncommitted transactions on an unclean shutdown, acceptable since the chunk index rebuilds from
-        // the remote repository.
-        using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA synchronous = normal;";
-        pragma.ExecuteNonQuery();
-        return connection;
+        try
+        {
+            // `synchronous` lives on the connection handle, not the file, so it is reapplied on every open —
+            // cheap, in-memory only. NORMAL is corruption-safe under WAL; worst case is losing the last few
+            // uncommitted transactions on an unclean shutdown, acceptable since the chunk index rebuilds from
+            // the remote repository.
+            using var pragma = connection.CreateCommand();
+            pragma.CommandText = "PRAGMA synchronous = normal;";
+            pragma.ExecuteNonQuery();
+            return connection;
+        }
+        catch
+        {
+            // The caller's `using` does not exist yet, so a throw here would leak the pooled connection:
+            // its sqlite3 handle is finalized later and the pool can hand that dead handle to a later
+            // lease, turning one transient failure into a cascade across the whole run.
+            connection.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Test-only seam: the SQLite connection string, so tests can probe persisted state directly.</summary>
