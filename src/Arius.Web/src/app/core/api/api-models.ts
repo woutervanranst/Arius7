@@ -97,6 +97,8 @@ export interface JobSnapshot {
   dedupedFiles: number;
   etaSeconds: number | null;
   throughputBytesPerSec: number;
+  hashThroughputBytesPerSec: number;     // local hashing rate; 0 once hashing is done or before it starts
+  uploadThroughputBytesPerSec: number;   // upload (archive) / download (restore) rate; 0 when idle or done
   etaIsProvisional: boolean;   // archive: true until routing fixes the exact new-byte total; the estimate can still move either way
   pct: number;
   warningCount: number;

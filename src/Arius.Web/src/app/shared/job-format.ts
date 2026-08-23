@@ -29,6 +29,13 @@ export function formatThroughput(bytesPerSec: number | null | undefined): string
   return `${Math.round(b)} B/s`;
 }
 
+/** One throughput row's value: the formatted rate while the stream is live, "done" once it has moved
+ *  bytes but its rate has dropped to 0, and "—" before it has produced anything. */
+export function throughputRow(rate: number | null | undefined, producedBytes: number | null | undefined): string {
+  if ((rate ?? 0) > 0) return formatThroughput(rate);
+  return (producedBytes ?? 0) > 0 ? 'done' : '—';
+}
+
 /** "≈ hydrated by 03:40" from a rehydration start + the priority window (hours). */
 export function hydratedByLabel(startedAtIso: string | null, windowHours: number): string {
   if (!startedAtIso) return '';
