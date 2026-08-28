@@ -21,12 +21,10 @@ export function formatDuration(seconds: number | null | undefined): string {
   return `${(seconds / 3600).toFixed(1)} h`;
 }
 
-/** "2.4 MB/s". */
+/** "2.4 MB/s" / "1.93 TB/s" — the same size ladder as every other byte figure on screen, so a rate never
+ *  runs off into four-digit MB/s. Null reads as zero (a rate is always known-or-nothing, never "—"). */
 export function formatThroughput(bytesPerSec: number | null | undefined): string {
-  const b = bytesPerSec ?? 0;
-  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB/s`;
-  if (b >= 1e3) return `${(b / 1e3).toFixed(0)} KB/s`;
-  return `${Math.round(b)} B/s`;
+  return `${formatBytes(Math.round(bytesPerSec ?? 0))}/s`;
 }
 
 /** One throughput row's value: the formatted rate while the stream is live, "done" once it has moved

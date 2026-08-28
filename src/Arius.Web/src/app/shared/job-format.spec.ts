@@ -78,6 +78,8 @@ describe('formatThroughput', () => {
   it('renders B/s below 1 KB/s', () => expect(formatThroughput(512)).toBe('512 B/s'));
   it('renders whole KB/s below 1 MB/s', () => expect(formatThroughput(2400)).toBe('2 KB/s'));
   it('renders MB/s to one decimal at/above 1 MB/s', () => expect(formatThroughput(2_400_000)).toBe('2.4 MB/s'));
+  it('renders GB/s at/above 1 GB/s rather than four-digit MB/s', () => expect(formatThroughput(106_693_000_000)).toBe('106.69 GB/s'));
+  it('renders TB/s at/above 1 TB/s', () => expect(formatThroughput(1_930_000_000_000)).toBe('1.93 TB/s'));
 });
 
 describe('throughputRow', () => {
