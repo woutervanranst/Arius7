@@ -28,3 +28,4 @@ New decision? Copy [`adr-template.md`](adr-template.md).
 | [0020](adr-0020-provider-agnostic-cost-estimation.md) | Cost estimation behind a provider-agnostic interface |
 | [0021](adr-0021-opt-in-change-detection-hashcache.md) | Opt-in change-detection hashcache for fast-hash archive runs |
 | [0022](adr-0022-scripted-fake-core-test-harness.md) | Scripted-fake-Core harness for Api/Web test coverage |
+| [0023](adr-0023-archive-tier-small-chunk-ceiling.md) | Treat the requested upload tier as a ceiling: never archive a chunk within the small-file threshold |

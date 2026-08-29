@@ -61,6 +61,8 @@ flowchart LR
     T -- no --> Acc[Accumulate]
 ```
 
+`SmallFileThreshold` serves two independent decisions that happen to share a number: it routes the file by **uncompressed** size (below), and it is also the ceiling below which a **stored** chunk is kept out of the archive tier (`ChunkStorageService.GetActualStorageTier`, [ADR-0023](../../decisions/adr-0023-archive-tier-small-chunk-ceiling.md)). The second exists because the first cannot see the compressed size: a file above the threshold can compress back within it, and archiving a chunk that small costs more to rehydrate than the tier ever saves.
+
 `SmallFileThreshold = 1 MB` (`ArchiveCommandOptions`) routes the file: a [large chunk](../../glossary.md#large-chunk) is one file = one blob; below the threshold files are packed by `TarBuilder` into [tar chunks](../../glossary.md#tar-chunk) sealed at `TarTargetSize = 64 MB`. The threshold exists because thousands of tiny blobs would multiply per-file blob round-trips and Azure transaction cost (the AGENTS "Scale And Durability" guidance: *avoid per-file remote round-trips*). Bundling turns N small uploads into one large-blob PUT plus N cheap local thin-entry records — which is exactly why `ThinEntryWorkers` (64) is set so much higher than the upload workers.
 
 ### Codec: zstd level
@@ -78,6 +80,7 @@ flowchart LR
 - **`MaxShardEntryCount = 1024` and `MinShardPrefixLength = 2` are a coupled pair** verified by ADR-0015's confirmation checks; changing the threshold changes the steady-state write-amplification and shard count (the ~4096-shard design point fits one 5000-blob Azure list page).
 - **The zstd level is the only codec size/speed knob and must keep `ZSTD_c_nbWorkers = 0`** and default window/LDM, so a frame written today is restorable by a default-configured reader (ADR-0012 confirmation).
 - **`SmallFileThreshold` < `TarTargetSize`.** The per-file route decision must sit below the bundle seal size, or large files would land in tars and defeat the dedup-by-large-chunk path.
+- **The routing threshold is uncompressed; the archive-tier ceiling is stored.** They read the same option but compare different sizes, and collapsing them (or deriving one from the other) would silently move the tier ceiling whenever routing is retuned.
 
 ## Why this shape
 
