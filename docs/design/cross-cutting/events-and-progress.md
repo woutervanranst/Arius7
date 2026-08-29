@@ -16,7 +16,7 @@ Two slices publish events, both `sealed record … : INotification` declared in 
 |---|---|
 | `FileScannedEvent` / `ScanCompleteEvent` | per-file enumeration tick / final totals |
 | `EntryExcludedEvent` | a file/dir excluded *at enumeration* (excluded, broken symlink, unreadable dir) — never scanned; tallied into `ArchiveResult.EntriesExcluded` |
-| `FileHashingEvent` / `FileHashedEvent` / `FileSkippedEvent` | hashing lifecycle of one file; `FileSkippedEvent` drops an already-scanned file mid-pipeline (vs `EntryExcludedEvent` above). Only `FileHashedEvent` carries `FileSize`, so a consumer credits bytes on **completion** rather than on entry |
+| `FileHashingEvent` / `FileHashedEvent` / `FileSkippedEvent` | hashing lifecycle of one file; `FileSkippedEvent` drops an already-scanned file mid-pipeline (vs `EntryExcludedEvent` above). Both `FileHashingEvent` and `FileHashedEvent` carry the same `FileSize` (`0` for pointer-only files): the hashing one supplies the per-file progress **denominator**, the hashed one lets a consumer credit hashed bytes on **completion** rather than on entry |
 | `TarBundleStartedEvent` / `TarEntryAddedEvent` / `TarBundleSealingEvent` / `TarBundleUploadedEvent` | [tar-chunk](../../glossary.md#tar-chunk) bundle lifecycle |
 | `ChunkUploadingEvent` / `ChunkUploadedEvent` | [chunk](../../glossary.md#chunk) upload start / done (carries `ChunkHash`) |
 | `RoutingCompleteEvent` | the dedup/route stage has drained — every scanned file is now classified as deduplicated or routed, so `NewByteTotal` (this run's bytes to upload) is final. Fires once per run, `0` for a fully-deduplicated one |
