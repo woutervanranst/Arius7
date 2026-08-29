@@ -10,23 +10,29 @@ public interface IChunkStorageService
 {
     /// <summary>
     /// Uploads a large-file chunk blob and returns the stored chunk metadata needed for index recording.
+    /// <paramref name="tier"/> is a <i>ceiling</i>: a chunk whose stored size is within
+    /// <paramref name="smallFileThreshold"/> is kept online rather than archived, and the tier it actually
+    /// landed on is reported as <see cref="ChunkUploadResult.ActualTier"/>.
     /// </summary>
     Task<ChunkUploadResult> UploadLargeAsync(
         ChunkHash chunkHash,
         Stream content,
         long sourceSize,
         BlobTier tier,
+        long smallFileThreshold,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Uploads a tar bundle chunk blob and returns the stored chunk metadata needed for thin entries.
+    /// <paramref name="tier"/> is a ceiling, exactly as for <see cref="UploadLargeAsync"/>.
     /// </summary>
     Task<ChunkUploadResult> UploadTarAsync(
         ChunkHash chunkHash,
         Stream content,
         long sourceSize,
         BlobTier tier,
+        long smallFileThreshold,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default);
 

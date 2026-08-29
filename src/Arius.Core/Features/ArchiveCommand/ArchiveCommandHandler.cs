@@ -554,13 +554,13 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     await using (s)
                     {
                         var p              = opts.CreateUploadProgress?.Invoke(largeChunkHash, upload.FileSize);
-                        var uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, s, upload.FileSize, opts.UploadTier, p, ct);
+                        var uploadResult   = await _chunkStorage.UploadLargeAsync(largeChunkHash, s, upload.FileSize, opts.UploadTier, opts.SmallFileThreshold, p, ct);
                         var originalSize   = uploadResult.OriginalSize ?? upload.FileSize;
                         var storedSize     = uploadResult.StoredSize;
 
                         // Enqueue ShardEntry and FileTreeUpdate
                         // so no filesystem access is needed here.
-                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, storedSize, opts.UploadTier), ct);
+                        await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(upload.HashedPair.ContentHash, largeChunkHash, originalSize, storedSize, uploadResult.ActualTier), ct);
                         await fileTreeEntryChannel.Writer.WriteAsync(upload.HashedPair, ct);
                         Interlocked.Increment(ref filesUploaded);
                         // Only count bytes actually written this run; a pre-existing blob (recovered from a
@@ -570,7 +570,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                         await _mediator.Publish(new ChunkUploadedEvent(largeChunkHash, storedSize, originalSize), ct);
 
-                        _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, stored={Stored})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), storedSize.Bytes().Humanize());
+                        _logger.LogInformation("[upload] Done: {Path} ({Hash}, orig={Orig}, stored={Stored}, tier={Tier})", upload.HashedPair.FilePair.RelativePath, upload.HashedPair.ContentHash.Short8, upload.FileSize.Bytes().Humanize(), storedSize.Bytes().Humanize(), uploadResult.ActualTier);
                     }
                 });
 
@@ -643,7 +643,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
 
                     var             tarProgress    = opts.CreateUploadProgress?.Invoke(sealedTar.TarHash, sealedTar.UncompressedSize);
                     using var tarStream = new MemoryStream(sealedTar.Content.Array!, sealedTar.Content.Offset, sealedTar.Content.Count, writable: false, publiclyVisible: true);
-                    var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, tarProgress, ct);
+                    var             uploadResult   = await _chunkStorage.UploadTarAsync(sealedTar.TarHash, tarStream, sealedTar.UncompressedSize, opts.UploadTier, opts.SmallFileThreshold, tarProgress, ct);
                     var             storedSize     = uploadResult.StoredSize;
                     // One stored size per tar blob (its thin entries share the blob), so add it once here —
                     // but only when the blob was actually written this run, not recovered from a prior one.
@@ -659,12 +659,12 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                             await _chunkStorage.UploadThinAsync(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, storedSize, entryCt);
 
                             // The tar blob's tier governs all of its thin entries.
-                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, storedSize, opts.UploadTier), entryCt);
+                            await chunkIndexEntryChannel.Writer.WriteAsync(new ShardEntry(entry.ContentHash, sealedTar.TarHash, entry.OriginalSize, storedSize, uploadResult.ActualTier), entryCt);
                             await fileTreeEntryChannel.Writer.WriteAsync(entry.HashedPair, entryCt);
                         });
 
                     await _mediator.Publish(new TarBundleUploadedEvent(sealedTar.TarHash, storedSize, sealedTar.Entries.Count), ct);
-                    _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, stored={Stored}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, storedSize.Bytes().Humanize());
+                    _logger.LogInformation("[tar] Uploaded: {TarHash} {Count} thin chunks, stored={Stored}, tier={Tier}", sealedTar.TarHash.Short8, sealedTar.Entries.Count, storedSize.Bytes().Humanize(), uploadResult.ActualTier);
                     Interlocked.Add(ref filesUploaded, sealedTar.Entries.Count);
                 });
 

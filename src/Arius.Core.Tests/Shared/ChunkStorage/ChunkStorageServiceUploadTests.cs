@@ -19,6 +19,9 @@ public class ChunkStorageServiceUploadTests
     private static readonly ContentHash RetryThinContentHash        = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
     private static readonly ChunkHash   RetryThinParentChunkHash    = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
 
+    /// <summary>A threshold no stored chunk can be within, so the archive-tier ceiling never applies.</summary>
+    private const long NoTierCeiling = 0;
+
     [Test]
     public async Task UploadLargeAsync_StoresChunkAndReturnsStoredSize()
     {
@@ -33,6 +36,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -65,6 +69,7 @@ public class ChunkStorageServiceUploadTests
             content: tarStream,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -89,6 +94,7 @@ public class ChunkStorageServiceUploadTests
             content: tarStream,
             sourceSize: content.Length,
             tier: BlobTier.Cold,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -109,6 +115,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(largeContent),
             sourceSize: largeContent.Length,
             tier: BlobTier.Cold,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -134,6 +141,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -161,6 +169,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: 999,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -182,6 +191,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -207,6 +217,7 @@ public class ChunkStorageServiceUploadTests
             content: chunkedContent,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: progress,
             cancellationToken: CancellationToken.None);
 
@@ -230,6 +241,7 @@ public class ChunkStorageServiceUploadTests
             content: nonSeekable,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None));
     }
@@ -251,6 +263,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None));
 
@@ -356,6 +369,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -380,6 +394,7 @@ public class ChunkStorageServiceUploadTests
             content: source,
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -405,6 +420,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Archive,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -428,6 +444,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Cold,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -456,6 +473,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Cold,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -486,6 +504,7 @@ public class ChunkStorageServiceUploadTests
             content: new MemoryStream(content),
             sourceSize: content.Length,
             tier: BlobTier.Cold,
+            smallFileThreshold: NoTierCeiling,
             progress: null,
             cancellationToken: CancellationToken.None);
 
@@ -495,4 +514,131 @@ public class ChunkStorageServiceUploadTests
         restored.ToArray().ShouldBe(content);
     }
 
+
+    // ── Archive-tier ceiling ────────────────────────────────────────────────────────────────────────
+
+    // The caller routes files by uncompressed size, so a file above the threshold can still compress back
+    // within it. Such a chunk must not be archived — rehydrating it costs far more than the storage saved.
+    [Test]
+    public async Task UploadLargeAsync_KeepsChunkOnline_WhenArchiveRequestedAndStoredSizeIsWithinTheThreshold()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
+        var content = CompressibleContent(2 * 1024 * 1024);
+        var chunkHash = ChunkHashOf(content);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            smallFileThreshold: 1024 * 1024,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.StoredSize.ShouldBeLessThanOrEqualTo(1024 * 1024);
+        result.ActualTier.ShouldBe(BlobTier.Cold);
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash))).Tier.ShouldBe(BlobTier.Cold);
+    }
+
+    [Test]
+    public async Task UploadTarAsync_KeepsTarOnline_WhenArchiveRequestedAndStoredSizeIsWithinTheThreshold()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
+        var content = CompressibleContent(2 * 1024 * 1024);
+        var tarChunkHash = ChunkHashOf(content);
+
+        var result = await service.UploadTarAsync(
+            chunkHash: tarChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            smallFileThreshold: 1024 * 1024,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.ActualTier.ShouldBe(BlobTier.Cold);
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(tarChunkHash))).Tier.ShouldBe(BlobTier.Cold);
+    }
+
+    [Test]
+    public async Task UploadLargeAsync_KeepsArchiveTier_WhenStoredSizeExceedsTheThreshold()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
+        var content = new byte[2 * 1024 * 1024]; // incompressible, so the stored chunk stays above the threshold
+        Random.Shared.NextBytes(content);
+        var chunkHash = ChunkHashOf(content);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Archive,
+            smallFileThreshold: 1024 * 1024,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.StoredSize.ShouldBeGreaterThan(1024L * 1024);
+        result.ActualTier.ShouldBe(BlobTier.Archive);
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash))).Tier.ShouldBe(BlobTier.Archive);
+    }
+
+    // Only the archive tier is ceilinged; an explicitly requested online tier is honoured at any size.
+    [Test]
+    public async Task UploadLargeAsync_KeepsRequestedOnlineTier_WhenStoredSizeIsWithinTheThreshold()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
+        var content = CompressibleContent(4096);
+        var chunkHash = ChunkHashOf(content);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: chunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cool,
+            smallFileThreshold: 1024 * 1024,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.ActualTier.ShouldBe(BlobTier.Cool);
+        (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash))).Tier.ShouldBe(BlobTier.Cool);
+    }
+
+    // A committed blob recovered from a prior run keeps the tier it has — moving one out of the archive tier
+    // is a paid rehydration — so the reported tier must describe storage, not this run's request.
+    [Test]
+    public async Task UploadLargeAsync_ReportsTierOfExistingBlob_WhenBlobAlreadyExisted()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
+        var content = new byte[2048];
+        Random.Shared.NextBytes(content);
+        var blobName = BlobPaths.ChunkPath(ExistingLargeChunkHash);
+
+        await blobs.SeedLargeBlobAsync(blobName, content, BlobTier.Archive);
+        blobs.ThrowAlreadyExistsOnOpenWrite(blobName);
+
+        var result = await service.UploadLargeAsync(
+            chunkHash: ExistingLargeChunkHash,
+            content: new MemoryStream(content),
+            sourceSize: content.Length,
+            tier: BlobTier.Cool,
+            smallFileThreshold: 1024 * 1024,
+            progress: null,
+            cancellationToken: CancellationToken.None);
+
+        result.AlreadyExisted.ShouldBeTrue();
+        result.ActualTier.ShouldBe(BlobTier.Archive);
+        (await blobs.GetMetadataAsync(blobName)).Tier.ShouldBe(BlobTier.Archive);
+    }
+
+    private static byte[] CompressibleContent(int sizeBytes)
+    {
+        var content = new byte[sizeBytes];
+        Array.Fill(content, (byte)7);
+        return content;
+    }
 }
