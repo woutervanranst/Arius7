@@ -30,7 +30,9 @@ public sealed record FileHashingEvent(RelativePath RelativePath, long FileSize) 
 /// <c>true</c> when the file was fully read and its hash recorded to the hashcache.
 /// <c>false</c> for pointer-only files (hash taken from the pointer) and for cache hits.
 /// </param>
-public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash, bool FastHashReused, bool FastHashRehashed) : INotification;
+/// <param name="FileSize">File size in bytes (0 for pointer-only files), so progress consumers can credit
+/// hashed bytes on completion rather than at hash start.</param>
+public sealed record FileHashedEvent(RelativePath RelativePath, ContentHash ContentHash, bool FastHashReused, bool FastHashRehashed, long FileSize = 0) : INotification;
 
 /// <summary>
 /// An already-scanned file was dropped <i>during</i> the pipeline because it could no longer be
@@ -63,6 +65,14 @@ public enum ExclusionReason
 /// <param name="RelativePath">Relative path of the excluded entry (a file, or a pruned directory).</param>
 /// <param name="Reason">Why it was excluded.</param>
 public sealed record EntryExcludedEvent(RelativePath RelativePath, ExclusionReason Reason) : INotification;
+
+/// <summary>
+/// The dedup/route stage has drained: every scanned file is classified as deduplicated or routed for upload,
+/// so the number of new bytes to upload is final. Fires once per run.
+/// </summary>
+/// <param name="NewByteTotal">Original (uncompressed) bytes routed for upload this run (0 for a fully
+/// deduplicated run).</param>
+public sealed record RoutingCompleteEvent(long NewByteTotal) : INotification;
 
 /// <summary>A chunk upload started.</summary>
 public sealed record ChunkUploadingEvent(ChunkHash ChunkHash, long Size) : INotification;

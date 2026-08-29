@@ -1,15 +1,16 @@
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 import { formatBytes } from './format';
 
-/** "~12 min left" / "≤ ~2.0 h left" (bounded) / "estimating…" (null until known).
- *  `isUpperBound` (archive, pre-hash-complete) prefixes "≤ " to signal the estimate is provisional. */
-export function formatEta(seconds: number | null | undefined, isUpperBound = false): string {
+/** "~12 min left" / "~2.0 h left (estimating)" (provisional) / "estimating…" (null until known).
+ *  `isProvisional` (archive, before routing fixes the exact new-byte total) suffixes "(estimating)": the
+ *  number is not a bound in either direction — it can still grow as routing discovers more new bytes. */
+export function formatEta(seconds: number | null | undefined, isProvisional = false): string {
   if (seconds == null) return 'estimating…';
   const body =
     seconds < 60   ? `~${Math.max(1, Math.round(seconds))} sec left`
   : seconds < 3600 ? `~${Math.round(seconds / 60)} min left`
   :                  `~${(seconds / 3600).toFixed(1)} h left`;
-  return isUpperBound ? `≤ ${body}` : body;
+  return isProvisional ? `${body} (estimating)` : body;
 }
 
 /** "11 min" / "1.4 h" / "48 s" — elapsed/duration display. */
@@ -20,12 +21,17 @@ export function formatDuration(seconds: number | null | undefined): string {
   return `${(seconds / 3600).toFixed(1)} h`;
 }
 
-/** "2.4 MB/s". */
+/** "2.4 MB/s" / "1.93 TB/s" — the same size ladder as every other byte figure on screen, so a rate never
+ *  runs off into four-digit MB/s. Null reads as zero (a rate is always known-or-nothing, never "—"). */
 export function formatThroughput(bytesPerSec: number | null | undefined): string {
-  const b = bytesPerSec ?? 0;
-  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB/s`;
-  if (b >= 1e3) return `${(b / 1e3).toFixed(0)} KB/s`;
-  return `${Math.round(b)} B/s`;
+  return `${formatBytes(Math.round(bytesPerSec ?? 0))}/s`;
+}
+
+/** One throughput row's value: the formatted rate while the stream is live, "done" once it has moved
+ *  bytes but its rate has dropped to 0, and "—" before it has produced anything. */
+export function throughputRow(rate: number | null | undefined, producedBytes: number | null | undefined): string {
+  if ((rate ?? 0) > 0) return formatThroughput(rate);
+  return (producedBytes ?? 0) > 0 ? 'done' : '—';
 }
 
 /** "≈ hydrated by 03:40" from a rehydration start + the priority window (hours). */

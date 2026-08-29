@@ -17,8 +17,10 @@ public sealed record JobSnapshot
     public required long    DedupedFiles   { get; init; }
     public required long?   EtaSeconds     { get; init; }   // null until TotalNewBytes known
     public required double  ThroughputBytesPerSec { get; init; }
+    public          double  HashThroughputBytesPerSec   { get; init; }   // local hashing rate; 0 once hashing is done or before it starts
+    public          double  UploadThroughputBytesPerSec { get; init; }   // upload rate (archive) / download rate (restore); 0 when that stream is idle or done
     public required int     Pct            { get; init; }   // byte-weighted; legacy consumers read this
-    public          bool    EtaIsUpperBound { get; init; }   // archive: true while hashing incomplete (new-bytes not yet final) → render "≤"
+    public          bool    EtaIsProvisional { get; init; }   // archive: true until routing fixes the exact new-byte total; the estimate can still move in either direction
     public required int     WarningCount   { get; init; }
     public required IReadOnlyDictionary<string, string> Stats { get; init; }   // legacy drawer stat grid
 

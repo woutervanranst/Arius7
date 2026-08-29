@@ -15,7 +15,9 @@ namespace Arius.Api.Jobs;
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
-    private readonly ILogger? _logger;   // optional diagnostic logger (ETA/throughput tracing); null on inert/read sinks
+    // Per-repo diagnostic logger (ETA/throughput tracing); null on inert/read sinks and until attached.
+    // Volatile: attached on the job-start thread, read on the reporting timer's threadpool thread.
+    private volatile ILogger? _logger;
 
     /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
     public string? JobId { get; }
@@ -25,7 +27,12 @@ public sealed class JobSink
     public CancellationTokenSource Cts { get; } = new();
 
     public JobSink() { }                                  // inert sink for read providers
-    public JobSink(string jobId, IHubContext<JobsHub> hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
+    public JobSink(string jobId, IHubContext<JobsHub>? hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
+
+    /// <summary>Attaches the per-repository diagnostics logger, so the <c>[ETA]</c> trace lands in the repo's
+    /// <c>arius-{date}.txt</c> alongside Core's events. Set after construction because the sink is created
+    /// before the repository's provider (and its logger factory) exists.</summary>
+    public void AttachDiagnosticsLogger(ILogger logger) => _logger = logger;
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
 
@@ -101,23 +108,33 @@ public sealed class JobSink
     public void StartReporting()
     {
         if (JobId is null) return;
-        _timer = new Timer(_ => { var now = _now(); SampleForEta(now); EmitNow(); LogEtaDiagnostics(now); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        // One snapshot per tick, shared by the wire and the log: building a second one for the diagnostics
+        // would let concurrent events make the logged line disagree with the payload the client received.
+        _timer = new Timer(_ =>
+        {
+            var now = _now();
+            SampleForEta(now);
+            var snapshot = BuildSnapshot(now);
+            Emit(snapshot);
+            LogEtaDiagnostics(snapshot);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
 
-    /// <summary>Once per reporting tick, logs the EMA throughput state and the derived rate/ETA at Debug under
-    /// the "[ETA]" tag, so the numbers driving the header can be traced via ARIUS_LOG_LEVEL=Debug. No-op unless a
-    /// logger was supplied and Debug is enabled.</summary>
-    private void LogEtaDiagnostics(DateTimeOffset now)
+    /// <summary>Logs <paramref name="snap"/> — the very <see cref="JobSnapshot"/> instance emitted to the web
+    /// client over SignalR this tick — at Debug under the "[ETA]" tag, so what Arius.Web renders is reproducible
+    /// from the log alone. No-op unless a logger was supplied and Debug is enabled.</summary>
+    internal void LogEtaDiagnostics(JobSnapshot snap)
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
-        var snap = BuildSnapshot(now);
         _logger.LogDebug(
-            "[ETA] job={JobId} phase={Phase} pct={Pct} eta={Eta}s bound={Bound} rate={Rate:F0}B/s | archive up={Uploaded} newTotal={TotalNew} hashed={Hashed} scanned={Scanned} total={Total} deduped={Deduped} | restore restored={Restored}/{RestoreTotal}B files={FilesRestored}/{RestoreTotalFiles} chunks total={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
-            JobId, snap.Phase, snap.Pct, snap.EtaSeconds, snap.EtaIsUpperBound, snap.ThroughputBytesPerSec,
-            snap.UploadedBytes, snap.TotalNewBytes, snap.HashedBytes, snap.ScannedBytes, snap.TotalBytes, snap.DedupedBytes,
-            snap.BytesRestored, snap.RestoreTotalBytes, snap.FilesRestored, snap.RestoreTotalFiles,
+            "[ETA] job={JobId} phase={Phase} status={Status} pct={Pct} eta={EtaSeconds}s provisional={EtaIsProvisional} tp={ThroughputBytesPerSec:F0}B/s hashTp={HashThroughputBytesPerSec:F0}B/s upTp={UploadThroughputBytesPerSec:F0}B/s warnings={WarningCount}"
+            + " | archive total={TotalBytes} totalNew={TotalNewBytes} scanned={ScannedBytes}/{ScannedFiles}f hashed={HashedBytes} uploaded={UploadedBytes} deduped={DedupedBytes}/{DedupedFiles}f"
+            + " | restore restoreTotal={RestoreTotalBytes}/{RestoreTotalFiles}f restored={BytesRestored}/{FilesRestored}f chunksTotal={ChunksTotal} avail={ChunksAvailable} rehyd={ChunksRehydrated} needs={ChunksNeedingRehydration} pending={ChunksPending}",
+            snap.JobId, snap.Phase, snap.Status, snap.Pct, snap.EtaSeconds, snap.EtaIsProvisional, snap.ThroughputBytesPerSec, snap.HashThroughputBytesPerSec, snap.UploadThroughputBytesPerSec, snap.WarningCount,
+            snap.TotalBytes, snap.TotalNewBytes, snap.ScannedBytes, snap.ScannedFiles, snap.HashedBytes, snap.UploadedBytes, snap.DedupedBytes, snap.DedupedFiles,
+            snap.RestoreTotalBytes, snap.RestoreTotalFiles, snap.BytesRestored, snap.FilesRestored,
             snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
     }
 
@@ -128,7 +145,13 @@ public sealed class JobSink
     public void EmitNow()
     {
         if (_done) return;
-        var snapshot = BuildSnapshot(_now());    // built outside the lock (absolute-state; a stale build is fine)
+        Emit(BuildSnapshot(_now()));             // built outside the lock (absolute-state; a stale build is fine)
+    }
+
+    /// <summary>Sends an already-built snapshot, so a caller that also needs it (the reporting timer, which logs
+    /// the same instance) never has to build a second one.</summary>
+    private void Emit(JobSnapshot snapshot)
+    {
         lock (_emitLock)
         {
             if (_done) return;                   // re-check under the lock: a Done that raced in wins
@@ -137,7 +160,8 @@ public sealed class JobSink
     }
 
     // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
-    private long _totalFiles, _totalBytes, _scannedBytes, _scannedFiles, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes;
+    private long _totalFiles, _totalBytes, _scannedBytes, _scannedFiles, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes, _newByteTotal;
+    private volatile bool _newByteTotalFinal;   // set once RoutingCompleteEvent has fixed the exact new-byte total
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
@@ -174,6 +198,10 @@ public sealed class JobSink
     /// additive "new bytes to upload" total. Independent of the deduped/total subtraction, so it never
     /// underflows for pointer-only-heavy repos. Final once routing completes; 0 until the first queue.</summary>
     public void AddQueuedNew(long originalSize) => Interlocked.Add(ref _queuedNewBytes, originalSize);
+    /// <summary>Records the exact, final count of new (non-deduped) original bytes to upload, from
+    /// <c>RoutingCompleteEvent</c>. Until this fires the upload ETA uses the still-growing
+    /// <see cref="_queuedNewBytes"/> as a provisional denominator.</summary>
+    public void SetNewByteTotal(long newByteTotal) { Interlocked.Exchange(ref _newByteTotal, newByteTotal); _newByteTotalFinal = true; }
     public void AddDeduped(long original) { Interlocked.Add(ref _dedupedBytes, original); Interlocked.Increment(ref _dedupedFiles); }
     public void RememberTar(ChunkHash tarHash, long uncompressed) => _tarUncompressed[tarHash] = uncompressed;
     public void AddUploadedTar(ChunkHash tarHash) { if (_tarUncompressed.TryGetValue(tarHash, out var u)) CreditUpload(tarHash, u); }
@@ -338,49 +366,66 @@ public sealed class JobSink
         // cap so the tiles and bar never read over the total (pct is already clamped; this fixes the raw "on disk" value).
         if (restoreTotal > 0 && restored > restoreTotal) restored = restoreTotal;
         var isRestore         = restoreTotal > 0 || restoreTotalFiles > 0;
-        var denominator       = isRestore ? restoreTotal : totalNew;
-        var progress          = isRestore ? restored     : uploaded;
 
         // ETA models the run as concurrent constraints and takes the slower (max):
-        //  • upload: (upperBoundNewBytes − uploaded) / transferRate. The denominator max(totalNew, total−deduped)
-        //    is a scan-known UPPER bound that tightens to the exact new-bytes as routing/dedup completes, and the
-        //    max() avoids the pointer-only underflow total−deduped alone would hit.
+        //  • upload: (newBytes − uploaded) / transferRate. newBytes is the queued-new total (a converging lower
+        //    bound) until RoutingCompleteEvent fixes the exact figure.
         //  • local (archive only): (total − hashed) / hashRate — the read/hash backlog. This is what makes a
         //    fully-deduped archive read its true (hash-bound) time instead of "seconds".
         // Restore has no local term (its bytes are known up front and only download). While the scan is still
         // running (total == 0) an archive stays "estimating" — a partial totalNew would under-read.
+        var newByteTotalFinal = _newByteTotalFinal;
+        var uploadDenom       = newByteTotalFinal ? Interlocked.Read(ref _newByteTotal) : totalNew;
+
+        // ── ETA (prediction): one number, binding on the slower constraint. Unchanged behaviour. ──
         long? eta;
-        double reportedRate;
-        var etaIsUpperBound = false;
+        var etaIsProvisional = false;
         if (isRestore)
         {
             eta = restoreTotal > 0 && transferRate > 0
                 ? (long)Math.Ceiling(Math.Max(0L, restoreTotal - restored) / transferRate)
                 : null;
-            reportedRate = transferRate;
         }
         else if (total == 0)
         {
-            eta = null;                    // scan not complete → estimating
-            reportedRate = transferRate;
+            eta = null;                        // scan not complete → estimating
         }
         else
         {
-            var uploadDenom = Math.Max(totalNew, Math.Max(0L, total - deduped));
             long? uploadEta = transferRate > 0 ? (long)Math.Ceiling(Math.Max(0L, uploadDenom - uploaded) / transferRate) : null;
-            long? localEta  = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
-            // Bind on the slower constraint. Report that constraint's rate so "sustained N MB/s" always explains
-            // the ETA (upload rate when upload-bound, hash rate when hash-bound).
-            if (localEta is { } l && (uploadEta is not { } u || l >= u)) { eta = localEta;  reportedRate = hashRate; }
-            else                                                          { eta = uploadEta; reportedRate = transferRate; }
-            etaIsUpperBound = eta is not null && hashed < total;   // new-bytes total not final until hashing done
+            long? hashEta   = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
+            // Bind on the slower constraint (ties resolve to upload, so a finished job doesn't read a stale hash term).
+            eta = (hashEta is { } h && (uploadEta is not { } u || h > u)) ? hashEta : uploadEta;
+            etaIsProvisional = eta is not null && !newByteTotalFinal;
         }
-        var pct = denominator > 0
-            ? (int)Math.Clamp(progress * 100 / denominator, 0, 100)
-            : (isRestore && restoreTotalFiles > 0
-                ? (int)Math.Clamp(Interlocked.Read(ref _filesRestored) * 100 / restoreTotalFiles, 0, 100)
-                // Archive before any upload work is known: reflect scan/hash progress so the ring isn't stuck at 0.
-                : (!isRestore && total > 0 ? (int)Math.Clamp(hashed * 100 / total, 0, 100) : 0));
+
+        // ── Throughput (observation): two independently-honest rates, each zeroed when its stream is idle/done. ──
+        // The rates come from the two EMAs; liveness only gates WHETHER an already-smoothed rate is shown, so a
+        // finished stream can never surface a stale value and the scan window shows live hashing (not 0).
+        double hashTp, uploadTp;
+        if (isRestore)
+        {
+            hashTp   = 0;                                                                 // restore never hashes
+            uploadTp = restoreTotal > 0 && restored < restoreTotal ? transferRate : 0;   // the download rides the transfer EMA
+        }
+        else
+        {
+            var hashLive   = total == 0 || hashed < total;
+            var uploadLive = uploadDenom > 0 && uploaded < uploadDenom;
+            hashTp   = hashLive   ? hashRate     : 0;
+            uploadTp = uploadLive ? transferRate : 0;
+        }
+        var dominantTp = Math.Max(hashTp, uploadTp);
+        // Archive pct is the monotonic "filled fraction" (uploaded + deduplicated) over the fixed scan total —
+        // the same value the detail-page layered bar shows. The clamp absorbs the pointer-only case where
+        // deduped alone exceeds the total.
+        var pct = isRestore
+            ? (restoreTotal > 0
+                ? (int)Math.Clamp(restored * 100 / restoreTotal, 0, 100)
+                : restoreTotalFiles > 0
+                    ? (int)Math.Clamp(Interlocked.Read(ref _filesRestored) * 100 / restoreTotalFiles, 0, 100)
+                    : 0)
+            : total > 0 ? (int)Math.Clamp((uploaded + deduped) * 100 / total, 0, 100) : 0;
 
         return new JobSnapshot
         {
@@ -392,7 +437,9 @@ public sealed class JobSink
             HashedBytes  = hashed,
             UploadedBytes = uploaded,
             DedupedBytes = deduped, DedupedFiles = Interlocked.Read(ref _dedupedFiles),
-            EtaSeconds = eta, ThroughputBytesPerSec = reportedRate, Pct = pct, EtaIsUpperBound = etaIsUpperBound,
+            EtaSeconds = eta, ThroughputBytesPerSec = dominantTp,
+            HashThroughputBytesPerSec = hashTp, UploadThroughputBytesPerSec = uploadTp,
+            Pct = pct, EtaIsProvisional = etaIsProvisional,
             WarningCount = WarningCount,
             Stats = new Dictionary<string, string>   // legacy stat grid
             {

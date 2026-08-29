@@ -1,10 +1,89 @@
 using Arius.Api.Jobs;
 using Arius.Core.Shared.Hashes;
+using Microsoft.Extensions.Logging;
 
 namespace Arius.Api.Tests.Jobs;
 
 public class JobSinkEtaTests
 {
+    [Test]
+    public async Task Eta_diagnostics_emit_an_eta_line_at_debug()
+    {
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Debug);
+        var s   = new JobSink("job-1", hub: null, logger: log);
+        s.SetTotals(files: 10, bytes: 10_000_000);
+        s.AddQueuedNew(10_000_000);
+        s.SampleForEta(t0);
+
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
+
+        await Assert.That(log.Entries).Count().IsEqualTo(1);
+        await Assert.That(log.Entries[0].Level).IsEqualTo(LogLevel.Debug);
+        await Assert.That(log.Entries[0].Message).StartsWith("[ETA]");
+        await Assert.That(log.Entries[0].Message).Contains("job=job-1");
+    }
+
+    [Test]
+    public async Task Eta_diagnostics_line_mirrors_the_snapshot_wire_fields()
+    {
+        // The [ETA] line is the raw snapshot the web receives, so every field the client reads must be in it.
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Debug);
+        var s   = new JobSink("job-1", hub: null, logger: log);
+        s.SetPhase("upload");
+        s.SetStatus("running");
+        s.SetTotals(files: 10, bytes: 10_000_000);
+        s.AddQueuedNew(4_000_000);
+        s.AddScanned(10_000_000);
+        s.AddHashed(6_000_000);
+        s.AddDeduped(2_000_000);
+        s.AddUploaded(ChunkHash.Parse(new string('a', 64)), stored: 0, original: 1_000_000);
+        s.SampleForEta(t0);
+
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
+        var msg = log.Entries[0].Message;
+
+        foreach (var token in new[]
+                 {
+                     "phase=upload", "status=running", "pct=", "eta=", "provisional=", "tp=", "hashTp=", "upTp=", "warnings=",
+                     "total=10000000", "totalNew=4000000", "scanned=10000000/1f", "hashed=6000000",
+                     "uploaded=1000000", "deduped=2000000/1f", "chunksTotal=", "avail=", "pending=",
+                 })
+            await Assert.That(msg).Contains(token);
+    }
+
+    [Test]
+    public async Task Eta_diagnostics_are_suppressed_when_debug_is_disabled()
+    {
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Information);   // Debug off
+        var s   = new JobSink("job-1", hub: null, logger: log);
+        s.SampleForEta(t0);
+
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
+
+        await Assert.That(log.Entries).IsEmpty();
+    }
+
+    [Test]
+    public async Task AttachDiagnosticsLogger_starts_diagnostics_for_a_sink_built_without_one()
+    {
+        // Mirrors the wiring: JobRunner builds the sink without a logger, the registry attaches it after.
+        var t0  = DateTimeOffset.UnixEpoch;
+        var log = new ListLogger(LogLevel.Debug);
+        var s   = new JobSink("job-1", hub: null);
+        s.SampleForEta(t0);
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
+        await Assert.That(log.Entries).IsEmpty();
+
+        s.AttachDiagnosticsLogger(log);
+        s.LogEtaDiagnostics(s.BuildSnapshot(t0));
+
+        await Assert.That(log.Entries).Count().IsEqualTo(1);
+        await Assert.That(log.Entries[0].Message).StartsWith("[ETA]");
+    }
+
     [Test]
     public async Task Eta_is_null_until_total_new_bytes_known_then_uses_windowed_rate()
     {
@@ -88,12 +167,14 @@ public class JobSinkEtaTests
         await Assert.That(snap.EtaSeconds).IsNotNull();
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(8, 10);
         await Assert.That(snap.ThroughputBytesPerSec).IsBetween(9_500_000, 10_500_000);  // reports the HASH rate
-        await Assert.That(snap.EtaIsUpperBound).IsTrue();                                  // hashing not done
+        await Assert.That(snap.EtaIsProvisional).IsTrue();                                 // hashing not done
     }
 
     [Test]
-    public async Task Eta_is_upper_bound_until_hashing_completes()
+    public async Task Eta_is_provisional_until_routing_completes()
     {
+        // Routing draining is the gate, not hashing: skipped/unreadable files mean hashed may never reach
+        // the total, so until SetNewByteTotal the ETA stays provisional.
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 10, bytes: 10_000_000);
@@ -101,17 +182,16 @@ public class JobSinkEtaTests
 
         s.SampleForEta(t0);
         s.AddUploaded(ChunkHash.Parse(new string('b', 64)), 0, 1_000_000);
-        s.AddHashed(4_000_000);                                   // 4 MB of 10 MB hashed
+        s.AddHashed(10_000_000);                                  // hashing complete…
         s.SampleForEta(t0.AddSeconds(1));
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsUpperBound).IsTrue();
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsTrue();   // …but routing hasn't
 
-        s.AddHashed(6_000_000);                                   // hashing now complete (10 MB = total)
-        s.SampleForEta(t0.AddSeconds(2));
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(2)).EtaIsUpperBound).IsFalse();
+        s.SetNewByteTotal(10_000_000);                            // routing done → exact total known
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsFalse();
     }
 
     [Test]
-    public async Task Restore_eta_uses_download_rate_and_is_not_an_upper_bound()
+    public async Task Restore_eta_uses_download_rate_and_is_never_provisional()
     {
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
@@ -123,7 +203,7 @@ public class JobSinkEtaTests
 
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(8, 10);
-        await Assert.That(snap.EtaIsUpperBound).IsFalse();
+        await Assert.That(snap.EtaIsProvisional).IsFalse();
     }
 
     [Test]
@@ -157,5 +237,20 @@ public class JobSinkEtaTests
         await Assert.That(early).IsGreaterThan(1_000_000.0);
         await Assert.That(late).IsGreaterThan(1_000_000.0);
         await Assert.That(late).IsLessThan(early);               // wider window = steadier
+    }
+
+    /// <summary>Minimal in-memory <see cref="ILogger"/> that records rendered messages at/above a level,
+    /// so a test can assert the [ETA] diagnostic fires (and at Debug).</summary>
+    private sealed class ListLogger(LogLevel minimum) : ILogger
+    {
+        public readonly List<(LogLevel Level, string Message)> Entries = new();
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= minimum;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (IsEnabled(logLevel)) Entries.Add((logLevel, formatter(state, exception)));
+        }
+
+        private sealed class NullScope : IDisposable { public static readonly NullScope Instance = new(); public void Dispose() { } }
     }
 }

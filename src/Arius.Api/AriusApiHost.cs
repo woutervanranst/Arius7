@@ -8,6 +8,7 @@ using Arius.Core.Shared;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Scalar.AspNetCore;
+using Serilog;
 
 namespace Arius.Api;
 
@@ -25,12 +26,24 @@ public static class AriusApiHost
                       ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "keys");
         Directory.CreateDirectory(keysDir);
 
+        // The app-wide root logger for host/startup events (per-repository files are owned by the registry).
+        // Also the static Log.Logger, so Program.cs's Log.Fatal/CloseAndFlush act on it; the host owns its
+        // lifetime and flushes it on shutdown.
+        var appLogDir  = Path.Combine(Path.GetDirectoryName(dbPath)!, "logs");
+        var rootLogger = AriusLogging.BuildRootLogger(appLogDir);
+        Log.Logger = rootLogger;
+        builder.Host.UseSerilog(rootLogger, dispose: true);
+
         builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
         builder.Services.AddSingleton(new AppDatabase(dbPath));
         builder.Services.AddSingleton<SecretProtector>();
         builder.Services.AddAzureBlobStorage();
         builder.Services.TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
-        builder.Services.AddSingleton<RepositoryProviderRegistry>();
+        builder.Services.AddSingleton(sp => new RepositoryProviderRegistry(
+            sp.GetRequiredService<AppDatabase>(),
+            sp.GetRequiredService<SecretProtector>(),
+            sp.GetRequiredService<IRepositoryCoreComposer>(),
+            sp.GetRequiredService<ILoggerFactory>()));
         builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
         builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
         builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();

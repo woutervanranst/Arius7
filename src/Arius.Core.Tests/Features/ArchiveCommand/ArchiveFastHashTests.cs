@@ -112,6 +112,34 @@ public class ArchiveFastHashTests
         messages.ShouldNotContain(m => m.Contains("[fast-hash]") && m.Contains("-> reused"));
     }
 
+    [Test]
+    public async Task Archive_credits_size_on_hashed_event_and_publishes_routing_complete_with_new_byte_total()
+    {
+        // Progress relies on two facts wired here: FileHashedEvent carries the file size (so hashed bytes are
+        // credited on completion), and RoutingCompleteEvent fires once with the exact new-byte upload total.
+        await using var fixture = await CreateArchiveFixtureAsync();
+        await WriteRandomFileAsync(fixture, RelativePath.Parse("large.bin"), LargeFileSize);
+
+        ConcurrentBag<FileHashedEvent>     hashed  = new();
+        ConcurrentBag<RoutingCompleteEvent> routing = new();
+        fixture.Mediator
+            .When(x => x.Publish(Arg.Any<INotification>(), Arg.Any<CancellationToken>()))
+            .Do(ci =>
+            {
+                switch (ci.ArgAt<INotification>(0))
+                {
+                    case FileHashedEvent e:      hashed.Add(e);  break;
+                    case RoutingCompleteEvent e: routing.Add(e); break;
+                }
+            });
+
+        var result = await ArchiveAsync(fixture, new FakeLogger<ArchiveCommandHandler>(), fastHash: true);
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        hashed.ShouldHaveSingleItem().FileSize.ShouldBe((long)LargeFileSize);
+        routing.ShouldHaveSingleItem().NewByteTotal.ShouldBe((long)LargeFileSize);   // one new large file
+    }
+
     private static async Task<ArchiveResult> ArchiveAsync(
         RepositoryTestFixture fixture,
         FakeLogger<ArchiveCommandHandler> logger,

@@ -72,6 +72,10 @@ internal static class RepositoryEndpoints
             if (db.GetRepository(id) is null)
                 return Results.NotFound();
 
+            // Deleting disposes the repo's logger factory, which a concurrent job build resolves loggers from.
+            if (db.HasActiveJob(id))
+                return Results.Conflict("Repository has an active job; wait for it to finish or cancel it before deleting.");
+
             db.DeleteRepository(id);
             registry.Remove(id); // repo is gone for good → also dispose its rolling-log factory, not just Evict the provider
             return Results.NoContent();

@@ -22,7 +22,21 @@ public sealed class FileScannedForwarder(JobSink sink) : INotificationHandler<Fi
 
 public sealed class FileHashingForwarder(JobSink sink) : INotificationHandler<FileHashingEvent>
 {
-    public ValueTask Handle(FileHashingEvent n, CancellationToken ct) { sink.SetPhase("hash-route"); sink.AddHashed(n.FileSize); return ValueTask.CompletedTask; }
+    public ValueTask Handle(FileHashingEvent n, CancellationToken ct) { sink.SetPhase("hash-route"); return ValueTask.CompletedTask; }
+}
+
+// Bytes are credited on hash completion (not at hash start, which only advances the phase), so the hashed
+// total — and the hash rate and ETA derived from it — reflects work finished rather than merely enqueued.
+public sealed class FileHashedForwarder(JobSink sink) : INotificationHandler<FileHashedEvent>
+{
+    public ValueTask Handle(FileHashedEvent n, CancellationToken ct) { sink.AddHashed(n.FileSize); return ValueTask.CompletedTask; }
+}
+
+// The dedup/route stage has drained, so the new-byte upload total is final: the upload-progress denominator
+// switches off the still-growing "queued so far" estimate and the ETA stops being provisional.
+public sealed class RoutingCompleteForwarder(JobSink sink) : INotificationHandler<RoutingCompleteEvent>
+{
+    public ValueTask Handle(RoutingCompleteEvent n, CancellationToken ct) { sink.SetNewByteTotal(n.NewByteTotal); return ValueTask.CompletedTask; }
 }
 
 public sealed class FileDedupedForwarder(JobSink sink) : INotificationHandler<FileDedupedEvent>

@@ -1,11 +1,12 @@
 import { archiveBarLayers, restoreBarLayers, phaseSentence, resolveRehydrationWindowHours,
-  formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta } from './job-format';
+  formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta } from './job-format';
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 
 function snap(p: Partial<JobSnapshot>): JobSnapshot {
   return {
     jobId: 'j', phase: 'x', status: 'running', totalBytes: 0, totalNewBytes: 0, scannedBytes: 0, scannedFiles: 0, hashedBytes: 0,
-    uploadedBytes: 0, dedupedBytes: 0, dedupedFiles: 0, etaSeconds: null, throughputBytesPerSec: 0, etaIsUpperBound: false,
+    uploadedBytes: 0, dedupedBytes: 0, dedupedFiles: 0, etaSeconds: null, throughputBytesPerSec: 0,
+    hashThroughputBytesPerSec: 0, uploadThroughputBytesPerSec: 0, etaIsProvisional: false,
     pct: 0, warningCount: 0, stats: {}, restoreTotalFiles: 0, filesRestored: 0, restoreTotalBytes: 0,
     bytesRestored: 0, chunksAvailable: 0, chunksRehydrated: 0, chunksNeedingRehydration: 0,
     chunksPending: 0, chunksTotal: 0, ...p,
@@ -57,11 +58,11 @@ describe('formatEta', () => {
   });
   it('renders minutes under an hour', () => expect(formatEta(150)).toBe('~3 min left'));
   it('renders hours to one decimal at/above an hour', () => expect(formatEta(5400)).toBe('~1.5 h left'));
-  it('prefixes ≤ when the estimate is an upper bound, and never for an unknown eta', () => {
-    expect(formatEta(7200, true)).toBe('≤ ~2.0 h left');
+  it('marks a provisional estimate, and never for an unknown eta', () => {
+    expect(formatEta(7200, true)).toBe('~2.0 h left (estimating)');
     expect(formatEta(7200, false)).toBe('~2.0 h left');
-    expect(formatEta(7200)).toBe('~2.0 h left');        // default is not-bounded
-    expect(formatEta(null, true)).toBe('estimating…');   // unknown wins over the bound
+    expect(formatEta(7200)).toBe('~2.0 h left');            // default is final
+    expect(formatEta(null, true)).toBe('estimating…');      // unknown wins over provisional
   });
 });
 
@@ -77,6 +78,21 @@ describe('formatThroughput', () => {
   it('renders B/s below 1 KB/s', () => expect(formatThroughput(512)).toBe('512 B/s'));
   it('renders whole KB/s below 1 MB/s', () => expect(formatThroughput(2400)).toBe('2 KB/s'));
   it('renders MB/s to one decimal at/above 1 MB/s', () => expect(formatThroughput(2_400_000)).toBe('2.4 MB/s'));
+  it('renders GB/s at/above 1 GB/s rather than four-digit MB/s', () => expect(formatThroughput(106_693_000_000)).toBe('106.69 GB/s'));
+  it('renders TB/s at/above 1 TB/s', () => expect(formatThroughput(1_930_000_000_000)).toBe('1.93 TB/s'));
+});
+
+describe('throughputRow', () => {
+  it('shows the formatted rate while the stream is live', () => {
+    expect(throughputRow(2_400_000, 5_000_000)).toBe('2.4 MB/s');
+  });
+  it('reads "done" once the stream has moved bytes but its rate is zero', () => {
+    expect(throughputRow(0, 5_000_000)).toBe('done');
+  });
+  it('reads an em dash before the stream has produced anything', () => {
+    expect(throughputRow(0, 0)).toBe('—');
+    expect(throughputRow(null, null)).toBe('—');
+  });
 });
 
 describe('hydratedByLabel', () => {

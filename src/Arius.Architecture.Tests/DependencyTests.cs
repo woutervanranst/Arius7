@@ -124,7 +124,8 @@ public class DependencyTests
             // EXCEPTION RULE: These Core entry-point or boundary helper types are intentionally callable from composition roots or storage adapters.
             .Except([
                 typeof(Core.ServiceCollectionExtensions),
-                typeof(Core.Shared.RepositoryLocalStatePaths) // for GetLogsDirectory
+                typeof(Core.Shared.RepositoryLocalStatePaths), // for GetLogsDirectory
+                typeof(Core.Shared.AriusLogConfig)             // the ARIUS_LOG_LEVEL + line-format contract every host configures its own Serilog from
                 ])
             .ToList();
 

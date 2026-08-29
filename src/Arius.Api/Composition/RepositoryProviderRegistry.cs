@@ -3,9 +3,6 @@ using Arius.Api.Jobs;
 using Arius.Core;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Storage;
-using Serilog;
-using Serilog.Events;
-using Serilog.Templates;
 
 namespace Arius.Api.Composition;
 
@@ -35,11 +32,16 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private readonly object _gate = new();
     private readonly Dictionary<long, Lazy<Task<ServiceProvider>>> _readProviders = new();
 
-    // One shared logger factory per repository, writing a rolling file into the repo's CLI logs
-    // directory. Cached independently of providers: a job disposing its provider (or Evict) must
-    // not close the repo's rolling log. Disposed only at registry shutdown (DisposeAsync) or when
-    // the repository is removed for good (Remove) — never on a plain Evict.
+    // One logger factory per repository, each owning the Serilog logger that writes that repo's rolling file.
+    // Cached so every provider shares one file handle, and so Remove can dispose it on repository delete.
     private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
+
+    // Per-repository lifecycle generation, bumped by Remove. A build captures the generation before its
+    // awaited compose and re-checks it when registering the logger factory: without that, a build already in
+    // flight when the repository is deleted would cache a *fresh* factory under the removed id, which nothing
+    // disposes — holding the deleted repository's rolling log file open for the rest of the process. Entries
+    // are one int per removed id (ids are reused by SQLite, so a set of dead ids would not be enough).
+    private readonly Dictionary<long, int> _repoGenerations = new();
 
     public RepositoryProviderRegistry(
         AppDatabase database,
@@ -107,28 +109,57 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Fully removes a repository from the registry: evicts its cached read provider AND disposes its
-    /// shared rolling-log factory (releasing the file handle). Use on repository <b>delete</b> — unlike
-    /// <see cref="Evict"/>, which is for archive/properties changes where the repo lives on and its log
-    /// must keep writing.
+    /// Fully removes a repository from the registry: drops its cached read provider AND its per-repo logger
+    /// factory, disposing both. Use on repository <b>delete</b> — unlike <see cref="Evict"/>, which is for
+    /// archive/properties changes where the repo lives on. Disposing the factory closes the repo's rolling log
+    /// file, so its logs can be deleted along with it.
     /// </summary>
     public void Remove(long repositoryId)
     {
-        Evict(repositoryId); // dispose + drop the cached read provider (fire-and-forget)
-
+        Lazy<Task<ServiceProvider>>? provider;
         ILoggerFactory? factory;
         lock (_gate)
         {
-            if (!_repoLoggerFactories.Remove(repositoryId, out factory))
-                return;
+            _readProviders.Remove(repositoryId, out provider);
+            _repoLoggerFactories.Remove(repositoryId, out factory);
+            // Invalidate any build already in flight for this repository, so it cannot re-register a factory
+            // behind us (see _repoGenerations).
+            _repoGenerations[repositoryId] = CurrentGenerationLocked(repositoryId) + 1;
         }
 
-        factory.Dispose(); // disposes the SerilogLoggerProvider → flushes & closes the rolling file
+        // Fire-and-forget; the await chain keeps the ordering. A concurrent build either re-reads the
+        // dictionaries under the gate and gets a fresh factory, or is rejected by the generation check.
+        _ = DisposeProviderThenFactoryAsync(provider, factory);
+    }
+
+    /// <summary>Wires the repository's diagnostics logger onto a job sink before its provider is built, so the
+    /// <c>[ETA]</c> trace covers the (potentially slow) provider-build phase too. Best-effort: a failure only
+    /// leaves the trace silent, it never fails the job. No-op for an inert (non-job) sink.</summary>
+    public void AttachJobDiagnostics(JobSink sink, long repositoryId)
+    {
+        if (sink.JobId is null)
+            return;
+
+        try
+        {
+            // Captured before the DB read, so a delete that lands while we resolve the connection rejects
+            // this attachment instead of caching a factory for a repository that is going away.
+            var generation = CurrentGeneration(repositoryId);
+            var connection = LoadConnection(repositoryId);
+            var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, generation, connection.AccountName, connection.Container);
+            sink.AttachDiagnosticsLogger(repoLoggerFactory.CreateLogger<JobSink>());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not attach the diagnostics logger for repository {RepositoryId}; [ETA] tracing will be off for this job", repositoryId);
+        }
     }
 
     private async Task<ServiceProvider> BuildAsync(long repositoryId, PreflightMode mode, JobSink jobSink, CancellationToken cancellationToken)
     {
         var connection = LoadConnection(repositoryId);
+        // Captured before the awaited compose below; re-checked when the logger factory is registered.
+        var generation = CurrentGeneration(repositoryId);
 
         var services = new ServiceCollection();
 
@@ -142,8 +173,9 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // swap in a scripted fake without touching Arius.Core.
         await _coreComposer.ComposeAsync(services, connection, mode, cancellationToken).ConfigureAwait(false);
 
-        // Route Core's logging to the repository's shared rolling log file.
-        var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, connection.AccountName, connection.Container);
+        // Route Core's logging to the repository's own rolling log file — the same cached factory
+        // AttachJobDiagnostics already wired onto the job sink.
+        var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, generation, connection.AccountName, connection.Container);
         services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
 
@@ -152,47 +184,37 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets (building once, then caching) the shared logger factory for a repository. It writes a
-    /// per-repository rolling log file into <c>~/.arius/{account}-{container}/logs/</c> — the same
-    /// directory the CLI uses — plus the console. The line format mirrors
-    /// <c>Arius.Cli.CliBuilder.ConfigureAuditLogging</c> so CLI and Web logs read identically.
+    /// Gets (building once, then caching) the logger factory a repository's providers use. It writes the repo's
+    /// rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c> — the same directory and
+    /// format the CLI uses (<see cref="AriusLogging"/>).
+    /// Throws <see cref="RepositoryNotFoundException"/> when <paramref name="generation"/> is stale, i.e. the
+    /// repository was removed after the caller started — the caller's whole build is void at that point.
     /// </summary>
-    private ILoggerFactory GetOrCreateRepoLoggerFactory(long repositoryId, string accountName, string containerName)
+    private ILoggerFactory GetOrCreateRepoLoggerFactory(long repositoryId, int generation, string accountName, string containerName)
     {
         lock (_gate)
         {
+            if (CurrentGenerationLocked(repositoryId) != generation)
+                throw new RepositoryNotFoundException(repositoryId);
+
             if (_repoLoggerFactories.TryGetValue(repositoryId, out var existing))
                 return existing;
 
             var logDir = RepositoryLocalStatePaths.GetLogsDirectory(accountName, containerName);
-            Directory.CreateDirectory(logDir);
-
-            var formatter = new ExpressionTemplate(
-                "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}");
-
-            // Global log level: ARIUS_LOG_LEVEL (Serilog level name; default Information)
-            var level = Enum.TryParse<LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : LogEventLevel.Information;
-            var serilog = new LoggerConfiguration()
-                .MinimumLevel.Is(level)
-                .Enrich.WithThreadId()
-                .WriteTo.Console()
-                .WriteTo.File(
-                    formatter,
-                    Path.Combine(logDir, "arius-.txt"),
-                    rollingInterval:        RollingInterval.Day,
-                    fileSizeLimitBytes:     100L * 1024 * 1024,
-                    rollOnFileSizeLimit:    true,
-                    retainedFileCountLimit: 366,
-                    restrictedToMinimumLevel: level)
-                .CreateLogger();
-
-            // dispose: true → disposing this factory disposes the Serilog logger, flushing the file.
-            // SetMinimumLevel(Trace) stops MEL from pre-filtering below Serilog's level (its default is Information), so Serilog's level above is the single authoritative gate.
-            var factory = LoggerFactory.Create(b => b.AddSerilog(serilog, dispose: true).SetMinimumLevel(LogLevel.Trace));
+            var factory = AriusLogging.CreateRepositoryLoggerFactory(logDir);
             _repoLoggerFactories[repositoryId] = factory;
             return factory;
         }
     }
+
+    private int CurrentGeneration(long repositoryId)
+    {
+        lock (_gate) return CurrentGenerationLocked(repositoryId);
+    }
+
+    /// <summary>Caller must hold <see cref="_gate"/>.</summary>
+    private int CurrentGenerationLocked(long repositoryId) =>
+        _repoGenerations.TryGetValue(repositoryId, out var generation) ? generation : 0;
 
     private RepositoryConnection LoadConnection(long repositoryId)
     {
@@ -243,6 +265,15 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         {
             // A provider that never built successfully has nothing to dispose.
         }
+    }
+
+    /// <summary>Disposes a removed repository's read provider and then its logger factory. The order matters:
+    /// the provider resolves loggers from the factory, so it must be gone before the factory is.</summary>
+    private static async Task DisposeProviderThenFactoryAsync(Lazy<Task<ServiceProvider>>? provider, ILoggerFactory? factory)
+    {
+        if (provider is not null)
+            await DisposeProviderAsync(provider).ConfigureAwait(false);
+        factory?.Dispose();
     }
 }
 

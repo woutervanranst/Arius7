@@ -166,11 +166,11 @@ public static class CliBuilder
         // {ShortSourceContext}: the emitting type's class name from the namespace-qualified
         // SourceContext (e.g. FileTreeBuilder from Arius.Core.Shared.FileTree.FileTreeBuilder),
         // falling back to "Arius" for events without a source context (e.g. top-level crash logs).
-        var formatter = new ExpressionTemplate(
-            "[{@t:HH:mm:ss.fff}] [{@l:u3}] [T:{ThreadId}] [{Coalesce(Substring(SourceContext, LastIndexOf(SourceContext, '.') + 1), 'Arius')}] {@m}\n{@x}");
+        // Format shared with the API (see AriusLogConfig) so CLI and API logs read identically.
+        var formatter = new ExpressionTemplate(AriusLogConfig.LineTemplate);
 
-        // Global log level: ARIUS_LOG_LEVEL (Serilog level name; default Information).
-        var level = Enum.TryParse<LogEventLevel>(Environment.GetEnvironmentVariable("ARIUS_LOG_LEVEL")?.Trim(), ignoreCase: true, out var parsed) ? parsed : LogEventLevel.Information;
+        // Global log level: ARIUS_LOG_LEVEL (Serilog level name; default Information; invalid → Information).
+        var level = Enum.Parse<LogEventLevel>(AriusLogConfig.ResolveLevelName(), ignoreCase: true);
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Is(level)
             .Enrich.WithThreadId()

@@ -7,7 +7,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, hydratedByLabel, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
 import { Subscription } from 'rxjs';
 
 /** One stage-summary row (derived from the live snapshot). */
@@ -165,8 +165,14 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               </div>
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
                 <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Throughput</div>
-                <div style="font-size:19px;font-weight:700;color:#18181b;margin-top:3px">{{ formatThroughput(snap()?.throughputBytesPerSec) }}</div>
-                <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">sustained</div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px">
+                  <span style="font-size:11.5px;color:#a1a1aa">Hashing</span>
+                  <span style="font-size:15px;font-weight:700;color:#18181b">{{ throughputRow(snap()?.hashThroughputBytesPerSec, snap()?.hashedBytes) }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px">
+                  <span style="font-size:11.5px;color:#a1a1aa">Upload</span>
+                  <span style="font-size:15px;font-weight:700;color:#18181b">{{ throughputRow(snap()?.uploadThroughputBytesPerSec, snap()?.uploadedBytes) }}</span>
+                </div>
               </div>
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
                 <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">{{ status() === 'completed' ? 'Duration' : 'Est. finish' }}</div>
@@ -358,7 +364,7 @@ export class JobDetailComponent implements OnDestroy {
     const eta = s?.etaSeconds;
     if (eta == null) return 'estimating…';
     const clock = new Date(Date.now() + eta * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    return s?.etaIsUpperBound ? `≤ ${clock}` : clock;
+    return s?.etaIsProvisional ? `${clock} (est.)` : clock;
   });
   protected readonly rehydrateWindowHours = computed<number | null>(() =>
     resolveRehydrationWindowHours(this.cost(), this.resume(), this.priority()));
@@ -371,7 +377,7 @@ export class JobDetailComponent implements OnDestroy {
   protected readonly bigEta = computed(() => {
     if (this.status() === 'rehydrating') return this.hydratedBy() || 'Waiting on Azure';
     if (this.snap()?.phase === 'snapshot') return 'Finishing up';
-    return formatEta(this.snap()?.etaSeconds, this.snap()?.etaIsUpperBound ?? false);
+    return formatEta(this.snap()?.etaSeconds, this.snap()?.etaIsProvisional ?? false);
   });
   protected readonly subEta = computed(() => {
     if (this.status() === 'rehydrating') return 'Status checked periodically';
@@ -465,6 +471,7 @@ export class JobDetailComponent implements OnDestroy {
   protected formatBytes = formatBytes; protected formatCount = formatCount; protected formatCurrency = formatCurrency;
   protected formatEta = formatEta; protected formatDuration = formatDuration;
   protected formatThroughput = formatThroughput; protected hydratedByLabel = hydratedByLabel; protected isNonTerminal = isNonTerminal;
+  protected throughputRow = throughputRow;
   protected round = Math.round;
 
   protected toggleWarnings(): void {
