@@ -28,7 +28,7 @@
     "zone.js": "~0.16.2"
   },
   "devDependencies": {
-    "@angular/build": "^21.1.4",
+    "@angular/build": "^22.1.5",
     "@angular/cli": "^21.2.7",
     "@angular/compiler-cli": "^21.1.4",
     "@azure/storage-blob": "^12.32.0",
