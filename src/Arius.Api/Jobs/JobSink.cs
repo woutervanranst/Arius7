@@ -200,7 +200,7 @@ public sealed class JobSink
     public void AddQueuedNew(long originalSize) => Interlocked.Add(ref _queuedNewBytes, originalSize);
     /// <summary>Records the exact, final count of new (non-deduped) original bytes to upload, from
     /// <c>RoutingCompleteEvent</c>. Until this fires the upload ETA uses the still-growing
-    /// <see cref="_queuedNewBytes"/> as a provisional (upper-bound) denominator.</summary>
+    /// <see cref="_queuedNewBytes"/> as a provisional denominator.</summary>
     public void SetNewByteTotal(long newByteTotal) { Interlocked.Exchange(ref _newByteTotal, newByteTotal); _newByteTotalFinal = true; }
     public void AddDeduped(long original) { Interlocked.Add(ref _dedupedBytes, original); Interlocked.Increment(ref _dedupedFiles); }
     public void RememberTar(ChunkHash tarHash, long uncompressed) => _tarUncompressed[tarHash] = uncompressed;
