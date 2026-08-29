@@ -1,3 +1,20 @@
+coverage:
+  status:
+    # `patch` deliberately keeps codecov's strict default (0% tolerance): it scores only the
+    # lines a PR actually touches, which is the check that catches genuinely untested new code.
+    project:
+      default:
+        target: auto
+        # The aggregate mixes three flags with very different coverage (web ~35%, linux ~80%,
+        # windows ~78%), so the project total can fall even when every individual flag rises —
+        # it is enough for a change to shift a few lines into the low-coverage web flag's
+        # denominator. Angular 21 → 22 (#183) did exactly that: statement counts were identical
+        # (186/482 before and after) but TypeScript 6.0's source-map emit moved the web line
+        # count 385 → 394, which read as -0.02% project and failed the 0% default.
+        # 0.5% absorbs that class of toolchain artifact; a real regression is far larger, and
+        # `patch` above still holds new code to the strict standard.
+        threshold: 0.5%
+
 ignore:
   - "src/*.Tests/**"
   - "src/Arius.Tests.Shared/**"

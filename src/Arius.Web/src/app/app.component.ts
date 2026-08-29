@@ -1,4 +1,4 @@
-import { Component, HostListener, inject, signal, ViewEncapsulation } from '@angular/core';
+import { Component, HostListener, inject, signal, ViewEncapsulation, ChangeDetectionStrategy } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { MetronicInitService } from './core/services/metronic-init.service';
@@ -21,6 +21,7 @@ interface RailItem { label: string; icon: string; link: string; }
   standalone: true,
   encapsulation: ViewEncapsulation.None,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, ArchiveRestoreDrawerComponent, PropertiesDrawerComponent, AccountDrawerComponent, GlobalSearchOverlayComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <!-- Icon rail -->
     <aside class="fixed top-0 bottom-0 start-0 z-20 flex flex-col items-center bg-muted py-4"

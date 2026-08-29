@@ -58,11 +58,22 @@ updates:
     groups:
       # Angular framework packages must move in lockstep (incl. majors), so
       # they share one PR regardless of update type — no update-types filter.
+      # typescript belongs here too: Angular's compiler pins a one-minor TS
+      # window (e.g. v22 requires >=6.0 <6.1), so TS cannot move on its own.
       angular:
         patterns:
           - "@angular/*"
           - "@angular-devkit/*"
+          - "typescript"
+      # These must be excluded here, otherwise Dependabot considers this group
+      # "more specific" (it has an update-types filter) and claims the Angular
+      # packages away from the group above — leaving majors ungrouped, which
+      # produces one-package-at-a-time PRs that can never install.
       npm-minor-patch:
+        exclude-patterns:
+          - "@angular/*"
+          - "@angular-devkit/*"
+          - "typescript"
         update-types:
           - "minor"
           - "patch"
