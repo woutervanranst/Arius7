@@ -74,7 +74,7 @@ public class ArchiveRecoveryTests
 
         const long storedSize = 4096;
         var chunkStorage = new RecordingChunkStorageService(
-            uploadLargeAsync: (chunkHash, _, sourceSize, _, _, _) =>
+            uploadLargeAsync: (chunkHash, _, sourceSize, _, _, _, _) =>
                 Task.FromResult(new ChunkUploadResult(chunkHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, ActualTier: BlobTier.Cool, OriginalSize: sourceSize)));
 
         var handler = CreateHandlerWith(fixture, chunkStorage);
@@ -107,7 +107,7 @@ public class ArchiveRecoveryTests
 
         const long storedSize = 2048;
         var chunkStorage = new RecordingChunkStorageService(
-            uploadTarAsync: (tarHash, _, sourceSize, _, _, _) =>
+            uploadTarAsync: (tarHash, _, sourceSize, _, _, _, _) =>
                 Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, ActualTier: BlobTier.Cool, OriginalSize: sourceSize)),
             uploadThinAsync: (_, _, _, _, _) => Task.FromResult(true));
 
@@ -222,7 +222,7 @@ public class ArchiveRecoveryTests
         var observedMissingDuringUpload = false;
 
         var chunkStorage = new RecordingChunkStorageService(
-            uploadLargeAsync: async (actualChunkHash, _, sourceSize, _, _, _) =>
+            uploadLargeAsync: async (actualChunkHash, _, sourceSize, _, _, _, _) =>
             {
                 actualChunkHash.ShouldBe(chunkHash);
                 (await fixture.Index.LookupAsync(contentHash)).ShouldBeNull();
@@ -270,7 +270,7 @@ public class ArchiveRecoveryTests
         var observedMissingDuringThinUpload = false;
 
         var chunkStorage = new RecordingChunkStorageService(
-            uploadTarAsync: (tarHash, _, sourceSize, _, _, _) =>
+            uploadTarAsync: (tarHash, _, sourceSize, _, _, _, _) =>
             {
                 tarUploaded = true;
                 return Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: sourceSize / 2, AlreadyExisted: false, ActualTier: BlobTier.Cool, OriginalSize: sourceSize));
@@ -741,18 +741,18 @@ public class ArchiveRecoveryTests
     }
 
     private sealed class RecordingChunkStorageService(
-        Func<ChunkHash, Stream, long, BlobTier, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadLargeAsync = null,
-        Func<ChunkHash, Stream, long, BlobTier, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadTarAsync = null,
+        Func<ChunkHash, Stream, long, BlobTier, long, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadLargeAsync = null,
+        Func<ChunkHash, Stream, long, BlobTier, long, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadTarAsync = null,
         Func<ContentHash, ChunkHash, long, long, CancellationToken, Task<bool>>? uploadThinAsync = null) : IChunkStorageService
     {
         public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
             => uploadLargeAsync is not null
-                ? uploadLargeAsync(chunkHash, content, sourceSize, tier, progress, cancellationToken)
+                ? uploadLargeAsync(chunkHash, content, sourceSize, tier, smallFileThreshold, progress, cancellationToken)
                 : throw new NotSupportedException();
 
         public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
             => uploadTarAsync is not null
-                ? uploadTarAsync(chunkHash, content, sourceSize, tier, progress, cancellationToken)
+                ? uploadTarAsync(chunkHash, content, sourceSize, tier, smallFileThreshold, progress, cancellationToken)
                 : throw new NotSupportedException();
 
         public Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long chunkSize, CancellationToken cancellationToken = default)
