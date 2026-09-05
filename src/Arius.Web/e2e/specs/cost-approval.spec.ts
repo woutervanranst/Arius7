@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -14,7 +15,11 @@ test('restore of archive-tier data opens the cost-approval modal on the job page
   test.setTimeout(300_000);
 
   const src = fs.mkdtempSync(path.join(os.tmpdir(), 'arius-e2e-cost-'));
-  fs.writeFileSync(path.join(src, 'archived.bin'), Buffer.alloc(2_000_000, 7)); // 2 MB → large chunk → Archive tier
+  // Incompressible on purpose: the requested tier is a ceiling applied to the *stored* (compressed)
+  // size, so 2 MB of one repeated byte would compress back within the 1 MB small-chunk threshold and
+  // land in Cold — online, nothing to rehydrate, and the modal drops the priority choice. Random bytes
+  // keep the stored chunk above the threshold so it really is archived.
+  fs.writeFileSync(path.join(src, 'archived.bin'), crypto.randomBytes(2_000_000)); // 2 MB → large chunk → Archive tier
 
   const created = await (await request.post('/api/repos', {
     data: { accountId: repo.accountId, container: scratchContainer(`cost-${Date.now()}`), alias: 'E2E Cost Target', passphrase: 'e2etest', localPath: src, defaultTier: 'archive' },
