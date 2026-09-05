@@ -4,7 +4,7 @@ Cross-cutting rules (think-before-coding, simplicity, testing workflow, code sty
 documentation map) live in the [root AGENTS.md](../../AGENTS.md) — read it first; this file
 only covers what is specific to this project.
 
-- **What it is:** the Angular 21 SPA, served by Arius.Api. Architecture: [design/hosts/web.md](../../docs/design/hosts/web.md). User-facing tour: [guide/web-ui.md](../../docs/guide/web-ui.md).
+- **What it is:** the Angular 22 SPA, served by Arius.Api. Architecture: [design/hosts/web.md](../../docs/design/hosts/web.md). User-facing tour: [guide/web-ui.md](../../docs/guide/web-ui.md).
 - **Dev setup, Docker, e2e details:** [src/Arius.Web/README.md](./README.md) — keep it current when you change scripts, ports, env vars, or volumes. Deployment: [guide/deployment.md](../../docs/guide/deployment.md). Terms: [glossary.md](../../docs/glossary.md).
 
 ## This is a Node project, NOT in `Arius.slnx`
@@ -14,7 +14,7 @@ from `src/Arius.Web`. It ships in Docker as a static bundle (`dist/arius-web` �
 
 ## Stack
 
-Angular 21 (standalone components, signals), Metronic v9 themed with Tailwind v4 + KTUI,
+Angular 22 (standalone components, signals), Metronic v9 themed with Tailwind v4 + KTUI,
 `@microsoft/signalr` client, RxJS. No NgModules — wire DI via `providers` and `inject()`.
 
 ## Layout (vertical slices)
@@ -46,11 +46,13 @@ when a Core job event changes, update both ends. `proxy.conf.json` forwards `/ap
 npm start                          # ng serve → http://localhost:4200 (needs the API on :5080)
 npm run build                      # production bundle → dist/arius-web
 
-# Unit tests (Karma/Jasmine) — Karma needs a Chrome binary on this machine:
-CHROME_BIN="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
-  ng test --browsers=ChromeHeadless
+# Unit tests (Vitest, `environment: 'node'` — pure logic and stores, no browser):
+npm test                           # vitest run
+npm run test:watch                 # vitest
+npm run test:coverage              # + v8 coverage → ./coverage
 
 # E2e (Playwright, live full-stack against a real repo — see README for env/.env.example):
 npm run e2e                        # default: read-only / non-destructive specs
 ARIUS_E2E_WRITE=1 npm run e2e      # also the destructive @write specs (real archive/restore)
+npm run e2e:hermetic               # scripted Core, no Azure — what CI runs on every PR
 ```
