@@ -75,7 +75,7 @@ arius archive <path> -a <account> -c <container> [-k <key>] [-p <passphrase>]
 | Argument / option | Type | Default | Required | Meaning |
 |-------------------|------|---------|----------|---------|
 | `path` | path | — | **Yes** | Local directory to archive. |
-| `--tier`, `-t` | `Hot` \| `Cool` \| `Cold` \| `Archive` | `Archive` | No | Storage tier the uploaded *chunks* land on. `Archive` is cheapest to store but must be *rehydrated* (slow, paid) before a restore. |
+| `--tier`, `-t` | `Hot` \| `Cool` \| `Cold` \| `Archive` | `Archive` | No | Storage tier the uploaded *chunks* land on. `Archive` is cheapest to store but must be *rehydrated* (slow, paid) before a restore. It is a **ceiling**: a chunk that compresses to 1 MB or less is kept on `Cold` instead, because rehydrating a chunk that small costs more than the archive tier saves on it. |
 | `--remove-local` | flag | off | No | Delete the local *binary files* after the snapshot is committed, leaving only the `.pointer.arius` sidecars behind. Requires `--write-pointers`. |
 | `--write-pointers` | flag | off | No | Write (or update) `.pointer.arius` sidecar files for archived binaries. Off by default — pointers are opt-in. |
 | `--fast-hash` | flag | off | No | Skip re-reading files the local [hashcache](../design/core/shared/hashcache.md) verifies as unchanged since the last run. A heuristic that trades a small mis-detection risk for speed on large, stable trees; the default re-reads every file. |

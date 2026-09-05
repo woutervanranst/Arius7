@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -18,8 +19,8 @@ test('statistics tier breakdown lists every archived tier, in API order @write',
 
   // Each run adds one new file (distinct content → a new chunk) and uploads it at the chosen tier,
   // producing one new snapshot. `expectedSnapshots` is the snapshot count we expect afterwards.
-  const archiveAtTier = async (tier: string, file: string, expectedSnapshots: number) => {
-    fs.writeFileSync(path.join(src, file), `arius e2e ${tier} ${Date.now()}`);
+  const archiveAtTier = async (tier: string, file: string, expectedSnapshots: number, content: Buffer | string = `arius e2e ${tier} ${Date.now()}`) => {
+    fs.writeFileSync(path.join(src, file), content);
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.locator(`[data-testid="tier-seg"][data-tier="${tier}"]`).click();
@@ -42,7 +43,11 @@ test('statistics tier breakdown lists every archived tier, in API order @write',
     await archiveAtTier('hot', 'a.txt', 1);
     await archiveAtTier('cool', 'b.txt', 2);
     await archiveAtTier('cold', 'c.txt', 3);
-    await archiveAtTier('archive', 'd.txt', 4);
+    // The Archive tier is a ceiling applied to the *stored* (compressed) size: a chunk that fits within
+    // the 1 MB small-chunk threshold is kept online in Cold instead, since rehydrating it would cost far
+    // more than the storage it saves. A one-line d.txt would therefore never produce an Archive row, so
+    // archive 2 MB of incompressible bytes to get a genuinely archived chunk.
+    await archiveAtTier('archive', 'd.bin', 4, crypto.randomBytes(2_000_000));
 
     // Stats read from the local chunk-index cache; warm it by browsing Files, then wait until the
     // backend reports all four tiers.

@@ -74,8 +74,8 @@ public class ArchiveRecoveryTests
 
         const long storedSize = 4096;
         var chunkStorage = new RecordingChunkStorageService(
-            uploadLargeAsync: (chunkHash, _, sourceSize, _, _, _) =>
-                Task.FromResult(new ChunkUploadResult(chunkHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, OriginalSize: sourceSize)));
+            uploadLargeAsync: (chunkHash, _, sourceSize, _, _, _, _) =>
+                Task.FromResult(new ChunkUploadResult(chunkHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, ActualTier: BlobTier.Cool, OriginalSize: sourceSize)));
 
         var handler = CreateHandlerWith(fixture, chunkStorage);
 
@@ -107,8 +107,8 @@ public class ArchiveRecoveryTests
 
         const long storedSize = 2048;
         var chunkStorage = new RecordingChunkStorageService(
-            uploadTarAsync: (tarHash, _, sourceSize, _, _, _) =>
-                Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, OriginalSize: sourceSize)),
+            uploadTarAsync: (tarHash, _, sourceSize, _, _, _, _) =>
+                Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: storedSize, AlreadyExisted: alreadyExisted, ActualTier: BlobTier.Cool, OriginalSize: sourceSize)),
             uploadThinAsync: (_, _, _, _, _) => Task.FromResult(true));
 
         var handler = CreateHandlerWith(fixture, chunkStorage);
@@ -222,12 +222,12 @@ public class ArchiveRecoveryTests
         var observedMissingDuringUpload = false;
 
         var chunkStorage = new RecordingChunkStorageService(
-            uploadLargeAsync: async (actualChunkHash, _, sourceSize, _, _, _) =>
+            uploadLargeAsync: async (actualChunkHash, _, sourceSize, _, _, _, _) =>
             {
                 actualChunkHash.ShouldBe(chunkHash);
                 (await fixture.Index.LookupAsync(contentHash)).ShouldBeNull();
                 observedMissingDuringUpload = true;
-                return new ChunkUploadResult(actualChunkHash, StoredSize: sourceSize / 2, AlreadyExisted: false, OriginalSize: sourceSize);
+                return new ChunkUploadResult(actualChunkHash, StoredSize: sourceSize / 2, AlreadyExisted: false, ActualTier: BlobTier.Cool, OriginalSize: sourceSize);
             });
 
         var handler = new ArchiveCommandHandler(
@@ -270,10 +270,10 @@ public class ArchiveRecoveryTests
         var observedMissingDuringThinUpload = false;
 
         var chunkStorage = new RecordingChunkStorageService(
-            uploadTarAsync: (tarHash, _, sourceSize, _, _, _) =>
+            uploadTarAsync: (tarHash, _, sourceSize, _, _, _, _) =>
             {
                 tarUploaded = true;
-                return Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: sourceSize / 2, AlreadyExisted: false, OriginalSize: sourceSize));
+                return Task.FromResult(new ChunkUploadResult(tarHash, StoredSize: sourceSize / 2, AlreadyExisted: false, ActualTier: BlobTier.Cool, OriginalSize: sourceSize));
             },
             uploadThinAsync: async (actualContentHash, _, _, _, _) =>
             {
@@ -584,7 +584,7 @@ public class ArchiveRecoveryTests
 
     [Test]
     [MatrixDataSource]
-    public async Task Archive_RecordsUploadTierAsStorageTierHint_ForLargeAndTarBackedFiles(
+    public async Task Archive_RecordsActualUploadTierAsStorageTierHint_ForLargeAndTarBackedFiles(
         [Matrix(BlobTier.Cool, BlobTier.Archive)] BlobTier uploadTier)
     {
         await using var fixture = await CreateArchiveFixtureAsync();
@@ -596,8 +596,43 @@ public class ArchiveRecoveryTests
         result.Success.ShouldBeTrue(result.ErrorMessage);
         var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
         using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        // The 2 MiB random large chunk stays above the threshold, so it lands on the requested tier. The
+        // 256-byte file's tar chunk is within it, so an archive request is ceilinged to an online tier.
+        var expectedTarTier = uploadTier == BlobTier.Archive ? BlobTier.Cold : uploadTier;
         (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(largeContent)))!.StorageTierHint.ShouldBe(uploadTier);
-        (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(smallContent)))!.StorageTierHint.ShouldBe(uploadTier);
+        (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(smallContent)))!.StorageTierHint.ShouldBe(expectedTarTier);
+    }
+
+    // Regression: the large/tar route is picked on the *uncompressed* size, but the archive tier must be
+    // decided on the *stored* size. A file above SmallFileThreshold that compresses back within it used to
+    // be archived anyway — ~50% of production large-chunk uploads — and rehydrating such a chunk costs far
+    // more than the storage it saves.
+    [Test]
+    public async Task Archive_RecordsColdStorageTierHint_ForLargeChunkThatCompressesWithinTheThreshold()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var content = await WriteCompressibleFileAsync(fixture, RelativePath.Parse("large-compressible.bin"), 2 * 1024 * 1024);
+
+        var result = await ArchiveAsync(fixture, BlobTier.Archive);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(content)))!.StorageTierHint.ShouldBe(BlobTier.Cold);
+    }
+
+    [Test]
+    public async Task Archive_RecordsColdStorageTierHint_ForTarChunkWithinTheThreshold()
+    {
+        await using var fixture = await CreateArchiveFixtureAsync();
+        var content = await WriteRandomFileAsync(fixture, RelativePath.Parse("small.txt"), 256);
+
+        var result = await ArchiveAsync(fixture, BlobTier.Archive);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        using var resumedIndex = new ChunkIndexService(blobs, fixture.Encryption, fixture.Compression, fixture.Snapshot, fixture.AccountName, fixture.ContainerName);
+        (await resumedIndex.LookupAsync(fixture.Encryption.ComputeHash(content)))!.StorageTierHint.ShouldBe(BlobTier.Cold);
     }
 
     private static ArchiveCommandHandler CreateHandlerWith(RepositoryTestFixture fixture, IChunkStorageService chunkStorage)
@@ -628,6 +663,14 @@ public class ArchiveRecoveryTests
     {
         var content = new byte[sizeBytes];
         Random.Shared.NextBytes(content);
+        await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
+        return content;
+    }
+
+    private static async Task<byte[]> WriteCompressibleFileAsync(RepositoryTestFixture fixture, RelativePath relativePath, int sizeBytes)
+    {
+        var content = new byte[sizeBytes];
+        Array.Fill(content, (byte)7);
         await fixture.LocalFileSystem.WriteAllBytesAsync(relativePath, content, CancellationToken.None);
         return content;
     }
@@ -698,18 +741,18 @@ public class ArchiveRecoveryTests
     }
 
     private sealed class RecordingChunkStorageService(
-        Func<ChunkHash, Stream, long, BlobTier, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadLargeAsync = null,
-        Func<ChunkHash, Stream, long, BlobTier, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadTarAsync = null,
+        Func<ChunkHash, Stream, long, BlobTier, long, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadLargeAsync = null,
+        Func<ChunkHash, Stream, long, BlobTier, long, IProgress<long>?, CancellationToken, Task<ChunkUploadResult>>? uploadTarAsync = null,
         Func<ContentHash, ChunkHash, long, long, CancellationToken, Task<bool>>? uploadThinAsync = null) : IChunkStorageService
     {
-        public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+        public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
             => uploadLargeAsync is not null
-                ? uploadLargeAsync(chunkHash, content, sourceSize, tier, progress, cancellationToken)
+                ? uploadLargeAsync(chunkHash, content, sourceSize, tier, smallFileThreshold, progress, cancellationToken)
                 : throw new NotSupportedException();
 
-        public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
+        public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress = null, CancellationToken cancellationToken = default)
             => uploadTarAsync is not null
-                ? uploadTarAsync(chunkHash, content, sourceSize, tier, progress, cancellationToken)
+                ? uploadTarAsync(chunkHash, content, sourceSize, tier, smallFileThreshold, progress, cancellationToken)
                 : throw new NotSupportedException();
 
         public Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long chunkSize, CancellationToken cancellationToken = default)

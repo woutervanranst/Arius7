@@ -20,8 +20,12 @@ public class RestoreCostModelTests(AzuriteFixture azurite)
     {
         await using var fix = await PipelineFixture.CreateAsync(azurite);
 
-        // Archive a file directly to Archive tier
-        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("data.bin"), new byte[1024 * 1024], CancellationToken.None); // 1 MB
+        // Archive a file directly to Archive tier. The content must be incompressible and large enough that
+        // its stored chunk stays above the small-file threshold, or the archive-tier ceiling keeps it online
+        // and there is no rehydration to estimate.
+        var content = new byte[2 * 1024 * 1024];
+        Random.Shared.NextBytes(content);
+        await fix.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("data.bin"), content, CancellationToken.None);
         var archiveResult = await fix.ArchiveAsync(new()
         {
             RootDirectory = fix.LocalDirectory.ToString(),

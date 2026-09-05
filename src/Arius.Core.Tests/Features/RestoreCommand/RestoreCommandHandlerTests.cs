@@ -712,7 +712,15 @@ public class RestoreCommandHandlerTests
 
         var targetPath = RelativePath.Parse("selected/tiny.bin");
         await fixture.LocalFileSystem.WriteAllBytesAsync(targetPath, [1, 2, 3], CancellationToken.None);
-        await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse("other/large-small-file.bin"), Enumerable.Repeat((byte)7, 128 * 1024).ToArray(), CancellationToken.None);
+        // Incompressible companions, each below SmallFileThreshold so they still take the tar route, summing
+        // to less than TarTargetSize so exactly one bundle seals — and to more than SmallFileThreshold once
+        // stored, so the bundle genuinely lands in the archive tier rather than being ceilinged online.
+        for (var i = 0; i < 3; i++)
+        {
+            var companion = new byte[900 * 1024];
+            Random.Shared.NextBytes(companion);
+            await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse($"other/companion-{i}.bin"), companion, CancellationToken.None);
+        }
 
         var archiveResult = await fixture.CreateArchiveHandler().Handle(
             new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
@@ -720,7 +728,7 @@ public class RestoreCommandHandlerTests
                 RootDirectory      = fixture.LocalDirectory.ToString(),
                 UploadTier         = BlobTier.Archive,
                 SmallFileThreshold = 1024 * 1024,
-                TarTargetSize      = 1024 * 1024,
+                TarTargetSize      = 4 * 1024 * 1024,
             }),
             CancellationToken.None);
 

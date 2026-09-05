@@ -10,11 +10,11 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
 {
     // --- UPLOAD 
 
-    public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
-        => UploadChunkAsync(chunkHash, content, sourceSize, tier, progress, BlobMetadataKeys.TypeLarge, isTar: false, cancellationToken);
+    public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
+        => UploadChunkAsync(chunkHash, content, sourceSize, tier, smallFileThreshold, progress, BlobMetadataKeys.TypeLarge, isTar: false, cancellationToken);
 
-    public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
-        => UploadChunkAsync(chunkHash, content, sourceSize, tier, progress, BlobMetadataKeys.TypeTar, isTar: true, cancellationToken);
+    public Task<ChunkUploadResult> UploadTarAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
+        => UploadChunkAsync(chunkHash, content, sourceSize, tier, smallFileThreshold, progress, BlobMetadataKeys.TypeTar, isTar: true, cancellationToken);
 
     public async Task<bool> UploadThinAsync(ContentHash contentHash, ChunkHash parentChunkHash, long originalSize, long chunkSize, CancellationToken cancellationToken = default)
     {
@@ -52,7 +52,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         }
     }
 
-    private async Task<ChunkUploadResult> UploadChunkAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, IProgress<long>? progress, string ariusType, bool isTar, CancellationToken cancellationToken)
+    private async Task<ChunkUploadResult> UploadChunkAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress, string ariusType, bool isTar, CancellationToken cancellationToken)
     {
         var blobName = BlobPaths.ChunkPath(chunkHash);
         var contentType = GetChunkContentType(isTar);
@@ -76,10 +76,9 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = encryption.WrapForEncryption(countingStream);
 
-                // Verify the stored chunk round-trips before recording it — but only for codecs that ask for it
-                // (zstd does; the trusted BCL gzip path uses a no-op verifier). The verifier's sink receives a tee
-                // of the compressed bytes, decompresses them on a background task, and re-hashes; the no-op verifier
-                // simply discards them. leaveOpen so the encryption stream is disposed once, explicitly.
+                // Verify the chunk decompression before writing to blob (only for zstd - I trust the BCL gzip impl)
+                // Split ('tee') the source stream in two separate streams; one for upload and one for verification.
+                // leaveOpen so the encryption stream is disposed once, explicitly.
                 await using IUploadVerifier verifier = compression.RequireRoundTripVerification
                     ? new RoundTripVerifier(compression, encryption, cancellationToken)
                     : new NoopVerifier();
@@ -115,8 +114,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
 
             if (verifiedHash is { } restoredHash && restoredHash != ContentHash.Parse(chunkHash))
             {
-                // Compression did not round-trip — the stored frame is not restorable. Fail loudly and
-                // remove the unusable blob rather than recording an unrecoverable chunk.
+                // Decompression did not verify: the stored frame is not restorable. Fail loudly and remove the unusable blob rather than recording an unrecoverable chunk.
                 await blobs.DeleteAsync(blobName, cancellationToken);
                 throw new InvalidDataException($"Chunk {chunkHash.Short8} failed compression round-trip verification (restored hash {restoredHash.Short8} ≠ {chunkHash.Short8}); the blob was not recorded.");
             }
@@ -127,20 +125,24 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                 [BlobMetadataKeys.ChunkSize] = storedSize.ToString(),
             };
 
-            if (!isTar) // On TAR blobs this doesn't make sense. We find the original size on the respective thin chunks.
+            if (!isTar) // Saving the original size on TAR blobs is not useful; the original size sits on the respective thin chunks.
                 metadata[BlobMetadataKeys.OriginalSize] = sourceSize.ToString();
 
             await blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
-            await blobs.SetTierAsync(blobName, tier, cancellationToken);
 
-            return new ChunkUploadResult(chunkHash, storedSize, AlreadyExisted: false, OriginalSize: sourceSize);
+            // Apply storage policy - if, after compression, the chunk is smaller than the threshold, don't put it in the archive tier.
+            var actualTier = GetActualStorageTier(tier, storedSize, smallFileThreshold);
+            await blobs.SetTierAsync(blobName, actualTier, cancellationToken);
+
+            return new ChunkUploadResult(chunkHash, storedSize, AlreadyExisted: false, ActualTier: actualTier, OriginalSize: sourceSize);
         }
         catch (BlobAlreadyExistsException)
         {
             // DESIGN DECISION: The Metadata is written only after a successful upload, so we can assume that if the blob has this metadata, the upload completed successfully
             var existing = await blobs.GetMetadataAsync(blobName, cancellationToken);
+
             if (existing.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
-                return new ChunkUploadResult(chunkHash, existing.ContentLength ?? 0, AlreadyExisted: true, OriginalSize: TryReadOriginalSize(existing.Metadata));
+                return new ChunkUploadResult(chunkHash, existing.ContentLength ?? 0, AlreadyExisted: true, ActualTier: existing.Tier ?? tier, OriginalSize: TryReadOriginalSize(existing.Metadata));
 
             await blobs.DeleteAsync(blobName, cancellationToken);
             content.Position = 0;
@@ -155,6 +157,12 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
 
             return isTar ? ContentTypes.TarPlaintext : ContentTypes.LargePlaintext;
         }
+
+        // Bringing a small chunk back from the archive tier costs far more than the storage it saves; the break-even for a 1 MB chunk is ~5.5 years. Cold is the cheapest tier that stays online.
+        static BlobTier GetActualStorageTier(BlobTier targetTier, long storedSize, long smallFileThreshold)
+            => targetTier == BlobTier.Archive && storedSize <= smallFileThreshold
+                ? BlobTier.Cold
+                : targetTier;
 
         static long? TryReadOriginalSize(IReadOnlyDictionary<string, string> metadata)
             => metadata.TryGetValue(BlobMetadataKeys.OriginalSize, out var value) && long.TryParse(value, out var originalSize)

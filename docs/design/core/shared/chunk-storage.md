@@ -28,7 +28,7 @@ This is the load-bearing invariant of the whole protocol — see [ADR-0017](../.
 
 ```mermaid
 flowchart TD
-    Start["UploadChunkAsync(chunkHash, content, tier)"] --> Seek["require seekable source<br/>rewind to position 0"]
+    Start["UploadChunkAsync(chunkHash, content, tier, smallFileThreshold)"] --> Seek["require seekable source<br/>rewind to position 0"]
     Seek --> Open["blobs.OpenWriteAsync(ChunkPath, contentType)<br/>IfNoneMatch=* (create-if-not-exists)"]
     Open -->|201 created| Pipe
     Open -->|409/412 conflict| Exists
@@ -42,16 +42,27 @@ flowchart TD
 
     Pipe --> Verify{"verifier hash<br/>== chunk hash?"}
     Verify -->|"no / mismatch"| DelFail["DeleteAsync + throw InvalidDataException"]
-    Verify -->|"yes / not verified"| Commit["SetMetadataAsync(arius_type, chunk_size, [original_size])<br/>← COMMIT POINT<br/>then SetTierAsync(tier)"]
-    Commit --> Done["ChunkUploadResult(AlreadyExisted: false)"]
+    Verify -->|"yes / not verified"| Commit["SetMetadataAsync(arius_type, chunk_size, [original_size])<br/>← COMMIT POINT"]
+    Commit --> Ceil{"Archive requested and<br/>chunk_size ≤ smallFileThreshold?"}
+    Ceil -->|yes| Cold["actual tier = Cold"]
+    Ceil -->|no| Asked["actual tier = requested tier"]
+    Cold --> SetTier
+    Asked --> SetTier
+    SetTier["SetTierAsync(actual tier)"] --> Done["ChunkUploadResult(AlreadyExisted: false, ActualTier)"]
 
     Exists["GetMetadataAsync(ChunkPath)"] --> HasType{"has arius_type?"}
-    HasType -->|"yes (committed)"| Reuse["ChunkUploadResult(AlreadyExisted: true)<br/>recover size from metadata"]
+    HasType -->|"yes (committed)"| Reuse["ChunkUploadResult(AlreadyExisted: true)<br/>recover size + tier from metadata"]
     HasType -->|"no (partial debris)"| Retry["DeleteAsync → rewind → retry upload"]
     Retry --> Open
 ```
 
-The conflict path (`catch (BlobAlreadyExistsException)`) is what makes re-runs idempotent: a blob already carrying `arius_type` is reused (size recovered via `TryReadOriginalSize`); a body blob *without* it is debris from an interrupted run and is deleted and retried. `OriginalSize` is omitted on tar blobs (`if (!isTar)`) because a tar's per-file sizes live on its thin chunks.
+The conflict path (`catch (BlobAlreadyExistsException)`) is what makes re-runs idempotent: a blob already carrying `arius_type` is reused (size recovered via `TryReadOriginalSize`, tier read straight off the blob); a body blob *without* it is debris from an interrupted run and is deleted and retried. `OriginalSize` is omitted on tar blobs (`if (!isTar)`) because a tar's per-file sizes live on its thin chunks.
+
+### The archive-tier ceiling
+
+`tier` is a **ceiling, not a mandate**. `GetActualStorageTier` downgrades an `Archive` request to `Cold` when the stored chunk is within `smallFileThreshold` (the caller passes `ArchiveCommandOptions.SmallFileThreshold`), and the tier the blob actually landed on is returned as `ChunkUploadResult.ActualTier`.
+
+This exists because the two sizes differ. The archive command routes a *file* to the large or tar path by its **uncompressed** size, but what gets billed and rehydrated is the **stored** (compressed + encrypted) blob — and a file above the threshold can compress back well within it. Rehydrating such a chunk costs far more than the archive tier saves on it; v5 Arius put the break-even for a 1 MB chunk at roughly 5.5 years. Applying the ceiling here rather than in the handler is what makes it exact: `storedSize` does not exist until the write block closes, a few lines above the `SetTierAsync` call, and both the large and tar upload paths funnel through this one method (so the tiny end-of-run partial tar bundle is covered too). See [ADR-0023](../../../decisions/adr-0023-archive-tier-small-chunk-ceiling.md).
 
 ### Inline round-trip verification
 
@@ -99,6 +110,8 @@ Cleanup is two-phase so restore can preview before deleting: `PlanRehydratedClea
 - **Metadata presence = commit; snapshot last.** The `arius_type` sentinel is written only after the body succeeds and round-trips. A body blob without `arius_type` is partial debris, safe to delete and retry. ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md))
 - **Storage owns the blob protocol; the index owns lookup.** Feature handlers never construct chunk blob names, pick content types, write chunk metadata keys, or build the compress/encrypt chain — those live only here. Content-hash → chunk-hash resolution lives only in the chunk index. (Mixing them is the failure mode this split prevents.)
 - **Upload sources must be seekable.** `UploadChunkAsync` throws if `!content.CanSeek`, because the conflict-recovery retry rewinds and re-streams the body.
+- **The requested tier is a ceiling, and the reported tier is the truth.** A chunk within `smallFileThreshold` is never archived, and `ChunkUploadResult.ActualTier` — not the request — is what the caller records as the chunk's [storage tier hint](../../../glossary.md#storage-tier-hint). A hint that claimed `Archive` for an online blob would make restore pay to rehydrate something it could simply download.
+- **The conflict path reports the observed tier and never re-tiers.** A blob recovered from a prior run is already committed, and on Azure moving one out of the archive tier *is* a rehydration — slow and paid. It is left where it is, and the index is told where that is.
 - **Round-trip verification gates the commit.** A chunk whose stored frame does not decompress back to its chunk hash is deleted, not recorded — the archive tier is offline and cannot be re-verified later.
 - **Download returns plaintext.** The returned stream is already decrypted and decompressed; callers (large-file restore, tar extraction) consume bytes directly.
 - **Rehydration never mutates the original.** It copies `chunks/` → `chunks-rehydrated/`; the archive-tier source is left in place, and the rehydrated copy is transient (cleaned up after restore).
@@ -115,3 +128,4 @@ Cleanup is two-phase so restore can preview before deleting: `PlanRehydratedClea
 - **Legacy read variants.** `ContentTypes` still carries CBC/gzip variants for reading pre-zstd blobs; new writes are always zstd + GCM. When legacy blobs are no longer in the wild these can be dropped.
 - **No background reaper for partial debris.** Interrupted-upload bodies are cleaned up *lazily* — only when a later run re-attempts the same chunk hash and hits the conflict path. Orphaned bodies for chunks never re-archived persist until a future sweep mechanism exists.
 - **Rehydration target is hardcoded to `BlobTier.Cold` / 16 delete workers.** Tier and parallelism are constants; surfacing them as policy is a future change point if rehydration economics shift.
+- **The archive-tier ceiling corrects the tier, not the blob count.** A highly compressible file above `SmallFileThreshold` still becomes its own small standalone blob — correctly tiered, but not bundled with its neighbours. Routing it into a tar instead would need the compressed size known *before* the route is chosen; see the open seams in [archive-command](../features/archive-command.md#open-seams-future).

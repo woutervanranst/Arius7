@@ -246,7 +246,12 @@ across all snapshots, split by [storage tier hint](#storage-tier-hint). The per-
 
 ### storage tier hint
 
-**storage tier hint** — the chunk blob's storage tier at archive time, recorded per
+**storage tier hint** — the *actual* storage tier the chunk blob landed on at archive time — not
+the tier the run requested. A chunk whose [chunk size](#chunk-size) is within
+`SmallFileThreshold` is kept online (`Cold`) even under `--tier Archive`, because rehydrating a
+chunk that small costs more than the archive tier saves on it
+([ADR-0023](decisions/adr-0023-archive-tier-small-chunk-ceiling.md)); the hint records where the
+blob really is, so restore never pays to rehydrate something it could download. Recorded per
 index entry (wire values: hot=1, cool=2, cold=3, archive=4; for tar-bundled files, the
 tar blob's tier). It is a *hint* — lifecycle policies or rehydration can change the
 actual tier — and lets `ls` report hydrated-vs-archived state from the index without
