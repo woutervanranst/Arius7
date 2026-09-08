@@ -322,6 +322,20 @@ public sealed class ProgressState
     /// <summary>TAR bundles currently tracked, keyed by bundle number.</summary>
     public ConcurrentDictionary<int, TrackedTar> TrackedTars { get; } = new();
 
+    /// <summary>
+    /// The bundle currently accumulating entries, or <c>null</c> between bundles. Held directly because
+    /// TarEntryAddedHandler needs it once per small file, and deriving it from
+    /// <see cref="TrackedTars"/> meant a Values snapshot plus a Where/OrderByDescending scan per file.
+    /// Only the single-threaded TarBuilder stage raises the bundle lifecycle events, so writes are
+    /// ordered; the reference is published via <see cref="Volatile"/> for the display thread.
+    /// </summary>
+    public TrackedTar? AccumulatingTar
+    {
+        get => Volatile.Read(ref _accumulatingTar);
+        set => Volatile.Write(ref _accumulatingTar, value);
+    }
+    private TrackedTar? _accumulatingTar;
+
     /// <summary>Monotonically increasing bundle counter; call <see cref="NextBundleNumber"/> to allocate a new ID.</summary>
     private long _bundleCounter;
 
