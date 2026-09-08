@@ -27,11 +27,6 @@ internal sealed record FilePair
 internal sealed record BinaryFile
 {
     public required RelativePath Path { get; init; }
-
-    /// <summary>
-    /// Size in bytes captured during enumeration and reused by later archive stages.
-    /// </summary>
-    public required long FileSize { get; init; }
 }
 
 /// <summary>
