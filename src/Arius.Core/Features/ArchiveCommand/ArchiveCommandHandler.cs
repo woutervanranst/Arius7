@@ -313,7 +313,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                     await foreach (var pair in pairs)
                     {
                         count++;
-                        var fileSize = pair.Binary?.FileSize ?? 0L;
+                        var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
                         totalBytes += fileSize;
                         await _mediator.Publish(new FileScannedEvent(pair.RelativePath, fileSize), cancellationToken);
                         await filePairChannel.Writer.WriteAsync(pair, cancellationToken);
@@ -342,7 +342,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                         {
                             try
                             {
-                                var fileSize = pair.Binary?.FileSize ?? 0L;
+                                var fileSize = pair.Binary is null ? 0L : fs.GetFileSize(pair.RelativePath);
 
                                 await _mediator.Publish(new FileHashingEvent(pair.RelativePath, fileSize), ct);
 
@@ -491,14 +491,14 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 _logger.LogInformation("[dedup] {Path} -> hit ({Hash})", hashed.FilePair.RelativePath, hashed.ContentHash.Short8);
                                 await fileTreeEntryChannel.Writer.WriteAsync(hashed, cancellationToken);
                                 Interlocked.Increment(ref filesDeduped);
-                                var size = hashed.FilePair.Binary!.FileSize;
+                                var size = fs.GetFileSize(hashed.FilePair.RelativePath);
                                 Interlocked.Add(ref originalSize, size);
                                 await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, size), cancellationToken);
                             }
                             else
                             {
                                 // Needs upload → mark in-flight, route by size
-                                var fileSize = hashed.FilePair.Binary!.FileSize;
+                                var fileSize = fs.GetFileSize(hashed.FilePair.RelativePath);
                                 inFlightHashes.TryAdd(hashed.ContentHash, fileSize);
                                 Interlocked.Add(ref originalSize, fileSize);
                                 Interlocked.Add(ref incrementalSize, fileSize);
