@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Text;
 using System.Text.Json;
 using Arius.Core.Shared.Storage;
 using Microsoft.Data.Sqlite;
@@ -79,6 +81,113 @@ internal sealed class ChunkIndexLocalStore
     /// Returns <c>null</c> for missing entries and for remote-backed cached entries.
     /// </summary>
     public ShardEntry? FindPendingFlushEntry(ContentHash contentHash) => FindEntryCore(contentHash, pendingFlushOnly: true);
+
+    /// <summary>
+    /// Batched twin of <see cref="FindEntry"/>: one query for a whole set of hashes.
+    /// Hashes with no stored entry are simply absent from the result.
+    /// </summary>
+    public IReadOnlyDictionary<ContentHash, ShardEntry> FindEntries(IReadOnlyCollection<ContentHash> contentHashes)
+        => FindEntriesCore(contentHashes, pendingFlushOnly: false);
+
+    /// <summary>
+    /// Batched twin of <see cref="FindPendingFlushEntry"/>: one query for a whole set of hashes.
+    /// Returns only entries still pending local flush.
+    /// </summary>
+    public IReadOnlyDictionary<ContentHash, ShardEntry> FindPendingFlushEntries(IReadOnlyCollection<ContentHash> contentHashes)
+        => FindEntriesCore(contentHashes, pendingFlushOnly: true);
+
+    /// <summary>
+    /// Looks up a set of hashes with a single <c>IN (...)</c> query instead of one query per hash.
+    /// A dedup batch is 256 hashes and each per-hash lookup previously cost its own pooled connection, its
+    /// own <c>PRAGMA synchronous</c> round-trip, and its own command — so a "batched" lookup was issuing
+    /// 512 statements.
+    /// </summary>
+    /// <remarks>
+    /// The parameter count is padded to a fixed bucket so the command text repeats across calls (batches
+    /// are almost always full, with one ragged tail), letting SQLite reuse the prepared statement instead
+    /// of compiling fresh SQL per distinct batch size. Padding slots repeat the first hash, which is
+    /// harmless: this is a set membership test, so duplicates cannot add rows.
+    /// SQLITE_MAX_VARIABLE_NUMBER is 32766 on modern SQLite, well above the largest bucket.
+    /// </remarks>
+    private IReadOnlyDictionary<ContentHash, ShardEntry> FindEntriesCore(IReadOnlyCollection<ContentHash> contentHashes, bool pendingFlushOnly)
+    {
+        if (contentHashes.Count == 0)
+            return ReadOnlyDictionary<ContentHash, ShardEntry>.Empty;
+
+        try
+        {
+            var slots   = LookupBucketSize(contentHashes.Count);
+            var results = new Dictionary<ContentHash, ShardEntry>(contentHashes.Count);
+
+            using var connection = OpenConnection();
+            using var command    = connection.CreateCommand();
+            command.CommandText = BuildFindEntriesSql(slots, pendingFlushOnly);
+
+            var digests = new byte[slots][];
+            for (var i = 0; i < slots; i++)
+            {
+                digests[i] = CreateDigestBuffer();
+                command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = digests[i];
+            }
+
+            var slot  = 0;
+            var first = string.Empty;
+            foreach (var contentHash in contentHashes)
+            {
+                var hex = contentHash.ToString();
+                if (slot == 0)
+                    first = hex;
+
+                WriteDigest(hex, digests[slot++]);
+            }
+
+            // Pad the unused slots with a repeat of the first hash.
+            for (; slot < slots; slot++)
+                WriteDigest(first, digests[slot]);
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var entry = ReadEntry(reader);
+                results[entry.ContentHash] = entry;
+            }
+
+            _logger.LogDebug("[chunk-index-local] FindEntries: requested={Requested} slots={Slots} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHashes.Count, slots, pendingFlushOnly, results.Count);
+            return results;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+    }
+
+    /// <summary>Fixed parameter-count buckets, so the generated SQL — and its prepared statement — repeats.</summary>
+    private static int LookupBucketSize(int count) => count switch
+    {
+        <= 1   => 1,
+        <= 4   => 4,
+        <= 16  => 16,
+        <= 64  => 64,
+        <= 256 => 256,
+        _      => count,
+    };
+
+    private static string BuildFindEntriesSql(int slots, bool pendingFlushOnly)
+    {
+        var sql = new StringBuilder("SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash IN (");
+        for (var i = 0; i < slots; i++)
+        {
+            if (i > 0)
+                sql.Append(", ");
+            sql.Append("$h").Append(i);
+        }
+
+        sql.Append(')');
+        if (pendingFlushOnly)
+            sql.Append(" AND pending_flush = 1");
+
+        return sql.Append(';').ToString();
+    }
 
     private ShardEntry? FindEntryCore(ContentHash contentHash, bool pendingFlushOnly)
     {

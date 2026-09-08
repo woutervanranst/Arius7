@@ -156,6 +156,12 @@ public class AllocationBenchmarks
         return found;
     }
 
+    /// <summary>
+    /// The batched replacement for the above: one IN (...) query for the whole 256-hash dedup batch.
+    /// </summary>
+    [Benchmark(Description = "ChunkIndexLocalStore.FindEntries x1 (one dedup batch)")]
+    public int ChunkIndexLocalStore_FindEntries_Batch() => _store.FindEntries(_lookupHashes).Count;
+
     // ── Setup ────────────────────────────────────────────────────────────────────
 
     [GlobalSetup]
