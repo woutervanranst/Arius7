@@ -12,16 +12,13 @@ public class ProgressStreamTests
         using var src  = new MemoryStream(data);
         var reports    = new List<long>();
         var progress   = new SyncProgress<long>(v => reports.Add(v));
-        using var ps   = new ProgressStream(src, progress);
+        var timestamp = 0L;
+        using var ps   = new ProgressStream(src, progress, () => timestamp++);
 
         var buf = new byte[256];
         while (ps.Read(buf, 0, buf.Length) > 0) { }
 
-        // Reports are throttled, so assert prompt, monotonic progress ending at the true total rather than an exact sequence.
-        reports.ShouldNotBeEmpty();
-        reports.Count.ShouldBeLessThanOrEqualTo(4);
-        reports.ShouldBeInOrder();
-        reports[^1].ShouldBe(1024);
+        reports.ShouldBe([256, 1024]);
     }
 
     [Test]
