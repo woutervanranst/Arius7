@@ -95,9 +95,7 @@ internal static class SparseFingerprint
         private readonly IReadOnlyList<(long Off, int Len)> _regions;
 
         /// <summary>
-        /// The regions laid out back-to-back in one pooled buffer, so <see cref="Finish"/> can hash the whole
-        /// span in one call — byte-identical to hashing each region in order, which is what the framing
-        /// contract with <see cref="ComputeBySeeking"/> requires.
+        /// Stores sampled regions contiguously so <see cref="Finish"/> can hash them in one pass.
         /// </summary>
         private readonly byte[] _buffer;
         private readonly int[]  _bufferOffsets;
@@ -121,9 +119,7 @@ internal static class SparseFingerprint
             _capturedLength = total;
             _buffer         = ArrayPool<byte>.Shared.Rent(total);
 
-            // A rented buffer arrives dirty. A region that is never offered to Capture — a file that shrank
-            // mid-read, or a read that stopped early — must contribute zeros, exactly as the previous
-            // per-region `new byte[]` did, or the fingerprint stops being a function of the content.
+            // Clear uncaptured regions because pooled buffers are not initialized.
             _buffer.AsSpan(0, _capturedLength).Clear();
         }
 

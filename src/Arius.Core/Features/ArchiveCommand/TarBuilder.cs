@@ -32,18 +32,12 @@ internal sealed class TarBuilder : IAsyncDisposable
     private long          _currentSize;
 
     /// <summary>
-    /// Headroom over the target size for tar framing. A bundle seals on the summed *file* sizes, but the
-    /// stream also holds two 512-byte header blocks plus an optional PAX extended block per entry, so the
-    /// serialized tar always runs over the target. Without headroom the buffer grows once more, doubling a
-    /// 64 MB allocation into a 128 MB one.
+    /// Headroom for TAR framing beyond the summed file sizes.
     /// </summary>
     private const int FramingHeadroomDivisor = 4;
 
     /// <summary>
-    /// Initial capacity for a bundle's backing buffer. <see cref="_targetSize"/> is a <see cref="long"/> and
-    /// <see cref="MemoryStream"/> takes an <see cref="int"/>, so it is clamped; the clamp only engages for a
-    /// <c>TarTargetSize</c> far beyond any practical bundle. A bundle of very many very small files can still
-    /// exceed even the headroom and take one growth step — that is accepted, not worked around.
+    /// Initial backing-buffer capacity for a bundle, clamped to the <see cref="MemoryStream"/> limit.
     /// </summary>
     private int InitialCapacity => (int)Math.Min(_targetSize + _targetSize / FramingHeadroomDivisor, int.MaxValue / 2);
 
@@ -77,9 +71,6 @@ internal sealed class TarBuilder : IAsyncDisposable
         TarWriter writer;
         if (_tarWriter is null)
         {
-            // Pre-size the bundle buffer. Growing from zero capacity allocates and abandons every
-            // intermediate array (256 B, 512 B, ... 32 MB, 64 MB, 128 MB) to reach one 64 MB bundle —
-            // measured at 276 MB of transient garbage per bundle, nearly all of it on the LOH.
             _tarStream = new MemoryStream(InitialCapacity);
             writer     = _tarWriter = new TarWriter(_tarStream, leaveOpen: true);
             await (_onBundleStarted?.Invoke() ?? ValueTask.CompletedTask);

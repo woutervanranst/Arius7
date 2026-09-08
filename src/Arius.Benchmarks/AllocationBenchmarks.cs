@@ -12,26 +12,16 @@ using BenchmarkDotNet.Attributes;
 namespace Arius.Benchmarks;
 
 /// <summary>
-/// In-process allocation micro-benchmarks for the byte-pushing components of Arius.Core.
-///
-/// These exist because <see cref="ArchiveStepBenchmarks"/> is end-to-end against Azurite, where fixture
-/// and SDK overhead dominate and no single optimization is separable. Each benchmark here isolates one
-/// component so a change's effect on <c>Allocated</c> is directly attributable.
-///
-/// Needs no Azurite and no Docker. Run with <c>--class micro</c>.
+/// In-process allocation benchmarks for selected Arius.Core components.
+/// Run with <c>--class micro</c>; no Azurite or Docker is required.
 /// </summary>
 [MemoryDiagnoser]
 public class AllocationBenchmarks
 {
     private const int EntryCount = 1_000;
 
-    // ── Hash codec ───────────────────────────────────────────────────────────────
-
     /// <summary>
-    /// A digest whose hex form actually contains <c>a</c>-<c>f</c> nibbles. This matters: a digest of all-zero
-    /// bytes hexes to "000...0", and <see cref="string.ToLowerInvariant"/> then returns the same instance via its
-    /// no-change fast path — hiding the second allocation that ToLowerHex really makes on realistic input.
-    /// Deliberately not <see cref="CreateDigest"/>, which pins a leading 0x00 for the range-query fixtures.
+    /// Digest containing hexadecimal letters, ensuring the lowercase conversion path is exercised.
     /// </summary>
     private readonly byte[] _digest = CreateHighNibbleDigest();
 
@@ -41,7 +31,7 @@ public class AllocationBenchmarks
     [Benchmark(Description = "HashCodec.ToLowerHex")]
     public string HashCodec_ToLowerHex() => HashCodec.ToLowerHex(_digest);
 
-    /// <summary>The common case: parsing a value Arius itself wrote, already canonical lowercase.</summary>
+    /// <summary>Parses an already canonical lowercase value.</summary>
     [Benchmark(Description = "HashCodec.NormalizeHex (already canonical)")]
     public string HashCodec_NormalizeHex_Canonical() => HashCodec.NormalizeHex(CanonicalHex);
 
@@ -55,10 +45,7 @@ public class AllocationBenchmarks
 
     private byte[] _readBuffer = null!;
 
-    /// <summary>
-    /// The dominant real-world shape: a sub-1 MiB file, where <c>Regions</c> returns a single region
-    /// equal to the whole file, so the sampler buffers the entire file while it is hashed.
-    /// </summary>
+    /// <summary>Exercises the single-region sampler path for a small file.</summary>
     [Benchmark(Description = "SparseFingerprint.Sampler small file (200 KB)")]
     public byte[] SparseFingerprint_Sampler_SmallFile()
     {
@@ -75,7 +62,7 @@ public class AllocationBenchmarks
         return sampler.Finish();
     }
 
-    /// <summary>Worst case for the capture buffers: 64 regions x 256 KiB = 16 MiB per in-flight file.</summary>
+    /// <summary>Exercises the maximum sampled-region buffer size.</summary>
     [Benchmark(Description = "SparseFingerprint.Sampler large file (64 GB logical)")]
     public byte[] SparseFingerprint_Sampler_LargeFile()
     {
@@ -102,10 +89,7 @@ public class AllocationBenchmarks
     private byte[]             _tarEntryPayload = null!;
     private IEncryptionService _encryption      = null!;
 
-    /// <summary>
-    /// Accumulates and seals one full 64 MB bundle. The per-entry <see cref="MemoryStream"/> wrappers are
-    /// ~100 bytes each and negligible against the bundle buffer this is measuring.
-    /// </summary>
+    /// <summary>Builds and seals one 64 MB TAR bundle.</summary>
     [Benchmark(Description = "TarBuilder seal one 64 MB bundle")]
     public async Task<int> TarBuilder_Seal_64MB()
     {
@@ -141,10 +125,7 @@ public class AllocationBenchmarks
         return count;
     }
 
-    /// <summary>
-    /// The per-hash lookup shape that <c>ChunkIndexService.LookupAsync</c> runs 256 times per "batch",
-    /// twice over (pending-flush probe then entry probe).
-    /// </summary>
+    /// <summary>Measures the per-hash lookup shape for a 256-hash deduplication batch.</summary>
     [Benchmark(Description = "ChunkIndexLocalStore.FindEntry x256 (one dedup batch)")]
     public int ChunkIndexLocalStore_FindEntry_256()
     {
@@ -156,9 +137,7 @@ public class AllocationBenchmarks
         return found;
     }
 
-    /// <summary>
-    /// The batched replacement for the above: one IN (...) query for the whole 256-hash dedup batch.
-    /// </summary>
+    /// <summary>Measures the batched lookup for a 256-hash deduplication batch.</summary>
     [Benchmark(Description = "ChunkIndexLocalStore.FindEntries x1 (one dedup batch)")]
     public int ChunkIndexLocalStore_FindEntries_Batch() => _store.FindEntries(_lookupHashes).Count;
 
@@ -202,8 +181,7 @@ public class AllocationBenchmarks
     // ── Deterministic fixtures ───────────────────────────────────────────────────
 
     /// <summary>
-    /// A distinct 32-byte digest per index, always with a leading <c>0x00</c> so every generated hash falls
-    /// under the <c>"00"</c> prefix that <see cref="ChunkIndexLocalStore_ReadRangeEntries"/> ranges over.
+    /// Creates distinct digests under the <c>"00"</c> range prefix used by the range benchmark.
     /// </summary>
     private static byte[] CreateDigest(int seed)
     {
@@ -214,7 +192,7 @@ public class AllocationBenchmarks
 
     private static ContentHash CreateContentHash(int seed) => ContentHash.FromDigest(CreateDigest(seed));
 
-    /// <summary>A deterministic 32-byte digest whose every byte has a high nibble in the <c>a</c>-<c>f</c> range.</summary>
+    /// <summary>Creates a digest containing hexadecimal letters.</summary>
     private static byte[] CreateHighNibbleDigest()
     {
         var digest = new byte[32];

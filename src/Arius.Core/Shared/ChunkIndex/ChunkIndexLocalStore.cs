@@ -97,17 +97,11 @@ internal sealed class ChunkIndexLocalStore
         => FindEntriesCore(contentHashes, pendingFlushOnly: true);
 
     /// <summary>
-    /// Looks up a set of hashes with a single <c>IN (...)</c> query instead of one query per hash.
-    /// A dedup batch is 256 hashes and each per-hash lookup previously cost its own pooled connection, its
-    /// own <c>PRAGMA synchronous</c> round-trip, and its own command — so a "batched" lookup was issuing
-    /// 512 statements.
+    /// Looks up a set of hashes with one <c>IN (...)</c> query.
     /// </summary>
     /// <remarks>
-    /// The parameter count is padded to a fixed bucket so the command text repeats across calls (batches
-    /// are almost always full, with one ragged tail), letting SQLite reuse the prepared statement instead
-    /// of compiling fresh SQL per distinct batch size. Padding slots repeat the first hash, which is
-    /// harmless: this is a set membership test, so duplicates cannot add rows.
-    /// SQLITE_MAX_VARIABLE_NUMBER is 32766 on modern SQLite, well above the largest bucket.
+    /// Parameters are padded to fixed buckets so the generated command text can be reused. Unused slots
+    /// repeat the first hash, which is harmless for set membership.
     /// </remarks>
     private IReadOnlyDictionary<ContentHash, ShardEntry> FindEntriesCore(IReadOnlyCollection<ContentHash> contentHashes, bool pendingFlushOnly)
     {
@@ -141,7 +135,6 @@ internal sealed class ChunkIndexLocalStore
                 WriteDigest(hex, digests[slot++]);
             }
 
-            // Pad the unused slots with a repeat of the first hash.
             for (; slot < slots; slot++)
                 WriteDigest(first, digests[slot]);
 
@@ -978,10 +971,7 @@ internal sealed class ChunkIndexLocalStore
     }
 
     /// <summary>
-    /// Binds one entry onto a command reused across a batch. <paramref name="contentDigest"/> and
-    /// <paramref name="chunkDigest"/> are the command's already-bound BLOB buffers, overwritten in place:
-    /// each ExecuteNonQuery completes before the next row rewrites them, so a batch of 256 rows binds
-    /// 2 arrays rather than 512.
+    /// Binds one row using reusable digest buffers; each execution completes before the buffers are overwritten.
     /// </summary>
     private static void BindEntry(SqliteCommand command, ShardEntry entry, byte[] contentDigest, byte[] chunkDigest)
     {
@@ -1026,11 +1016,6 @@ internal sealed class ChunkIndexLocalStore
         return command.ExecuteNonQuery();
     }
 
-    // Reads the hash columns with (byte[])reader.GetValue(...), which allocates one byte[32] per hash per
-    // row. That is deliberate: reading into a reusable buffer via SqliteDataReader.GetBytes was measured
-    // 5.6x WORSE on ReadRangeEntries (641 KB -> 3620 KB per 1000 rows), because the provider routes
-    // GetBytes through a SqliteBlob. The cast itself is free — byte[] is a reference type, so nothing is
-    // boxed. The remaining per-row cost here is dominated by the two hash *strings*, not the arrays.
     private static ShardEntry ReadEntry(SqliteDataReader reader)
         => new(
             ContentHash.FromDigest((byte[])reader.GetValue(0)),
@@ -1040,13 +1025,12 @@ internal sealed class ChunkIndexLocalStore
             ShardEntry.DeserializeTier(reader.GetInt32(4)));
 
     /// <summary>
-    /// Writes the 32 digest bytes of a canonical-hex hash into <paramref name="destination"/>.
-    /// The hash types guarantee exactly 64 canonical hex characters by construction, so this cannot fail.
+    /// Writes a canonical hexadecimal hash into a 32-byte digest buffer.
     /// </summary>
     private static void WriteDigest(string hex, byte[] destination)
         => Convert.FromHexString(hex, destination, out _, out _);
 
-    /// <summary>Rents a reusable 32-byte digest buffer for one command or one read loop.</summary>
+    /// <summary>Creates a reusable 32-byte digest buffer.</summary>
     private static byte[] CreateDigestBuffer() => new byte[HashCodec.Sha256ByteLength];
 
 }

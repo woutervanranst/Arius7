@@ -29,10 +29,7 @@ internal sealed record BinaryFile
     public required RelativePath Path { get; init; }
 
     /// <summary>
-    /// Size in bytes, captured once by <see cref="LocalFileEnumerator"/> when the entry is discovered.
-    /// Carried here for the same reason <see cref="HashedFilePair"/> carries the timestamps: so no later
-    /// stage re-stats the file. Enumerate, hash, and dedup all need the size, and each calling
-    /// <c>GetFileSize</c> meant four stat syscalls (and four path resolutions) per file.
+    /// Size in bytes captured during enumeration and reused by later archive stages.
     /// </summary>
     public required long FileSize { get; init; }
 }
