@@ -67,6 +67,10 @@ public class AllocationBenchmarks
     public byte[] SparseFingerprint_Sampler_LargeFile()
     {
         using var sampler = new SparseFingerprint.Sampler(LargeFileSize);
+
+        foreach (var (offset, length) in SparseFingerprint.Regions(LargeFileSize))
+            sampler.Capture(offset, _readBuffer.AsSpan(0, length));
+
         return sampler.Finish();
     }
 
@@ -146,7 +150,7 @@ public class AllocationBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        _readBuffer      = new byte[81920];
+        _readBuffer      = new byte[256 * 1024];
         _tarEntryPayload = new byte[TarEntrySize];
         Random.Shared.NextBytes(_readBuffer);
         Random.Shared.NextBytes(_tarEntryPayload);
