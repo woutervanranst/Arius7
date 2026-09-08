@@ -322,6 +322,16 @@ public sealed class ProgressState
     /// <summary>TAR bundles currently tracked, keyed by bundle number.</summary>
     public ConcurrentDictionary<int, TrackedTar> TrackedTars { get; } = new();
 
+    /// <summary>
+    /// The bundle currently receiving entries, or <c>null</c> between bundles.
+    /// </summary>
+    public TrackedTar? AccumulatingTar
+    {
+        get => Volatile.Read(ref _accumulatingTar);
+        set => Volatile.Write(ref _accumulatingTar, value);
+    }
+    private TrackedTar? _accumulatingTar;
+
     /// <summary>Monotonically increasing bundle counter; call <see cref="NextBundleNumber"/> to allocate a new ID.</summary>
     private long _bundleCounter;
 

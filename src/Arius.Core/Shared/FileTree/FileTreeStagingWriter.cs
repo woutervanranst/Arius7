@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Text;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -7,23 +9,34 @@ internal sealed class FileTreeStagingWriter : IDisposable
 {
     private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks
 
-    private readonly SemaphoreSlim[] _lockStripes;
+    private readonly Stripe[]           _lockStripes;
     private readonly RelativeFileSystem _stagingFileSystem;
-    private          bool            _disposed;
+    private          bool               _disposed;
 
-    // A directory id is globally unique to its full path, so its parent→child edge line is identical
-    // no matter which descendant file triggers it. Emit each edge once: without this, a deep tree
-    // re-appends every ancestor edge for every file (the root node once per file), which both dominates
-    // the staging I/O and funnels all writers onto the root node's single stripe lock. The reader
-    // (FileTreeBuilder.ReadNodeEntriesAsync) already collapses duplicate directory entries, so writing
-    // each once is behaviourally identical. Bounded by directory count and released with the writer.
+    /// <summary>
+    /// One gate and one reusable append handle per stripe; the gate protects both.
+    /// </summary>
+    private sealed class Stripe : IDisposable
+    {
+        public readonly SemaphoreSlim Gate = new(1, 1);
+        public RelativePath?          OpenPath;
+        public Stream?                Handle;
+
+        public void Dispose()
+        {
+            Handle?.Dispose();
+            Gate.Dispose();
+        }
+    }
+
+    // Emit each directory edge once; the reader treats duplicate edges as equivalent.
     private readonly ConcurrentDictionary<PathSegment, bool> _emittedDirectories = new();
 
     public FileTreeStagingWriter(LocalDirectory stagingRoot)
     {
         _stagingFileSystem = new RelativeFileSystem(stagingRoot);
         _lockStripes = Enumerable.Range(0, StripeCount)
-            .Select(_ => new SemaphoreSlim(1, 1))
+            .Select(_ => new Stripe())
             .ToArray();
     }
 
@@ -60,9 +73,6 @@ internal sealed class FileTreeStagingWriter : IDisposable
     {
         var currentPath = RelativePath.Root;
 
-        // Materialize once: RelativePath.Segments re-splits and re-parses the path on every
-        // enumeration, so Take(Segments.Count() - 1) would parse the whole path twice on this hot
-        // staging path. Iterate the segments by index instead, skipping the trailing file segment.
         var segments = filePath.Segments.ToArray();
 
         for (var i = 0; i < segments.Length - 1; i++)
@@ -72,8 +82,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
             currentPath = currentPath / segment;
             var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
 
-            // Claim the edge (but keep descending) so concurrent writers don't double-emit it.
-            // TryAdd is atomic: exactly one writer wins the claim and writes the edge.
+            // Claim each edge once; failed writes release the claim below.
             if (!_emittedDirectories.TryAdd(directoryId, true))
                 continue;
 
@@ -85,9 +94,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
             }
             catch
             {
-                // The claim must reflect a committed edge: if the append fails (I/O error or
-                // cancellation), release it so a later writer can re-emit. Otherwise the parent→child
-                // edge is permanently skipped and its subtree orphaned.
+                // Allow a later writer to retry an edge whose append failed.
                 _emittedDirectories.TryRemove(directoryId, out _);
                 throw;
             }
@@ -96,18 +103,39 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
     private async Task AppendLineAsync(RelativePath path, string line, CancellationToken cancellationToken)
     {
-        var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path) % (uint)_lockStripes.Length];
-        await nodeLock.WaitAsync(cancellationToken);
+        var stripe = _lockStripes[(uint)path.GetHashCode() % (uint)_lockStripes.Length];
+        await stripe.Gate.WaitAsync(cancellationToken);
 
         try
         {
-            // Fixed '\n' (not Environment.NewLine): staged lines are re-serialized by FileTreeSerializer
-            // before hashing, but keep the staging format platform-independent and consistent with it.
-            await _stagingFileSystem.AppendAllTextAsync(path, line + "\n", cancellationToken);
+            // Reuse the open handle for this node; close it when retargeting.
+            if (stripe.OpenPath != path)
+            {
+                stripe.Handle?.Dispose();
+                stripe.Handle   = _stagingFileSystem.OpenAppend(path);
+                stripe.OpenPath = path;
+            }
+
+            // Keep the staging format platform-independent and consistent with FileTreeSerializer.
+            var buffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetMaxByteCount(line.Length) + 1);
+            try
+            {
+                var count = Encoding.UTF8.GetBytes(line, buffer);
+                buffer[count++] = (byte)'\n';
+
+                await stripe.Handle!.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+
+                // Surface append failures before releasing the directory-edge claim.
+                await stripe.Handle.FlushAsync(cancellationToken);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         finally
         {
-            nodeLock.Release();
+            stripe.Gate.Release();
         }
     }
 
@@ -118,7 +146,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         _disposed = true;
 
-        foreach (var nodeLock in _lockStripes)
-            nodeLock.Dispose();
+        foreach (var stripe in _lockStripes)
+            stripe.Dispose();
     }
 }

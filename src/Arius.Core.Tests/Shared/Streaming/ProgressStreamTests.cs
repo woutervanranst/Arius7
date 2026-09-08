@@ -5,21 +5,20 @@ namespace Arius.Core.Tests.Shared.Streaming;
 public class ProgressStreamTests
 {
     [Test]
-    public void Read_ReportsProgressAfterEachChunk()
+    public void Read_CoalescesReports_ButStillReportsTheTotal()
     {
         var data     = new byte[1024];
         Random.Shared.NextBytes(data);
         using var src  = new MemoryStream(data);
         var reports    = new List<long>();
         var progress   = new SyncProgress<long>(v => reports.Add(v));
-        using var ps   = new ProgressStream(src, progress);
+        var timestamp = 0L;
+        using var ps   = new ProgressStream(src, progress, () => timestamp++);
 
         var buf = new byte[256];
         while (ps.Read(buf, 0, buf.Length) > 0) { }
 
-        reports.Count.ShouldBe(4);
-        reports[^1].ShouldBe(1024);
-        reports.ShouldBeInOrder();
+        reports.ShouldBe([256, 1024]);
     }
 
     [Test]
@@ -91,6 +90,22 @@ public class ProgressStreamTests
 
         n.ShouldBe(0);
         reportCount.ShouldBe(0);
+    }
+
+    [Test]
+    public void Read_ZeroLengthBuffer_DoesNotReportFinalProgress()
+    {
+        using var src = new MemoryStream(new byte[100]);
+        var reports = new List<long>();
+        var progress = new SyncProgress<long>(value => reports.Add(value));
+        using var ps = new ProgressStream(src, progress);
+
+        var buffer = new byte[100];
+        ps.Read(buffer, 0, buffer.Length).ShouldBe(100);
+        reports.ShouldBe([100]);
+
+        ps.Read(buffer, 0, 0).ShouldBe(0);
+        reports.ShouldBe([100]);
     }
 
     [Test]

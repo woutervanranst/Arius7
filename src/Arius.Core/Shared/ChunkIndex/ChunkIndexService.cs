@@ -21,6 +21,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     internal const           int          MaxShardEntryCount         = 1024;
     internal const           int          FlushWorkers               = 32;
     internal const           int          PrefixLoadWorkers          = 8;
+    private const             int          LookupBatchSize            = 256;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
     private readonly IBlobContainerService                            _blobs;
@@ -104,14 +105,21 @@ internal sealed class ChunkIndexService : IChunkIndexService
         if (hashes.Length == 0)
             return result;
 
+        // Probe pending-flush entries in one batch before remote validation.
+        var pendingFlush = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
+        foreach (var batch in hashes.Chunk(LookupBatchSize))
+        {
+            foreach (var (contentHash, entry) in _localStore.FindPendingFlushEntries(batch))
+                pendingFlush[contentHash] = entry;
+        }
+
         var validationWork = new List<(PathSegment Root, List<ContentHash> Hashes)>();
         foreach (var rootGroup in hashes.GroupBy(ChunkIndexRouter.GetRootPrefix))
         {
             var hashesNeedingValidation = new List<ContentHash>();
             foreach (var contentHash in rootGroup)
             {
-                var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
-                if (pendingFlushEntry is not null)
+                if (pendingFlush.TryGetValue(contentHash, out var pendingFlushEntry))
                 {
                     // Entry is local-only / dirty
                     result[contentHash] = pendingFlushEntry;
@@ -143,13 +151,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 await EnsureCoverageForHashesAsync(item.Root, item.Hashes, latestSnapshotName, ct);
             });
 
-        // Construct the result from the validated shards
+        // Populate the result from validated shards using batched lookups.
         foreach (var item in validationWork)
         {
-            foreach (var contentHash in item.Hashes)
+            foreach (var batch in item.Hashes.Chunk(LookupBatchSize))
             {
-                var entry = _localStore.FindEntry(contentHash);
-                if (entry is not null)
+                foreach (var (contentHash, entry) in _localStore.FindEntries(batch))
                     result[contentHash] = entry;
             }
         }

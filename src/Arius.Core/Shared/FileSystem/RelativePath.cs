@@ -95,7 +95,7 @@ public readonly record struct RelativePath
             return false;
         }
 
-        if (value.Contains('\\') || value.Contains("//", StringComparison.Ordinal) || value.Any(char.IsControl))
+        if (value.Contains('\\') || value.Contains("//", StringComparison.Ordinal) || ContainsControlCharacter(value))
         {
             path = default;
             return false;
@@ -164,4 +164,16 @@ public readonly record struct RelativePath
         => path.Value.Length == 0 ? new RelativePath(segment.ToString()) : new RelativePath($"{path.Value}/{segment}");
 
     public override string ToString() => Value;
+
+    /// <summary>
+    /// Allocation-free replacement for <c>value.Any(char.IsControl)</c>
+    /// </summary>
+    private static bool ContainsControlCharacter(string value)
+    {
+        foreach (var c in value)
+            if (char.IsControl(c))
+                return true;
+
+        return false;
+    }
 }

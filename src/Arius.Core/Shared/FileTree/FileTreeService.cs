@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.Extensions;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Logging;
@@ -243,6 +244,7 @@ internal sealed class FileTreeService : IFileTreeService
             await compressionStream.WriteAsync(plaintext, cancellationToken);
         }
 
+        // The codec chain closes ms; ToArray remains valid after close, unlike buffer-based accessors.
         return ms.ToArray();
     }
 
@@ -252,7 +254,8 @@ internal sealed class FileTreeService : IFileTreeService
         await using var decompressStream  = _compression.WrapForDecompression(decStream);
         using var       ms                = new MemoryStream();
         await decompressStream.CopyToAsync(ms, cancellationToken);
-        return FileTreeSerializer.Deserialize(ms.ToArray());
+        var             buffer            = ms.ToArraySegment();
+        return FileTreeSerializer.Deserialize(buffer.AsSpan());
     }
 
     private async Task WriteCacheAtomicallyAsync(RelativePath diskPath, ReadOnlyMemory<byte> plaintext, CancellationToken cancellationToken)
@@ -261,7 +264,7 @@ internal sealed class FileTreeService : IFileTreeService
 
         try
         {
-            await _diskCacheFileSystem.WriteAllBytesAsync(tempPath, plaintext.ToArray(), cancellationToken);
+            await _diskCacheFileSystem.WriteAllBytesAsync(tempPath, plaintext, cancellationToken);
             _diskCacheFileSystem.ReplaceFileAtomically(tempPath, diskPath);
         }
         finally

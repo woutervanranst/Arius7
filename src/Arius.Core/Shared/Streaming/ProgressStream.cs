@@ -1,19 +1,34 @@
+using System.Diagnostics;
+
 namespace Arius.Core.Shared.Streaming;
 
 /// <summary>
-/// Read-mode stream wrapper that reports cumulative bytes read via <see cref="IProgress{T}"/>.
-/// Delegates all reads to the inner stream and reports progress after each read operation.
-/// Does not buffer any data.
+/// Read-mode stream wrapper that reports cumulative bytes read without buffering.
+/// The first read reports immediately; later reports are limited to one per
+/// <see cref="ReportInterval"/>. The final total is emitted at EOF or disposal.
 /// </summary>
 public sealed class ProgressStream : Stream
 {
+    /// <summary>Minimum wall-clock gap between two progress callbacks.</summary>
+    private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly Func<long>  DefaultTimestampProvider = Stopwatch.GetTimestamp;
+
     private readonly Stream          _inner;
     private readonly IProgress<long> _progress;
+    private readonly Func<long>      _getTimestamp;
     private long                     _bytesRead;
+    private long                     _reportedBytes;
+    private long                     _lastReportTimestamp;
+    private bool                     _hasReported;
 
     /// <param name="inner">The readable source stream.</param>
     /// <param name="progress">Receives cumulative bytes read after each read call.</param>
     public ProgressStream(Stream inner, IProgress<long> progress)
+        : this(inner, progress, DefaultTimestampProvider)
+    {
+    }
+
+    internal ProgressStream(Stream inner, IProgress<long> progress, Func<long> timestampProvider)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(progress);
@@ -22,6 +37,40 @@ public sealed class ProgressStream : Stream
 
         _inner    = inner;
         _progress = progress;
+        _getTimestamp = timestampProvider;
+    }
+
+    /// <summary>
+    /// Reports the running total at most once per <see cref="ReportInterval"/> using monotonic time.
+    /// </summary>
+    private void ReportThrottled()
+    {
+        var now = _getTimestamp();
+
+        if (_hasReported && Stopwatch.GetElapsedTime(_lastReportTimestamp, now) < ReportInterval)
+            return;
+
+        _hasReported         = true;
+        _lastReportTimestamp = now;
+        _reportedBytes       = _bytesRead;
+        _progress.Report(_bytesRead);
+    }
+
+    /// <summary>
+    /// Reports any total withheld by throttling at EOF or disposal.
+    /// </summary>
+    private void ReportFinal()
+    {
+        // Empty sources do not emit a spurious zero.
+        if (_bytesRead == 0)
+            return;
+
+        if (_hasReported && _reportedBytes == _bytesRead)
+            return;
+
+        _hasReported   = true;
+        _reportedBytes = _bytesRead;
+        _progress.Report(_bytesRead);
     }
 
     public override bool CanRead  => true;
@@ -34,8 +83,13 @@ public sealed class ProgressStream : Stream
         if (n > 0)
         {
             _bytesRead += n;
-            _progress.Report(_bytesRead);
+            ReportThrottled();
         }
+        else if (count != 0)
+        {
+            ReportFinal();
+        }
+
         return n;
     }
 
@@ -45,8 +99,13 @@ public sealed class ProgressStream : Stream
         if (n > 0)
         {
             _bytesRead += n;
-            _progress.Report(_bytesRead);
+            ReportThrottled();
         }
+        else if (buffer.Length != 0)
+        {
+            ReportFinal();
+        }
+
         return n;
     }
 
@@ -56,8 +115,13 @@ public sealed class ProgressStream : Stream
         if (n > 0)
         {
             _bytesRead += n;
-            _progress.Report(_bytesRead);
+            ReportThrottled();
         }
+        else if (count != 0)
+        {
+            ReportFinal();
+        }
+
         return n;
     }
 
@@ -67,8 +131,13 @@ public sealed class ProgressStream : Stream
         if (n > 0)
         {
             _bytesRead += n;
-            _progress.Report(_bytesRead);
+            ReportThrottled();
         }
+        else if (buffer.Length != 0)
+        {
+            ReportFinal();
+        }
+
         return n;
     }
 
@@ -76,7 +145,12 @@ public sealed class ProgressStream : Stream
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _inner.Dispose();
+        if (disposing)
+        {
+            ReportFinal();
+            _inner.Dispose();
+        }
+
         base.Dispose(disposing);
     }
 

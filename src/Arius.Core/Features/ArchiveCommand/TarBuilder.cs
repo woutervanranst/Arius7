@@ -31,6 +31,16 @@ internal sealed class TarBuilder : IAsyncDisposable
     private MemoryStream? _tarStream;
     private long          _currentSize;
 
+    /// <summary>
+    /// Headroom for TAR framing beyond the summed file sizes.
+    /// </summary>
+    private const int FramingHeadroomDivisor = 4;
+
+    /// <summary>
+    /// Initial backing-buffer capacity for a bundle, clamped to the <see cref="MemoryStream"/> limit.
+    /// </summary>
+    private int InitialCapacity => (int)Math.Min(_targetSize + _targetSize / FramingHeadroomDivisor, int.MaxValue / 2);
+
     /// <param name="targetSize">A bundle is sealed once its accumulated size reaches this threshold.</param>
     /// <param name="encryption">Used to hash the sealed tar body.</param>
     /// <param name="onBundleStarted">Invoked when a new bundle is opened (its first entry).</param>
@@ -61,7 +71,7 @@ internal sealed class TarBuilder : IAsyncDisposable
         TarWriter writer;
         if (_tarWriter is null)
         {
-            _tarStream = new MemoryStream();
+            _tarStream = new MemoryStream(InitialCapacity);
             writer     = _tarWriter = new TarWriter(_tarStream, leaveOpen: true);
             await (_onBundleStarted?.Invoke() ?? ValueTask.CompletedTask);
         }
