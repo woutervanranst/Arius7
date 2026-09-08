@@ -17,19 +17,29 @@ internal static class HashCodec
             throw new FormatException($"Expected {Sha256HexLength} hex characters but got {value.Length}.");
 
         Span<char> chars = stackalloc char[Sha256HexLength];
+        var alreadyCanonical = true;
         for (var i = 0; i < value.Length; i++)
         {
             var c = value[i];
-            chars[i] = c switch
+            switch (c)
             {
-                >= '0' and <= '9' => c,
-                >= 'a' and <= 'f' => c,
-                >= 'A' and <= 'F' => char.ToLowerInvariant(c),
-                _ => throw new FormatException($"Invalid hex character '{c}'.")
-            };
+                case >= '0' and <= '9':
+                case >= 'a' and <= 'f':
+                    chars[i] = c;
+                    break;
+                case >= 'A' and <= 'F':
+                    chars[i]         = char.ToLowerInvariant(c);
+                    alreadyCanonical = false;
+                    break;
+                default:
+                    throw new FormatException($"Invalid hex character '{c}'.");
+            }
         }
 
-        return new string(chars);
+        // The dominant case is re-parsing a value Arius itself wrote (SQLite, snapshot JSON, blob names,
+        // pointer files), which is already canonical lowercase. Returning the input then avoids allocating
+        // a second identical string. Validation above has still run over every character.
+        return alreadyCanonical ? value : new string(chars);
     }
 
     public static string ToLowerHex(ReadOnlySpan<byte> digest)
@@ -37,6 +47,9 @@ internal static class HashCodec
         if (digest.Length != Sha256ByteLength)
             throw new ArgumentException($"Expected {Sha256ByteLength}-byte SHA-256 digest.", nameof(digest));
 
-        return Convert.ToHexString(digest).ToLowerInvariant();
+        // Not Convert.ToHexString(...).ToLowerInvariant(): that allocates the uppercase string and then a
+        // second lowercased copy. This is the funnel every ContentHash/ChunkHash/FileTreeHash construction
+        // passes through.
+        return Convert.ToHexStringLower(digest);
     }
 }
