@@ -273,6 +273,17 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
         await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
     }
 
+    /// <summary>
+    /// Writes <paramref name="content"/> to <paramref name="path"/> without copying it to an array first.
+    /// Mirrors <see cref="File.WriteAllBytesAsync(string, ReadOnlyMemory{byte}, CancellationToken)"/>.
+    /// </summary>
+    public async Task WriteAllBytesAsync(RelativePath path, ReadOnlyMemory<byte> content, CancellationToken cancellationToken)
+    {
+        var fullPath = root.Resolve(path);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
+        await File.WriteAllBytesAsync(fullPath, content, cancellationToken);
+    }
+
     public void ReplaceFileAtomically(RelativePath source, RelativePath destination)
     {
         var sourcePath = root.Resolve(source);
