@@ -252,6 +252,21 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
     /// <summary>
     /// Appends text to a file within the rooted directory, creating the file (and parent directories) if needed.
     /// </summary>
+    /// <summary>
+    /// Opens a file for appending, creating it if needed, and leaves the handle open for the caller to
+    /// reuse across writes. <see cref="AppendAllTextAsync"/> opens, writes, and closes per call — fine for
+    /// one-off appends, wasteful when the same file is appended to repeatedly.
+    /// </summary>
+    public Stream OpenAppend(RelativePath path)
+    {
+        var fullPath = root.Resolve(path);
+        CreateDirectory(path.Parent ?? RelativePath.Root);
+        // FileShare.Read matches what File.AppendAllTextAsync used, so a reader can still open the file
+        // while the handle is held — FileTreeBuilder reads staged nodes, and holding them exclusively for
+        // the length of an archive would be a behaviour change, not just a test inconvenience.
+        return new FileStream(fullPath, FileMode.Append, FileAccess.Write, FileShare.Read, 65536, useAsync: true);
+    }
+
     public async Task AppendAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
         var fullPath = root.Resolve(path);

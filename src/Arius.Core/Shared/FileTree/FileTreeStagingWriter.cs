@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Text;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -7,9 +9,28 @@ internal sealed class FileTreeStagingWriter : IDisposable
 {
     private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks
 
-    private readonly SemaphoreSlim[] _lockStripes;
+    private readonly Stripe[]           _lockStripes;
     private readonly RelativeFileSystem _stagingFileSystem;
-    private          bool            _disposed;
+    private          bool               _disposed;
+
+    /// <summary>
+    /// One lock plus one open append handle. Every write to a node goes through its stripe's gate, so the
+    /// gate also guards that stripe's handle — which is what makes keeping it open safe without a second
+    /// lock or a race between a write and an eviction. Handles are bounded by <see cref="StripeCount"/>,
+    /// which matters on the small NAS hardware Arius targets.
+    /// </summary>
+    private sealed class Stripe : IDisposable
+    {
+        public readonly SemaphoreSlim Gate = new(1, 1);
+        public RelativePath?          OpenPath;
+        public Stream?                Handle;
+
+        public void Dispose()
+        {
+            Handle?.Dispose();
+            Gate.Dispose();
+        }
+    }
 
     // A directory id is globally unique to its full path, so its parent→child edge line is identical
     // no matter which descendant file triggers it. Emit each edge once: without this, a deep tree
@@ -23,7 +44,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
     {
         _stagingFileSystem = new RelativeFileSystem(stagingRoot);
         _lockStripes = Enumerable.Range(0, StripeCount)
-            .Select(_ => new SemaphoreSlim(1, 1))
+            .Select(_ => new Stripe())
             .ToArray();
     }
 
@@ -96,18 +117,50 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
     private async Task AppendLineAsync(RelativePath path, string line, CancellationToken cancellationToken)
     {
-        var nodeLock = _lockStripes[(uint)StringComparer.Ordinal.GetHashCode(path) % (uint)_lockStripes.Length];
-        await nodeLock.WaitAsync(cancellationToken);
+        // path.GetHashCode(), not StringComparer.Ordinal.GetHashCode(path): RelativePath is a struct, so
+        // the latter bound to IEqualityComparer.GetHashCode(object) — boxing on every append and then
+        // falling through to path.GetHashCode() anyway, so the comparer was doing nothing.
+        var stripe = _lockStripes[(uint)path.GetHashCode() % (uint)_lockStripes.Length];
+        await stripe.Gate.WaitAsync(cancellationToken);
 
         try
         {
+            // Reuse this stripe's handle when it is already pointed at the node. The archive walk is
+            // depth-first, so consecutive files land in the same directory and hit the same node, making
+            // this the common case. Re-targeting closes the previous handle first.
+            if (stripe.OpenPath != path)
+            {
+                stripe.Handle?.Dispose();
+                stripe.Handle   = _stagingFileSystem.OpenAppend(path);
+                stripe.OpenPath = path;
+            }
+
             // Fixed '\n' (not Environment.NewLine): staged lines are re-serialized by FileTreeSerializer
             // before hashing, but keep the staging format platform-independent and consistent with it.
-            await _stagingFileSystem.AppendAllTextAsync(path, line + "\n", cancellationToken);
+            // Written as UTF-8 bytes with no BOM, matching what File.AppendAllTextAsync produced.
+            var buffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetMaxByteCount(line.Length) + 1);
+            try
+            {
+                var count = Encoding.UTF8.GetBytes(line, buffer);
+                buffer[count++] = (byte)'\n';
+
+                await stripe.Handle!.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+
+                // Flush per line rather than buffering. Staging is disposable scratch, so buffering would
+                // be durable enough, but flushing keeps the failure semantics exact: a write error surfaces
+                // from this call, which is what the caller's claim-release in AppendDirectoryEntriesAsync
+                // depends on. The win here is dropping the per-line open/create-directory/close, not the
+                // write itself.
+                await stripe.Handle.FlushAsync(cancellationToken);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         finally
         {
-            nodeLock.Release();
+            stripe.Gate.Release();
         }
     }
 
@@ -118,7 +171,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         _disposed = true;
 
-        foreach (var nodeLock in _lockStripes)
-            nodeLock.Dispose();
+        foreach (var stripe in _lockStripes)
+            stripe.Dispose();
     }
 }
