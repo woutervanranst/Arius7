@@ -55,6 +55,9 @@ internal sealed record BenchmarkRunOptions(
             }
         }
 
+        if (filter is not null && benchmarkClass is not BenchmarkClass.Micro)
+            throw new ArgumentException("--filter is only supported with --class micro.");
+
         return new(
             repositoryRoot,
             Path.GetFullPath(rawOutputRoot),
