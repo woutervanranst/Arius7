@@ -21,6 +21,7 @@ internal sealed class ChunkIndexService : IChunkIndexService
     internal const           int          MaxShardEntryCount         = 1024;
     internal const           int          FlushWorkers               = 32;
     internal const           int          PrefixLoadWorkers          = 8;
+    private const             int          LookupBatchSize            = 256;
     internal static readonly RelativePath RepairInProgressMarkerPath = RelativePath.Root / PathSegment.Parse("chunk-index.repair-in-progress");
 
     private readonly IBlobContainerService                            _blobs;
@@ -105,7 +106,12 @@ internal sealed class ChunkIndexService : IChunkIndexService
             return result;
 
         // Probe pending-flush entries in one batch before remote validation.
-        var pendingFlush = _localStore.FindPendingFlushEntries(hashes);
+        var pendingFlush = new Dictionary<ContentHash, ShardEntry>(hashes.Length);
+        foreach (var batch in hashes.Chunk(LookupBatchSize))
+        {
+            foreach (var (contentHash, entry) in _localStore.FindPendingFlushEntries(batch))
+                pendingFlush[contentHash] = entry;
+        }
 
         var validationWork = new List<(PathSegment Root, List<ContentHash> Hashes)>();
         foreach (var rootGroup in hashes.GroupBy(ChunkIndexRouter.GetRootPrefix))
@@ -148,8 +154,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
         // Populate the result from validated shards using batched lookups.
         foreach (var item in validationWork)
         {
-            foreach (var (contentHash, entry) in _localStore.FindEntries(item.Hashes))
-                result[contentHash] = entry;
+            foreach (var batch in item.Hashes.Chunk(LookupBatchSize))
+            {
+                foreach (var (contentHash, entry) in _localStore.FindEntries(batch))
+                    result[contentHash] = entry;
+            }
         }
 
         return result;

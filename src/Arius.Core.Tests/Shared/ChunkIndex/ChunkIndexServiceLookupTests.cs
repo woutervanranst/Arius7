@@ -300,6 +300,30 @@ public class ChunkIndexServiceLookupTests
     }
 
     [Test]
+    public async Task LookupAsync_SameRootBatchLargerThan256_ResolvesAllEntries()
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var hashes = Enumerable.Range(0, 300)
+            .Select(index => ContentHash.Parse($"aa{index:X62}"))
+            .ToArray();
+        var entries = hashes
+            .Select((hash, index) => new ShardEntry(hash, FakeChunkHash((char)('0' + index % 10)), index + 1, index + 1, BlobTier.Cool))
+            .ToArray();
+
+        blobs.SeedBlob(
+            BlobPaths.ChunkIndexShardPath(PathSegment.Parse("aa")),
+            await ShardSerializer.SerializeAsync(CreateShard(entries), IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance),
+            BlobTier.Cool);
+        using var index = CreateIndex(blobs, "large-same-root-batch");
+
+        var result = await index.LookupAsync(hashes);
+
+        result.Count.ShouldBe(300);
+        foreach (var entry in entries)
+            result[entry.ContentHash].ShouldBe(entry);
+    }
+
+    [Test]
     public async Task LookupAsync_CorruptCleanSqlite_FailsWithLocalStoreRecoveryGuidance()
     {
         var blobs = new FakeInMemoryBlobContainerService();
