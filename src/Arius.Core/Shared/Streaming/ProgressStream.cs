@@ -11,6 +11,7 @@ public sealed class ProgressStream : Stream
 {
     /// <summary>Minimum wall-clock gap between two progress callbacks.</summary>
     private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly Func<long>  DefaultTimestampProvider = Stopwatch.GetTimestamp;
 
     private readonly Stream          _inner;
     private readonly IProgress<long> _progress;
@@ -22,7 +23,12 @@ public sealed class ProgressStream : Stream
 
     /// <param name="inner">The readable source stream.</param>
     /// <param name="progress">Receives cumulative bytes read after each read call.</param>
-    public ProgressStream(Stream inner, IProgress<long> progress, Func<long>? timestampProvider = null)
+    public ProgressStream(Stream inner, IProgress<long> progress)
+        : this(inner, progress, DefaultTimestampProvider)
+    {
+    }
+
+    internal ProgressStream(Stream inner, IProgress<long> progress, Func<long> timestampProvider)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(progress);
@@ -31,7 +37,7 @@ public sealed class ProgressStream : Stream
 
         _inner    = inner;
         _progress = progress;
-        _getTimestamp = timestampProvider ?? Stopwatch.GetTimestamp;
+        _getTimestamp = timestampProvider;
     }
 
     /// <summary>
