@@ -77,25 +77,25 @@ public static class BlobPaths
     // NOTE: These methods require a strong domain type (unless there is none). For string convenience overloads used in Test suites, see Arius.Tests.Shared.BlobPathsExtensions.
 
     /// <summary>Content-addressable chunks: large files and thin pointers.</summary>
-    public static RelativePath ChunksPrefix => RelativePath.Root / PathSegment.Parse("chunks");
+    public static readonly RelativePath ChunksPrefix = RelativePath.Root / PathSegment.Parse("chunks");
 
     /// <summary>Temporary Hot-tier copies for in-progress rehydration.</summary>
-    public static RelativePath ChunksRehydratedPrefix => RelativePath.Root / PathSegment.Parse("chunks-rehydrated");
+    public static readonly RelativePath ChunksRehydratedPrefix = RelativePath.Root / PathSegment.Parse("chunks-rehydrated");
 
     /// <summary>
     /// Chunk metadata sidecars for chunks whose own metadata cannot be written — Archive-tier blobs migrated from v5, where Azure forbids Set Blob Metadata.
     /// NOTE: if chunk pruning/GC is ever added, deleting a chunk must also delete its metadata sidecar.
     /// </summary>
-    public static RelativePath V5LegacySideCarPrefix => RelativePath.Root / PathSegment.Parse("chunks-v5legacy-metadata");
+    public static readonly RelativePath V5LegacySideCarPrefix = RelativePath.Root / PathSegment.Parse("chunks-v5legacy-metadata");
 
     /// <summary>Merkle tree blobs (one per directory).</summary>
-    public static RelativePath FileTreesPrefix => RelativePath.Root / PathSegment.Parse("filetrees");
+    public static readonly RelativePath FileTreesPrefix = RelativePath.Root / PathSegment.Parse("filetrees");
 
     /// <summary>Snapshot manifests.</summary>
-    public static RelativePath SnapshotsPrefix => RelativePath.Root / PathSegment.Parse("snapshots");
+    public static readonly RelativePath SnapshotsPrefix = RelativePath.Root / PathSegment.Parse("snapshots");
 
     /// <summary>Chunk index shards.</summary>
-    public static RelativePath ChunkIndexPrefix => RelativePath.Root / PathSegment.Parse("chunk-index");
+    public static readonly RelativePath ChunkIndexPrefix = RelativePath.Root / PathSegment.Parse("chunk-index");
 
     public static RelativePath ChunkPath(ChunkHash hash)               => ChunksPrefix / PathSegment.Parse(hash.ToString());
     public static RelativePath ThinChunkPath(ContentHash hash)         => ChunksPrefix / PathSegment.Parse(hash.ToString());

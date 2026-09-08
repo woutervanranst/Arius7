@@ -38,7 +38,7 @@ public readonly record struct PathSegment
             return false;
         }
 
-        if (value.Contains('/') || value.Contains('\\') || value.Any(char.IsControl))
+        if (value.Contains('/') || value.Contains('\\') || ContainsControlCharacter(value))
         {
             segment = default;
             return false;
@@ -72,4 +72,18 @@ public readonly record struct PathSegment
     }
 
     public override string ToString() => Value;
+
+    /// <summary>
+    /// Allocation-free replacement for <c>value.Any(char.IsControl)</c>, which allocates a CharEnumerator
+    /// on every call. <c>Parse</c> runs for every blob path and every filetree entry, so it is hot.
+    /// <c>foreach</c> over a string is compiled to indexer access, so this allocates nothing.
+    /// </summary>
+    private static bool ContainsControlCharacter(string value)
+    {
+        foreach (var c in value)
+            if (char.IsControl(c))
+                return true;
+
+        return false;
+    }
 }

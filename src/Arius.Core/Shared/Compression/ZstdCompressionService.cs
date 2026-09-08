@@ -13,7 +13,7 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
     : ICompressionService
 {
     // Magic number at the start of a zstd frame (little-endian on disk).
-    private static readonly byte[] ZstdMagic = [0x28, 0xB5, 0x2F, 0xFD]; // 0xFD2FB528
+    private static ReadOnlySpan<byte> ZstdMagic => [0x28, 0xB5, 0x2F, 0xFD]; // 0xFD2FB528
 
     // Legacy "+gzip" blobs are decoded by the gzip codec; reads delegate to it when a gzip frame is detected.
     private static readonly GZipCompressionService LegacyGzip = new();
