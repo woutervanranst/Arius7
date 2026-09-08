@@ -5,7 +5,7 @@ namespace Arius.Core.Tests.Shared.Streaming;
 public class ProgressStreamTests
 {
     [Test]
-    public void Read_ReportsProgressAfterEachChunk()
+    public void Read_CoalescesReports_ButStillReportsTheTotal()
     {
         var data     = new byte[1024];
         Random.Shared.NextBytes(data);
@@ -17,9 +17,13 @@ public class ProgressStreamTests
         var buf = new byte[256];
         while (ps.Read(buf, 0, buf.Length) > 0) { }
 
-        reports.Count.ShouldBe(4);
-        reports[^1].ShouldBe(1024);
+        // Reports are throttled to one per 500 ms (plus the first read and the EOF total), so four
+        // in-memory reads no longer produce four reports. What must hold is that progress starts
+        // promptly, never goes backwards, and ends at the true total.
+        reports.ShouldNotBeEmpty();
+        reports.Count.ShouldBeLessThanOrEqualTo(4);
         reports.ShouldBeInOrder();
+        reports[^1].ShouldBe(1024);
     }
 
     [Test]
