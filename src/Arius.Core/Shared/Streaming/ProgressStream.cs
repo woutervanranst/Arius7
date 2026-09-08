@@ -14,6 +14,7 @@ public sealed class ProgressStream : Stream
 
     private readonly Stream          _inner;
     private readonly IProgress<long> _progress;
+    private readonly Func<long>      _getTimestamp;
     private long                     _bytesRead;
     private long                     _reportedBytes;
     private long                     _lastReportTimestamp;
@@ -21,7 +22,7 @@ public sealed class ProgressStream : Stream
 
     /// <param name="inner">The readable source stream.</param>
     /// <param name="progress">Receives cumulative bytes read after each read call.</param>
-    public ProgressStream(Stream inner, IProgress<long> progress)
+    public ProgressStream(Stream inner, IProgress<long> progress, Func<long>? timestampProvider = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(progress);
@@ -30,6 +31,7 @@ public sealed class ProgressStream : Stream
 
         _inner    = inner;
         _progress = progress;
+        _getTimestamp = timestampProvider ?? Stopwatch.GetTimestamp;
     }
 
     /// <summary>
@@ -37,7 +39,7 @@ public sealed class ProgressStream : Stream
     /// </summary>
     private void ReportThrottled()
     {
-        var now = Stopwatch.GetTimestamp();
+        var now = _getTimestamp();
 
         if (_hasReported && Stopwatch.GetElapsedTime(_lastReportTimestamp, now) < ReportInterval)
             return;
