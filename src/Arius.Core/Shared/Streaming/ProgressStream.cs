@@ -79,7 +79,7 @@ public sealed class ProgressStream : Stream
             _bytesRead += n;
             ReportThrottled();
         }
-        else
+        else if (count != 0)
         {
             ReportFinal();
         }
@@ -95,7 +95,7 @@ public sealed class ProgressStream : Stream
             _bytesRead += n;
             ReportThrottled();
         }
-        else
+        else if (buffer.Length != 0)
         {
             ReportFinal();
         }
@@ -111,7 +111,7 @@ public sealed class ProgressStream : Stream
             _bytesRead += n;
             ReportThrottled();
         }
-        else
+        else if (count != 0)
         {
             ReportFinal();
         }
@@ -127,7 +127,7 @@ public sealed class ProgressStream : Stream
             _bytesRead += n;
             ReportThrottled();
         }
-        else
+        else if (buffer.Length != 0)
         {
             ReportFinal();
         }

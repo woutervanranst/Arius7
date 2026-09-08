@@ -93,6 +93,22 @@ public class ProgressStreamTests
     }
 
     [Test]
+    public void Read_ZeroLengthBuffer_DoesNotReportFinalProgress()
+    {
+        using var src = new MemoryStream(new byte[100]);
+        var reports = new List<long>();
+        var progress = new SyncProgress<long>(value => reports.Add(value));
+        using var ps = new ProgressStream(src, progress);
+
+        var buffer = new byte[100];
+        ps.Read(buffer, 0, buffer.Length).ShouldBe(100);
+        reports.ShouldBe([100]);
+
+        ps.Read(buffer, 0, 0).ShouldBe(0);
+        reports.ShouldBe([100]);
+    }
+
+    [Test]
     public void ReadSpan_ReportsProgress()
     {
         var data  = new byte[100];
