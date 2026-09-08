@@ -62,8 +62,8 @@ public class AllocationBenchmarks
     [Benchmark(Description = "SparseFingerprint.Sampler small file (200 KB)")]
     public byte[] SparseFingerprint_Sampler_SmallFile()
     {
-        var sampler  = new SparseFingerprint.Sampler(SmallFileSize);
-        var position = 0L;
+        using var sampler = new SparseFingerprint.Sampler(SmallFileSize);
+        var position      = 0L;
 
         while (position < SmallFileSize)
         {
@@ -78,7 +78,10 @@ public class AllocationBenchmarks
     /// <summary>Worst case for the capture buffers: 64 regions x 256 KiB = 16 MiB per in-flight file.</summary>
     [Benchmark(Description = "SparseFingerprint.Sampler large file (64 GB logical)")]
     public byte[] SparseFingerprint_Sampler_LargeFile()
-        => new SparseFingerprint.Sampler(LargeFileSize).Finish();
+    {
+        using var sampler = new SparseFingerprint.Sampler(LargeFileSize);
+        return sampler.Finish();
+    }
 
     // ── Filetree serialization ───────────────────────────────────────────────────
 

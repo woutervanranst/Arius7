@@ -61,7 +61,7 @@ public class SparseFingerprintTests
         fp.Length.ShouldBe(32);
 
         // And it must still agree with the streaming Sampler over the same content.
-        var sampler = new SparseFingerprint.Sampler(size);
+        using var sampler = new SparseFingerprint.Sampler(size);
         var pos = 0;
         const int chunk = 64 * 1024;
         while (pos < data.Length)
@@ -83,7 +83,7 @@ public class SparseFingerprintTests
         var seekFp = SparseFingerprint.ComputeBySeeking(fs, path, size);
 
         // Drive the sampler the way a sequential read would.
-        var sampler = new SparseFingerprint.Sampler(size);
+        using var sampler = new SparseFingerprint.Sampler(size);
         var pos = 0;
         const int chunk = 64 * 1024;
         while (pos < data.Length)
