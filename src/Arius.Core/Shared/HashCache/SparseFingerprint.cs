@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 
 namespace Arius.Core.Shared.HashCache;
@@ -48,21 +50,36 @@ internal static class SparseFingerprint
     public static byte[] ComputeBySeeking(RelativeFileSystem fs, RelativePath path, long size)
     {
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        sha.AppendData(BitConverter.GetBytes(size));
+        AppendSize(sha, size);
 
         using var stream = fs.OpenRead(path);
         var regions = Regions(size);
+        if (regions.Count == 0)
+            return sha.GetHashAndReset();
+
         // Buffer the largest region: the single whole-file region for a small file can reach k×BlockSize
         // (up to 1 MiB at k=MinBlocks), which is larger than BlockSize — a fixed BlockSize buffer would
         // overflow ReadExactly for files in (BlockSize, k×BlockSize].
-        var buffer = new byte[regions.Count == 0 ? 0 : regions.Max(r => r.Length)];
-        foreach (var (offset, length) in regions)
+        var longest = 0;
+        for (var i = 0; i < regions.Count; i++)
+            longest = Math.Max(longest, regions[i].Length);
+
+        var buffer = ArrayPool<byte>.Shared.Rent(longest);
+        try
         {
-            stream.Seek(offset, SeekOrigin.Begin);
-            stream.ReadExactly(buffer, 0, length);
-            sha.AppendData(buffer, 0, length);
+            foreach (var (offset, length) in regions)
+            {
+                stream.Seek(offset, SeekOrigin.Begin);
+                stream.ReadExactly(buffer, 0, length);
+                sha.AppendData(buffer, 0, length);
+            }
+
+            return sha.GetHashAndReset();
         }
-        return sha.GetHashAndReset();
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     /// <summary>
@@ -72,17 +89,42 @@ internal static class SparseFingerprint
     /// for the same content (same <see cref="Regions"/>, same <c>size ‖ region-bytes</c> framing) — keep
     /// the two in sync.
     /// </summary>
-    public sealed class Sampler
+    public sealed class Sampler : IDisposable
     {
         private readonly long                               _size;
         private readonly IReadOnlyList<(long Off, int Len)> _regions;
-        private readonly byte[][]                           _captured;
+
+        /// <summary>
+        /// The regions laid out back-to-back in one pooled buffer, so <see cref="Finish"/> can hash the whole
+        /// span in one call — byte-identical to hashing each region in order, which is what the framing
+        /// contract with <see cref="ComputeBySeeking"/> requires.
+        /// </summary>
+        private readonly byte[] _buffer;
+        private readonly int[]  _bufferOffsets;
+        private readonly int    _capturedLength;
+
+        private bool _disposed;
 
         public Sampler(long size)
         {
-            _size     = size;
-            _regions  = Regions(size);
-            _captured = _regions.Select(r => new byte[r.Len]).ToArray();
+            _size    = size;
+            _regions = Regions(size);
+
+            _bufferOffsets = new int[_regions.Count];
+            var total = 0;
+            for (var i = 0; i < _regions.Count; i++)
+            {
+                _bufferOffsets[i] = total;
+                total            += _regions[i].Len;
+            }
+
+            _capturedLength = total;
+            _buffer         = ArrayPool<byte>.Shared.Rent(total);
+
+            // A rented buffer arrives dirty. A region that is never offered to Capture — a file that shrank
+            // mid-read, or a read that stopped early — must contribute zeros, exactly as the previous
+            // per-region `new byte[]` did, or the fingerprint stops being a function of the content.
+            _buffer.AsSpan(0, _capturedLength).Clear();
         }
 
         /// <summary>Offer the bytes read at <paramref name="position"/>; overlapping region bytes are copied out.</summary>
@@ -97,17 +139,36 @@ internal static class SparseFingerprint
                     continue;
                 var srcStart = (int)(from - position);
                 var dstStart = (int)(from - off);
-                buffer.Slice(srcStart, (int)(to - from)).CopyTo(_captured[i].AsSpan(dstStart));
+                buffer.Slice(srcStart, (int)(to - from)).CopyTo(_buffer.AsSpan(_bufferOffsets[i] + dstStart));
             }
         }
 
         public byte[] Finish()
         {
             using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            sha.AppendData(BitConverter.GetBytes(_size));
-            foreach (var region in _captured)
-                sha.AppendData(region);
+            AppendSize(sha, _size);
+            sha.AppendData(_buffer.AsSpan(0, _capturedLength));
             return sha.GetHashAndReset();
         }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            ArrayPool<byte>.Shared.Return(_buffer);
+        }
+    }
+
+    /// <summary>
+    /// Frames the file size into the digest as 8 little-endian bytes. Both compute paths must agree on this
+    /// exactly — it is the <c>size ‖ region-bytes</c> prefix.
+    /// </summary>
+    private static void AppendSize(IncrementalHash sha, long size)
+    {
+        Span<byte> sizeBytes = stackalloc byte[sizeof(long)];
+        BinaryPrimitives.WriteInt64LittleEndian(sizeBytes, size);
+        sha.AppendData(sizeBytes);
     }
 }

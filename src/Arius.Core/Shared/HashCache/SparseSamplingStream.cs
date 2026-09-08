@@ -63,9 +63,14 @@ internal sealed class SparseSamplingStream : Stream
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) 
-            _inner.Dispose(); 
-        
+        if (disposing)
+        {
+            // Returns the sampler's pooled capture buffer. Fingerprint() must therefore be called before
+            // this stream is disposed — which is the existing call order in ArchiveCommandHandler.
+            _sampler.Dispose();
+            _inner.Dispose();
+        }
+
         base.Dispose(disposing); 
     }
 }
