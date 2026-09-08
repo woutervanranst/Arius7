@@ -74,9 +74,7 @@ public readonly record struct PathSegment
     public override string ToString() => Value;
 
     /// <summary>
-    /// Allocation-free replacement for <c>value.Any(char.IsControl)</c>, which allocates a CharEnumerator
-    /// on every call. <c>Parse</c> runs for every blob path and every filetree entry, so it is hot.
-    /// <c>foreach</c> over a string is compiled to indexer access, so this allocates nothing.
+    /// Allocation-free replacement for <c>value.Any(char.IsControl)</c>
     /// </summary>
     private static bool ContainsControlCharacter(string value)
     {

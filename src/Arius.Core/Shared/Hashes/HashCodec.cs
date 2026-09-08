@@ -36,9 +36,7 @@ internal static class HashCodec
             }
         }
 
-        // The dominant case is re-parsing a value Arius itself wrote (SQLite, snapshot JSON, blob names,
-        // pointer files), which is already canonical lowercase. Returning the input then avoids allocating
-        // a second identical string. Validation above has still run over every character.
+        // Preserve canonical input to avoid allocating a duplicate string.
         return alreadyCanonical ? value : new string(chars);
     }
 
@@ -47,9 +45,6 @@ internal static class HashCodec
         if (digest.Length != Sha256ByteLength)
             throw new ArgumentException($"Expected {Sha256ByteLength}-byte SHA-256 digest.", nameof(digest));
 
-        // Not Convert.ToHexString(...).ToLowerInvariant(): that allocates the uppercase string and then a
-        // second lowercased copy. This is the funnel every ContentHash/ChunkHash/FileTreeHash construction
-        // passes through.
         return Convert.ToHexStringLower(digest);
     }
 }

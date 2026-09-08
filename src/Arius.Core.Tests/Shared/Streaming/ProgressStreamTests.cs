@@ -17,9 +17,7 @@ public class ProgressStreamTests
         var buf = new byte[256];
         while (ps.Read(buf, 0, buf.Length) > 0) { }
 
-        // Reports are throttled to one per 500 ms (plus the first read and the EOF total), so four
-        // in-memory reads no longer produce four reports. What must hold is that progress starts
-        // promptly, never goes backwards, and ends at the true total.
+        // Reports are throttled, so assert prompt, monotonic progress ending at the true total rather than an exact sequence.
         reports.ShouldNotBeEmpty();
         reports.Count.ShouldBeLessThanOrEqualTo(4);
         reports.ShouldBeInOrder();

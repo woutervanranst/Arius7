@@ -149,16 +149,8 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
     }
 }
 
-// ── FileDedupedHandler ────────────────────────────────────────────────────────
-
 /// <summary>
-/// Removes the <see cref="TrackedFile"/> rows for a file that deduplicated away.
-///
-/// Without this there was no FileDedupedEvent handler at all — the Mediator source generator warns
-/// "found message without any registered handler" for it — so a deduped file stayed in
-/// <see cref="ProgressState.TrackedFiles"/> in state Hashed for the whole run. That dictionary grew
-/// unboundedly with the deduped file count *and* is snapshotted by the display roughly ten times a
-/// second, making the redraw cost scale with total files archived rather than files in flight.
+/// Removes tracked files when their content is deduplicated.
 /// </summary>
 public sealed class FileDedupedHandler(ProgressState state) : INotificationHandler<FileDedupedEvent>
 {

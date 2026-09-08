@@ -244,10 +244,7 @@ internal sealed class FileTreeService : IFileTreeService
             await compressionStream.WriteAsync(plaintext, cancellationToken);
         }
 
-        // ToArray() and not ToArraySegment(): disposing the encryption/compression chain above also closes
-        // `ms`, and ToArray() is the only MemoryStream buffer accessor that stays valid after close
-        // (Length and TryGetBuffer both throw ObjectDisposedException). Avoiding this copy would need a
-        // leaveOpen on IEncryptionService.WrapForEncryption, or a non-closing stream shim.
+        // The codec chain closes ms; ToArray remains valid after close, unlike buffer-based accessors.
         return ms.ToArray();
     }
 

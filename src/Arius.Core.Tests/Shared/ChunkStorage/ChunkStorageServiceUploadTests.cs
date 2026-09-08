@@ -224,9 +224,7 @@ public class ChunkStorageServiceUploadTests
         result.AlreadyExisted.ShouldBeFalse();
         blobs.DeletedBlobNames.ShouldContain(blobName);
 
-        // The point of this test is that the retry does not restart or duplicate the progress sequence.
-        // ProgressStream coalesces reports, so assert that property rather than an exact byte sequence:
-        // strictly increasing (no repeat, no reset) and finishing at the true total.
+        // Verify that retry progress is monotonic and ends at the true total; intermediate reports are throttled.
         reports.ShouldNotBeEmpty();
         reports.ShouldBeInOrder();
         reports.Distinct().Count().ShouldBe(reports.Count);
