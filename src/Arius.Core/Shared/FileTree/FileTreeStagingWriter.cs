@@ -90,9 +90,6 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
     private async Task AppendLineAsync(RelativePath path, string line, CancellationToken cancellationToken)
     {
-        // path.GetHashCode(), not StringComparer.Ordinal.GetHashCode(path): RelativePath is a struct, so
-        // the latter bound to IEqualityComparer.GetHashCode(object) — boxing on every append and then
-        // falling through to path.GetHashCode() anyway, so the comparer was doing nothing.
         var nodeLock = _lockStripes[(uint)path.GetHashCode() % (uint)_lockStripes.Length];
         await nodeLock.WaitAsync(cancellationToken);
 

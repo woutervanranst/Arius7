@@ -111,10 +111,7 @@ public class AllocationBenchmarks
         return sealedCount;
     }
 
-    /// <summary>
-    /// A handful of small files: the shape of a tiny repository, and of every run's partial tail bundle.
-    /// Presizing unconditionally to TarTargetSize reserved the full target here for a few KB of payload.
-    /// </summary>
+    /// <summary>A handful of small files: the shape of a tiny repository or a small tail bundle.</summary>
     [Benchmark(Description = "TarBuilder seal one small bundle (5 x 1 KB)")]
     public async Task<int> TarBuilder_Seal_SmallBundle()
     {
