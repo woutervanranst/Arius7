@@ -109,8 +109,7 @@ public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHan
     {
         state.RemoveContentHash(notification.ContentHash);
 
-        var tar = state.AccumulatingTar;
-        if (tar is { State: TarState.Accumulating })
+        if (state.AccumulatingTar is { } tar)
         {
             var addedBytes = notification.CurrentTarSize - tar.AccumulatedBytes;
             tar.AddEntry(addedBytes > 0 ? addedBytes : 0);
@@ -129,8 +128,7 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
 {
     public ValueTask Handle(TarBundleSealingEvent notification, CancellationToken cancellationToken)
     {
-        var tar = state.AccumulatingTar;
-        if (tar is { State: TarState.Accumulating or TarState.Sealing })
+        if (state.AccumulatingTar is { } tar)
         {
             tar.TarHash    = notification.TarHash;
             // Use the sealed tar's archive byte size (headers + padding included), not the sum of file
