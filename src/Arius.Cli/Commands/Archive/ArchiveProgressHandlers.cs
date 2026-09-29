@@ -107,9 +107,7 @@ public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(TarEntryAddedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var paths))
-            foreach (var path in paths)
-                state.RemoveFile(path);
+        state.RemoveContentHash(notification.ContentHash);
 
         var tar = state.AccumulatingTar;
         if (tar is { State: TarState.Accumulating })
@@ -156,10 +154,7 @@ public sealed class FileDedupedHandler(ProgressState state) : INotificationHandl
 {
     public ValueTask Handle(FileDedupedEvent notification, CancellationToken cancellationToken)
     {
-        // Only this path. A content hash can map to several paths in one run, and the first copy is the
-        // one being uploaded — removing by hash would drop its progress row mid-upload and make the
-        // subsequent ChunkUploadingEvent miss it, skipping IncrementFilesUnique.
-        state.RemoveFile(notification.RelativePath);
+        state.RemoveDeduplicatedFile(notification.RelativePath, notification.ContentHash);
 
         return ValueTask.CompletedTask;
     }
@@ -204,9 +199,7 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(ContentHash.Parse(notification.ChunkHash), out var paths))
-            foreach (var path in paths)
-                state.RemoveFile(path);
+        state.RemoveContentHash(ContentHash.Parse(notification.ChunkHash));
         state.IncrementChunksUploaded(notification.StoredSize);
         return ValueTask.CompletedTask;
     }
