@@ -156,9 +156,10 @@ public sealed class FileDedupedHandler(ProgressState state) : INotificationHandl
 {
     public ValueTask Handle(FileDedupedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var paths))
-            foreach (var path in paths)
-                state.RemoveFile(path);
+        // Only this path. A content hash can map to several paths in one run, and the first copy is the
+        // one being uploaded — removing by hash would drop its progress row mid-upload and make the
+        // subsequent ChunkUploadingEvent miss it, skipping IncrementFilesUnique.
+        state.RemoveFile(notification.RelativePath);
 
         return ValueTask.CompletedTask;
     }

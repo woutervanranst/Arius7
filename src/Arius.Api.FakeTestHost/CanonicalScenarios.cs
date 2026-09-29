@@ -18,7 +18,7 @@ public static class CanonicalScenarios
             new FileHashingEvent(RelativePath.Parse("big.bin"), 100_000_000),
             new FileHashedEvent(RelativePath.Parse("big.bin"), ContentHash.Parse(new string('a', 64)), FastHashReused: false, FastHashRehashed: true, FileSize: 100_000_000),
             new ChunkUploadedEvent(ChunkHash.Parse(new string('a', 64)), StoredSize: 60_000_000, OriginalSize: 100_000_000),
-            new FileDedupedEvent(ContentHash.Parse(new string('b', 64)), OriginalSize: 48_000_000),
+            new FileDedupedEvent(RelativePath.Parse("deduped.bin"), ContentHash.Parse(new string('b', 64)), OriginalSize: 48_000_000),
             new RoutingCompleteEvent(NewByteTotal: 100_000_000),   // dedup/route drained → exact new-byte total
             new SnapshotCreatedEvent(default, DateTimeOffset.UnixEpoch, 3122),
         ],

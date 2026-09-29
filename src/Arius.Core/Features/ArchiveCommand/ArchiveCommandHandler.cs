@@ -481,7 +481,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 Interlocked.Increment(ref filesDeduped);
                                 var size = isKnown ? known[hashed.ContentHash].OriginalSize : inFlightHashes[hashed.ContentHash];
                                 Interlocked.Add(ref originalSize, size);
-                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, size), cancellationToken);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.FilePair.RelativePath, hashed.ContentHash, size), cancellationToken);
                                 continue;
                             }
 
@@ -493,7 +493,7 @@ public sealed class ArchiveCommandHandler : ICommandHandler<ArchiveCommand, Arch
                                 Interlocked.Increment(ref filesDeduped);
                                 var size = fs.GetFileSize(hashed.FilePair.RelativePath);
                                 Interlocked.Add(ref originalSize, size);
-                                await _mediator.Publish(new FileDedupedEvent(hashed.ContentHash, size), cancellationToken);
+                                await _mediator.Publish(new FileDedupedEvent(hashed.FilePair.RelativePath, hashed.ContentHash, size), cancellationToken);
                             }
                             else
                             {

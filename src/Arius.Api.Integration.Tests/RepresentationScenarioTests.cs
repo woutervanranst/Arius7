@@ -25,7 +25,7 @@ public class RepresentationScenarioTests
             Events:
             [
                 new ScanCompleteEvent(TotalFiles: 1001, TotalBytes: 100_000_000),           // pointer-only files scanned as 0
-                new FileDedupedEvent(ContentHash.Parse(new string('b', 64)), OriginalSize: 1_000_000_000), // pointer-only dedup, full size
+                new FileDedupedEvent(RelativePath.Parse("deduped.bin"), ContentHash.Parse(new string('b', 64)), OriginalSize: 1_000_000_000), // pointer-only dedup, full size
                 new ChunkUploadingEvent(ChunkHash.Parse(new string('c', 64)), 100_000_000), // one new chunk queued
                 new ChunkUploadedEvent(ChunkHash.Parse(new string('c', 64)), StoredSize: 60_000_000, OriginalSize: 100_000_000),
             ],
