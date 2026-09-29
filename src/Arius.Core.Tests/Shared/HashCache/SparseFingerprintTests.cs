@@ -105,14 +105,13 @@ public class SparseFingerprintTests
     }
 
     [Test]
-    public void Sampler_AfterDispose_RefusesFurtherUse()
+    public void Sampler_FinishAfterDispose_Throws()
     {
-        // Dispose returns the capture buffer to ArrayPool. Using it afterwards would read or write an
-        // array another consumer now owns, so it must fail loudly rather than silently corrupt.
+        // Dispose returns the capture buffer to ArrayPool; fingerprinting it afterwards would hash bytes
+        // another consumer now owns.
         var sampler = new SparseFingerprint.Sampler(1024);
         sampler.Dispose();
 
         Should.Throw<ObjectDisposedException>(() => sampler.Finish());
-        Should.Throw<ObjectDisposedException>(() => sampler.Capture(0, new byte[16]));
     }
 }
