@@ -107,11 +107,8 @@ internal sealed class ChunkIndexLocalStore
     /// Looks up a set of hashes with a single <c>IN (...)</c> query per page instead of one query per hash.
     /// </summary>
     /// <remarks>
-    /// Paged because the set is not bounded by the caller: the archive dedup stage batches 256, but
-    /// ListQueryHandler looks up one hash per file in a directory and ChunkHydrationStatusQuery one per
-    /// selected file, so a wide directory would otherwise exceed SQLite's SQLITE_MAX_VARIABLE_NUMBER
-    /// (32766). That surfaces through CreateLocalStoreException as "corrupt local store, delete the cache"
-    /// — an actively misleading diagnosis for a query that is simply too wide.
+    /// Paged because callers are unbounded (<c>ls</c> looks up one hash per file of a directory), and one
+    /// parameter per hash would otherwise exceed SQLite's variable limit.
     /// </remarks>
     private IReadOnlyDictionary<ContentHash, ShardEntry> FindEntriesCore(IReadOnlyCollection<ContentHash> contentHashes, bool pendingFlushOnly)
     {

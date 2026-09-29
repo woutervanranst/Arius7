@@ -26,10 +26,7 @@ public class ChunkIndexLocalStoreTests
     [Test]
     public void FindEntries_WithMoreHashesThanSqliteVariableLimit_ReturnsMatches()
     {
-        // The store's own API must stay usable at any width: `ls` looks up one hash per file in a
-        // directory, so a wide directory produces a wide set. Binding one parameter per hash fails past
-        // SQLITE_MAX_VARIABLE_NUMBER (32766) with "too many SQL variables", which CreateLocalStoreException
-        // then reports as a corrupt cache the operator should delete.
+        // Wider than SQLITE_MAX_VARIABLE_NUMBER (32766), as a large directory listing can be.
         var repositoryKey = $"acct-local-store-wide-{Guid.NewGuid():N}";
         var root  = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
         var store = new ChunkIndexLocalStore(root);
