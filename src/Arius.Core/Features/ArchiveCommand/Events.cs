@@ -88,9 +88,11 @@ public sealed record ChunkUploadedEvent(ChunkHash ChunkHash, long StoredSize, lo
 /// A file's contents are already present in the remote.
 /// Contrast <see cref="ChunkUploadedEvent"/>, which fires for content that <i>is</i> uploaded.
 /// </summary>
+/// <param name="RelativePath">The deduplicated file. Consumers tracking per-file state need this: a content
+/// hash can map to several paths in one run, and the other copies may still be uploading.</param>
 /// <param name="ContentHash">Content hash of the deduplicated file (already present in the repository).</param>
 /// <param name="OriginalSize">Uncompressed size in bytes of the file whose content was not re-uploaded.</param>
-public sealed record FileDedupedEvent(ContentHash ContentHash, long OriginalSize) : INotification;
+public sealed record FileDedupedEvent(RelativePath RelativePath, ContentHash ContentHash, long OriginalSize) : INotification;
 
 /// <summary>A tar bundle is being sealed.</summary>
 /// <param name="EntryCount">Number of entries in the sealed tar.</param>
