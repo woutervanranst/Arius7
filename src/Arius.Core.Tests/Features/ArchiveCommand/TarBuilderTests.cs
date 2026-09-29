@@ -103,6 +103,34 @@ public class TarBuilderTests
         bundle.TarHash.ShouldBe(ChunkHashOf(bundle.Content, IEncryptionService.PlaintextInstance));
     }
 
+    // ── Buffer sizing ─────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task AddAsync_FullBundleOfTinyFiles_BufferFitsTheirTarFraming()
+    {
+        // 4 KB files carry ~37% tar framing (headers + padding), far above a fixed headroom over the target.
+        await using var builder = new TarBuilder(targetSize: 8 * 1024 * 1024, IEncryptionService.PlaintextInstance);
+
+        SealedTar? bundle = null;
+        for (var i = 0; bundle is null; i++)
+            bundle = await builder.AddAsync(Upload($"f{i}", UniqueHash(i), 4 * 1024), new MemoryStream(new byte[4 * 1024]), CancellationToken.None);
+
+        bundle.Content.Array!.Length.ShouldBeLessThan((int)(bundle.Content.Count * 1.25));
+    }
+
+    [Test]
+    public async Task SealAsync_PartialBundle_DoesNotHoldTheFullTargetBuffer()
+    {
+        await using var builder = new TarBuilder(targetSize: 64 * 1024 * 1024, IEncryptionService.PlaintextInstance);
+
+        for (var i = 0; i < 768; i++) // 3 MB of 4 KB files: past any presize threshold, far short of the target
+            await builder.AddAsync(Upload($"f{i}", UniqueHash(i), 4 * 1024), new MemoryStream(new byte[4 * 1024]), CancellationToken.None);
+
+        var bundle = await builder.SealAsync(CancellationToken.None);
+
+        bundle!.Content.Array!.Length.ShouldBeLessThanOrEqualTo(bundle.Content.Count * 2);
+    }
+
     // ── Lifecycle callbacks ───────────────────────────────────────────────────
 
     [Test]
@@ -174,6 +202,13 @@ public class TarBuilderTests
     {
         var bytes = Enumerable.Repeat(fill, count).ToArray();
         return (bytes, IEncryptionService.PlaintextInstance.ComputeHash(bytes));
+    }
+
+    private static ContentHash UniqueHash(int seed)
+    {
+        var digest = new byte[32];
+        BitConverter.TryWriteBytes(digest, seed);
+        return ContentHash.FromDigest(digest);
     }
 
     /// <summary>Reads a sealed tar bundle back into a map of entry-name → entry-bytes.</summary>
