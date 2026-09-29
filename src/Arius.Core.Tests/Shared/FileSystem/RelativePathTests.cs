@@ -29,6 +29,14 @@ public class RelativePathTests
     }
 
     [Test]
+    [Arguments("photos/pi\u0001c.jpg")]
+    [Arguments("pho\ntos/pic.jpg")]
+    public void Parse_ControlCharacter_Throws(string value)
+    {
+        Should.Throw<FormatException>(() => RelativePath.Parse(value));
+    }
+
+    [Test]
     public void FromPlatformRelativePath_NormalizesDirectorySeparators()
     {
         var path = RelativePath.FromPlatformRelativePath($"photos{Path.DirectorySeparatorChar}2024{Path.DirectorySeparatorChar}pic.jpg");
