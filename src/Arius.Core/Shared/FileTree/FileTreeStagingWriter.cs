@@ -7,9 +7,9 @@ internal sealed class FileTreeStagingWriter : IDisposable
 {
     private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks
 
-    private readonly SemaphoreSlim[]    _lockStripes;
+    private readonly SemaphoreSlim[] _lockStripes;
     private readonly RelativeFileSystem _stagingFileSystem;
-    private          bool               _disposed;
+    private          bool            _disposed;
 
     // A directory id is globally unique to its full path, so its parent→child edge line is identical
     // no matter which descendant file triggers it. Emit each edge once: without this, a deep tree
@@ -60,6 +60,9 @@ internal sealed class FileTreeStagingWriter : IDisposable
     {
         var currentPath = RelativePath.Root;
 
+        // Materialize once: RelativePath.Segments re-splits and re-parses the path on every
+        // enumeration, so Take(Segments.Count() - 1) would parse the whole path twice on this hot
+        // staging path. Iterate the segments by index instead, skipping the trailing file segment.
         var segments = filePath.Segments.ToArray();
 
         for (var i = 0; i < segments.Length - 1; i++)
@@ -69,7 +72,8 @@ internal sealed class FileTreeStagingWriter : IDisposable
             currentPath = currentPath / segment;
             var directoryId = FileTreePaths.GetStagingDirectoryId(currentPath);
 
-            // Claim each edge once; failed writes release the claim below.
+            // Claim the edge (but keep descending) so concurrent writers don't double-emit it.
+            // TryAdd is atomic: exactly one writer wins the claim and writes the edge.
             if (!_emittedDirectories.TryAdd(directoryId, true))
                 continue;
 
@@ -81,7 +85,9 @@ internal sealed class FileTreeStagingWriter : IDisposable
             }
             catch
             {
-                // Allow a later writer to retry an edge whose append failed.
+                // The claim must reflect a committed edge: if the append fails (I/O error or
+                // cancellation), release it so a later writer can re-emit. Otherwise the parent→child
+                // edge is permanently skipped and its subtree orphaned.
                 _emittedDirectories.TryRemove(directoryId, out _);
                 throw;
             }
