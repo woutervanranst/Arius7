@@ -1,6 +1,4 @@
-using System.Buffers;
 using System.Collections.Concurrent;
-using System.Text;
 
 namespace Arius.Core.Shared.FileTree;
 
@@ -9,34 +7,23 @@ internal sealed class FileTreeStagingWriter : IDisposable
 {
     private const int StripeCount = 256; // Note: we used to have a lock for every staging file, but that was unbounded. Now we have bounded memory by striping the locks
 
-    private readonly Stripe[]           _lockStripes;
+    private readonly SemaphoreSlim[]    _lockStripes;
     private readonly RelativeFileSystem _stagingFileSystem;
     private          bool               _disposed;
 
-    /// <summary>
-    /// One gate and one reusable append handle per stripe; the gate protects both.
-    /// </summary>
-    private sealed class Stripe : IDisposable
-    {
-        public readonly SemaphoreSlim Gate = new(1, 1);
-        public RelativePath?          OpenPath;
-        public Stream?                Handle;
-
-        public void Dispose()
-        {
-            Handle?.Dispose();
-            Gate.Dispose();
-        }
-    }
-
-    // Emit each directory edge once; the reader treats duplicate edges as equivalent.
+    // A directory id is globally unique to its full path, so its parent→child edge line is identical
+    // no matter which descendant file triggers it. Emit each edge once: without this, a deep tree
+    // re-appends every ancestor edge for every file (the root node once per file), which both dominates
+    // the staging I/O and funnels all writers onto the root node's single stripe lock. The reader
+    // (FileTreeBuilder.ReadNodeEntriesAsync) already collapses duplicate directory entries, so writing
+    // each once is behaviourally identical. Bounded by directory count and released with the writer.
     private readonly ConcurrentDictionary<PathSegment, bool> _emittedDirectories = new();
 
     public FileTreeStagingWriter(LocalDirectory stagingRoot)
     {
         _stagingFileSystem = new RelativeFileSystem(stagingRoot);
         _lockStripes = Enumerable.Range(0, StripeCount)
-            .Select(_ => new Stripe())
+            .Select(_ => new SemaphoreSlim(1, 1))
             .ToArray();
     }
 
@@ -103,47 +90,21 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
     private async Task AppendLineAsync(RelativePath path, string line, CancellationToken cancellationToken)
     {
-        var stripe = _lockStripes[(uint)path.GetHashCode() % (uint)_lockStripes.Length];
-        await stripe.Gate.WaitAsync(cancellationToken);
+        // path.GetHashCode(), not StringComparer.Ordinal.GetHashCode(path): RelativePath is a struct, so
+        // the latter bound to IEqualityComparer.GetHashCode(object) — boxing on every append and then
+        // falling through to path.GetHashCode() anyway, so the comparer was doing nothing.
+        var nodeLock = _lockStripes[(uint)path.GetHashCode() % (uint)_lockStripes.Length];
+        await nodeLock.WaitAsync(cancellationToken);
 
         try
         {
-            // Reuse the open handle for this node; close it when retargeting.
-            if (stripe.OpenPath != path)
-            {
-                // Clear the stripe before opening. If OpenAppend throws (disk full, denied, too many
-                // handles) the stripe must not keep pointing at the handle just disposed, or the next
-                // append that hits the old path takes the reuse branch and dies with
-                // ObjectDisposedException instead of the real error — and the directory-edge claim that
-                // AppendDirectoryEntriesAsync releases for re-emission would be unusable.
-                stripe.Handle?.Dispose();
-                stripe.Handle   = null;
-                stripe.OpenPath = null;
-
-                stripe.Handle   = _stagingFileSystem.OpenAppend(path);
-                stripe.OpenPath = path;
-            }
-
-            // Keep the staging format platform-independent and consistent with FileTreeSerializer.
-            var buffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetMaxByteCount(line.Length) + 1);
-            try
-            {
-                var count = Encoding.UTF8.GetBytes(line, buffer);
-                buffer[count++] = (byte)'\n';
-
-                await stripe.Handle!.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
-
-                // Surface append failures before releasing the directory-edge claim.
-                await stripe.Handle.FlushAsync(cancellationToken);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
+            // Fixed '\n' (not Environment.NewLine): staged lines are re-serialized by FileTreeSerializer
+            // before hashing, but keep the staging format platform-independent and consistent with it.
+            await _stagingFileSystem.AppendAllTextAsync(path, line + "\n", cancellationToken);
         }
         finally
         {
-            stripe.Gate.Release();
+            nodeLock.Release();
         }
     }
 
@@ -154,7 +115,7 @@ internal sealed class FileTreeStagingWriter : IDisposable
 
         _disposed = true;
 
-        foreach (var stripe in _lockStripes)
-            stripe.Dispose();
+        foreach (var nodeLock in _lockStripes)
+            nodeLock.Dispose();
     }
 }

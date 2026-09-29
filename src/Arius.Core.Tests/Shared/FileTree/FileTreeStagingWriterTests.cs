@@ -26,60 +26,6 @@ public class FileTreeStagingWriterTests : IDisposable
     public void Dispose() => _cacheFileSystem.DeleteDirectory(RelativePath.Root, recursive: true);
 
     [Test]
-    public async Task AppendFileEntryAsync_AfterRetargetFailure_StillWritesToTheOriginalNode()
-    {
-        // A stripe holds one open append handle. When a write to a *different* node retargets that stripe,
-        // the old handle is disposed before the new one is opened — so if opening fails (disk full, denied,
-        // too many handles) the stripe must not be left pointing at the disposed handle. Stage 5b has no
-        // per-file catch and Parallel.ForEachAsync keeps already-started iterations running, so a later
-        // append on that stripe would otherwise die with ObjectDisposedException instead of the real error.
-        await using var session = await FileTreeStagingSession.OpenAsync(_cacheDir);
-        using var writer = new FileTreeStagingWriter(session.StagingRoot);
-
-        var (first, second) = FindDirectoriesSharingAStripe();
-
-        // Establish the stripe's handle on `first`.
-        await writer.AppendFileEntryAsync(first / PathSegment.Parse("a.bin"), TestHash, TestTimestamp, TestTimestamp);
-
-        // Make opening `second`'s node file impossible by occupying its path with a directory.
-        var secondNode = FileTreePaths.GetStagingNodePath(FileTreePaths.GetStagingDirectoryId(second));
-        Directory.CreateDirectory(session.StagingRoot.Resolve(secondNode));
-
-        await Should.ThrowAsync<Exception>(() =>
-            writer.AppendFileEntryAsync(second / PathSegment.Parse("b.bin"), TestHash, TestTimestamp, TestTimestamp));
-
-        // The stripe must have recovered: appending to the original node still works.
-        await writer.AppendFileEntryAsync(first / PathSegment.Parse("c.bin"), TestHash, TestTimestamp, TestTimestamp);
-
-        var entries = await ReadNodeEntriesAsync(session.StagingRoot, FileTreePaths.GetStagingDirectoryId(first));
-        entries.Select(e => e.Name.ToString()).ShouldBe(["a.bin", "c.bin"], ignoreOrder: true);
-    }
-
-    /// <summary>
-    /// Two directories whose staging node paths land on the same lock stripe. String hashing is randomized
-    /// per process, so the pair is found at runtime rather than hard-coded.
-    /// </summary>
-    private static (RelativePath First, RelativePath Second) FindDirectoriesSharingAStripe()
-    {
-        const int stripeCount = 256;
-        var seen = new Dictionary<int, RelativePath>();
-
-        for (var i = 0; i < 100_000; i++)
-        {
-            var directory = RelativePath.Parse($"d{i}");
-            var node      = FileTreePaths.GetStagingNodePath(FileTreePaths.GetStagingDirectoryId(directory));
-            var stripe    = (int)((uint)node.GetHashCode() % stripeCount);
-
-            if (seen.TryGetValue(stripe, out var previous))
-                return (previous, directory);
-
-            seen[stripe] = directory;
-        }
-
-        throw new InvalidOperationException("No stripe collision found.");
-    }
-
-    [Test]
     public async Task AppendFileEntryAsync_WritesSingleNodeFilePerDirectoryId()
     {
         await using var session = await FileTreeStagingSession.OpenAsync(_cacheDir);
