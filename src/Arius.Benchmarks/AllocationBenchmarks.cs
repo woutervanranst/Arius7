@@ -13,7 +13,7 @@ namespace Arius.Benchmarks;
 
 /// <summary>
 /// In-process allocation benchmarks for selected Arius.Core components.
-/// Run with <c>--class micro</c>; no Azurite or Docker is required.
+/// Run with <c>micro</c> (e.g. <c>micro --filter '*TarBuilder*'</c>); no Azurite or Docker is required.
 /// </summary>
 [MemoryDiagnoser]
 public class AllocationBenchmarks
