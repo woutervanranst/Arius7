@@ -5,6 +5,14 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Running;
 
+// In-process allocation micro-benchmarks run on BenchmarkDotNet's default job and take its own options,
+// e.g. `micro --filter '*TarBuilder*'`. They need no Docker and do not append to the tail log.
+if (args is ["micro", .. var microArgs])
+{
+    BenchmarkSwitcher.FromTypes([typeof(AllocationBenchmarks)]).Run(microArgs);
+    return;
+}
+
 var options = BenchmarkRunOptions.Parse(args);
 var runStartedAt = DateTimeOffset.UtcNow;
 var runId = runStartedAt.ToString("yyyyMMddTHHmmss.fffZ");
@@ -12,6 +20,8 @@ var rawOutputDirectory = Path.Combine(options.RawOutputRoot, runId);
 Directory.CreateDirectory(rawOutputDirectory);
 Directory.CreateDirectory(Path.GetDirectoryName(options.TailLogPath)!);
 
+// The archive step runs for tens of seconds and mutates real fixtures per iteration, so it is measured
+// with one invocation per iteration and no warmup.
 var config = ManualConfig
     .Create(DefaultConfig.Instance)
     .AddJob(Job.Default

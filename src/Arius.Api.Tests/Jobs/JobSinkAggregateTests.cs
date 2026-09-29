@@ -112,7 +112,7 @@ public class JobSinkAggregateTests
         await new ScanCompleteForwarder(s).Handle(new ScanCompleteEvent(2, 3000), default);
         await new FileScannedForwarder(s).Handle(new FileScannedEvent(RelativePath.Parse("a"), 2000), default);
         await new FileHashingForwarder(s).Handle(new FileHashingEvent(RelativePath.Parse("a"), 2000), default);
-        await new FileDedupedForwarder(s).Handle(new FileDedupedEvent(ContentHash.Parse(new string('b', 64)), 1000), default);
+        await new FileDedupedForwarder(s).Handle(new FileDedupedEvent(RelativePath.Parse("deduped.bin"), ContentHash.Parse(new string('b', 64)), 1000), default);
         await new ChunkUploadingForwarder(s).Handle(new ChunkUploadingEvent(ChunkHash.Parse(new string('d', 64)), 2000), default);
         await new ChunkUploadedForwarder(s).Handle(new ChunkUploadedEvent(ChunkHash.Parse(new string('c', 64)), 300, 2000), default);
 

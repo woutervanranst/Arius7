@@ -253,7 +253,8 @@ public sealed class ProgressState
     /// <summary>
     /// Reverse lookup: ContentHash → one or more RelativePaths.
     /// One-to-many because two files can legitimately hash to the same content in one run.
-    /// Populated when <c>FileHashedEvent</c> fires; used by downstream content-hash-keyed events.
+    /// Populated when <c>FileHashedEvent</c> fires; used by downstream content-hash-keyed events, and
+    /// removed once the content's rows are done.
     /// </summary>
     public ConcurrentDictionary<ContentHash, ConcurrentBag<RelativePath>> ContentHashToPath { get; } = new();
 
@@ -307,6 +308,25 @@ public sealed class ProgressState
     public void RemoveFile(RelativePath relativePath) =>
         TrackedFiles.TryRemove(relativePath, out _);
 
+    /// <summary>Removes the reverse lookup for <paramref name="contentHash"/> and the rows of all its paths.</summary>
+    public void RemoveContentHash(ContentHash contentHash)
+    {
+        if (ContentHashToPath.TryRemove(contentHash, out var paths))
+            foreach (var path in paths)
+                RemoveFile(path);
+    }
+
+    /// <summary>
+    /// Removes the row of one deduplicated path, and the reverse lookup once none of its paths is tracked.
+    /// Other paths keep theirs: the first copy of the content may still be uploading.
+    /// </summary>
+    public void RemoveDeduplicatedFile(RelativePath relativePath, ContentHash contentHash)
+    {
+        RemoveFile(relativePath);
+        if (ContentHashToPath.TryGetValue(contentHash, out var paths) && !paths.Any(TrackedFiles.ContainsKey))
+            ContentHashToPath.TryRemove(contentHash, out _);
+    }
+
     /// <summary>
     /// Removes the tracked row for a skipped file. Only files still in <see cref="FileState.Hashing"/>
     /// count toward hashing completion; later-stage skips still clear the row but must not double-count.
@@ -321,6 +341,16 @@ public sealed class ProgressState
 
     /// <summary>TAR bundles currently tracked, keyed by bundle number.</summary>
     public ConcurrentDictionary<int, TrackedTar> TrackedTars { get; } = new();
+
+    /// <summary>
+    /// The bundle currently receiving entries, or <c>null</c> between bundles.
+    /// </summary>
+    public TrackedTar? AccumulatingTar
+    {
+        get => Volatile.Read(ref _accumulatingTar);
+        set => Volatile.Write(ref _accumulatingTar, value);
+    }
+    private TrackedTar? _accumulatingTar;
 
     /// <summary>Monotonically increasing bundle counter; call <see cref="NextBundleNumber"/> to allocate a new ID.</summary>
     private long _bundleCounter;

@@ -104,14 +104,16 @@ internal sealed class ChunkIndexService : IChunkIndexService
         if (hashes.Length == 0)
             return result;
 
+        // Probe pending-flush entries in one batch before remote validation.
+        var pendingFlush = _localStore.FindPendingFlushEntries(hashes);
+
         var validationWork = new List<(PathSegment Root, List<ContentHash> Hashes)>();
         foreach (var rootGroup in hashes.GroupBy(ChunkIndexRouter.GetRootPrefix))
         {
             var hashesNeedingValidation = new List<ContentHash>();
             foreach (var contentHash in rootGroup)
             {
-                var pendingFlushEntry = _localStore.FindPendingFlushEntry(contentHash);
-                if (pendingFlushEntry is not null)
+                if (pendingFlush.TryGetValue(contentHash, out var pendingFlushEntry))
                 {
                     // Entry is local-only / dirty
                     result[contentHash] = pendingFlushEntry;
@@ -143,15 +145,11 @@ internal sealed class ChunkIndexService : IChunkIndexService
                 await EnsureCoverageForHashesAsync(item.Root, item.Hashes, latestSnapshotName, ct);
             });
 
-        // Construct the result from the validated shards
+        // Populate the result from validated shards using batched lookups.
         foreach (var item in validationWork)
         {
-            foreach (var contentHash in item.Hashes)
-            {
-                var entry = _localStore.FindEntry(contentHash);
-                if (entry is not null)
-                    result[contentHash] = entry;
-            }
+            foreach (var (contentHash, entry) in _localStore.FindEntries(item.Hashes))
+                result[contentHash] = entry;
         }
 
         return result;

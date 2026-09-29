@@ -71,6 +71,7 @@ internal sealed record BenchmarkRunOptions(
     static void PrintHelp()
     {
         Console.WriteLine("Runs the canonical representative workflow benchmark on Azurite.");
+        Console.WriteLine("Pass 'micro [BenchmarkDotNet options]' instead for the in-process allocation benchmarks.");
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --raw-output <path>  Folder where per-run raw BenchmarkDotNet output is saved.");

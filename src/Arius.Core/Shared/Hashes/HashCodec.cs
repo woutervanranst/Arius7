@@ -17,19 +17,27 @@ internal static class HashCodec
             throw new FormatException($"Expected {Sha256HexLength} hex characters but got {value.Length}.");
 
         Span<char> chars = stackalloc char[Sha256HexLength];
+        var alreadyCanonical = true;
         for (var i = 0; i < value.Length; i++)
         {
             var c = value[i];
-            chars[i] = c switch
+            switch (c)
             {
-                >= '0' and <= '9' => c,
-                >= 'a' and <= 'f' => c,
-                >= 'A' and <= 'F' => char.ToLowerInvariant(c),
-                _ => throw new FormatException($"Invalid hex character '{c}'.")
-            };
+                case >= '0' and <= '9':
+                case >= 'a' and <= 'f':
+                    chars[i] = c;
+                    break;
+                case >= 'A' and <= 'F':
+                    chars[i]         = char.ToLowerInvariant(c);
+                    alreadyCanonical = false;
+                    break;
+                default:
+                    throw new FormatException($"Invalid hex character '{c}'.");
+            }
         }
 
-        return new string(chars);
+        // Preserve canonical input to avoid allocating a duplicate string.
+        return alreadyCanonical ? value : new string(chars);
     }
 
     public static string ToLowerHex(ReadOnlySpan<byte> digest)
@@ -37,6 +45,6 @@ internal static class HashCodec
         if (digest.Length != Sha256ByteLength)
             throw new ArgumentException($"Expected {Sha256ByteLength}-byte SHA-256 digest.", nameof(digest));
 
-        return Convert.ToHexString(digest).ToLowerInvariant();
+        return Convert.ToHexStringLower(digest);
     }
 }

@@ -11,10 +11,8 @@ internal static class FileTreeSerializer
 {
     private static readonly Encoding s_utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-    public static IReadOnlyList<FileTreeEntry> Deserialize(byte[] bytes)
+    public static IReadOnlyList<FileTreeEntry> Deserialize(ReadOnlySpan<byte> bytes)
     {
-        ArgumentNullException.ThrowIfNull(bytes);
-
         var text = s_utf8.GetString(bytes);
         return ParsePersistedLines(text.Split('\n'));
     }

@@ -31,6 +31,15 @@ internal sealed class TarBuilder : IAsyncDisposable
     private MemoryStream? _tarStream;
     private long          _currentSize;
 
+    /// <summary>
+    /// Tar length past which the buffer grows in one step to the bundle's projected full size. Below it,
+    /// MemoryStream keeps doubling, so a bundle of a few small files never reserves the full target.
+    /// </summary>
+    private const int PresizeThreshold = 1024 * 1024;
+
+    /// <summary>Headroom over the projected size, for the entry that overshoots the target.</summary>
+    private const int ProjectionHeadroomDivisor = 8;
+
     /// <param name="targetSize">A bundle is sealed once its accumulated size reaches this threshold.</param>
     /// <param name="encryption">Used to hash the sealed tar body.</param>
     /// <param name="onBundleStarted">Invoked when a new bundle is opened (its first entry).</param>
@@ -71,6 +80,7 @@ internal sealed class TarBuilder : IAsyncDisposable
         }
 
         // Write the entry named by content-hash (not original path).
+        var lengthBefore = _tarStream!.Length;
         var tarEntry = new PaxTarEntry(TarEntryType.RegularFile, upload.HashedPair.ContentHash.ToString());
         await using (source)
         {
@@ -81,6 +91,15 @@ internal sealed class TarBuilder : IAsyncDisposable
 
         _entries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
         _currentSize += upload.FileSize;
+
+        // Rather than doubling all the way to the target, grow once, sized by the tar bytes written per file
+        // byte so far: per-entry framing makes a bundle of tiny files far longer than its summed file sizes.
+        if (lengthBefore < PresizeThreshold && _tarStream.Length >= PresizeThreshold)
+        {
+            var projected = _tarStream.Length * (_targetSize + _targetSize / ProjectionHeadroomDivisor) / _currentSize;
+            if (projected > _tarStream.Capacity)
+                _tarStream.Capacity = (int)Math.Min(projected, int.MaxValue / 2);
+        }
 
         await (_onEntryAdded?.Invoke(upload.HashedPair.ContentHash, _entries.Count, _currentSize) ?? ValueTask.CompletedTask);
 
@@ -101,6 +120,11 @@ internal sealed class TarBuilder : IAsyncDisposable
         _tarWriter = null;
 
         var body = _tarStream!; // set together with _tarWriter in AddAsync, so non-null whenever the writer was
+
+        // A bundle sealed well short of its presized buffer (the run's tail) must not hold it through the upload.
+        if (body.Capacity > 2 * body.Length)
+            body.Capacity = (int)body.Length;
+
         body.Position = 0;
         var tarHash = ChunkHash.Parse(await _encryption.ComputeHashAsync(body, cancellationToken));
 

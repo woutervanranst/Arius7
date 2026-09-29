@@ -46,7 +46,7 @@ Earlier the [chunk index](../../glossary.md#chunk-index) kept an in-memory LRU o
 
 ### 4. Streaming up/download — bound the single-file byte axis
 
-A single multi-GB file must not be buffered. `ChunkStorageService.UploadChunkAsync` assembles a push chain (source → `ProgressStream` → zstd → encryption → `CountingStream` → `OpenWriteAsync`) with no `MemoryStream` and no intermediate temp file (the tar bundle being the one streamed-in exception). The `Streaming` decorators hold only a `long` counter, so the chain moves a file of any size with a working set of roughly one buffer. This is the byte-scale complement to the file-count techniques above — see [streaming](../core/shared/streaming.md).
+A single multi-GB file must not be buffered. `ChunkStorageService.UploadChunkAsync` assembles a push chain (source → `ProgressStream` → zstd → encryption → `CountingStream` → `OpenWriteAsync`) with no `MemoryStream` and no intermediate temp file (the tar bundle being the one streamed-in exception). The `Streaming` decorators hold only a few counters, so the chain moves a file of any size with a working set of roughly one buffer. This is the byte-scale complement to the file-count techniques above — see [streaming](../core/shared/streaming.md).
 
 ## Key invariants
 

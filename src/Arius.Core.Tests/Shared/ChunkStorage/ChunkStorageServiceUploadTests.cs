@@ -223,7 +223,12 @@ public class ChunkStorageServiceUploadTests
 
         result.AlreadyExisted.ShouldBeFalse();
         blobs.DeletedBlobNames.ShouldContain(blobName);
-        reports.ShouldBe([512L, 1024L, 1536L, 2048L]);
+
+        // Verify that retry progress is monotonic and ends at the true total; intermediate reports are throttled.
+        reports.ShouldNotBeEmpty();
+        reports.ShouldBeInOrder();
+        reports.Distinct().Count().ShouldBe(reports.Count);
+        reports[^1].ShouldBe((long)content.Length);
     }
 
     [Test]

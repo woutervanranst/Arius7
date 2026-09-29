@@ -35,7 +35,7 @@ internal sealed class PassphraseEncryptionService : IEncryptionService
     // key for anything written today (production writes AES-GCM, see GcmPbkdf2Iter = 100_000). It
     // must match the blobs on disk, so it cannot be raised.
     private const int CbcPbkdf2Iter = 10_000;
-    private static readonly byte[] SaltedMagic = "Salted__"u8.ToArray();
+    private static ReadOnlySpan<byte> SaltedMagic => "Salted__"u8;
 
     // ── GCM constants ────────────────────────────────────────────────────────────
     private const int GcmSaltSize       = 16;
@@ -45,7 +45,7 @@ internal sealed class PassphraseEncryptionService : IEncryptionService
     private const int GcmBlockSize      = 64 * 1024; // 64 KiB
     private const int GcmPbkdf2Iter     = 100_000;
     private const uint GcmMaxPbkdf2Iter = 10_000_000; // sanity cap: reject crafted blobs
-    private static readonly byte[] GcmMagic = "ArGCM1"u8.ToArray(); // 6 bytes
+    private static ReadOnlySpan<byte> GcmMagic => "ArGCM1"u8; // 6 bytes
 
     private readonly byte[] _passphraseBytes;
 

@@ -63,9 +63,13 @@ internal sealed class SparseSamplingStream : Stream
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) 
-            _inner.Dispose(); 
-        
+        if (disposing)
+        {
+            // Fingerprint must be called before disposal releases the sampler buffer.
+            _sampler.Dispose();
+            _inner.Dispose();
+        }
+
         base.Dispose(disposing); 
     }
 }

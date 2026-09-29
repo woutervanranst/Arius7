@@ -91,6 +91,7 @@ public sealed class TarBundleStartedHandler(ProgressState state) : INotification
         var bundleNumber = state.NextBundleNumber();
         var tar = new TrackedTar(bundleNumber, state.TarTargetSize);
         state.TrackedTars.TryAdd(bundleNumber, tar);
+        state.AccumulatingTar = tar;
         return ValueTask.CompletedTask;
     }
 }
@@ -106,16 +107,9 @@ public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(TarEntryAddedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(notification.ContentHash, out var paths))
-            foreach (var path in paths)
-                state.RemoveFile(path);
+        state.RemoveContentHash(notification.ContentHash);
 
-        var tar = state.TrackedTars.Values
-            .Where(t => t.State == TarState.Accumulating)
-            .OrderByDescending(t => t.BundleNumber)
-            .FirstOrDefault();
-
-        if (tar != null)
+        if (state.AccumulatingTar is { } tar)
         {
             var addedBytes = notification.CurrentTarSize - tar.AccumulatedBytes;
             tar.AddEntry(addedBytes > 0 ? addedBytes : 0);
@@ -134,12 +128,7 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
 {
     public ValueTask Handle(TarBundleSealingEvent notification, CancellationToken cancellationToken)
     {
-        var tar = state.TrackedTars.Values
-            .Where(t => t.State == TarState.Accumulating || t.State == TarState.Sealing)
-            .OrderByDescending(t => t.BundleNumber)
-            .FirstOrDefault();
-
-        if (tar != null)
+        if (state.AccumulatingTar is { } tar)
         {
             tar.TarHash    = notification.TarHash;
             // Use the sealed tar's archive byte size (headers + padding included), not the sum of file
@@ -148,6 +137,22 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
             tar.TotalBytes = notification.TarByteSize;
             tar.State      = TarState.Sealing;
         }
+
+        // The bundle is no longer accumulating; the next TarBundleStartedEvent supplies the next one.
+        state.AccumulatingTar = null;
+
+        return ValueTask.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Removes tracked files when their content is deduplicated.
+/// </summary>
+public sealed class FileDedupedHandler(ProgressState state) : INotificationHandler<FileDedupedEvent>
+{
+    public ValueTask Handle(FileDedupedEvent notification, CancellationToken cancellationToken)
+    {
+        state.RemoveDeduplicatedFile(notification.RelativePath, notification.ContentHash);
 
         return ValueTask.CompletedTask;
     }
@@ -192,9 +197,7 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
 {
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
-        if (state.ContentHashToPath.TryGetValue(ContentHash.Parse(notification.ChunkHash), out var paths))
-            foreach (var path in paths)
-                state.RemoveFile(path);
+        state.RemoveContentHash(ContentHash.Parse(notification.ChunkHash));
         state.IncrementChunksUploaded(notification.StoredSize);
         return ValueTask.CompletedTask;
     }

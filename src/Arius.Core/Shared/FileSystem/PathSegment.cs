@@ -38,7 +38,7 @@ public readonly record struct PathSegment
             return false;
         }
 
-        if (value.Contains('/') || value.Contains('\\') || value.Any(char.IsControl))
+        if (value.Contains('/') || value.Contains('\\') || ContainsControlCharacter(value))
         {
             segment = default;
             return false;
@@ -46,6 +46,16 @@ public readonly record struct PathSegment
 
         segment = new PathSegment(value);
         return true;
+
+        // Allocation-free replacement for value.Any(char.IsControl).
+        static bool ContainsControlCharacter(string value)
+        {
+            foreach (var c in value)
+                if (char.IsControl(c))
+                    return true;
+
+            return false;
+        }
     }
 
     public bool Contains(string value, StringComparison comparisonType) =>

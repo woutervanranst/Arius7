@@ -24,6 +24,33 @@ public class ChunkIndexLocalStoreTests
     }
 
     [Test]
+    public void FindEntries_WithMoreHashesThanSqliteVariableLimit_ReturnsMatches()
+    {
+        // Wider than SQLITE_MAX_VARIABLE_NUMBER (32766), as a large directory listing can be.
+        var repositoryKey = $"acct-local-store-wide-{Guid.NewGuid():N}";
+        var root  = RepositoryLocalStatePaths.GetChunkIndexCacheRoot(repositoryKey, repositoryKey);
+        var store = new ChunkIndexLocalStore(root);
+
+        var stored = new ShardEntry(FakeContentHash('a'), FakeChunkHash('b'), 10, 5, BlobTier.Cool);
+        store.UpsertPendingFlush(stored);
+
+        var hashes = new List<ContentHash>(40_001) { stored.ContentHash };
+        hashes.AddRange(Enumerable.Range(0, 40_000).Select(WideLookupHash));
+
+        var found = store.FindEntries(hashes);
+
+        found.Count.ShouldBe(1);
+        found[stored.ContentHash].ShouldBe(stored);
+    }
+
+    private static ContentHash WideLookupHash(int seed)
+    {
+        var digest = new byte[32];
+        BitConverter.TryWriteBytes(digest.AsSpan(1), seed);
+        return ContentHash.FromDigest(digest);
+    }
+
+    [Test]
     public void UpsertPendingFlush_AndLookup_RoundTripsEntry()
     {
         var repositoryKey = $"acct-local-store-{Guid.NewGuid():N}";

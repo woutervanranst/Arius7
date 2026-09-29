@@ -146,6 +146,45 @@ public class NotificationHandlerTests
     }
 
     [Test]
+    public async Task FileDedupedHandler_DuplicateOfFileBeingUploaded_KeepsTheUploadingRow()
+    {
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var dedupedH   = new FileDedupedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+        var original   = RelativePath.Parse("original.bin");
+        var duplicate  = RelativePath.Parse("copy/original.bin");
+
+        await hashingH.Handle(new FileHashingEvent(original, 5000), CancellationToken.None);
+        await hashingH.Handle(new FileHashingEvent(duplicate, 5000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(original, FakeContentHash('7'), false, false), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(duplicate, FakeContentHash('7'), false, false), CancellationToken.None);
+        await dedupedH.Handle(new FileDedupedEvent(duplicate, FakeContentHash('7'), 5000), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('7'), 5000), CancellationToken.None);
+
+        state.TrackedFiles.ContainsKey(duplicate).ShouldBeFalse();
+        state.TrackedFiles[original].State.ShouldBe(FileState.Uploading);
+        state.FilesUnique.ShouldBe(1L);
+    }
+
+    [Test]
+    public async Task FileDedupedHandler_LastTrackedCopy_ForgetsTheContentHash()
+    {
+        var state    = new ProgressState();
+        var hashingH = new FileHashingHandler(state);
+        var hashedH  = new FileHashedHandler(state);
+        var dedupedH = new FileDedupedHandler(state);
+        var path     = RelativePath.Parse("known.bin");
+
+        await hashingH.Handle(new FileHashingEvent(path, 5000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(path, FakeContentHash('6'), false, false), CancellationToken.None);
+        await dedupedH.Handle(new FileDedupedEvent(path, FakeContentHash('6'), 5000), CancellationToken.None);
+
+        state.ContentHashToPath.ContainsKey(FakeContentHash('6')).ShouldBeFalse();
+    }
+
+    [Test]
     public async Task TarBundleStartedHandler_CreatesTrackedTar()
     {
         var state   = new ProgressState();
@@ -190,6 +229,7 @@ public class NotificationHandlerTests
         await tarEntryH.Handle(new TarEntryAddedEvent(FakeContentHash('b'), 1, 500), CancellationToken.None);
 
         state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+        state.ContentHashToPath.ContainsKey(FakeContentHash('b')).ShouldBeFalse();
         state.TrackedTars[1].FileCount.ShouldBe(1);
         state.TrackedTars[1].AccumulatedBytes.ShouldBe(500L);
     }
@@ -281,6 +321,7 @@ public class NotificationHandlerTests
         await uploadedH.Handle(new ChunkUploadedEvent(FakeChunkHash('9'), 4000, 5000), CancellationToken.None);
 
         state.TrackedFiles.ContainsKey(path).ShouldBeFalse();
+        state.ContentHashToPath.ContainsKey(FakeContentHash('9')).ShouldBeFalse();
         state.ChunksUploaded.ShouldBe(1L);
         state.BytesUploaded.ShouldBe(4000L);
     }

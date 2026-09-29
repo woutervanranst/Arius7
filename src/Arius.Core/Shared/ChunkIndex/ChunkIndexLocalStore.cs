@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Text;
 using System.Text.Json;
 using Arius.Core.Shared.Storage;
 using Microsoft.Data.Sqlite;
@@ -80,6 +82,89 @@ internal sealed class ChunkIndexLocalStore
     /// </summary>
     public ShardEntry? FindPendingFlushEntry(ContentHash contentHash) => FindEntryCore(contentHash, pendingFlushOnly: true);
 
+    /// <summary>
+    /// Batched twin of <see cref="FindEntry"/>: one query for a whole set of hashes.
+    /// Hashes with no stored entry are simply absent from the result.
+    /// </summary>
+    public IReadOnlyDictionary<ContentHash, ShardEntry> FindEntries(IReadOnlyCollection<ContentHash> contentHashes)
+        => FindEntriesCore(contentHashes, pendingFlushOnly: false);
+
+    /// <summary>
+    /// Batched twin of <see cref="FindPendingFlushEntry"/>: one query for a whole set of hashes.
+    /// Returns only entries still pending local flush.
+    /// </summary>
+    public IReadOnlyDictionary<ContentHash, ShardEntry> FindPendingFlushEntries(IReadOnlyCollection<ContentHash> contentHashes)
+        => FindEntriesCore(contentHashes, pendingFlushOnly: true);
+
+    /// <summary>
+    /// Looks up a set of hashes with a single <c>IN (...)</c> query per page instead of one query per hash.
+    /// </summary>
+    /// <remarks>
+    /// Paged because callers are unbounded (<c>ls</c> looks up one hash per file of a directory), and one
+    /// parameter per hash would otherwise exceed SQLite's variable limit.
+    /// </remarks>
+    private IReadOnlyDictionary<ContentHash, ShardEntry> FindEntriesCore(IReadOnlyCollection<ContentHash> contentHashes, bool pendingFlushOnly)
+    {
+        if (contentHashes.Count == 0)
+            return ReadOnlyDictionary<ContentHash, ShardEntry>.Empty;
+
+        try
+        {
+            var results = new Dictionary<ContentHash, ShardEntry>(contentHashes.Count);
+
+            using var connection = OpenConnection();
+            foreach (var page in contentHashes.Chunk(MaxLookupPageSize))
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = BuildSql(page.Length, pendingFlushOnly);
+
+                for (var i = 0; i < page.Length; i++)
+                {
+                    var digest = CreateDigestBuffer();
+                    WriteDigest(page[i].ToString(), digest);
+                    command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = digest;
+                }
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    var entry = ReadEntry(reader);
+                    results[entry.ContentHash] = entry;
+                }
+            }
+
+            _logger.LogDebug("[chunk-index-local] FindEntries: requested={Requested} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHashes.Count, pendingFlushOnly, results.Count);
+            return results;
+        }
+        catch (SqliteException ex)
+        {
+            throw CreateLocalStoreException(ex);
+        }
+
+        static string BuildSql(int slots, bool pendingFlushOnly)
+        {
+            var sql = new StringBuilder("SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash IN (");
+            for (var i = 0; i < slots; i++)
+            {
+                if (i > 0)
+                    sql.Append(", ");
+                sql.Append("$h").Append(i);
+            }
+
+            sql.Append(')');
+            if (pendingFlushOnly)
+                sql.Append(" AND pending_flush = 1");
+
+            return sql.Append(';').ToString();
+        }
+    }
+
+    /// <summary>
+    /// Largest number of hashes bound into one <c>IN (...)</c> query, keeping the parameter count well
+    /// inside SQLite's limit regardless of how wide a caller's lookup is.
+    /// </summary>
+    private const int MaxLookupPageSize = 256;
+
     private ShardEntry? FindEntryCore(ContentHash contentHash, bool pendingFlushOnly)
     {
         try
@@ -89,7 +174,9 @@ internal sealed class ChunkIndexLocalStore
             command.CommandText = pendingFlushOnly
                 ? "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash AND pending_flush = 1;"
                 : "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash;";
-            command.Parameters.Add("$contentHash", SqliteType.Blob).Value = ParseHashBytes(contentHash.ToString());
+            var digest = CreateDigestBuffer();
+            WriteDigest(contentHash.ToString(), digest);
+            command.Parameters.Add("$contentHash", SqliteType.Blob).Value = digest;
             using var reader = command.ExecuteReader();
             var entry = reader.Read() ? ReadEntry(reader) : null;
             _logger.LogDebug("[chunk-index-local] FindEntry: contentHash={ContentHash} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHash.Short8, pendingFlushOnly, entry is not null);
@@ -385,7 +472,7 @@ internal sealed class ChunkIndexLocalStore
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
                 using var command = CreateUpsertCommand(connection, transaction, pendingFlush: true, preservePendingFlushRows: false);
-                BindEntry(command, entry);
+                BindEntry(command, entry, CreateDigestBuffer(), CreateDigestBuffer());
                 var rowsAffected = command.ExecuteNonQuery();
 
                 transaction.Commit();
@@ -415,10 +502,12 @@ internal sealed class ChunkIndexLocalStore
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
                 using var command = CreateUpsertCommand(connection, transaction, pendingFlush: true, preservePendingFlushRows: false);
+                var contentDigest = CreateDigestBuffer();
+                var chunkDigest   = CreateDigestBuffer();
                 var rowsAffected = 0;
                 foreach (var entry in materialized)
                 {
-                    BindEntry(command, entry);
+                    BindEntry(command, entry, contentDigest, chunkDigest);
                     rowsAffected += command.ExecuteNonQuery();
                 }
 
@@ -452,10 +541,12 @@ internal sealed class ChunkIndexLocalStore
                     using var connection = OpenConnection();
                     using var transaction = connection.BeginTransaction();
                     using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: false);
+                    var contentDigest = CreateDigestBuffer();
+                    var chunkDigest   = CreateDigestBuffer();
                     var rowsAffected = 0;
                     foreach (var entry in batch)
                     {
-                        BindEntry(command, entry);
+                        BindEntry(command, entry, contentDigest, chunkDigest);
                         rowsAffected += command.ExecuteNonQuery();
                     }
 
@@ -497,9 +588,11 @@ internal sealed class ChunkIndexLocalStore
                 var storageTierHint = command.Parameters.Add("$storageTierHint", SqliteType.Integer);
 
                 var rowsAffected = 0;
+                var parentDigest = CreateDigestBuffer();
+                parent.Value     = parentDigest;
                 foreach (var (parentHash, (tier, size)) in tarMetadata)
                 {
-                    parent.Value          = ParseHashBytes(parentHash.ToString());
+                    WriteDigest(parentHash.ToString(), parentDigest);
                     chunkSize.Value       = size;
                     storageTierHint.Value = ShardEntry.SerializeTier(tier);
                     rowsAffected         += command.ExecuteNonQuery();
@@ -540,12 +633,14 @@ internal sealed class ChunkIndexLocalStore
                 using var transaction = connection.BeginTransaction();
                 using var upsertEntries = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
 
+                var contentDigest = CreateDigestBuffer();
+                var chunkDigest   = CreateDigestBuffer();
                 foreach (var (prefix, etag, entries) in downloaded)
                 {
                     DeleteRemoteBackedRange(connection, transaction, prefix);
                     foreach (var entry in entries)
                     {
-                        BindEntry(upsertEntries, entry);
+                        BindEntry(upsertEntries, entry, contentDigest, chunkDigest);
                         upsertEntries.ExecuteNonQuery();
                     }
 
@@ -858,10 +953,15 @@ internal sealed class ChunkIndexLocalStore
         return command;
     }
 
-    private static void BindEntry(SqliteCommand command, ShardEntry entry)
+    /// <summary>
+    /// Binds one row using reusable digest buffers; each execution completes before the buffers are overwritten.
+    /// </summary>
+    private static void BindEntry(SqliteCommand command, ShardEntry entry, byte[] contentDigest, byte[] chunkDigest)
     {
-        command.Parameters["$contentHash"].Value = ParseHashBytes(entry.ContentHash.ToString());
-        command.Parameters["$chunkHash"].Value = ParseHashBytes(entry.ChunkHash.ToString());
+        WriteDigest(entry.ContentHash.ToString(), contentDigest);
+        WriteDigest(entry.ChunkHash.ToString(), chunkDigest);
+        command.Parameters["$contentHash"].Value = contentDigest;
+        command.Parameters["$chunkHash"].Value = chunkDigest;
         command.Parameters["$originalSize"].Value = entry.OriginalSize;
         command.Parameters["$chunkSize"].Value = entry.ChunkSize;
         command.Parameters["$storageTierHint"].Value = ShardEntry.SerializeTier(entry.StorageTierHint);
@@ -907,6 +1007,14 @@ internal sealed class ChunkIndexLocalStore
             reader.GetInt64(3),
             ShardEntry.DeserializeTier(reader.GetInt32(4)));
 
-    private static byte[] ParseHashBytes(string value)
-        => Convert.FromHexString(value);
+    /// <summary>
+    /// Writes a canonical hexadecimal hash into a 32-byte digest buffer. The hash types guarantee exactly
+    /// 64 canonical hex characters, so the conversion cannot fail.
+    /// </summary>
+    private static void WriteDigest(string hex, byte[] destination)
+        => Convert.FromHexString(hex, destination, out _, out _);
+
+    /// <summary>Creates a reusable 32-byte digest buffer.</summary>
+    private static byte[] CreateDigestBuffer() => new byte[HashCodec.Sha256ByteLength];
+
 }

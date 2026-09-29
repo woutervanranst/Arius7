@@ -21,14 +21,15 @@ flowchart LR
   tee -. "tee for inline verify" .-> ver[RoundTripVerifier]
 ```
 
-- **`ProgressStream(inner, IProgress<long>)`** wraps the *source* at the top of the chain so progress tracks logical bytes read off disk, not compressed bytes on the wire. `Length` is delegated to the inner `FileStream`, so the consumer knows the total up front and can compute a percentage. It reports after each read; a zero-length read reports nothing. The download path reuses it the same way, wrapping the blob's read stream.
+- **`ProgressStream(inner, IProgress<long>)`** wraps the *source* at the top of the chain so progress tracks logical bytes read off disk, not compressed bytes on the wire. `Length` is delegated to the inner `FileStream`, so the consumer knows the total up front and can compute a percentage. Reports are **coalesced to at most one per 500 ms**: the first read reports immediately, later reads wait for the interval, and the true total is emitted at EOF or disposal. Empty sources report nothing. The download path reuses it the same way, wrapping the blob's read stream.
 - **`CountingStream(inner)`** sits at the *bottom* of the chain, directly above `OpenWriteAsync`, and increments `BytesWritten` on every write. It is read *after* the chain is disposed to capture the final compressed-and-encrypted blob size, which `UploadChunkAsync` then writes into blob metadata (`chunk-size`).
 
 The note in `UploadChunkAsync` is load-bearing here: the encryption stream is disposed *explicitly* before reading `BytesWritten`, because GCM flushes its final auth tag on dispose — reading the count earlier would undercount by the tag bytes.
 
 ## Key invariants
 
-- **No buffering proportional to file size.** Both wrappers hold only a `long` counter; the chain streams a multi-GB file without an O(file-size) allocation. See [memory-boundedness](../../cross-cutting/memory-boundedness.md).
+- **No buffering proportional to file size.** Both wrappers hold only a few `long` counters; the chain streams a multi-GB file without an O(file-size) allocation. See [memory-boundedness](../../cross-cutting/memory-boundedness.md).
+- **A coalesced `ProgressStream` still ends on the true total.** Throttling may drop intermediate reports, but the EOF and dispose flushes must stay, or a consumer is left short of 100% by up to one interval's worth of bytes.
 - **`CountingStream.BytesWritten` is valid only after the whole chain is finalized.** Every layer above it (compression frame, GCM tag) must be flushed/disposed first, or the recorded `chunk-size` is short.
 - **`ProgressStream` is read-only, `CountingStream` is write-only.** They guard their unsupported direction with `NotSupportedException` rather than silently no-op'ing, so a misuse fails loudly.
 - **Counting reflects what was actually persisted.** `CountingStream` wraps the Azure write stream, so its total is the blob's real stored size, not a pre-computed estimate.
@@ -39,5 +40,5 @@ Splitting "report read progress" and "count written bytes" into separate one-lin
 
 ## Open seams / future
 
-- `ProgressStream` reports raw read counts; smoothing/throttling of the `IProgress<long>` callback is left to the consumer (`UploadChunkAsync` already de-dupes non-increasing reports via a `CallbackProgress`).
+- `ProgressStream` throttles reports at the source to one per 500 ms. `UploadChunkAsync`'s `CallbackProgress` still de-dupes non-increasing reports on top of it. The interval is a fixed constant, not a per-consumer setting.
 - Any future upload layer (e.g. a second integrity tee) slots into the same push chain in `UploadChunkAsync` between source and `OpenWriteAsync`; these two wrappers stay unchanged as the progress/size endpoints.

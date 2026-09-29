@@ -95,7 +95,7 @@ public readonly record struct RelativePath
             return false;
         }
 
-        if (value.Contains('\\') || value.Contains("//", StringComparison.Ordinal) || value.Any(char.IsControl))
+        if (value.Contains('\\') || value.Contains("//", StringComparison.Ordinal))
         {
             path = default;
             return false;
