@@ -147,18 +147,8 @@ public sealed class ProgressStream : Stream
     {
         if (disposing)
         {
-            // The progress callback is caller-supplied (a CLI/Api sink), so it can throw during teardown —
-            // e.g. reporting into a progress task already completed by a cancellation. Releasing the inner
-            // stream must not depend on it, or a failing callback leaks the file handle and replaces
-            // whatever exception was unwinding the using block.
-            try
-            {
-                ReportFinal();
-            }
-            finally
-            {
-                _inner.Dispose();
-            }
+            ReportFinal();
+            _inner.Dispose();
         }
 
         base.Dispose(disposing);
