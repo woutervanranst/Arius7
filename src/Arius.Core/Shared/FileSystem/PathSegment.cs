@@ -46,6 +46,16 @@ public readonly record struct PathSegment
 
         segment = new PathSegment(value);
         return true;
+
+        // Allocation-free replacement for value.Any(char.IsControl).
+        static bool ContainsControlCharacter(string value)
+        {
+            foreach (var c in value)
+                if (char.IsControl(c))
+                    return true;
+
+            return false;
+        }
     }
 
     public bool Contains(string value, StringComparison comparisonType) =>
@@ -72,16 +82,4 @@ public readonly record struct PathSegment
     }
 
     public override string ToString() => Value;
-
-    /// <summary>
-    /// Allocation-free replacement for <c>value.Any(char.IsControl)</c>
-    /// </summary>
-    private static bool ContainsControlCharacter(string value)
-    {
-        foreach (var c in value)
-            if (char.IsControl(c))
-                return true;
-
-        return false;
-    }
 }
