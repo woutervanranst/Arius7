@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
@@ -1028,7 +1029,15 @@ internal sealed class ChunkIndexLocalStore
     /// Writes a canonical hexadecimal hash into a 32-byte digest buffer.
     /// </summary>
     private static void WriteDigest(string hex, byte[] destination)
-        => Convert.FromHexString(hex, destination, out _, out _);
+    {
+        // The span overload reports failure instead of throwing, unlike the Convert.FromHexString(string)
+        // this replaced. The destination buffers are reused across a batch, so a silent non-Done result
+        // would leave the *previous* row's digest in place and bind a chunk-index row mapping the wrong
+        // content hash to a chunk — silent, durable, and a dedup-correctness failure rather than a crash.
+        var status = Convert.FromHexString(hex, destination, out _, out var written);
+        if (status != OperationStatus.Done || written != HashCodec.Sha256ByteLength)
+            throw new InvalidOperationException($"Could not convert a {HashCodec.Sha256HexLength}-character hash to {HashCodec.Sha256ByteLength} digest bytes ({status}, wrote {written}).");
+    }
 
     /// <summary>Creates a reusable 32-byte digest buffer.</summary>
     private static byte[] CreateDigestBuffer() => new byte[HashCodec.Sha256ByteLength];
