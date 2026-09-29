@@ -104,6 +104,16 @@ internal sealed class ChunkIndexLocalStore
     /// Parameters are padded to fixed buckets so the generated command text can be reused. Unused slots
     /// repeat the first hash, which is harmless for set membership.
     /// </remarks>
+    /// <summary>
+    /// Looks up a set of hashes with a single <c>IN (...)</c> query per page instead of one query per hash.
+    /// </summary>
+    /// <remarks>
+    /// Paged because the set is not bounded by the caller: the archive dedup stage batches 256, but
+    /// ListQueryHandler looks up one hash per file in a directory and ChunkHydrationStatusQuery one per
+    /// selected file, so a wide directory would otherwise exceed SQLite's SQLITE_MAX_VARIABLE_NUMBER
+    /// (32766). That surfaces through CreateLocalStoreException as "corrupt local store, delete the cache"
+    /// — an actively misleading diagnosis for a query that is simply too wide.
+    /// </remarks>
     private IReadOnlyDictionary<ContentHash, ShardEntry> FindEntriesCore(IReadOnlyCollection<ContentHash> contentHashes, bool pendingFlushOnly)
     {
         if (contentHashes.Count == 0)
@@ -111,42 +121,13 @@ internal sealed class ChunkIndexLocalStore
 
         try
         {
-            var slots   = LookupBucketSize(contentHashes.Count);
             var results = new Dictionary<ContentHash, ShardEntry>(contentHashes.Count);
 
             using var connection = OpenConnection();
-            using var command    = connection.CreateCommand();
-            command.CommandText = BuildFindEntriesSql(slots, pendingFlushOnly);
+            foreach (var page in contentHashes.Chunk(MaxLookupPageSize))
+                ReadEntryPage(connection, page, pendingFlushOnly, results);
 
-            var digests = new byte[slots][];
-            for (var i = 0; i < slots; i++)
-            {
-                digests[i] = CreateDigestBuffer();
-                command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = digests[i];
-            }
-
-            var slot  = 0;
-            var first = string.Empty;
-            foreach (var contentHash in contentHashes)
-            {
-                var hex = contentHash.ToString();
-                if (slot == 0)
-                    first = hex;
-
-                WriteDigest(hex, digests[slot++]);
-            }
-
-            for (; slot < slots; slot++)
-                WriteDigest(first, digests[slot]);
-
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
-            {
-                var entry = ReadEntry(reader);
-                results[entry.ContentHash] = entry;
-            }
-
-            _logger.LogDebug("[chunk-index-local] FindEntries: requested={Requested} slots={Slots} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHashes.Count, slots, pendingFlushOnly, results.Count);
+            _logger.LogDebug("[chunk-index-local] FindEntries: requested={Requested} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHashes.Count, pendingFlushOnly, results.Count);
             return results;
         }
         catch (SqliteException ex)
@@ -155,16 +136,32 @@ internal sealed class ChunkIndexLocalStore
         }
     }
 
-    /// <summary>Fixed parameter-count buckets, so the generated SQL — and its prepared statement — repeats.</summary>
-    private static int LookupBucketSize(int count) => count switch
+    /// <summary>Reads one page of hashes with a single <c>IN (...)</c> query, merging into <paramref name="results"/>.</summary>
+    private static void ReadEntryPage(SqliteConnection connection, ContentHash[] page, bool pendingFlushOnly, Dictionary<ContentHash, ShardEntry> results)
     {
-        <= 1   => 1,
-        <= 4   => 4,
-        <= 16  => 16,
-        <= 64  => 64,
-        <= 256 => 256,
-        _      => count,
-    };
+        using var command = connection.CreateCommand();
+        command.CommandText = BuildFindEntriesSql(page.Length, pendingFlushOnly);
+
+        for (var i = 0; i < page.Length; i++)
+        {
+            var digest = CreateDigestBuffer();
+            WriteDigest(page[i].ToString(), digest);
+            command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = digest;
+        }
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var entry = ReadEntry(reader);
+            results[entry.ContentHash] = entry;
+        }
+    }
+
+    /// <summary>
+    /// Largest number of hashes bound into one <c>IN (...)</c> query, keeping the parameter count well
+    /// inside SQLite's limit regardless of how wide a caller's lookup is.
+    /// </summary>
+    private const int MaxLookupPageSize = 256;
 
     private static string BuildFindEntriesSql(int slots, bool pendingFlushOnly)
     {
