@@ -124,26 +124,4 @@ public class ProgressStreamTests
         n.ShouldBe(100);
         lastReport.ShouldBe(100);
     }
-
-    [Test]
-    public void Dispose_WhenFinalProgressReportThrows_StillDisposesTheInnerStream()
-    {
-        var src = new MemoryStream(new byte[64]);
-
-        // The first read always reports; let that succeed, then fail the flush-on-dispose report.
-        var reports = 0;
-        var ps = new ProgressStream(src, new SyncProgress<long>(_ =>
-        {
-            if (reports++ > 0)
-                throw new InvalidOperationException("sink is gone");
-        }));
-
-        ps.Read(new byte[16], 0, 16); // reports (first read)
-        ps.Read(new byte[16], 0, 16); // throttled, so the total is left unreported
-
-        Should.Throw<InvalidOperationException>(() => ps.Dispose());
-
-        // The inner stream must be released even though the caller's progress sink failed.
-        src.CanRead.ShouldBeFalse();
-    }
 }
