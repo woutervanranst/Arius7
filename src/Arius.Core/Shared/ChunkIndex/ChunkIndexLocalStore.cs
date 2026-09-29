@@ -97,13 +97,6 @@ internal sealed class ChunkIndexLocalStore
         => FindEntriesCore(contentHashes, pendingFlushOnly: true);
 
     /// <summary>
-    /// Looks up a set of hashes with one <c>IN (...)</c> query.
-    /// </summary>
-    /// <remarks>
-    /// Parameters are padded to fixed buckets so the generated command text can be reused. Unused slots
-    /// repeat the first hash, which is harmless for set membership.
-    /// </remarks>
-    /// <summary>
     /// Looks up a set of hashes with a single <c>IN (...)</c> query per page instead of one query per hash.
     /// </summary>
     /// <remarks>
