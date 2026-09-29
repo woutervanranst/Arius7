@@ -249,17 +249,6 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
         await File.WriteAllTextAsync(fullPath, content, cancellationToken);
     }
 
-    /// <summary>
-    /// Opens a file for appending, creating it if necessary, and leaves the handle open for reuse.
-    /// </summary>
-    public Stream OpenAppend(RelativePath path)
-    {
-        var fullPath = root.Resolve(path);
-        CreateDirectory(path.Parent ?? RelativePath.Root);
-        // Preserve read sharing so staged nodes remain readable while the append handle is open.
-        return new FileStream(fullPath, FileMode.Append, FileAccess.Write, FileShare.Read, 65536, useAsync: true);
-    }
-
     public async Task AppendAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
         var fullPath = root.Resolve(path);
