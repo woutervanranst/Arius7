@@ -37,9 +37,17 @@ internal sealed class TarBuilder : IAsyncDisposable
     private const int FramingHeadroomDivisor = 4;
 
     /// <summary>
-    /// Initial backing-buffer capacity for a bundle, clamped to the <see cref="MemoryStream"/> limit.
+    /// Accumulated size past which a bundle is presumed to be heading for <see cref="_targetSize"/> and its
+    /// buffer is grown to full capacity in one step. Below it the bundle keeps MemoryStream's own doubling,
+    /// so a repository of a few small files — and every run's partial tail bundle — never reserves the full
+    /// target. The doubling this still pays to reach the threshold is bounded by twice the threshold.
     /// </summary>
-    private int InitialCapacity => (int)Math.Min(_targetSize + _targetSize / FramingHeadroomDivisor, int.MaxValue / 2);
+    private const int PresizeThreshold = 1024 * 1024;
+
+    /// <summary>
+    /// Full backing-buffer capacity for a bundle, clamped to the <see cref="MemoryStream"/> limit.
+    /// </summary>
+    private int FullCapacity => (int)Math.Min(_targetSize + _targetSize / FramingHeadroomDivisor, int.MaxValue / 2);
 
     /// <param name="targetSize">A bundle is sealed once its accumulated size reaches this threshold.</param>
     /// <param name="encryption">Used to hash the sealed tar body.</param>
@@ -71,7 +79,7 @@ internal sealed class TarBuilder : IAsyncDisposable
         TarWriter writer;
         if (_tarWriter is null)
         {
-            _tarStream = new MemoryStream(InitialCapacity);
+            _tarStream = new MemoryStream();
             writer     = _tarWriter = new TarWriter(_tarStream, leaveOpen: true);
             await (_onBundleStarted?.Invoke() ?? ValueTask.CompletedTask);
         }
@@ -91,6 +99,13 @@ internal sealed class TarBuilder : IAsyncDisposable
 
         _entries.Add(new TarEntry(upload.HashedPair.ContentHash, upload.FileSize, upload.HashedPair));
         _currentSize += upload.FileSize;
+
+        // Jump straight to full capacity once the bundle is clearly filling up. Growing from zero by
+        // doubling all the way to a 64 MB bundle abandons every intermediate array — measured at 276 MB of
+        // mostly-LOH garbage per bundle — while presizing unconditionally would reserve the full target for
+        // bundles that never approach it.
+        if (_tarStream!.Capacity < FullCapacity && _tarStream.Length >= PresizeThreshold)
+            _tarStream.Capacity = FullCapacity;
 
         await (_onEntryAdded?.Invoke(upload.HashedPair.ContentHash, _entries.Count, _currentSize) ?? ValueTask.CompletedTask);
 

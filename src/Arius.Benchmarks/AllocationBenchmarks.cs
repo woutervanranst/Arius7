@@ -91,6 +91,7 @@ public class AllocationBenchmarks
     private const int  TarEntrySize   = 64 * 1024;
 
     private byte[]             _tarEntryPayload = null!;
+    private byte[]             _smallEntryPayload = null!;
     private IEncryptionService _encryption      = null!;
 
     /// <summary>Builds and seals one 64 MB TAR bundle.</summary>
@@ -108,6 +109,24 @@ public class AllocationBenchmarks
         }
 
         return sealedCount;
+    }
+
+    /// <summary>
+    /// A handful of small files: the shape of a tiny repository, and of every run's partial tail bundle.
+    /// Presizing unconditionally to TarTargetSize reserved the full target here for a few KB of payload.
+    /// </summary>
+    [Benchmark(Description = "TarBuilder seal one small bundle (5 x 1 KB)")]
+    public async Task<int> TarBuilder_Seal_SmallBundle()
+    {
+        await using var builder = new TarBuilder(TarTargetSize, _encryption);
+
+        for (var i = 0; i < 5; i++)
+        {
+            var source = new MemoryStream(_smallEntryPayload, writable: false);
+            await builder.AddAsync(CreateUpload(i, _smallEntryPayload.Length), source, CancellationToken.None);
+        }
+
+        return (await builder.SealAsync(CancellationToken.None))!.Entries.Count;
     }
 
     // ── Chunk-index local store ──────────────────────────────────────────────────
@@ -152,8 +171,10 @@ public class AllocationBenchmarks
     {
         _readBuffer      = new byte[256 * 1024];
         _tarEntryPayload = new byte[TarEntrySize];
+        _smallEntryPayload = new byte[1024];
         Random.Shared.NextBytes(_readBuffer);
         Random.Shared.NextBytes(_tarEntryPayload);
+        Random.Shared.NextBytes(_smallEntryPayload);
 
         _encryption = IEncryptionService.EncryptedInstance;
 
