@@ -124,7 +124,24 @@ internal sealed class ChunkIndexLocalStore
 
             using var connection = OpenConnection();
             foreach (var page in contentHashes.Chunk(MaxLookupPageSize))
-                ReadEntryPage(connection, page, pendingFlushOnly, results);
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = BuildSql(page.Length, pendingFlushOnly);
+
+                for (var i = 0; i < page.Length; i++)
+                {
+                    var digest = CreateDigestBuffer();
+                    WriteDigest(page[i].ToString(), digest);
+                    command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = digest;
+                }
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    var entry = ReadEntry(reader);
+                    results[entry.ContentHash] = entry;
+                }
+            }
 
             _logger.LogDebug("[chunk-index-local] FindEntries: requested={Requested} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHashes.Count, pendingFlushOnly, results.Count);
             return results;
@@ -133,26 +150,22 @@ internal sealed class ChunkIndexLocalStore
         {
             throw CreateLocalStoreException(ex);
         }
-    }
 
-    /// <summary>Reads one page of hashes with a single <c>IN (...)</c> query, merging into <paramref name="results"/>.</summary>
-    private static void ReadEntryPage(SqliteConnection connection, ContentHash[] page, bool pendingFlushOnly, Dictionary<ContentHash, ShardEntry> results)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText = BuildFindEntriesSql(page.Length, pendingFlushOnly);
-
-        for (var i = 0; i < page.Length; i++)
+        static string BuildSql(int slots, bool pendingFlushOnly)
         {
-            var digest = CreateDigestBuffer();
-            WriteDigest(page[i].ToString(), digest);
-            command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = digest;
-        }
+            var sql = new StringBuilder("SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash IN (");
+            for (var i = 0; i < slots; i++)
+            {
+                if (i > 0)
+                    sql.Append(", ");
+                sql.Append("$h").Append(i);
+            }
 
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            var entry = ReadEntry(reader);
-            results[entry.ContentHash] = entry;
+            sql.Append(')');
+            if (pendingFlushOnly)
+                sql.Append(" AND pending_flush = 1");
+
+            return sql.Append(';').ToString();
         }
     }
 
@@ -161,23 +174,6 @@ internal sealed class ChunkIndexLocalStore
     /// inside SQLite's limit regardless of how wide a caller's lookup is.
     /// </summary>
     private const int MaxLookupPageSize = 256;
-
-    private static string BuildFindEntriesSql(int slots, bool pendingFlushOnly)
-    {
-        var sql = new StringBuilder("SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash IN (");
-        for (var i = 0; i < slots; i++)
-        {
-            if (i > 0)
-                sql.Append(", ");
-            sql.Append("$h").Append(i);
-        }
-
-        sql.Append(')');
-        if (pendingFlushOnly)
-            sql.Append(" AND pending_flush = 1");
-
-        return sql.Append(';').ToString();
-    }
 
     private ShardEntry? FindEntryCore(ContentHash contentHash, bool pendingFlushOnly)
     {
