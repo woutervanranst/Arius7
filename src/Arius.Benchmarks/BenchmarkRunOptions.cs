@@ -1,21 +1,9 @@
 namespace Arius.Benchmarks;
 
-/// <summary>Which benchmark class to run.</summary>
-internal enum BenchmarkClass
-{
-    /// <summary>The end-to-end archive step against Azurite. Appends to the benchmark tail log.</summary>
-    Archive,
-
-    /// <summary>In-process allocation micro-benchmarks. No Docker; does not touch the tail log.</summary>
-    Micro,
-}
-
 internal sealed record BenchmarkRunOptions(
     string RepositoryRoot,
     string RawOutputRoot,
-    string TailLogPath,
-    BenchmarkClass Class,
-    string? Filter)
+    string TailLogPath)
 {
     public const int Iterations = 3;
 
@@ -27,8 +15,6 @@ internal sealed record BenchmarkRunOptions(
 
         var rawOutputRoot = defaultRawOutputRoot;
         var tailLogPath = Path.Combine(defaultBenchmarkRoot, "benchmark-tail.md");
-        var benchmarkClass = BenchmarkClass.Archive;
-        string? filter = null;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -40,12 +26,6 @@ internal sealed record BenchmarkRunOptions(
                 case "--tail-log":
                     tailLogPath = RequireValue(args, ref i, "--tail-log");
                     break;
-                case "--class":
-                    benchmarkClass = ParseClass(RequireValue(args, ref i, "--class"));
-                    break;
-                case "--filter":
-                    filter = RequireValue(args, ref i, "--filter");
-                    break;
                 case "--help" or "-h":
                     PrintHelp();
                     Environment.Exit(0);
@@ -55,23 +35,11 @@ internal sealed record BenchmarkRunOptions(
             }
         }
 
-        if (filter is not null && benchmarkClass is not BenchmarkClass.Micro)
-            throw new ArgumentException("--filter is only supported with --class micro.");
-
         return new(
             repositoryRoot,
             Path.GetFullPath(rawOutputRoot),
-            Path.GetFullPath(tailLogPath),
-            benchmarkClass,
-            filter);
+            Path.GetFullPath(tailLogPath));
     }
-
-    static BenchmarkClass ParseClass(string value) => value.ToLowerInvariant() switch
-    {
-        "archive" => BenchmarkClass.Archive,
-        "micro"   => BenchmarkClass.Micro,
-        _         => throw new ArgumentException($"Unknown benchmark class '{value}'. Expected 'archive' or 'micro'."),
-    };
 
     static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)
     {
@@ -103,12 +71,10 @@ internal sealed record BenchmarkRunOptions(
     static void PrintHelp()
     {
         Console.WriteLine("Runs the canonical representative workflow benchmark on Azurite.");
+        Console.WriteLine("Pass 'micro [BenchmarkDotNet options]' instead for the in-process allocation benchmarks.");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  --class <name>       'archive' (default, end-to-end on Azurite; needs Docker)");
-        Console.WriteLine("                       or 'micro' (in-process allocation benchmarks).");
-        Console.WriteLine("  --filter <glob>      Run only matching benchmarks, e.g. '*TarBuilder*' (micro only).");
         Console.WriteLine("  --raw-output <path>  Folder where per-run raw BenchmarkDotNet output is saved.");
-        Console.WriteLine("  --tail-log <path>    Markdown benchmark tail log to append to (archive only).");
+        Console.WriteLine("  --tail-log <path>    Markdown benchmark tail log to append to.");
     }
 }
