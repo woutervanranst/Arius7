@@ -12,8 +12,7 @@ public class ProgressStreamTests
         using var src  = new MemoryStream(data);
         var reports    = new List<long>();
         var progress   = new SyncProgress<long>(v => reports.Add(v));
-        var timestamp = 0L;
-        using var ps   = new ProgressStream(src, progress, () => timestamp++);
+        using var ps   = new ProgressStream(src, progress, new FrozenTimeProvider());
 
         var buf = new byte[256];
         while (ps.Read(buf, 0, buf.Length) > 0) { }

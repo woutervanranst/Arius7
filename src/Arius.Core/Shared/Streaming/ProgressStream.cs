@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Arius.Core.Shared.Streaming;
 
 /// <summary>
@@ -11,33 +9,47 @@ public sealed class ProgressStream : Stream
 {
     /// <summary>Minimum wall-clock gap between two progress callbacks.</summary>
     private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(500);
-    private static readonly Func<long>  DefaultTimestampProvider = Stopwatch.GetTimestamp;
 
     private readonly Stream          _inner;
     private readonly IProgress<long> _progress;
-    private readonly Func<long>      _getTimestamp;
+    private readonly TimeProvider    _timeProvider;
     private long                     _bytesRead;
     private long                     _reportedBytes;
     private long                     _lastReportTimestamp;
-    private bool                     _hasReported;
 
     /// <param name="inner">The readable source stream.</param>
-    /// <param name="progress">Receives cumulative bytes read after each read call.</param>
+    /// <param name="progress">Receives the cumulative bytes read, throttled as described on the type.</param>
     public ProgressStream(Stream inner, IProgress<long> progress)
-        : this(inner, progress, DefaultTimestampProvider)
+        : this(inner, progress, TimeProvider.System)
     {
     }
 
-    internal ProgressStream(Stream inner, IProgress<long> progress, Func<long> timestampProvider)
+    internal ProgressStream(Stream inner, IProgress<long> progress, TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(progress);
         if (!inner.CanRead)
             throw new ArgumentException("Inner stream must be readable.", nameof(inner));
 
-        _inner    = inner;
-        _progress = progress;
-        _getTimestamp = timestampProvider;
+        _inner        = inner;
+        _progress     = progress;
+        _timeProvider = timeProvider;
+    }
+
+    /// <summary>Accounts for one inner read of <paramref name="read"/> bytes out of <paramref name="requested"/>.</summary>
+    private int OnRead(int read, int requested)
+    {
+        if (read > 0)
+        {
+            _bytesRead += read;
+            ReportThrottled();
+        }
+        else if (requested != 0) // a zero-length read is not EOF
+        {
+            ReportFinal();
+        }
+
+        return read;
     }
 
     /// <summary>
@@ -45,12 +57,11 @@ public sealed class ProgressStream : Stream
     /// </summary>
     private void ReportThrottled()
     {
-        var now = _getTimestamp();
+        var now = _timeProvider.GetTimestamp();
 
-        if (_hasReported && Stopwatch.GetElapsedTime(_lastReportTimestamp, now) < ReportInterval)
+        if (_reportedBytes > 0 && _timeProvider.GetElapsedTime(_lastReportTimestamp, now) < ReportInterval)
             return;
 
-        _hasReported         = true;
         _lastReportTimestamp = now;
         _reportedBytes       = _bytesRead;
         _progress.Report(_bytesRead);
@@ -61,14 +72,10 @@ public sealed class ProgressStream : Stream
     /// </summary>
     private void ReportFinal()
     {
-        // Empty sources do not emit a spurious zero.
-        if (_bytesRead == 0)
+        // Also keeps an empty source from emitting a spurious zero.
+        if (_reportedBytes == _bytesRead)
             return;
 
-        if (_hasReported && _reportedBytes == _bytesRead)
-            return;
-
-        _hasReported   = true;
         _reportedBytes = _bytesRead;
         _progress.Report(_bytesRead);
     }
@@ -77,69 +84,15 @@ public sealed class ProgressStream : Stream
     public override bool CanWrite => false;
     public override bool CanSeek  => false;
 
-    public override int Read(byte[] buffer, int offset, int count)
-    {
-        var n = _inner.Read(buffer, offset, count);
-        if (n > 0)
-        {
-            _bytesRead += n;
-            ReportThrottled();
-        }
-        else if (count != 0)
-        {
-            ReportFinal();
-        }
+    public override int Read(byte[] buffer, int offset, int count) => OnRead(_inner.Read(buffer, offset, count), count);
 
-        return n;
-    }
-
-    public override int Read(Span<byte> buffer)
-    {
-        var n = _inner.Read(buffer);
-        if (n > 0)
-        {
-            _bytesRead += n;
-            ReportThrottled();
-        }
-        else if (buffer.Length != 0)
-        {
-            ReportFinal();
-        }
-
-        return n;
-    }
+    public override int Read(Span<byte> buffer) => OnRead(_inner.Read(buffer), buffer.Length);
 
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
-    {
-        var n = await _inner.ReadAsync(buffer, offset, count, ct);
-        if (n > 0)
-        {
-            _bytesRead += n;
-            ReportThrottled();
-        }
-        else if (count != 0)
-        {
-            ReportFinal();
-        }
-
-        return n;
-    }
+        => OnRead(await _inner.ReadAsync(buffer, offset, count, ct), count);
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
-    {
-        var n = await _inner.ReadAsync(buffer, ct);
-        if (n > 0)
-        {
-            _bytesRead += n;
-            ReportThrottled();
-        }
-        else if (buffer.Length != 0)
-        {
-            ReportFinal();
-        }
-
-        return n;
-    }
+        => OnRead(await _inner.ReadAsync(buffer, ct), buffer.Length);
 
     public override void Flush() => _inner.Flush();
 
