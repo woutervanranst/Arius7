@@ -126,10 +126,6 @@ internal static class SparseFingerprint
         /// <summary>Offer the bytes read at <paramref name="position"/>; overlapping region bytes are copied out.</summary>
         public void Capture(long position, ReadOnlySpan<byte> buffer)
         {
-            // The backing array goes back to the shared pool on dispose. Writing to it afterwards would
-            // corrupt whichever unrelated consumer holds it next — silently, and nowhere near here.
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
             for (var i = 0; i < _regions.Count; i++)
             {
                 var (off, len) = _regions[i];
