@@ -111,7 +111,15 @@ internal sealed class FileTreeStagingWriter : IDisposable
             // Reuse the open handle for this node; close it when retargeting.
             if (stripe.OpenPath != path)
             {
+                // Clear the stripe before opening. If OpenAppend throws (disk full, denied, too many
+                // handles) the stripe must not keep pointing at the handle just disposed, or the next
+                // append that hits the old path takes the reuse branch and dies with
+                // ObjectDisposedException instead of the real error — and the directory-edge claim that
+                // AppendDirectoryEntriesAsync releases for re-emission would be unusable.
                 stripe.Handle?.Dispose();
+                stripe.Handle   = null;
+                stripe.OpenPath = null;
+
                 stripe.Handle   = _stagingFileSystem.OpenAppend(path);
                 stripe.OpenPath = path;
             }
