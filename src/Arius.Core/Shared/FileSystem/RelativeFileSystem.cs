@@ -249,6 +249,9 @@ internal sealed class RelativeFileSystem(LocalDirectory root)
         await File.WriteAllTextAsync(fullPath, content, cancellationToken);
     }
 
+    /// <summary>
+    /// Appends text to a file within the rooted directory, creating the file (and parent directories) if needed.
+    /// </summary>
     public async Task AppendAllTextAsync(RelativePath path, string content, CancellationToken cancellationToken)
     {
         var fullPath = root.Resolve(path);
