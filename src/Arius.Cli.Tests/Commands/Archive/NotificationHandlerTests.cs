@@ -146,6 +146,29 @@ public class NotificationHandlerTests
     }
 
     [Test]
+    public async Task FileDedupedHandler_DuplicateOfFileBeingUploaded_KeepsTheUploadingRow()
+    {
+        var state      = new ProgressState();
+        var hashingH   = new FileHashingHandler(state);
+        var hashedH    = new FileHashedHandler(state);
+        var dedupedH   = new FileDedupedHandler(state);
+        var uploadingH = new ChunkUploadingHandler(state);
+        var original   = RelativePath.Parse("original.bin");
+        var duplicate  = RelativePath.Parse("copy/original.bin");
+
+        await hashingH.Handle(new FileHashingEvent(original, 5000), CancellationToken.None);
+        await hashingH.Handle(new FileHashingEvent(duplicate, 5000), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(original, FakeContentHash('7'), false, false), CancellationToken.None);
+        await hashedH.Handle(new FileHashedEvent(duplicate, FakeContentHash('7'), false, false), CancellationToken.None);
+        await dedupedH.Handle(new FileDedupedEvent(duplicate, FakeContentHash('7'), 5000), CancellationToken.None);
+        await uploadingH.Handle(new ChunkUploadingEvent(FakeChunkHash('7'), 5000), CancellationToken.None);
+
+        state.TrackedFiles.ContainsKey(duplicate).ShouldBeFalse();
+        state.TrackedFiles[original].State.ShouldBe(FileState.Uploading);
+        state.FilesUnique.ShouldBe(1L);
+    }
+
+    [Test]
     public async Task TarBundleStartedHandler_CreatesTrackedTar()
     {
         var state   = new ProgressState();
