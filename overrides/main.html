@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+
+{#- history/** is frozen working-note archaeology: keep it browsable, but out of search indexes. -#}
+{% block extrahead %}
+  {% if page and page.file and page.file.src_uri.startswith("history/") %}
+    <meta name="robots" content="noindex, follow">
+  {% endif %}
+{% endblock %}

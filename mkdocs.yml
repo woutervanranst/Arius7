@@ -1,6 +1,6 @@
 site_name: Arius
 site_description: A lightweight, tiered archival solution for Azure Blob Storage — architecture, decisions, and guides.
-site_url: https://woutervanranst.github.io/Arius7/
+site_url: https://wouteronarchitecture.com/Arius7/
 repo_url: https://github.com/woutervanranst/Arius7
 repo_name: woutervanranst/Arius7
 edit_uri: edit/master/docs/
@@ -9,6 +9,7 @@ site_dir: site
 
 theme:
   name: material
+  custom_dir: overrides
   icon:
     repo: fontawesome/brands/github
   features:
