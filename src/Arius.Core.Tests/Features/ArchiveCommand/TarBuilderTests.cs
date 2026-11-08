@@ -119,6 +119,20 @@ public class TarBuilderTests
     }
 
     [Test]
+    public async Task AddAsync_EmptyFilesPastPresizeThreshold_DoesNotThrow()
+    {
+        // Empty files accumulate tar framing but no file bytes, so a framing-per-byte projection has no basis.
+        await using var builder = new TarBuilder(targetSize: 64 * 1024 * 1024, IEncryptionService.PlaintextInstance);
+
+        for (var i = 0; i < 1000; i++) // ~1.5 KB of tar framing each: well past the 1 MB presize threshold
+            await builder.AddAsync(Upload($"f{i}", UniqueHash(i), 0), new MemoryStream(), CancellationToken.None);
+
+        var bundle = await builder.SealAsync(CancellationToken.None);
+
+        bundle.ShouldNotBeNull();
+    }
+
+    [Test]
     public async Task SealAsync_PartialBundle_DoesNotHoldTheFullTargetBuffer()
     {
         await using var builder = new TarBuilder(targetSize: 64 * 1024 * 1024, IEncryptionService.PlaintextInstance);

@@ -40,6 +40,9 @@ internal sealed class TarBuilder : IAsyncDisposable
     /// <summary>Headroom over the projected size, for the entry that overshoots the target.</summary>
     private const int ProjectionHeadroomDivisor = 8;
 
+    /// <summary>Ceiling on the projected buffer, as a multiple of the target size.</summary>
+    private const int MaxProjectionTargetMultiple = 2;
+
     /// <param name="targetSize">A bundle is sealed once its accumulated size reaches this threshold.</param>
     /// <param name="encryption">Used to hash the sealed tar body.</param>
     /// <param name="onBundleStarted">Invoked when a new bundle is opened (its first entry).</param>
@@ -96,7 +99,10 @@ internal sealed class TarBuilder : IAsyncDisposable
         // byte so far: per-entry framing makes a bundle of tiny files far longer than its summed file sizes.
         if (lengthBefore < PresizeThreshold && _tarStream.Length >= PresizeThreshold)
         {
-            var projected = _tarStream.Length * (_targetSize + _targetSize / ProjectionHeadroomDivisor) / _currentSize;
+            // Few file bytes against a lot of framing (e.g. empty files) makes the ratio, and so the projection,
+            // meaningless: cap it, and let MemoryStream's doubling take over if the bundle really is that large.
+            var projected = _tarStream.Length * (_targetSize + _targetSize / ProjectionHeadroomDivisor) / Math.Max(_currentSize, 1);
+            projected = Math.Min(projected, MaxProjectionTargetMultiple * _targetSize);
             if (projected > _tarStream.Capacity)
                 _tarStream.Capacity = (int)Math.Min(projected, int.MaxValue / 2);
         }
