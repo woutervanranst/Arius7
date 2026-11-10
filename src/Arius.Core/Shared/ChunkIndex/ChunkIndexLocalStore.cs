@@ -120,9 +120,7 @@ internal sealed class ChunkIndexLocalStore
 
                 for (var i = 0; i < page.Length; i++)
                 {
-                    var digest = CreateDigestBuffer();
-                    WriteDigest(page[i].ToString(), digest);
-                    command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = digest;
+                    command.Parameters.Add($"$h{i}", SqliteType.Blob).Value = ParseHashBytes(page[i].ToString());
                 }
 
                 using var reader = command.ExecuteReader();
@@ -174,9 +172,7 @@ internal sealed class ChunkIndexLocalStore
             command.CommandText = pendingFlushOnly
                 ? "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash AND pending_flush = 1;"
                 : "SELECT content_hash, chunk_hash, original_size, chunk_size, storage_tier_hint FROM chunk_index_entries WHERE content_hash = $contentHash;";
-            var digest = CreateDigestBuffer();
-            WriteDigest(contentHash.ToString(), digest);
-            command.Parameters.Add("$contentHash", SqliteType.Blob).Value = digest;
+            command.Parameters.Add("$contentHash", SqliteType.Blob).Value = ParseHashBytes(contentHash.ToString());
             using var reader = command.ExecuteReader();
             var entry = reader.Read() ? ReadEntry(reader) : null;
             _logger.LogDebug("[chunk-index-local] FindEntry: contentHash={ContentHash} pendingFlushOnly={PendingFlushOnly} found={Found}", contentHash.Short8, pendingFlushOnly, entry is not null);
@@ -472,7 +468,7 @@ internal sealed class ChunkIndexLocalStore
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
                 using var command = CreateUpsertCommand(connection, transaction, pendingFlush: true, preservePendingFlushRows: false);
-                BindEntry(command, entry, CreateDigestBuffer(), CreateDigestBuffer());
+                BindEntry(command, entry);
                 var rowsAffected = command.ExecuteNonQuery();
 
                 transaction.Commit();
@@ -502,12 +498,10 @@ internal sealed class ChunkIndexLocalStore
                 using var connection = OpenConnection();
                 using var transaction = connection.BeginTransaction();
                 using var command = CreateUpsertCommand(connection, transaction, pendingFlush: true, preservePendingFlushRows: false);
-                var contentDigest = CreateDigestBuffer();
-                var chunkDigest   = CreateDigestBuffer();
                 var rowsAffected = 0;
                 foreach (var entry in materialized)
                 {
-                    BindEntry(command, entry, contentDigest, chunkDigest);
+                    BindEntry(command, entry);
                     rowsAffected += command.ExecuteNonQuery();
                 }
 
@@ -541,12 +535,10 @@ internal sealed class ChunkIndexLocalStore
                     using var connection = OpenConnection();
                     using var transaction = connection.BeginTransaction();
                     using var command = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: false);
-                    var contentDigest = CreateDigestBuffer();
-                    var chunkDigest   = CreateDigestBuffer();
                     var rowsAffected = 0;
                     foreach (var entry in batch)
                     {
-                        BindEntry(command, entry, contentDigest, chunkDigest);
+                        BindEntry(command, entry);
                         rowsAffected += command.ExecuteNonQuery();
                     }
 
@@ -588,11 +580,9 @@ internal sealed class ChunkIndexLocalStore
                 var storageTierHint = command.Parameters.Add("$storageTierHint", SqliteType.Integer);
 
                 var rowsAffected = 0;
-                var parentDigest = CreateDigestBuffer();
-                parent.Value     = parentDigest;
                 foreach (var (parentHash, (tier, size)) in tarMetadata)
                 {
-                    WriteDigest(parentHash.ToString(), parentDigest);
+                    parent.Value          = ParseHashBytes(parentHash.ToString());
                     chunkSize.Value       = size;
                     storageTierHint.Value = ShardEntry.SerializeTier(tier);
                     rowsAffected         += command.ExecuteNonQuery();
@@ -633,14 +623,12 @@ internal sealed class ChunkIndexLocalStore
                 using var transaction = connection.BeginTransaction();
                 using var upsertEntries = CreateUpsertCommand(connection, transaction, pendingFlush: false, preservePendingFlushRows: true);
 
-                var contentDigest = CreateDigestBuffer();
-                var chunkDigest   = CreateDigestBuffer();
                 foreach (var (prefix, etag, entries) in downloaded)
                 {
                     DeleteRemoteBackedRange(connection, transaction, prefix);
                     foreach (var entry in entries)
                     {
-                        BindEntry(upsertEntries, entry, contentDigest, chunkDigest);
+                        BindEntry(upsertEntries, entry);
                         upsertEntries.ExecuteNonQuery();
                     }
 
@@ -953,15 +941,10 @@ internal sealed class ChunkIndexLocalStore
         return command;
     }
 
-    /// <summary>
-    /// Binds one row using reusable digest buffers; each execution completes before the buffers are overwritten.
-    /// </summary>
-    private static void BindEntry(SqliteCommand command, ShardEntry entry, byte[] contentDigest, byte[] chunkDigest)
+    private static void BindEntry(SqliteCommand command, ShardEntry entry)
     {
-        WriteDigest(entry.ContentHash.ToString(), contentDigest);
-        WriteDigest(entry.ChunkHash.ToString(), chunkDigest);
-        command.Parameters["$contentHash"].Value = contentDigest;
-        command.Parameters["$chunkHash"].Value = chunkDigest;
+        command.Parameters["$contentHash"].Value = ParseHashBytes(entry.ContentHash.ToString());
+        command.Parameters["$chunkHash"].Value = ParseHashBytes(entry.ChunkHash.ToString());
         command.Parameters["$originalSize"].Value = entry.OriginalSize;
         command.Parameters["$chunkSize"].Value = entry.ChunkSize;
         command.Parameters["$storageTierHint"].Value = ShardEntry.SerializeTier(entry.StorageTierHint);
@@ -1007,14 +990,6 @@ internal sealed class ChunkIndexLocalStore
             reader.GetInt64(3),
             ShardEntry.DeserializeTier(reader.GetInt32(4)));
 
-    /// <summary>
-    /// Writes a canonical hexadecimal hash into a 32-byte digest buffer. The hash types guarantee exactly
-    /// 64 canonical hex characters, so the conversion cannot fail.
-    /// </summary>
-    private static void WriteDigest(string hex, byte[] destination)
-        => Convert.FromHexString(hex, destination, out _, out _);
-
-    /// <summary>Creates a reusable 32-byte digest buffer.</summary>
-    private static byte[] CreateDigestBuffer() => new byte[HashCodec.Sha256ByteLength];
-
+    private static byte[] ParseHashBytes(string value)
+        => Convert.FromHexString(value);
 }
