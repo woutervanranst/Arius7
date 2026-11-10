@@ -906,7 +906,7 @@ internal sealed class ChunkIndexLocalStore
         SqliteConnection.ClearPool(connection);
     }
 
-    private static int DeleteRemoteBackedRange(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix)
+    private static void DeleteRemoteBackedRange(SqliteConnection connection, SqliteTransaction transaction, PathSegment prefix)
     {
         var (lower, upper) = ChunkIndexRouter.GetHashRangeBounds(prefix);
         using var deleteEntries = connection.CreateCommand();
@@ -914,7 +914,7 @@ internal sealed class ChunkIndexLocalStore
         deleteEntries.CommandText = "DELETE FROM chunk_index_entries WHERE pending_flush = 0 AND content_hash BETWEEN $lower AND $upper;";
         deleteEntries.Parameters.Add("$lower", SqliteType.Blob).Value = lower;
         deleteEntries.Parameters.Add("$upper", SqliteType.Blob).Value = upper;
-        return deleteEntries.ExecuteNonQuery();
+        deleteEntries.ExecuteNonQuery();
     }
 
     private static SqliteCommand CreateUpsertCommand(SqliteConnection connection, SqliteTransaction transaction, bool pendingFlush, bool preservePendingFlushRows)
