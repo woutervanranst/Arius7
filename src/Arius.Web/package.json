@@ -23,20 +23,20 @@
     "@angular/router": "^22.1.4",
     "@microsoft/signalr": "^10.0.11",
     "rxjs": "~7.8.0",
-    "tslib": "^2.3.0",
-    "zone.js": "~0.16.2"
+    "tslib": "^2.9.1",
+    "zone.js": "~0.16.3"
   },
   "devDependencies": {
     "@angular/build": "^22.1.6",
     "@angular/cli": "^22.1.6",
     "@angular/compiler-cli": "^22.1.4",
-    "@azure/storage-blob": "^12.32.0",
-    "@estruyf/github-actions-reporter": "^1.12.0",
-    "@playwright/test": "^1.62.1",
-    "@tailwindcss/postcss": "^4.1.11",
+    "@azure/storage-blob": "^12.34.0",
+    "@estruyf/github-actions-reporter": "^1.14.0",
+    "@playwright/test": "^1.65.0",
+    "@tailwindcss/postcss": "^4.3.5",
     "@vitest/coverage-v8": "^4.1.11",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.26",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
     "tailwindcss": "^4.1.11",
     "typescript": "~6.0.3",
     "vitest": "^4.1.10"
