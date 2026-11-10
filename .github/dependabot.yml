@@ -55,6 +55,12 @@ updates:
     labels:
       - "dependencies"
       - "npm"
+    # @angular/build peers vitest ^4; hold vitest majors until Angular supports 5.
+    ignore:
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
     groups:
       # Angular framework packages must move in lockstep (incl. majors), so
       # they share one PR regardless of update type — no update-types filter.
