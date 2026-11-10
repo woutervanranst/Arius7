@@ -6,6 +6,7 @@ namespace Arius.Core.Shared.HashCache;
 /// Same read-wrapping shape as <see cref="Arius.Core.Shared.Streaming.ProgressStream"/>, but captures
 /// fingerprint samples instead of reporting progress.
 /// </summary>
+[SharedWithinAssembly]
 internal sealed class SparseSamplingStream : Stream
 {
     private readonly Stream                    _inner;

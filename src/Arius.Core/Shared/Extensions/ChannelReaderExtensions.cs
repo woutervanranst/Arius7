@@ -3,6 +3,7 @@ using System.Threading.Channels;
 
 namespace Arius.Core.Shared.Extensions;
 
+[SharedWithinAssembly]
 internal static class ChannelReaderExtensions
 {
     extension<T>(ChannelReader<T> reader)
