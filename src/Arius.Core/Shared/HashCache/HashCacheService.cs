@@ -16,6 +16,7 @@ internal interface IHashCacheService
 }
 
 /// <summary>Verdict from <see cref="IHashCacheService.TryReuse"/>: the reused hash on a hit, plus a diagnostic <see cref="Reason"/> for either outcome.</summary>
+[SharedWithinAssembly]
 internal readonly record struct FastHashResult(ContentHash? Hash, string Reason)
 {
     public        bool           IsHit                                => Hash is not null;
