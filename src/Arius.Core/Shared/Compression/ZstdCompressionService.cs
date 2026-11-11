@@ -1,11 +1,10 @@
-using ZstdSharp;
-using ZstdSharp.Unsafe;
+using System.IO.Compression;
 
 namespace Arius.Core.Shared.Compression;
 
 /// <summary>
-/// zstd-based <see cref="ICompressionService"/> backed by ZstdSharp.Port (a pure-managed port of
-/// facebook's reference libzstd). Writes standard RFC 8878 frames with the content checksum enabled;
+/// zstd-based <see cref="ICompressionService"/> backed by the framework's native zstd implementation.
+/// Writes standard RFC 8878 frames with the content checksum enabled;
 /// reads auto-detect zstd vs legacy gzip from the stream header.
 /// </summary>
 [SharedWithinAssembly]
@@ -20,9 +19,11 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
 
     /// <summary>
     /// zstd compression level for new blobs. This is the one performance/size knob: higher = smaller but slower.
-    /// 19 favours ratio (matching the previous gzip <c>SmallestSize</c> intent) but requires ~85 MB per compressor.
+    /// Level 15 preserves Arius's existing ratio/speed tradeoff.
     /// </summary>
     public const int DefaultCompressionLevel = 15;
+
+    private const int MaxDecodeWindowLog2 = 27; // Preserve the previous decoder's 128 MiB cap.
 
     /// <summary>
     /// zstd is verified inline on every chunk upload: it is the newer encoder, so we prove each frame
@@ -32,26 +33,15 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
     public bool RequireRoundTripVerification => true;
 
     public Stream WrapForCompression(Stream destination, bool leaveOpen = true)
-    {
-        var stream = new CompressionStream(destination, compressionLevel, leaveOpen: leaveOpen);
-
-        // XXH64 frame checksum (over the original data). Off by default in zstd; we enable it so any
-        // decode-time corruption is loud — keeping parity with gzip's always-on CRC32.
-        stream.SetParameter(ZSTD_cParameter.ZSTD_c_checksumFlag, 1);
-
-        // Stay single-threaded on purpose. Multi-worker zstd (ZSTDMT) is the youngest, least-battle-tested
-        // part of the port and the one place its output is not byte-for-byte cross-checked against native
-        // libzstd, so it is the highest-risk path for a silent encoder bug. A backup tool gains nothing from
-        // it — we already parallelize across chunks. 0 is the current zstd default, but we set it explicitly
-        // so the intent (and the safety property) survives any future change to that default.
-        stream.SetParameter(ZSTD_cParameter.ZSTD_c_nbWorkers, 0);
-
-        // Window size and long-distance matching are deliberately left at zstd's level-derived defaults. At
-        // our level the window stays well under the decompressor's default 128 MiB cap (ZSTD_d_windowLogMax),
-        // so a frame written today is always restorable by a default-configured reader — we never emit a
-        // large-window/LDM frame that a future decompressor would have to be specially configured to decode.
-        return stream;
-    }
+        => new ZstandardStream(destination, new ZstandardCompressionOptions
+        {
+            Quality = compressionLevel,
+            AppendChecksum = true,
+            WindowLog2 = 0, // Retain the level-derived window, not a fixed framework profile.
+            EnableLongDistanceMatching = false,
+            // The framework creates one fresh ZSTD_CCtx and exposes no worker-count option;
+            // it never enables ZSTD_c_nbWorkers. Archive parallelizes across chunks instead.
+        }, leaveOpen);
 
     public Stream WrapForDecompression(Stream source, bool leaveOpen = false)
         => new AutoDetectDecompressionStream(source, leaveOpen);
@@ -88,6 +78,7 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await EnsureInitializedAsync(cancellationToken);
             return await _inner!.ReadAsync(buffer, cancellationToken);
         }
@@ -140,7 +131,10 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
                 return prefixed;
 
             if (read >= ZstdMagic.Length && header.AsSpan(0, ZstdMagic.Length).SequenceEqual(ZstdMagic))
-                return new DecompressionStream(prefixed, leaveOpen: false);
+                return new ZstandardStream(prefixed, new ZstandardDecompressionOptions
+                {
+                    MaxWindowLog2 = MaxDecodeWindowLog2,
+                }, leaveOpen: false);
 
             // Legacy "+gzip" blob: hand the un-peeked stream to the gzip codec to decode.
             if (GZipCompressionService.IsGZipHeader(header.AsSpan(0, read)))

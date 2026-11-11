@@ -13,6 +13,11 @@ service providers, secrets at rest), see the maintainer doc
 [design/hosts/web.md](../design/hosts/web.md). This page is the operator view: how to
 deploy it.
 
+Released binaries include .NET 11's native compression support; installing a separate
+zstd package is not required. Single-file CLI binaries need a writable location for
+native-library extraction. Custom distribution-built .NET runtimes may require their
+system zstd package; the supported container uses Microsoft's .NET runtime image.
+
 ---
 
 ## At a glance
