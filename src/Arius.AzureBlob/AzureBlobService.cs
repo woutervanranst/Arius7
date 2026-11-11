@@ -24,14 +24,21 @@ public sealed class AzureBlobService(BlobServiceClient serviceClient, string acc
 
         static async Task<bool> IsAriusArchive(BlobContainerClient containerClient, CancellationToken cancellationToken)
         {
-            var page = await containerClient
-                .GetBlobsAsync(BlobTraits.None, BlobStates.None, BlobPaths.SnapshotsPrefix.ToBlobPrefix(), cancellationToken)
-                .AsPages(pageSizeHint: 1)
-                .FirstOrDefaultAsync(cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                var page = await containerClient
+                    .GetBlobsAsync(BlobTraits.None, BlobStates.None, BlobPaths.SnapshotsPrefix.ToBlobPrefix(), cancellationToken)
+                    .AsPages(pageSizeHint: 1)
+                    .FirstOrDefaultAsync(cancellationToken)
+                    .ConfigureAwait(false);
 
-            // We agree that a container is an Arius archive if it contains any blobs under the "snapshots/" prefix, excluding the edge case should a "snapshots/" blob exist without any actual snapshots.
-            return page?.Values.Any(i => !i.Name.Equals(BlobPaths.SnapshotsPrefix.ToBlobPrefix(), StringComparison.Ordinal)) ?? false;
+                // We agree that a container is an Arius archive if it contains any blobs under the "snapshots/" prefix, excluding the edge case should a "snapshots/" blob exist without any actual snapshots.
+                return page?.Values.Any(i => !i.Name.Equals(BlobPaths.SnapshotsPrefix.ToBlobPrefix(), StringComparison.Ordinal)) ?? false;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return false;
+            }
         }
     }
 
