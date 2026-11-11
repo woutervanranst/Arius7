@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
@@ -12,6 +13,7 @@ import { DrawerStore } from '../../core/state/drawer.store';
   selector: 'arius-overview',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DatePipe],
   template: `
     <!-- Header -->
     <div class="flex items-start justify-between">
@@ -81,7 +83,7 @@ import { DrawerStore } from '../../core/state/drawer.store';
     </div>
 
     <!-- Repositories table -->
-    <div class="ar-card" style="margin-top:18px;padding:0;overflow:hidden">
+    <div class="ar-card" style="margin-top:18px;padding:0;overflow-x:auto">
       <div class="flex items-center justify-between" style="padding:18px 20px;border-bottom:1px solid #f0f0f2">
         <div>
           <div style="font-size:15.5px;font-weight:600;color:#18181b">Repositories</div>
@@ -93,14 +95,14 @@ import { DrawerStore } from '../../core/state/drawer.store';
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:2.4fr .9fr .9fr .7fr;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
-        <div>Repository</div><div>Tier</div><div>Region</div><div>Account</div>
+      <div style="display:grid;grid-template-columns:2.2fr .75fr .85fr .7fr 1.15fr;min-width:760px;padding:10px 20px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#a1a1aa">
+        <div>Repository</div><div>Tier</div><div>Region</div><div>Account</div><div>Last archive run</div>
       </div>
 
       @if (repos(); as list) {
         @for (repo of list; track repo.id) {
           <div class="ar-repo-row" data-testid="repo-row" (click)="openRepo(repo.id)"
-               style="display:grid;grid-template-columns:2.4fr .9fr .9fr .7fr;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
+               style="display:grid;grid-template-columns:2.2fr .75fr .85fr .7fr 1.15fr;min-width:760px;align-items:center;padding:12px 20px;cursor:pointer;border-top:1px solid #f6f6f7">
             <div class="flex items-center gap-3">
               <div style="width:38px;height:38px;border-radius:10px;background:#eff6ff;color:#3b82f6;display:flex;align-items:center;justify-content:center">
                 <i class="ki-filled ki-folder" style="font-size:18px"></i>
@@ -113,6 +115,10 @@ import { DrawerStore } from '../../core/state/drawer.store';
             <div><span style="font-size:12.5px;font-weight:600;text-transform:capitalize" [style.color]="tierColor(repo.defaultTier)">{{ repo.defaultTier }}</span></div>
             <div data-testid="repo-region" style="font-size:12.5px;color:#71717a">@if (repo.region) {{{ repo.region }}@if (repo.regionIsDefault) {<span style="color:#a1a1aa" title="Set the container's 'region' metadata for accurate pricing"> (default)</span>}} @else {<span style="color:#d4d4d8">—</span>}</div>
             <div class="ar-mono" style="font-size:12.5px;color:#71717a">{{ repo.account }}</div>
+            <div style="font-size:12.5px;color:#71717a;white-space:nowrap">
+              @if (repo.lastArchiveStartedAt) { {{ repo.lastArchiveStartedAt | date:'dd MMM yyyy, HH:mm' }} }
+              @else { <span style="color:#a1a1aa">Never</span> }
+            </div>
           </div>
         } @empty {
           <div style="padding:28px 20px;text-align:center;color:#a1a1aa;font-size:13px">
