@@ -123,9 +123,11 @@ a header with the alias, the container and local-path chips, and the **Restore**
 below.)
 
 **Snapshot / time-travel bar.** Each archive run produces a *snapshot*. The bar sits above the tabs
-and applies to whatever tab you're on. It shows the active snapshot with a **LATEST** pill, a
-dropdown picker listing every snapshot **newest-first** (version + timestamp), and a scrubber with
-one dot per snapshot. Versions are numbered oldest-first — **v1** is the first archive run, the
+and applies to whatever tab you're on. The picker shows the selected snapshot (version and
+timestamp, plus a **LATEST** pill when it is the newest) and opens a dropdown listing every snapshot
+**newest-first**. Next to it, a scrubber has one dot per snapshot, placed in proportion to when each
+was taken (the first snapshot at the left end, the latest at the right; dots that would overlap are
+nudged apart). Hover or focus a dot to see its timestamp. Versions are numbered oldest-first — **v1** is the first archive run, the
 highest number is the latest. Click a dropdown item or a scrubber dot to *time-travel* — the Files
 explorer then shows the repository exactly as it was at that snapshot, and an amber **Historical
 view** badge appears. Pick the latest snapshot (the top of the dropdown, or **LATEST**) to return to
