@@ -5,6 +5,12 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Running;
 
+if (args is ["compression", var codec, var workload])
+{
+    await CompressionComparison.RunAsync(codec, workload);
+    return;
+}
+
 // In-process allocation micro-benchmarks run on BenchmarkDotNet's default job and take its own options,
 // e.g. `micro --filter '*TarBuilder*'`. They need no Docker and do not append to the tail log.
 if (args is ["micro", .. var microArgs])

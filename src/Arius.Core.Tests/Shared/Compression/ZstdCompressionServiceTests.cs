@@ -1,7 +1,6 @@
 using System.IO.Compression;
 using System.Text;
 using Arius.Core.Shared.Compression;
-using Arius.Tests.Shared;
 
 namespace Arius.Core.Tests.Shared.Compression;
 
@@ -11,7 +10,7 @@ namespace Arius.Core.Tests.Shared.Compression;
 /// </summary>
 public class ZstdCompressionServiceTests
 {
-    private static readonly ICompressionService Sut = ICompressionService.ZtdInstance;
+    private static readonly ICompressionService Sut = new ZstdCompressionService();
 
     [Test]
     public void RequiresRoundTripVerification()
@@ -44,11 +43,8 @@ public class ZstdCompressionServiceTests
     public async Task RoundTripTest(int size)
     {
         // Companion to Compress_Then_Decompress_RoundTrips_ByteForByte, which feeds incompressible random
-        // bytes (mostly the "store" path). Real backup data compresses, so this drives the match finder and
-        // the FSE/Huffman entropy stages — the encoder machinery most exposed to a transpilation bug in a
-        // ported codec. It is the same managed encode→decode round-trip the inline upload verifier and the
-        // CI matrix (linux-x64, windows-x64, macOS-arm64) rely on, so a per-architecture divergence surfaces
-        // here as a failed assertion.
+        // bytes (mostly the "store" path). Real backup data compresses, so this also drives the match
+        // finder and entropy stages in the same encode/decode path as the inline upload verifier.
         foreach (var original in new[] { Compressible(size), Textual(size) })
         {
             var compressed = await CompressAsync(original);
@@ -108,14 +104,14 @@ public class ZstdCompressionServiceTests
         // any surviving decode must fail the XXH64 check rather than silently emit wrong bytes.
         compressed[compressed.Length / 2] ^= 0xFF;
 
-        await Should.ThrowAsync<ZstdSharp.ZstdException>(async () => await DecompressAsync(compressed));
+        await Should.ThrowAsync<InvalidDataException>(async () => await DecompressAsync(compressed));
     }
 
     [Test]
     public async Task Decompress_TruncatedZstdFrame_ThrowsInsteadOfReturningPartialBytes()
     {
         // A frame whose tail (end marker + XXH64 trailer) never arrived — e.g. a crash or a forgotten
-        // Dispose mid-upload. Read to EOF, ZstdSharp's default checkEndOfStream must surface this as a throw
+        // Dispose mid-upload. Read to EOF, the framework decoder must surface this as a throw
         // rather than silently returning a partial prefix. (This is why restore reads each chunk to the end:
         // the truncation guard only fires once the consumer reaches EOF.)
         var original = new byte[8192];
@@ -124,7 +120,7 @@ public class ZstdCompressionServiceTests
 
         var truncated = compressed[..(compressed.Length / 2)];
 
-        await Should.ThrowAsync<EndOfStreamException>(async () => await DecompressAsync(truncated));
+        await Should.ThrowAsync<InvalidDataException>(async () => await DecompressAsync(truncated));
     }
 
     [Test]
@@ -144,6 +140,91 @@ public class ZstdCompressionServiceTests
 
         (await ReadAllViaByteArrayAsync(compressed)).ShouldBe(original);
         ReadAllViaByteArraySync(compressed).ShouldBe(original);
+    }
+
+    [Test]
+    public async Task Decompress_RejectsWindowLargerThan128MiB()
+    {
+        // Standard empty frames at and above the cap; no large allocation is needed.
+        byte[] frame = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88, 0x01, 0x00, 0x00];
+        (await DecompressAsync(frame)).ShouldBeEmpty();
+        frame[5] = 0x90; // 256 MiB. The framework reports a window-limit violation as IOException.
+        await Should.ThrowAsync<IOException>(async () => await DecompressAsync(frame));
+    }
+
+    [Test]
+    [Arguments(1)]
+    [Arguments(4)]
+    public async Task Decompress_MissingChecksumTrailer_ThrowsInSyncAndAsyncReads(int missingBytes)
+    {
+        var compressed = await CompressAsync(Textual(8192));
+        var truncated = compressed[..^missingBytes];
+
+        await Should.ThrowAsync<InvalidDataException>(async () => await DecompressAsync(truncated));
+        Should.Throw<InvalidDataException>(() => ReadAllViaByteArraySync(truncated));
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task Decompress_CancellationIsHonoredBeforeAndAfterDetection(bool initialized)
+    {
+        var compressed = await CompressAsync(Textual(8192));
+        await using var source = new MemoryStream(compressed);
+        await using var decompress = Sut.WrapForDecompression(source, leaveOpen: true);
+        var buffer = new byte[1];
+        if (initialized)
+            (await decompress.ReadAsync(buffer)).ShouldBe(1);
+        else
+            source.Position.ShouldBe(0L);
+
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(async () => (await decompress.ReadAsync(buffer, cancelled.Token)).ShouldBe(1));
+    }
+
+    [Test]
+    public async Task Compress_CancelledWriteDoesNotConsumeInput()
+    {
+        using var output = new MemoryStream();
+        await using var compress = Sut.WrapForCompression(output);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(async () => await compress.WriteAsync(new byte[8192], cancelled.Token));
+    }
+
+    [Test]
+    [Arguments(true, true)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(false, false)]
+    public async Task StreamOwnership_IsPreserved(bool leaveOpen, bool asyncDispose)
+    {
+        var compressed = await CompressAsync([1, 2, 3]);
+        foreach (var initialize in new[] { false, true })
+        {
+            using var source = new MemoryStream(compressed);
+            var decompress = Sut.WrapForDecompression(source, leaveOpen);
+            source.Position.ShouldBe(0L); // Constructing the wrapper never reads.
+            if (initialize)
+                decompress.ReadByte().ShouldBe(1);
+            if (asyncDispose)
+                await decompress.DisposeAsync();
+            else
+                decompress.Dispose();
+            source.CanRead.ShouldBe(leaveOpen);
+        }
+
+        using var output = new MemoryStream();
+        var compress = Sut.WrapForCompression(output, leaveOpen);
+        if (asyncDispose)
+            await compress.DisposeAsync();
+        else
+            compress.Dispose();
+        output.CanWrite.ShouldBe(leaveOpen);
+        output.ToArray().ShouldNotBeEmpty();
+        (await DecompressAsync(output.ToArray())).ShouldBeEmpty();
     }
 
     private static async Task<byte[]> ReadAllViaByteArrayAsync(byte[] compressed)
