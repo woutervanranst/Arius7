@@ -15,10 +15,10 @@ public sealed class LastArchiveRunTests
         var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
         var otherRepositoryId = database.InsertRepository("other", "other-container", accountId, localPath: null, "archive", encryptedPassphrase: null);
         var emptyRepositoryId = database.InsertRepository("empty", "empty-container", accountId, localPath: null, "archive", encryptedPassphrase: null);
-        var olderArchive = new DateTimeOffset(2026, 11, 9, 10, 0, 0, TimeSpan.Zero);
-        var failedArchive = new DateTimeOffset(2026, 11, 10, 11, 0, 0, TimeSpan.Zero);
-        var latestArchive = new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
-        var laterRestore = new DateTimeOffset(2026, 11, 11, 13, 0, 0, TimeSpan.Zero);
+        var latestArchive = DateTimeOffset.UtcNow.AddDays(-1);
+        var olderArchive = latestArchive.AddDays(-2);
+        var failedArchive = latestArchive.AddDays(-1);
+        var laterRestore = latestArchive.AddHours(1);
 
         database.InsertJob("archive-old", repositoryId, "archive", "one-off", "completed");
         database.InsertJob("archive-failed", repositoryId, "archive", "one-off", "failed");
@@ -31,7 +31,10 @@ public sealed class LastArchiveRunTests
         SetStartedAt(path, "archive-active", latestArchive);
         SetStartedAt(path, "restore-later", laterRestore);
         SetStartedAt(path, "other-archive", failedArchive);
+        for (var i = 0; i < 101; i++)
+            database.InsertJob($"restore-newer-{i}", repositoryId, "restore", "one-off", "completed");
 
+        database.ListJobs().Take(100).All(job => job.Kind == "restore").ShouldBeTrue();
         var starts = database.ListLatestArchiveStartedAt();
 
         starts[repositoryId].ShouldBe(latestArchive);

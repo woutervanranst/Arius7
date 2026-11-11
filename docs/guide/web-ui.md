@@ -23,7 +23,7 @@ A narrow icon rail on the left switches between the four top-level areas:
 
 | Rail item | What it is |
 |---|---|
-| **Overview** | KPI cards, a **Storage accounts** table, and the **Repositories** table — whose header carries the **Add existing** / **New repository** buttons. The repository table shows each repository's tier, region, account, and last archive-run time. Your home screen. |
+| **Overview** | KPI cards, a **Storage accounts** table, and the **Repositories** table — whose header carries the **Add existing** / **New repository** buttons. The repository table shows each repository's tier, region, account, and last locally recorded archive-run time. Your home screen. |
 | **Repos** | The same repository columns in a dedicated list. |
 | **Jobs** | Every archive/restore run (one-off and scheduled) with a live output console. |
 | **Settings** | Placeholder for now. |

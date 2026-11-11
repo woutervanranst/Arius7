@@ -23,7 +23,7 @@ describe('layoutSnapshotDots', () => {
 
   it('pushes snapshots from the same day apart by at least the minimum gap', () => {
     const t0 = Date.UTC(2025, 11, 14, 16, 34);
-    const x = layoutSnapshotDots([0, t0, t0 + 2 * 3_600_000, 400 * day], 600);
+    const x = layoutSnapshotDots([t0 - 400 * day, t0, t0 + 2 * 3_600_000, t0 + 400 * day], 600);
     for (const g of gaps(x)) expect(g).toBeGreaterThanOrEqual(MIN_DOT_GAP - 1e-9);
   });
 

@@ -68,6 +68,12 @@
 }
 .ar-mono { font-family: var(--ar-font-mono); }
 .ar-heading { letter-spacing: -.02em; color: var(--ar-title); }
+.ar-repository-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(70px, .75fr) minmax(0, .85fr) minmax(0, .7fr) minmax(170px, 1.15fr);
+  min-width: 810px;
+}
+.ar-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Buttons (40px / radius 9) */
 .ar-btn-outline, .ar-btn-primary, .ar-btn-danger {
