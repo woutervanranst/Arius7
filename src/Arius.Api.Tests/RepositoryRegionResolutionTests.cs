@@ -110,6 +110,22 @@ public sealed class RepositoryRegionResolutionTests
     }
 
     [Test]
+    public async Task LastArchiveStartedAt_IsIncludedInRepositoryDto()
+    {
+        var (database, repositoryId) = NewDatabase();
+        var repository = database.GetRepository(repositoryId)!;
+        var lastArchiveStartedAt = new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
+
+        var dto = await RepositoryEndpoints.ResolveRegionDtoAsync(
+            database, repository,
+            (_, _) => Task.FromResult<StorageAccountInfo?>(null),
+            CancellationToken.None,
+            lastArchiveStartedAt);
+
+        dto.LastArchiveStartedAt.ShouldBe(lastArchiveStartedAt);
+    }
+
+    [Test]
     public async Task UncachedConfiguredRegion_IsResolvedLive_ThenCached()
     {
         var (database, repositoryId) = NewDatabase();

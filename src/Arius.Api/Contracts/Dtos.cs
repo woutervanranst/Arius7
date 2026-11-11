@@ -22,7 +22,8 @@ public sealed record RepositoryDto(
     string? LocalPath,
     string  DefaultTier,
     string? Region,
-    bool    RegionIsDefault);
+    bool    RegionIsDefault,
+    DateTimeOffset? LastArchiveStartedAt = null);
 
 public sealed record CreateRepositoryRequest(
     long    AccountId,

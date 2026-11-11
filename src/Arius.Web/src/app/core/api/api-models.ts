@@ -19,6 +19,8 @@ export interface RepositoryDto {
   region: string | null;
   /** True when {@link region} is the fallback default because the container has no region metadata set. */
   regionIsDefault: boolean;
+  /** Start time of the most recent archive command, regardless of its status. */
+  lastArchiveStartedAt: string | null;
 }
 
 export interface SnapshotDto {

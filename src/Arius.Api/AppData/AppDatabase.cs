@@ -486,6 +486,27 @@ public sealed class AppDatabase
         return result;
     }
 
+    /// <summary>Latest archive command start time per repository. Unlike <see cref="ListJobs"/>, this is not capped
+    /// by the global job-history window, so repository rows always report the actual latest run.</summary>
+    public IReadOnlyDictionary<long, DateTimeOffset> ListLatestArchiveStartedAt(long? repositoryId = null)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT repo_id, MAX(started_at)
+            FROM jobs
+            WHERE kind = 'archive' AND started_at IS NOT NULL
+            """ + (repositoryId is null ? "" : " AND repo_id = $repositoryId") + " GROUP BY repo_id;";
+        if (repositoryId is not null)
+            command.Parameters.AddWithValue("$repositoryId", repositoryId.Value);
+
+        using var reader = command.ExecuteReader();
+        var result = new Dictionary<long, DateTimeOffset>();
+        while (reader.Read())
+            result[reader.GetInt64(0)] = DateTimeOffset.Parse(reader.GetString(1));
+        return result;
+    }
+
     /// <summary>Non-terminal jobs (running/awaiting-cost/rehydrating), optionally repo-scoped, ordered newest-first.
     /// Deliberately <b>uncapped</b>: unlike <see cref="ListJobs"/> it never hides an active job behind the newest-100
     /// window, since a long-lived <c>awaiting-cost</c> (up to 24h) or <c>rehydrating</c> job can sit outside that

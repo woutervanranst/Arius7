@@ -16,8 +16,11 @@ internal static class RepositoryEndpoints
         group.MapGet("/", async (AppDatabase db, RepositoryProviderRegistry registry, CancellationToken ct) =>
         {
             var repositories = db.ListRepositories();
+            var lastArchiveStarts = db.ListLatestArchiveStartedAt();
             var dtos = await Task.WhenAll(repositories.Select(r =>
-                ResolveRegionDtoAsync(db, r, (id, c) => TryGetAccountInfoAsync(registry, id, c), ct)));
+                ResolveRegionDtoAsync(
+                    db, r, (id, c) => TryGetAccountInfoAsync(registry, id, c), ct,
+                    lastArchiveStarts.TryGetValue(r.Id, out var startedAt) ? startedAt : null)));
             return dtos.ToList();
         });
 
@@ -26,7 +29,10 @@ internal static class RepositoryEndpoints
             var repository = db.GetRepository(id);
             if (repository is null)
                 return Results.NotFound();
-            return Results.Ok(await ResolveRegionDtoAsync(db, repository, (rid, c) => TryGetAccountInfoAsync(registry, rid, c), ct));
+            var lastArchiveStarts = db.ListLatestArchiveStartedAt(id);
+            return Results.Ok(await ResolveRegionDtoAsync(
+                db, repository, (rid, c) => TryGetAccountInfoAsync(registry, rid, c), ct,
+                lastArchiveStarts.TryGetValue(id, out var startedAt) ? startedAt : null));
         });
 
         group.MapPost("/", (CreateRepositoryRequest request, AppDatabase db, SecretProtector secrets) =>
@@ -64,7 +70,10 @@ internal static class RepositoryEndpoints
             db.ClearStatisticsCache(id);
             db.SetRepositoryRegionHint(id, null);
             // Region is left unresolved here; the client refetches the list, which re-resolves and caches it.
-            return Results.Ok(ToDto(db, db.GetRepository(id)!, region: null, regionIsDefault: false));
+            var lastArchiveStarts = db.ListLatestArchiveStartedAt(id);
+            return Results.Ok(ToDto(
+                db, db.GetRepository(id)!, region: null, regionIsDefault: false,
+                lastArchiveStarts.TryGetValue(id, out var startedAt) ? startedAt : null));
         });
 
         group.MapDelete("/{id:long}", (long id, AppDatabase db, RepositoryProviderRegistry registry) =>
@@ -89,15 +98,16 @@ internal static class RepositoryEndpoints
         AppDatabase db,
         RepositoryRecord repository,
         Func<long, CancellationToken, Task<StorageAccountInfo?>> resolveLive,
-        CancellationToken ct)
+        CancellationToken ct,
+        DateTimeOffset? lastArchiveStartedAt = null)
     {
         if (repository.RegionHint is not null)
-            return ToDto(db, repository, repository.RegionHint, regionIsDefault: false);
+            return ToDto(db, repository, repository.RegionHint, regionIsDefault: false, lastArchiveStartedAt);
 
         var info = await resolveLive(repository.Id, ct);
         if (info is { RegionIsDefault: false })
             db.SetRepositoryRegionHint(repository.Id, info.Region); // cache only a configured region (immutable); leave unset ones to re-resolve
-        return ToDto(db, repository, info?.Region, info?.RegionIsDefault ?? false);
+        return ToDto(db, repository, info?.Region, info?.RegionIsDefault ?? false, lastArchiveStartedAt);
     }
 
     /// <summary>
@@ -119,14 +129,20 @@ internal static class RepositoryEndpoints
         }
     }
 
-    private static RepositoryDto ToDto(AppDatabase db, RepositoryRecord repository, string? region, bool regionIsDefault)
+    private static RepositoryDto ToDto(
+        AppDatabase db,
+        RepositoryRecord repository,
+        string? region,
+        bool regionIsDefault,
+        DateTimeOffset? lastArchiveStartedAt = null)
     {
         var accountName = db.GetAccount(repository.AccountId)?.Name ?? "";
         return new RepositoryDto(
             repository.Id, repository.Alias, repository.Container, repository.AccountId, accountName,
             repository.LocalPath, repository.DefaultTier,
             Region:          region,
-            RegionIsDefault: regionIsDefault);
+            RegionIsDefault: regionIsDefault,
+            LastArchiveStartedAt: lastArchiveStartedAt);
     }
 
     private static string NormalizeTier(string? tier)
