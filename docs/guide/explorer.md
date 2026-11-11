@@ -9,7 +9,7 @@ ever been archived and pull files back down to disk, but you **cannot archive (b
 files from Explorer** — archiving stays on the [command-line tool](https://github.com/woutervanranst/Arius7). Think of
 Explorer as the window into a repository, and the CLI as the thing that fills it.
 
-> **Platform:** Windows only. Explorer is built on WPF (`net10.0-windows`) and uses
+> **Platform:** Windows only. Explorer is built on WPF (`net11.0-windows`) and uses
 > Windows-only facilities (DPAPI credential protection, the Windows user-settings store). On
 > Linux/macOS, use the [CLI](https://github.com/woutervanranst/Arius7) or the [Web host](./web-ui.md) instead.
 

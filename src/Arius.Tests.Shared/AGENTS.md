@@ -2,7 +2,7 @@
 
 Read the root contract first: [../../AGENTS.md](../../AGENTS.md). It holds the cross-cutting rules (think-before-coding, simplicity, TUnit workflow, code style, the doc map). This file only covers what is specific to this project.
 
-**What it is:** the reusable, *non-test* test-infrastructure library. It exists so that Docker-backed (Azurite) and repository fixtures can be shared across test projects **without one test assembly depending on another** (E2E used to reference Integration just to reuse `AzuriteFixture`, which made CI Docker-requirement discovery fragile). It targets `net10.0` and is consumed by Core/Cli/Integration/E2E/AzureBlob/Architecture/Explorer test projects.
+**What it is:** the reusable, *non-test* test-infrastructure library. It exists so that Docker-backed (Azurite) and repository fixtures can be shared across test projects **without one test assembly depending on another** (E2E used to reference Integration just to reuse `AzuriteFixture`, which made CI Docker-requirement discovery fragile). It targets `net11.0` and is consumed by Core/Cli/Integration/E2E/AzureBlob/Architecture/Explorer test projects.
 
 **Design:** see [docs/design/cross-cutting/testing.md](../../docs/design/cross-cutting/testing.md) and [ADR-0009](../../docs/decisions/adr-0009-clarify-test-fixture-boundaries.md). Don't restate the fixture rationale here.
 
