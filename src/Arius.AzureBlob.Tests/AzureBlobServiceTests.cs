@@ -51,6 +51,27 @@ public class AzureBlobServiceTests
     }
 
     [Test]
+    public async Task GetContainerNamesAsync_SkipsContainerDeletedAfterContainerList()
+    {
+        var service = new AzureBlobService(
+            new FakeBlobServiceClient(
+                [
+                    new FakeContainer("deleted", exists: false, ["snapshots/2026-04-01T120000.000Z"]),
+                    new FakeContainer("repo-a", exists: true, ["snapshots/2026-04-02T120000.000Z"]),
+                ]),
+            "account",
+            "key");
+
+        var results = new List<string>();
+        await foreach (var name in service.GetContainerNamesAsync(CancellationToken.None))
+        {
+            results.Add(name);
+        }
+
+        results.ShouldBe(["repo-a"]);
+    }
+
+    [Test]
     public async Task GetContainerNamesAsync_DoesNotTreatBlobNamedSnapshotsAsRepository()
     {
         var service = new AzureBlobService(
