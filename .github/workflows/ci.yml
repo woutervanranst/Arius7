@@ -138,7 +138,7 @@ jobs:
         run: npm ci
 
       - name: 🌐 Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: 🎭 Run e2e
         run: npm run e2e
@@ -209,7 +209,7 @@ jobs:
       - name: 📦 Install dependencies
         run: npm ci
       - name: 🌐 Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: 🎭 Run hermetic e2e
         run: npm run e2e:hermetic
       - name: ⬆️ Upload Playwright report
