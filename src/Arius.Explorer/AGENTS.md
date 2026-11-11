@@ -12,7 +12,7 @@ apply here and are **not** repeated. This file is only what is true of *this* pr
 ## What this is
 
 The **Windows-only WPF/MVVM desktop** host for *browsing* and *restoring* a repository
-(`net10.0-windows`, `UseWPF`, `WinExe`). Read/restore only — archiving stays in the CLI.
+(`net11.0-windows`, `UseWPF`, `WinExe`). Read/restore only — archiving stays in the CLI.
 A thin GUI over `Arius.Core`: it touches Azure only via `IBlobServiceFactory`, drives Core
 exclusively through `IMediator`, and never calls handlers or the Azure SDK directly.
 
@@ -60,7 +60,7 @@ exclusively through `IMediator`, and never calls handlers or the Azure SDK direc
 ## Build & test (Windows only)
 
 - `dotnet build src/Arius.Explorer/Arius.Explorer.csproj` and `Arius.Explorer.Tests` build/run
-  **only on Windows** (`net10.0-windows`). On macOS/Linux skip them; verify Core contract
+  **only on Windows** (`net11.0-windows`). On macOS/Linux skip them; verify Core contract
   changes against the cross-platform projects instead.
 - Tests mirror this folder tree. Run with TUnit conventions from the root contract
   (`--treenode-filter`, not `--filter`).

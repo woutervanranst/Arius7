@@ -4,7 +4,7 @@ How to build, run, and test Arius locally. This is the contributor *how-to*; for
 
 ## Prerequisites
 
-- **.NET SDK 10** — the projects target `net10.0` (Explorer: `net10.0-windows`).
+- **.NET SDK 11** — the projects target `net11.0` (Explorer: `net11.0-windows`).
 - **Node 22** — for the Angular web app (`src/Arius.Web`).
 - **Docker** — optional; only needed to run the Azurite-backed integration and E2E tests locally.
 
@@ -47,7 +47,7 @@ npm start                                   # http://localhost:4200
 ### Explorer (Windows)
 
 ```bash
-dotnet run --project src/Arius.Explorer      # Windows only (WPF, net10.0-windows)
+dotnet run --project src/Arius.Explorer      # Windows only (WPF, net11.0-windows)
 ```
 
 See the [Explorer guide](explorer.md).

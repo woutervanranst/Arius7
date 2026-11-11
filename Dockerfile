@@ -11,7 +11,7 @@ COPY src/Arius.Web/ ./
 RUN npx ng build --configuration production
 
 # ── Stage 2: publish the .NET API ───────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS api
 # VERSION is the git tag (passed by the release workflow). It stamps Arius.Api.dll and its
 # Arius.Core dependency so /api/info and snapshot manifests report the deployed version.
 ARG VERSION=0.0.0-dev
@@ -20,7 +20,7 @@ COPY src/ ./
 RUN dotnet publish Arius.Api/Arius.Api.csproj -c Release -o /app -p:Version=$VERSION
 
 # ── Stage 3: runtime ────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS final
 WORKDIR /app
 COPY --from=api /app ./
 COPY --from=web /web/dist/arius-web/browser ./wwwroot
