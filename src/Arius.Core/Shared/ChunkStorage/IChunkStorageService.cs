@@ -6,6 +6,10 @@ namespace Arius.Core.Shared.ChunkStorage;
 /// Owns chunk blob operations that feature handlers orchestrate: upload, download,
 /// hydration state, rehydration start, and cleanup planning.
 /// </summary>
+/// <remarks>
+/// Large and tar uploads trust the supplied chunk hash. Source content must remain unchanged
+/// from hashing through upload completion; uploads do not rehash or round-trip verify it.
+/// </remarks>
 public interface IChunkStorageService
 {
     /// <summary>

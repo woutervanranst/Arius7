@@ -25,13 +25,6 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
 
     private const int MaxDecodeWindowLog2 = 27; // Preserve the previous decoder's 128 MiB cap.
 
-    /// <summary>
-    /// zstd is verified inline on every chunk upload: it is the newer encoder, so we prove each frame
-    /// round-trips at archive time (while the source is still on disk) rather than discovering an encoder
-    /// bug on a future restore.
-    /// </summary>
-    public bool RequireRoundTripVerification => true;
-
     public Stream WrapForCompression(Stream destination, bool leaveOpen = true)
         => new ZstandardStream(destination, new ZstandardCompressionOptions
         {

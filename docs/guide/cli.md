@@ -63,6 +63,10 @@ upload everything to Azure Blob Storage as a new immutable *snapshot*. Archiving
 if nothing changed since the last run, no blobs are written and no new snapshot is created
 (a no-op).
 
+**Keep source files unchanged for the entire run.** Arius assumes a stable source and does
+not check for edits between reading a file and uploading it. Archive a stable copy or
+filesystem snapshot when the original data is actively being edited.
+
 ### Synopsis
 
 ```

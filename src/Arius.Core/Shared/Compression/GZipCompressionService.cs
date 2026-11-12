@@ -20,12 +20,6 @@ internal sealed class GZipCompressionService : ICompressionService
         => header.Length >= 2 && header[0] == Magic0 && header[1] == Magic1;
 
     /// <summary>
-    /// gzip never needs inline round-trip verification: the BCL gzip/deflate encoder is mature and trusted
-    /// (and Arius does not write new gzip blobs anyway), unlike the newer zstd encoder.
-    /// </summary>
-    public bool RequireRoundTripVerification => false;
-
-    /// <summary>
     /// The legacy writer, kept faithful to what the gzip era of Arius produced (<see cref="CompressionLevel.SmallestSize"/>).
     /// Unused on the production write path — new blobs are zstd — but it keeps this a complete, testable codec.
     /// </summary>

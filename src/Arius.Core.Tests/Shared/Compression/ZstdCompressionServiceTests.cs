@@ -13,13 +13,6 @@ public class ZstdCompressionServiceTests
     private static readonly ICompressionService Sut = new ZstdCompressionService();
 
     [Test]
-    public void RequiresRoundTripVerification()
-    {
-        // zstd is the newer encoder, so chunk uploads verify it round-trips inline. (Contrast gzip.)
-        Sut.RequireRoundTripVerification.ShouldBeTrue();
-    }
-
-    [Test]
     [Arguments(0)]
     [Arguments(1)]
     [Arguments(100)]
@@ -44,7 +37,7 @@ public class ZstdCompressionServiceTests
     {
         // Companion to Compress_Then_Decompress_RoundTrips_ByteForByte, which feeds incompressible random
         // bytes (mostly the "store" path). Real backup data compresses, so this also drives the match
-        // finder and entropy stages in the same encode/decode path as the inline upload verifier.
+        // finder and entropy stages in the production codec.
         foreach (var original in new[] { Compressible(size), Textual(size) })
         {
             var compressed = await CompressAsync(original);

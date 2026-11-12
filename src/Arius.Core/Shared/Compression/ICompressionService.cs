@@ -13,15 +13,6 @@ namespace Arius.Core.Shared.Compression;
 public interface ICompressionService
 {
     /// <summary>
-    /// Whether chunk uploads must verify this codec round-trips inline (compress → decompress → re-hash)
-    /// before recording the chunk. <c>true</c> for zstd — the newer encoder is verified at archive time so
-    /// an encoder bug fails loudly while the source is still on disk; <c>false</c> for the legacy gzip path,
-    /// whose mature BCL encoder we trust. <see cref="Arius.Core.Shared.ChunkStorage.ChunkStorageService"/>
-    /// reads this to gate verification.
-    /// </summary>
-    bool RequireRoundTripVerification { get; }
-
-    /// <summary>
     /// Wraps <paramref name="destination"/> with a compression layer.
     /// The returned stream is write-only; data written to it is compressed and forwarded to
     /// <paramref name="destination"/>. Dispose the returned stream to finalize the frame.

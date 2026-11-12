@@ -35,14 +35,11 @@ flowchart TD
 
     subgraph Pipe["stream the body"]
       direction TB
-      Src["source bytes"] --> Z["zstd compress"] --> Tee["TeeStream"]
-      Tee --> Enc["AES-256-GCM encrypt"] --> Cnt["CountingStream → blob"]
-      Tee -.compressed bytes.-> Ver["IUploadVerifier.Sink"]
+      Src["static source bytes"] --> Z["zstd compress"]
+      Z --> Enc["AES-256-GCM encrypt"] --> Cnt["CountingStream → blob"]
     end
 
-    Pipe --> Verify{"verifier hash<br/>== chunk hash?"}
-    Verify -->|"no / mismatch"| DelFail["DeleteAsync + throw InvalidDataException"]
-    Verify -->|"yes / not verified"| Commit["SetMetadataAsync(arius_type, chunk_size, [original_size])<br/>← COMMIT POINT"]
+    Pipe --> Commit["finalize compression, encryption and body write<br/>SetMetadataAsync(arius_type, chunk_size, [original_size])<br/>← COMMIT POINT"]
     Commit --> Ceil{"Archive requested and<br/>chunk_size ≤ smallFileThreshold?"}
     Ceil -->|yes| Cold["actual tier = Cold"]
     Ceil -->|no| Asked["actual tier = requested tier"]
@@ -64,9 +61,9 @@ The conflict path (`catch (BlobAlreadyExistsException)`) is what makes re-runs i
 
 This exists because the two sizes differ. The archive command routes a *file* to the large or tar path by its **uncompressed** size, but what gets billed and rehydrated is the **stored** (compressed + encrypted) blob — and a file above the threshold can compress back well within it. Rehydrating such a chunk costs far more than the archive tier saves on it; v5 Arius put the break-even for a 1 MB chunk at roughly 5.5 years. Applying the ceiling here rather than in the handler is what makes it exact: `storedSize` does not exist until the write block closes, a few lines above the `SetTierAsync` call, and both the large and tar upload paths funnel through this one method (so the tiny end-of-run partial tar bundle is covered too). See [ADR-0023](../../../decisions/adr-0023-archive-tier-small-chunk-ceiling.md).
 
-### Inline round-trip verification
+### Static-source upload contract
 
-The upload stack tees the compressed bytes into an `IUploadVerifier` (see `UploadVerifier.cs`) so the stored frame is confirmed restorable *before* the commit metadata is written — never by re-downloading the offline archive-tier blob. `RoundTripVerifier` decompresses the tee'd bytes on a background task through a bounded `Pipe` (flat memory) and re-hashes; `NoopVerifier` (`Stream.Null` sink) is used for codecs Arius already trusts (the legacy BCL gzip path). If the restored hash differs from the chunk hash, the blob is deleted and the upload fails loudly rather than recording an unrecoverable chunk. (See [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md) and the round-trip rationale in [`compression.md`](./compression.md).)
+Source files must remain static throughout an archive run. Upload trusts the previously computed chunk hash and copies source bytes directly into compression without rehashing or decoding output. Compression and encryption are finalized before counting stored bytes; the storage write closes before commit metadata is written. Archive-tier chunks are never re-downloaded for validation. [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) supersedes the codec-round-trip guard and its incidental source-change detection from ADR-0012/ADR-0017, not the metadata-sentinel protocol.
 
 ### Thin chunk upload
 
@@ -107,19 +104,19 @@ Cleanup is two-phase so restore can preview before deleting: `PlanRehydratedClea
 
 ## Key invariants
 
-- **Metadata presence = commit; snapshot last.** The `arius_type` sentinel is written only after the body succeeds and round-trips. A body blob without `arius_type` is partial debris, safe to delete and retry. ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md))
+- **Metadata presence = commit; snapshot last.** The `arius_type` sentinel is written only after compression, encryption, and the body write finalize successfully. A body blob without `arius_type` is partial debris, safe to delete and retry. ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md), amended by [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md))
 - **Storage owns the blob protocol; the index owns lookup.** Feature handlers never construct chunk blob names, pick content types, write chunk metadata keys, or build the compress/encrypt chain — those live only here. Content-hash → chunk-hash resolution lives only in the chunk index. (Mixing them is the failure mode this split prevents.)
 - **Upload sources must be seekable.** `UploadChunkAsync` throws if `!content.CanSeek`, because the conflict-recovery retry rewinds and re-streams the body.
 - **The requested tier is a ceiling, and the reported tier is the truth.** A chunk within `smallFileThreshold` is never archived, and `ChunkUploadResult.ActualTier` — not the request — is what the caller records as the chunk's [storage tier hint](../../../glossary.md#storage-tier-hint). A hint that claimed `Archive` for an online blob would make restore pay to rehydrate something it could simply download.
 - **The conflict path reports the observed tier and never re-tiers.** A blob recovered from a prior run is already committed, and on Azure moving one out of the archive tier *is* a rehydration — slow and paid. It is left where it is, and the index is told where that is.
-- **Round-trip verification gates the commit.** A chunk whose stored frame does not decompress back to its chunk hash is deleted, not recorded — the archive tier is offline and cannot be re-verified later.
+- **Source immutability is a caller precondition.** Upload neither recomputes the chunk hash nor checks that source files stayed unchanged.
 - **Download returns plaintext.** The returned stream is already decrypted and decompressed; callers (large-file restore, tar extraction) consume bytes directly.
 - **Rehydration never mutates the original.** It copies `chunks/` → `chunks-rehydrated/`; the archive-tier source is left in place, and the rehydrated copy is transient (cleaned up after restore).
 
 ## Why this shape
 
 - **No transaction, no coordinator, no pre-flight scan.** Body-first + metadata-sentinel makes the commit a property of the blob itself, so any re-run converges by reading metadata — the alternatives (per-chunk `HEAD`, a distributed lock, a per-tar sidecar manifest) were rejected in [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md).
-- **Verify at write time, not by re-read.** The archive tier is offline; the only cheap moment to confirm a chunk restores is while its bytes still stream past, hence the tee + bounded-pipe verifier rather than a later download.
+- **Trust the framework codec and static sources.** Compatibility and independent recovery are tested rather than re-running decompression and hashing on every upload.
 - **Three explicit upload methods, not a kind switch.** The realizations differ in body shape and metadata, not in a runtime kind flag — separate methods keep callers honest about which one they mean (spec scenarios: *"call `UploadTarAsync` rather than a generic kind-switching upload API"*).
 - **Plan/execute cleanup split.** Restore must show the user a confirmation total before deleting rehydrated blobs; capturing it during the single planning enumeration avoids listing `chunks-rehydrated/` twice.
 

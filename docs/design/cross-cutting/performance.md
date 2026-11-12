@@ -1,7 +1,7 @@
 # Performance and tuning constants
 
-> **Code:** `src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs` · `RestoreCommand/RestoreCommandHandler.cs` · `Shared/ChunkIndex/ChunkIndexService.cs` · `Shared/Compression/ZstdCompressionService.cs` · `Shared/ChunkStorage/UploadVerifier.cs` · `Shared/FileTree/FileTreeBuilder.cs` · benchmarks under `src/Arius.Benchmarks`, `src/Arius.AzureBlob.Benchmarks`
-> · **Decisions:** [ADR-0012 zstd codec](../../decisions/adr-0012-zstd-as-new-compression-algorithm.md) · [ADR-0015 chunk-index scalability](../../decisions/adr-0015-chunk-index-scalability.md)
+> **Code:** `src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs` · `RestoreCommand/RestoreCommandHandler.cs` · `Shared/ChunkIndex/ChunkIndexService.cs` · `Shared/Compression/ZstdCompressionService.cs` · `Shared/ChunkStorage/ChunkStorageService.cs` · `Shared/FileTree/FileTreeBuilder.cs` · benchmarks under `src/Arius.Benchmarks`, `src/Arius.AzureBlob.Benchmarks`
+> · **Decisions:** [ADR-0012 zstd codec](../../decisions/adr-0012-zstd-as-new-compression-algorithm.md) · [ADR-0024 framework codec and upload validation](../../decisions/adr-0024-framework-zstandard-codec.md) · [ADR-0015 chunk-index scalability](../../decisions/adr-0015-chunk-index-scalability.md)
 > · **Terms:** [chunk](../../glossary.md#chunk) · [large chunk](../../glossary.md#large-chunk) · [tar chunk](../../glossary.md#tar-chunk) · [shard](../../glossary.md#shard) · [chunk index](../../glossary.md#chunk-index) · [chunk size](../../glossary.md#chunk-size)
 
 ## Purpose
@@ -19,7 +19,7 @@ Concurrency is expressed as `Parallel.ForEachAsync(..., new ParallelOptions { Ma
 | Stage | Const | Value | Bound by | Source |
 |---|---|---:|---|---|
 | Hash files | `HashWorkers` | 4 | CPU (hash + zstd compress) | `ArchiveCommandHandler.cs` |
-| Upload [large chunks](../../glossary.md#large-chunk) | `UploadWorkers` | 4 | blob PUT + inline verify | `ArchiveCommandHandler.cs` |
+| Upload [large chunks](../../glossary.md#large-chunk) | `UploadWorkers` | 4 | compress + blob PUT | `ArchiveCommandHandler.cs` |
 | Upload sealed [tar chunks](../../glossary.md#tar-chunk) | `TarUploadWorkers` | 2 | large blob PUT (64 MB bundles) | `ArchiveCommandHandler.cs` |
 | Record thin index entries | `ThinEntryWorkers` | 64 | local SQLite writes | `ArchiveCommandHandler.cs` |
 | Write filetree entries | `FileTreeUpdateWorkers` | 16 | local staging I/O | `ArchiveCommandHandler.cs` |
@@ -42,12 +42,10 @@ Long-running handlers are channel-connected stages with **bounded** channels so 
 | Archive sealed-tar channel | (= `TarUploadWorkers`) | 2 | one slot per tar uploader |
 | Restore chunk channel | (= `DownloadWorkers`) | 4 | one slot per download worker |
 | Filetree upload channel | `UploadChannelCapacity` | 16 | caps in-flight filetree blob writes |
-| Inline verify pipe (pause) | `PauseWriterThreshold` | `1<<20` (~1 MiB) | caps compressed bytes buffered mid-verify |
-| Inline verify pipe (resume) | `ResumeWriterThreshold` | `1<<19` | hysteresis so the writer is not toggled per byte |
 
 The archive file-pair channel (Enumerate → Hash) is deliberately **unbounded**, not listed above: bounding it throttled enumeration to hashing's pace, delaying the scan-total event on large trees ([archive-command](../core/features/archive-command.md#stage-channel-pipeline)).
 
-The `RoundTripVerifier` pipe bound is the one that keeps a *single chunk* bounded regardless of its size: the verifier tees compressed bytes to a `System.IO.Pipelines.Pipe` whose `PauseWriterThreshold` parks the upload tee once ~1 MiB is buffered, so a multi-GB [large chunk](../../glossary.md#large-chunk) verifies in flat memory while it streams to blob storage. See [chunk-storage](../core/shared/chunk-storage.md) and [compression](../core/shared/compression.md) for the tee/verify shape; ADR-0012 records why every new zstd chunk is verified inline.
+Each chunk streams through compression and encryption without upload-time decompression or rehashing. There is no verification pipe or background hashing task. [ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md) records why the framework codec and static-source contract replace ADR-0012's per-upload round-trip check, with measured CPU, throughput, and peak-RSS tradeoffs.
 
 ### The small-file tar threshold
 
@@ -67,7 +65,7 @@ flowchart LR
 
 ### Codec: zstd level
 
-`ZstdCompressionService.DefaultCompressionLevel` is the single compression size/speed knob. **The code value is `15`** (`ZstdCompressionService.cs`), set by a deliberate "tune compression level" change after the codec was adopted. ADR-0012 records the original choice of level **19** (favouring ratio, matching the old gzip `SmallestSize` intent) and the rule that *level changes are performance decisions backed by measurement*. The lower current value trades a little ratio for speed and, notably, memory: the in-code comment notes level 19 needs ~85 MB per compressor, and archive runs `HashWorkers` compressors concurrently. zstd is also pinned single-threaded (`ZSTD_c_nbWorkers = 0`) on purpose — archive already parallelizes across chunks, and ZSTDMT is the least-verified path in the managed port (see ADR-0012 and [compression](../core/shared/compression.md)).
+`ZstdCompressionService.DefaultCompressionLevel` is the single compression size/speed knob. **The code value is `15`**, lowered after ADR-0012's original level **19** choice. Level changes remain performance decisions backed by measurement. The framework encoder retains one compressor per stream, level-derived windows, and disabled long-distance matching; archive parallelizes across chunks rather than enabling zstd workers. The public framework API has no worker-count control, so its native context initialization is a runtime-upgrade review constraint ([ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md)).
 
 ### Routing: shard split threshold
 
@@ -75,10 +73,10 @@ flowchart LR
 
 ## Key invariants
 
-- **Channels and the verify pipe stay bounded.** Removing a capacity bound (or making a channel unbounded) breaks the bounded-memory guarantee at repository scale; the verify pipe bound specifically must keep one chunk flat regardless of its size. Any new pipeline stage mirrors this (AGENTS: *prefer streaming/batching/bounded pipelines over whole-repository in-memory materialization*).
+- **Channels and per-chunk buffers stay bounded.** Upload must never materialize an entire large chunk or add another file/network pass. Any new pipeline stage mirrors this (AGENTS: *prefer streaming/batching/bounded pipelines over whole-repository in-memory materialization*).
 - **Fan-out is sized to the stage's bottleneck, not copied.** Local-work stages (thin entries, flush) run wide; large-blob-I/O stages run narrow. A refactor that uniformly raises every worker count would oversubscribe the network path and the per-compressor memory budget without speeding the bottleneck.
 - **`MaxShardEntryCount = 1024` and `MinShardPrefixLength = 2` are a coupled pair** verified by ADR-0015's confirmation checks; changing the threshold changes the steady-state write-amplification and shard count (the ~4096-shard design point fits one 5000-blob Azure list page).
-- **The zstd level is the only codec size/speed knob and must keep `ZSTD_c_nbWorkers = 0`** and default window/LDM, so a frame written today is restorable by a default-configured reader (ADR-0012 confirmation).
+- **The zstd level is the only codec size/speed knob.** Preserve single-compressor behavior, level-derived windows, disabled long-distance matching, and the 128 MiB decode cap (ADR-0024).
 - **`SmallFileThreshold` < `TarTargetSize`.** The per-file route decision must sit below the bundle seal size, or large files would land in tars and defeat the dedup-by-large-chunk path.
 - **The routing threshold is uncompressed; the archive-tier ceiling is stored.** They read the same option but compare different sizes, and collapsing them (or deriving one from the other) would silently move the tier ceiling whenever routing is retuned.
 
@@ -86,7 +84,7 @@ flowchart LR
 
 - **Per-stage `const` over a config object** — the knobs live next to the code they govern and ride the numbered `// ── Stage N ──` handler structure, so a reader sees the bottleneck and its fan-out together. There is no operator tuning surface by design; ADR-0015 makes the same call for the shard layout (adapts with no operator tuning).
 - **Bounded everything** — durability-first plus large-repository scale rules out whole-repository materialization. See [memory-boundedness](./memory-boundedness.md).
-- **zstd level as a measured knob, not a constant of nature** — ADR-0012 fixes the policy (standard frames, inline verify, single-threaded) and treats the level as a tunable; the current `15` is a later measurement-driven adjustment from the ADR's `19`.
+- **zstd level as a measured knob, not a constant of nature** — ADR-0012 fixes the standard-frame format; ADR-0024 updates the provider and validation policy. The current `15` is a later measurement-driven adjustment from ADR-0012's `19`.
 - **Shard threshold optimizes the common path** — daily incrementals over cold rebuilds; the rationale and the write-amplification arithmetic live once in [ADR-0015](../../decisions/adr-0015-chunk-index-scalability.md).
 
 ### How benchmarks inform the constants
@@ -98,6 +96,7 @@ The benchmark projects validate the *end-to-end shape and memory profile* the co
   - `RepresentativeWorkflowBenchmarks` runs the canonical archive+restore workflow across supported backends.
   - The threading and memory diagnosers are how regressions in fan-out (thread oversubscription) or in the bounded-memory invariant (allocation growth with file count) surface.
 - **`src/Arius.AzureBlob.Benchmarks`** isolates the blob primitive that the I/O-bound fan-out depends on — `AzureBlobContainerServiceBenchmarks` times `GetMetadataAsync` / `TryDownloadAsync` / download-if-exists against a *real* storage account (credentials via `ARIUS_AZURE_BENCHMARK_*` env vars). This is what grounds "blob round-trips are the bottleneck" — the premise behind keeping `UploadWorkers`/`DownloadWorkers` low and `ThinEntryWorkers` high, and behind the small-file tar threshold avoiding per-file round-trips.
+- **`CompressionComparison`** separates fresh-process codec measurements from the real `ChunkStorageService` upload stack against an in-memory storage double. It records process CPU time and average CPU utilization (100% = one core), throughput, stored size, and native-inclusive peak RSS. The upload scenario uses cached file-backed input; its storage double retains/copies complete bodies, so its RSS is a comparison metric, not production streaming memory. [ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md) records measurements and reproduction commands.
 
 The zstd-level and `MaxShardEntryCount` numbers themselves come from the measurements recorded in their ADRs (the gzip-vs-zstd archive comparison in ADR-0012; the write-amplification model in ADR-0015), not from these BenchmarkDotNet harnesses.
 

@@ -1,8 +1,8 @@
 ---
 status: "proposed"
-date: 2026-11-11
+date: 2026-11-12
 confidence: "medium"
-supersedes: "ADR-0012 (codec provider only)"
+supersedes: "ADR-0012 (codec provider and upload round-trip policy); ADR-0017 (codec round-trip guard only)"
 ---
 
 # Use framework Zstandard without changing the repository format
@@ -13,13 +13,25 @@ supersedes: "ADR-0012 (codec provider only)"
 
 ## Decision Outcome
 
-Use `System.IO.Compression.ZstandardStream` behind the existing `ICompressionService`. Preserve quality 15, append the content checksum, retain the level-derived compression window with long-distance matching disabled, and explicitly limit decoding to a 128 MiB window. Keep lazy gzip/zstd detection and zero-byte legacy payloads. Keep inline chunk-upload verification even though the encoder is now framework-serviced.
+Use `System.IO.Compression.ZstandardStream` behind the existing `ICompressionService`. Preserve quality 15, append the content checksum, retain the level-derived compression window with long-distance matching disabled, and explicitly limit decoding to a 128 MiB window. Keep lazy gzip/zstd detection and zero-byte legacy payloads.
+
+Remove per-upload codec round-trip verification and its incidental detection of source changes between hashing and upload. Source files are assumed **static throughout an archive run**; upload trusts the previously computed chunk hash, including a hashcache reuse decision. Copy source bytes directly into compression without another hash pass. The compression frame, encryption trailer, and storage write must all finalize successfully before commit metadata. ADR-0017's body-first, metadata-sentinel, snapshot-last protocol is unchanged.
+
+This intentionally revises issue #220's original requirement to retain inline codec verification, following the maintainer's request after reviewing the framework migration. The maintainer explicitly accepted static sources and removal of the verifier's source-change-detection side effect.
 
 The .NET 11 encoder creates a fresh native context and never enables `ZSTD_c_nbWorkers`. Its public API has no worker-count setting. This preserves one compressor per stream without adding private interop; archive still parallelizes across chunks. Recheck this assumption when changing runtimes.
 
 Corrupt and truncated frames now raise `InvalidDataException`, replacing `ZstdException` and `EndOfStreamException` respectively. A decode-window violation raises `IOException`. Cancellation is checked by the lazy wrapper even when the framework decoder could return buffered output without consulting the token.
 
 ZstdSharp.Port 0.8.8 remains **only in tests and benchmarks** as an independent previous-codec compatibility oracle. It is not a production dependency.
+
+### Why remove the upload decoder
+
+The original zstd plan and commit `a7e7f4e4` added the tee to defend against an encoder bug in the managed port. Commit `2f0fac01` made the trust distinction explicit: BCL gzip skipped verification; `a891c8ac` added the no-op verifier, `956b96aa` extracted the infrastructure, and `ba024b8e` hardened its pipe disposal. The secondary branch **decompressed and hashed pre-encryption bytes**; it never decrypted output or checked bytes downloaded from storage.
+
+Apply the existing BCL-codec trust policy to framework zstd. Remove `IUploadVerifier`, `RoundTripVerifier`, `NoopVerifier`, `TeeStream`, the bounded verification pipe/background task, and the codec capability flag. Do not retain an upload-time hasher solely to preserve the original verifier's source-change-detection side effect.
+
+This is a deliberate defense-in-depth tradeoff, not proof that Microsoft code cannot have bugs: encoder defects are no longer checked on each upload. Cross-codec, golden-file, independent Python recovery, and deployment gates cover the encoder instead. Frame checksums, truncation/window rejection, and GCM authentication remain unchanged. They do not detect a source changing after initial hashing: changing a file during archive violates the static-source precondition and may record content under the wrong identity.
 
 ### Compatibility and shipping gates
 
@@ -29,20 +41,55 @@ The `Compression compatibility` workflow runs on Windows x64, Linux x64, and mac
 
 **Do not ship until all platform/deployment gates pass and their performance artifacts have been reviewed.** This ADR remains proposed until that evidence is accepted.
 
-### Initial performance evidence
+### Performance evidence
 
-Local macOS arm64, .NET SDK 11.0.100/runtime 11.0.0, Release build, quality 15 with checksums, 2026-11-11. Each workload is 32 MiB, written in 80 KiB pieces; one warmup precedes three timed compressions and three timed decompressions. Each codec/workload runs in a fresh process. Peak RSS includes managed and native memory, the runtime, input, and compressed-output buffers; it is not incremental compressor allocation.
+Local macOS arm64, .NET SDK 11.0.100/runtime 11.0.0, Release build, quality 15 with checksums, 2026-11-12. Each workload is 32 MiB, written in 80 KiB pieces; one warmup precedes three timed compressions and three timed decompressions. Each codec/workload runs in a fresh process. CPU time is process-wide user + kernel time over the timed region, including background/native work. Peak RSS includes managed and native memory, the runtime, input, and compressed-output buffers; it is not incremental compressor allocation.
 
-| Workload | Codec | Stored bytes | Compress MiB/s | Decode MiB/s | Peak RSS MiB |
+| Workload | Codec | Stored bytes | Compress MiB/s | Encode CPU ms / 96 MiB | Decode MiB/s | Decode CPU ms / 96 MiB | Peak RSS MiB |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Repeated text | Previous | 3,155 | 72.7 | 1,333 | 6,626 | 14.4 | 173.0 |
+| Repeated text | Framework | 3,155 | 78.3 | 1,226 | 9,582 | 10.0 | 163.9 |
+| Half text / half seeded random | Previous | 16,781,910 | 325.7 | 296 | 8,789 | 10.9 | 187.7 |
+| Half text / half seeded random | Framework | 16,781,910 | 338.7 | 279 | 11,325 | 8.5 | 179.9 |
+| Seeded random | Previous | 33,555,213 | 187.4 | 541 | 10,226 | 9.4 | 206.0 |
+| Seeded random | Framework | 33,555,213 | 231.3 | 414 | 8,934 | 10.7 | 195.7 |
+
+These follow-up measurements replace the initial 2026-11-11 local sample, which was substantially slower and noisier. Both were taken on a shared host; neither is a controlled end-to-end archive benchmark. Decode timings are particularly short. Stored sizes match, but do not infer a universal speed or memory improvement.
+
+#### Cross-platform codec evidence
+
+[Compatibility run 43101837735](https://github.com/woutervanranst/Arius7/actions/runs/43101837735) passed all three release RIDs and the production Linux-container deployment at commit `0530dcad`. Its `compression-<rid>` artifacts contain fresh-process codec measurements. Relative to the previous codec:
+
+| RID | Workload | Encode throughput change | Decode throughput change | Peak RSS change |
+|---|---|---:|---:|---:|
+| Linux x64 | Text | -5.1% | +65.1% | -7.3 MiB |
+| Linux x64 | Mixed | +56.6% | +52.6% | -7.5 MiB |
+| Linux x64 | Random | +56.0% | +5.2% | -10.1 MiB |
+| Windows x64 | Text | -26.1% | -42.4% | -7.9 MiB |
+| Windows x64 | Mixed | +45.6% | +51.0% | -9.1 MiB |
+| Windows x64 | Random | +57.4% | -8.2% | -11.2 MiB |
+| macOS arm64 | Text | +26.2% | +21.3% | -7.7 MiB |
+| macOS arm64 | Mixed | +31.1% | +21.0% | -8.2 MiB |
+| macOS arm64 | Random | +28.4% | +16.8% | -10.1 MiB |
+
+Stored sizes matched in every case. These short single-sample CI runs did not yet collect CPU time. In particular, the Windows text regressions need representative follow-up before shipping; compatibility success is not performance acceptance.
+
+#### Upload verification overhead
+
+Same local host and data, using the real `ChunkStorageService` with cached file-backed input and an in-memory storage double. Compare the framework codec with its old decoder/tee verifier against the final direct-copy pipeline (no decoder or upload-time hash), using an identical harness. Commit `c580bc04` contains the harness with the original verifier pipeline, unchanged from `0530dcad`, for reproducing the baseline. Each fresh process does one warmup and ten timed 32 MiB uploads; the table shows medians of three processes per case, interleaved before/after with reversed order in the middle repetition. Average CPU utilization uses **100% = one core**, not percent of the whole machine.
+
+| Workload | Encryption | Upload MiB/s, before / after | CPU ms / 320 MiB, before / after | CPU %, before / after | Peak RSS MiB, before / after |
 |---|---|---:|---:|---:|---:|
-| Repeated text | Previous | 3,155 | 16.7 | 2,633 | 158.6 |
-| Repeated text | Framework | 3,155 | 32.9 | 4,378 | 165.7 |
-| Half text / half seeded random | Previous | 16,781,910 | 119.6 | 2,942 | 190.3 |
-| Half text / half seeded random | Framework | 16,781,910 | 168.0 | 6,302 | 182.0 |
-| Seeded random | Previous | 33,555,213 | 12.7 | 1,031 | 206.0 |
-| Seeded random | Framework | 33,555,213 | 86.1 | 6,859 | 195.8 |
+| Text | Plaintext | 75.5 / 74.0 | 4,703 / 4,387 | 111 / 102 | 170.2 / 160.9 |
+| Text | GCM | 71.9 / 71.9 | 4,873 / 4,548 | 110 / 102 | 171.3 / 162.8 |
+| Mixed | Plaintext | 273.5 / 318.1 | 1,768 / 1,174 | 150 / 117 | 538.1 / 494.0 |
+| Mixed | GCM | 246.9 / 265.1 | 1,913 / 1,388 | 148 / 115 | 309.4 / 302.1 |
+| Random | Plaintext | 180.5 / 183.8 | 2,415 / 1,913 | 136 / 109 | 614.5 / 537.3 |
+| Random | GCM | 149.3 / 169.8 | 2,748 / 2,026 | 130 / 108 | 624.8 / 610.1 |
 
-These are synthetic codec measurements on a shared host, not a statistically controlled end-to-end archive benchmark. The observed ratio is unchanged and throughput improves in this sample, but memory is not uniformly lower. Do not extrapolate these timings to real repositories or infer a universal performance improvement. Review the other platforms' `compression-<rid>` JSON artifacts before shipping; representative real-repository archive performance remains a separate release decision.
+Stored sizes were unchanged. Removing the verifier and upload-time rehash reduced measured CPU time by **6.7-33.6%**, and median process peak RSS by **7.3-77.2 MiB**. Median throughput changes ranged from **-2.0% to +16.3%**: repeated text was essentially flat/slightly slower, while mixed and random samples improved. This supports lower resource consumption and less infrastructure, not a universal archive-speed improvement.
+
+The storage double retains/copies complete bodies, and RSS includes runtime/GC effects, body buffers, and all iterations. These peaks are not the production streaming memory budget or per-decoder allocations. Shared-host timing noise is substantial: mixed GCM baseline throughput ranged from 158 to 273 MiB/s across the three processes. File input is warm in the OS cache, and there are no Azure/network or multi-chunk-worker timings here. Real-repository throughput and the platform regressions remain release decisions.
 
 Reproduce each measurement from the repository root, using a fresh Python process per invocation:
 
@@ -50,9 +97,11 @@ Reproduce each measurement from the repository root, using a fresh Python proces
 dotnet build src/Arius.Benchmarks/Arius.Benchmarks.csproj -c Release
 python3 .github/scripts/measure-compression.py previous mixed
 python3 .github/scripts/measure-compression.py framework mixed
+python3 .github/scripts/measure-compression.py upload mixed
+python3 .github/scripts/measure-compression.py upload mixed --encrypted
 ```
 
-Also run `text` and `random`. The driver uses per-child OS peak RSS on Unix and `PeakWorkingSet64` on Windows, so native allocations are included.
+Also run `text` and `random`. To compare revisions, build the same upload harness with each pipeline revision into separate directories and select each DLL with `--assembly <path>`. The driver uses per-child OS peak RSS on Unix and `PeakWorkingSet64` on Windows, so native allocations are included. The updated workflow collects codec CPU time and plaintext/GCM upload-stack measurements for subsequent runs.
 
 ### Native deployment implications
 
@@ -63,6 +112,8 @@ Self-contained publication must retain the RID-specific native assets. Single-fi
 ## Alternatives
 
 Keep ZstdSharp.Port in production until compatibility/performance evidence is accepted; this retains managed-only deployment but leaves codec servicing outside the framework. A separate native wrapper would add another dependency and deployment contract without improving the framework boundary.
+
+Keep the per-upload decoder even with the framework codec: stronger encoder-bug defense, but an extra codec context, tee, bounded pipe, and background task. Keep only a source-copy hasher: still detects files changing after initial hashing, but adds CPU work and API/helper machinery solely for a condition excluded by the maintainer-approved static-source contract. The chosen direct-copy pipeline removes both.
 
 ## References
 
