@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one codec comparison in a fresh process, including its native peak resident memory."""
+"""Measure a codec or the real chunk-upload stack in a fresh process, including native peak RSS."""
 
 import argparse
 import json
@@ -11,12 +11,18 @@ import sys
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("codec", choices=("previous", "framework"))
+    parser.add_argument("codec", choices=("previous", "framework", "upload"))
     parser.add_argument("workload", choices=("text", "mixed", "random"))
+    parser.add_argument("--encrypted", action="store_true", help="Use encryption for the upload scenario")
+    parser.add_argument("--assembly", type=Path,
+                        default=Path("src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll"))
     args = parser.parse_args()
-    assembly = Path("src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll")
+    if args.encrypted and args.codec != "upload":
+        parser.error("--encrypted requires the upload scenario")
+    command = (["compression-upload", args.workload, "encrypted" if args.encrypted else "plaintext"]
+               if args.codec == "upload" else ["compression", args.codec, args.workload])
     result = subprocess.run(
-        ["dotnet", str(assembly), "compression", args.codec, args.workload],
+        ["dotnet", str(args.assembly), *command],
         stdout=subprocess.PIPE, text=True, check=True,
     )
     measurement = json.loads(result.stdout)
