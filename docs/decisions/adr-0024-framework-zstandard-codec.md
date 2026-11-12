@@ -9,7 +9,7 @@ supersedes: "ADR-0012 (codec provider and upload round-trip policy); ADR-0017 (c
 
 ## Context and Problem Statement
 
-.NET 11 provides a framework-serviced zstd implementation. Arius can remove its production dependency on ZstdSharp.Port, but a backup tool must prove compatibility before shipping a different encoder. This changes the codec provider, not the RFC 8878 repository format or any content, chunk, or filetree identity.
+.NET 11 provides a framework-serviced zstd implementation. Arius can remove its previous managed-codec dependency, but a backup tool must prove compatibility before shipping a different encoder. This changes the codec provider, not the RFC 8878 repository format or any content, chunk, or filetree identity.
 
 ## Decision Outcome
 
@@ -23,7 +23,7 @@ The .NET 11 encoder creates a fresh native context and never enables `ZSTD_c_nbW
 
 Corrupt and truncated frames now raise `InvalidDataException`, replacing `ZstdException` and `EndOfStreamException` respectively. A decode-window violation raises `IOException`. Cancellation is checked by the lazy wrapper even when the framework decoder could return buffered output without consulting the token.
 
-ZstdSharp.Port 0.8.8 remains **only in tests and benchmarks** as an independent previous-codec compatibility oracle. It is not a production dependency.
+The previous codec dependency, temporary cross-codec adapter, and compression benchmark harness are removed after migration validation. Their source remains available in the migration commits. Golden-file and independent recovery tests provide ongoing coverage without keeping the old library in any project.
 
 ### Why remove the upload decoder
 
@@ -31,11 +31,11 @@ The original zstd plan and commit `a7e7f4e4` added the tee to defend against an 
 
 Apply the existing BCL-codec trust policy to framework zstd. Remove `IUploadVerifier`, `RoundTripVerifier`, `NoopVerifier`, `TeeStream`, the bounded verification pipe/background task, and the codec capability flag. Do not retain an upload-time hasher solely to preserve the original verifier's source-change-detection side effect.
 
-This is a deliberate defense-in-depth tradeoff, not proof that Microsoft code cannot have bugs: encoder defects are no longer checked on each upload. Cross-codec, golden-file, independent Python recovery, and archive/restore tests cover the encoder instead. Frame checksums, truncation/window rejection, and GCM authentication remain unchanged. They do not detect a source changing after initial hashing: changing a file during archive violates the static-source precondition and may record content under the wrong identity.
+This is a deliberate defense-in-depth tradeoff, not proof that Microsoft code cannot have bugs: encoder defects are no longer checked on each upload. Golden-file, independent Python recovery, and archive/restore tests cover the encoder instead. Frame checksums, truncation/window rejection, and GCM authentication remain unchanged. They do not detect a source changing after initial hashing: changing a file during archive violates the static-source precondition and may record content under the wrong identity.
 
 ### Compatibility coverage
 
-`ZstdCompatibilityTests` exercises both writer/reader directions for chunks, canonical filetrees, shards, and snapshots, with and without encryption. An existing encrypted zstd golden chunk anchors historical compatibility. `ZstdCompressionServiceTests` covers legacy gzip/empty payloads, checksum corruption, truncation including missing checksum bytes, the decode-window cap, cancellation, and sync/async stream ownership. `ZstdRecoveryTests` decodes newly written encrypted frames with `recover-chunk.py` and Python `zstandard`.
+Temporary cross-codec tests exercised both writer/reader directions for chunks, canonical filetrees, shards, and snapshots, with and without encryption during migration. The retained `ZstdCompatibilityTests` reads an existing encrypted zstd golden chunk to anchor historical compatibility. `ZstdCompressionServiceTests` covers legacy gzip/empty payloads, checksum corruption, truncation including missing checksum bytes, the decode-window cap, cancellation, and sync/async stream ownership. `ZstdRecoveryTests` decodes newly written encrypted frames with `recover-chunk.py` and Python `zstandard`.
 
 These tests remain in the normal suites on Windows x64, Linux x64, and macOS arm64. Integration recovery tests archive encrypted large and tar chunks, then independently recover their contents; the representative E2E workflow covers archive/restore behavior. Python-based tests visibly skip when their interpreter or libraries are unavailable. The existing release workflow installs those dependencies and verifies Python recovery against historical golden files; its configuration is unchanged.
 
@@ -93,17 +93,7 @@ Stored sizes were unchanged. Removing the verifier and upload-time rehash reduce
 
 The storage double retains/copies complete bodies, and RSS includes runtime/GC effects, body buffers, and all iterations. These peaks are not the production streaming memory budget or per-decoder allocations. Shared-host timing noise is substantial: mixed GCM baseline throughput ranged from 158 to 273 MiB/s across the three processes. File input is warm in the OS cache, and there are no Azure/network or multi-chunk-worker timings here. Real-repository throughput and the platform regressions remain release decisions.
 
-Re-run codec and upload timing/CPU measurements from the repository root, using a fresh process per invocation:
-
-```bash
-dotnet build src/Arius.Benchmarks/Arius.Benchmarks.csproj -c Release
-dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression previous mixed
-dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression framework mixed
-dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression-upload mixed plaintext
-dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression-upload mixed encrypted
-```
-
-Also run `text` and `random`. To compare revisions, build the same upload harness with each pipeline revision into separate directories and invoke each DLL directly. The harness reports native-inclusive peak working set on Windows. The historical Unix RSS measurements above used a temporary per-child OS collector; reproducing those memory measurements requires an external OS profiler. Benchmarks remain manual tooling, not automatic CI or release gates.
+The temporary codec/upload benchmark harness and its Python memory collector have been removed. Commit `c580bc04` preserves the verifier-on baseline and commit `4be4269f` preserves the direct-copy pipeline with the same harness. Restore those historical revisions if these measurements need repeating; no compression-specific benchmark commands or legacy codec dependency remain in the current tree.
 
 ### Native deployment implications
 
@@ -113,7 +103,7 @@ Self-contained publication must retain the RID-specific native assets. Single-fi
 
 ## Alternatives
 
-Keep ZstdSharp.Port in production until compatibility/performance evidence is accepted; this retains managed-only deployment but leaves codec servicing outside the framework. A separate native wrapper would add another dependency and deployment contract without improving the framework boundary.
+Keep the previous managed codec in production until compatibility/performance evidence is accepted; this retains managed-only deployment but leaves codec servicing outside the framework. A separate native wrapper would add another dependency and deployment contract without improving the framework boundary.
 
 Keep the per-upload decoder even with the framework codec: stronger encoder-bug defense, but an extra codec context, tee, bounded pipe, and background task. Keep only a source-copy hasher: still detects files changing after initial hashing, but adds CPU work and API/helper machinery solely for a condition excluded by the maintainer-approved static-source contract. The chosen direct-copy pipeline removes both.
 

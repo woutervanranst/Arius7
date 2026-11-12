@@ -15,7 +15,7 @@ The compression boundary that all blob bodies pass through. `ICompressionService
 
 `ZstdCompressionService` is the only registered implementation (`ServiceCollectionExtensions` binds it as a singleton). It writes RFC 8878 zstd frames via the framework's `ZstandardStream` and owns a static `GZipCompressionService` instance to which it delegates legacy reads.
 
-The provider migration preserves quality 15, checksums, level-derived windows, no long-distance matching, and single-compressor behavior. Decode windows are explicitly capped at 128 MiB. The mapping, native deployment implications, and compatibility/performance shipping gates are recorded in [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md).
+The provider migration preserves quality 15, checksums, level-derived windows, no long-distance matching, and single-compressor behavior. Decode windows are explicitly capped at 128 MiB. The mapping, native deployment implications, and compatibility/performance evidence are recorded in [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md).
 
 The read path never consults blob metadata. `WrapForDecompression` returns an `AutoDetectDecompressionStream` that, on first read, peeks 4 bytes, then routes:
 
@@ -32,7 +32,7 @@ flowchart TD
 
 The peeked bytes are replayed via a `PrefixedStream` so the chosen decoder sees a complete frame (the magic is "un-peeked"). `read == 0` maps to empty content because the legacy gzip era wrote empty payloads as 0-byte blobs. The wrapper checks cancellation before delegation, including when a decoder has buffered output.
 
-**Upload policy:** [`ChunkStorageService`](./chunk-storage.md) streams directly through compression and encryption without decoding output or rehashing source bytes. Archive assumes source files stay static throughout the run and trusts the previously computed chunk hash. Encoder compatibility is verified by cross-codec and independent-recovery tests; checksums and truncation rejection remain on reads. [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) records the deliberately reduced runtime verification.
+**Upload policy:** [`ChunkStorageService`](./chunk-storage.md) streams directly through compression and encryption without decoding output or rehashing source bytes. Archive assumes source files stay static throughout the run and trusts the previously computed chunk hash. Encoder compatibility is verified by historical golden files and independent-recovery tests; checksums and truncation rejection remain on reads. [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) records the deliberately reduced runtime verification.
 
 ## Key invariants
 
