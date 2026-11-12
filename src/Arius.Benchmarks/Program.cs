@@ -11,6 +11,12 @@ if (args is ["compression", var codec, var workload])
     return;
 }
 
+if (args is ["compression-upload", var uploadWorkload, var encryption] && encryption is "plaintext" or "encrypted")
+{
+    await CompressionComparison.RunUploadAsync(uploadWorkload, encryption == "encrypted");
+    return;
+}
+
 // In-process allocation micro-benchmarks run on BenchmarkDotNet's default job and take its own options,
 // e.g. `micro --filter '*TarBuilder*'`. They need no Docker and do not append to the tail log.
 if (args is ["micro", .. var microArgs])
