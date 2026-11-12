@@ -4,10 +4,6 @@ using Arius.Core.Shared.Compression;
 
 namespace Arius.Core.Tests.Shared.Compression;
 
-/// <summary>
-/// Tests for the zstd compression service: round-trip correctness, standard-frame output, legacy gzip
-/// backwards-compatibility on read, and that corruption is loud (never silently wrong bytes).
-/// </summary>
 public class ZstdCompressionServiceTests
 {
     private static readonly ICompressionService Sut = new ZstdCompressionService();
@@ -35,14 +31,11 @@ public class ZstdCompressionServiceTests
     [Arguments(8 * 1024 * 1024)]
     public async Task RoundTripTest(int size)
     {
-        // Companion to Compress_Then_Decompress_RoundTrips_ByteForByte, which feeds incompressible random
-        // bytes (mostly the "store" path). Real backup data compresses, so this also drives the match
-        // finder and entropy stages in the production codec.
+        // Exercise match finding and entropy coding with compressible input.
         foreach (var original in new[] { Compressible(size), Textual(size) })
         {
             var compressed = await CompressAsync(original);
 
-            // The frame must actually shrink — proof the entropy/match paths ran, not a raw store.
             compressed.Length.ShouldBeLessThan(original.Length);
 
             var restored = await DecompressAsync(compressed);
@@ -55,7 +48,7 @@ public class ZstdCompressionServiceTests
     {
         var compressed = await CompressAsync([1, 2, 3, 4, 5]);
 
-        // RFC 8878 frame magic 0xFD2FB528, little-endian on the wire.
+        // RFC 8878 frame magic in little-endian order.
         compressed.Length.ShouldBeGreaterThanOrEqualTo(4);
         compressed[0].ShouldBe((byte)0x28);
         compressed[1].ShouldBe((byte)0xB5);
@@ -80,7 +73,6 @@ public class ZstdCompressionServiceTests
     [Test]
     public async Task Decompress_TreatsEmptyLegacyBlob_AsEmptyContent()
     {
-        // Legacy gzip wrote empty content (e.g. an empty filetree) as a 0-byte blob.
         var restored = await DecompressAsync([]);
 
         restored.Length.ShouldBe(0);
@@ -93,8 +85,7 @@ public class ZstdCompressionServiceTests
         Random.Shared.NextBytes(original);
         var compressed = await CompressAsync(original);
 
-        // Flip a byte in the frame body (past the 4-byte magic). With the content checksum enabled,
-        // any surviving decode must fail the XXH64 check rather than silently emit wrong bytes.
+        // Corrupt the frame body without changing the format-detection header.
         compressed[compressed.Length / 2] ^= 0xFF;
 
         await Should.ThrowAsync<InvalidDataException>(async () => await DecompressAsync(compressed));
@@ -103,10 +94,7 @@ public class ZstdCompressionServiceTests
     [Test]
     public async Task Decompress_TruncatedZstdFrame_ThrowsInsteadOfReturningPartialBytes()
     {
-        // A frame whose tail (end marker + XXH64 trailer) never arrived — e.g. a crash or a forgotten
-        // Dispose mid-upload. Read to EOF, the framework decoder must surface this as a throw
-        // rather than silently returning a partial prefix. (This is why restore reads each chunk to the end:
-        // the truncation guard only fires once the consumer reaches EOF.)
+        // Truncation is detected only when the decoder reaches the end of the stream.
         var original = new byte[8192];
         Random.Shared.NextBytes(original);
         var compressed = await CompressAsync(original);
@@ -125,8 +113,6 @@ public class ZstdCompressionServiceTests
     [Test]
     public async Task Decompress_RoundTrips_ViaByteArrayReadOverloads()
     {
-        // CopyToAsync drives the Span/Memory read overloads; some callers still use the byte[]-array
-        // Read/ReadAsync overloads, so exercise those decode paths explicitly.
         var original = new byte[20_000];
         Random.Shared.NextBytes(original);
         var compressed = await CompressAsync(original);
@@ -138,10 +124,10 @@ public class ZstdCompressionServiceTests
     [Test]
     public async Task Decompress_RejectsWindowLargerThan128MiB()
     {
-        // Standard empty frames at and above the cap; no large allocation is needed.
+        // An empty frame exercises the window limit without a large payload.
         byte[] frame = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88, 0x01, 0x00, 0x00];
         (await DecompressAsync(frame)).ShouldBeEmpty();
-        frame[5] = 0x90; // 256 MiB. The framework reports a window-limit violation as IOException.
+        frame[5] = 0x90; // Window descriptor: 256 MiB.
         await Should.ThrowAsync<IOException>(async () => await DecompressAsync(frame));
     }
 
@@ -199,7 +185,7 @@ public class ZstdCompressionServiceTests
         {
             using var source = new MemoryStream(compressed);
             var decompress = Sut.WrapForDecompression(source, leaveOpen);
-            source.Position.ShouldBe(0L); // Constructing the wrapper never reads.
+            source.Position.ShouldBe(0L);
             if (initialize)
                 decompress.ReadByte().ShouldBe(1);
             if (asyncDispose)
@@ -263,8 +249,7 @@ public class ZstdCompressionServiceTests
 
     private static byte[] Compressible(int size)
     {
-        // A 64-byte sawtooth: highly but not trivially compressible, so the match finder and entropy
-        // coders do real work rather than hitting the all-zeros degenerate case.
+        // Use a nonconstant pattern to avoid the all-zero special case.
         var data = new byte[size];
         for (var i = 0; i < size; i++)
             data[i] = (byte)(i % 64);
@@ -273,7 +258,6 @@ public class ZstdCompressionServiceTests
 
     private static byte[] Textual(int size)
     {
-        // Repeated natural-language text — the workload zstd's Huffman/FSE stages are tuned for.
         const string lorem = "The quick brown fox jumps over the lazy dog. ";
         var sb = new StringBuilder(size + lorem.Length);
         while (sb.Length < size)
