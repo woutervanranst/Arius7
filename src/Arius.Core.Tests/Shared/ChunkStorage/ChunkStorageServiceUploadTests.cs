@@ -19,7 +19,6 @@ public class ChunkStorageServiceUploadTests
     private static readonly ContentHash RetryThinContentHash        = ContentHash.Parse("5555555555555555555555555555555555555555555555555555555555555555");
     private static readonly ChunkHash   RetryThinParentChunkHash    = ChunkHash.Parse("6666666666666666666666666666666666666666666666666666666666666666");
 
-    /// <summary>A threshold no stored chunk can be within, so the archive-tier ceiling never applies.</summary>
     private const long NoTierCeiling = 0;
 
     [Test]
@@ -136,7 +135,7 @@ public class ChunkStorageServiceUploadTests
         metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
         metadata.Metadata.ContainsKey(BlobMetadataKeys.OriginalSize).ShouldBeFalse();
 
-        // Distinct content so the large chunk lands at a different content-addressed path than the tar.
+        // Use a different hash to avoid reusing the tar chunk.
         var largeContent = new byte[1536];
         Random.Shared.NextBytes(largeContent);
         _ = await service.UploadLargeAsync(
@@ -253,7 +252,6 @@ public class ChunkStorageServiceUploadTests
         result.AlreadyExisted.ShouldBeFalse();
         blobs.DeletedBlobNames.ShouldContain(blobName);
 
-        // Verify that retry progress is monotonic and ends at the true total; intermediate reports are throttled.
         reports.ShouldNotBeEmpty();
         reports.ShouldBeInOrder();
         reports.Distinct().Count().ShouldBe(reports.Count);
@@ -363,7 +361,6 @@ public class ChunkStorageServiceUploadTests
     [Test]
     public async Task UploadLargeAsync_EncryptedRepository_TagsBlobWithGcmEncryptedContentType()
     {
-        // With a passphrase the service encrypts, so the blob must carry the encrypted content type.
         var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new ContentTypeCapturingBlobContainerService();
         var service = new ChunkStorageService(blobs, encryption, ICompressionService.ZtdInstance);
@@ -387,7 +384,6 @@ public class ChunkStorageServiceUploadTests
     [Test]
     public async Task UploadLargeAsync_RewindsContent_WhenSourceIsNotAtStart()
     {
-        // A source handed in mid-stream must be rewound and copied from the start.
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[4096];
@@ -435,7 +431,7 @@ public class ChunkStorageServiceUploadTests
     [Test]
     public async Task UploadLargeAsync_GZipCodec_RoundTripsEncryptedMultiBlockContent()
     {
-        // Exceed the copy buffer so GCM must finalize a multi-block encrypted body.
+        // Exercise authentication-tag finalization across multiple writes.
         var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, encryption, new GZipCompressionService());
@@ -463,10 +459,6 @@ public class ChunkStorageServiceUploadTests
     [Test]
     public async Task DownloadAsync_ReadsLegacyGZipBlob_ThroughProductionZstdCodec()
     {
-        // Back-compat guarantee after extracting gzip decode into GZipCompressionService: a blob written by the
-        // gzip era (gzip codec) must still decode when read through the production-registered zstd codec, whose
-        // auto-detect now delegates legacy frames to GZipCompressionService — exercised end-to-end via the full
-        // ChunkStorageService download stack.
         var blobs = new FakeInMemoryBlobContainerService();
         var legacyWriter = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, new GZipCompressionService());
         var productionReader = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
@@ -490,10 +482,6 @@ public class ChunkStorageServiceUploadTests
     }
 
 
-    // ── Archive-tier ceiling ────────────────────────────────────────────────────────────────────────
-
-    // The caller routes files by uncompressed size, so a file above the threshold can still compress back
-    // within it. Such a chunk must not be archived — rehydrating it costs far more than the storage saved.
     [Test]
     public async Task UploadLargeAsync_KeepsChunkOnline_WhenArchiveRequestedAndStoredSizeIsWithinTheThreshold()
     {
@@ -542,7 +530,7 @@ public class ChunkStorageServiceUploadTests
     {
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
-        var content = new byte[2 * 1024 * 1024]; // incompressible, so the stored chunk stays above the threshold
+        var content = new byte[2 * 1024 * 1024];
         Random.Shared.NextBytes(content);
         var chunkHash = ChunkHashOf(content);
 
@@ -560,7 +548,6 @@ public class ChunkStorageServiceUploadTests
         (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash))).Tier.ShouldBe(BlobTier.Archive);
     }
 
-    // Only the archive tier is ceilinged; an explicitly requested online tier is honoured at any size.
     [Test]
     public async Task UploadLargeAsync_KeepsRequestedOnlineTier_WhenStoredSizeIsWithinTheThreshold()
     {
@@ -582,8 +569,7 @@ public class ChunkStorageServiceUploadTests
         (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash))).Tier.ShouldBe(BlobTier.Cool);
     }
 
-    // A committed blob recovered from a prior run keeps the tier it has — moving one out of the archive tier
-    // is a paid rehydration — so the reported tier must describe storage, not this run's request.
+    // Reusing a chunk must not trigger a paid rehydration.
     [Test]
     public async Task UploadLargeAsync_ReportsTierOfExistingBlob_WhenBlobAlreadyExisted()
     {
