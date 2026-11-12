@@ -31,15 +31,17 @@ The original zstd plan and commit `a7e7f4e4` added the tee to defend against an 
 
 Apply the existing BCL-codec trust policy to framework zstd. Remove `IUploadVerifier`, `RoundTripVerifier`, `NoopVerifier`, `TeeStream`, the bounded verification pipe/background task, and the codec capability flag. Do not retain an upload-time hasher solely to preserve the original verifier's source-change-detection side effect.
 
-This is a deliberate defense-in-depth tradeoff, not proof that Microsoft code cannot have bugs: encoder defects are no longer checked on each upload. Cross-codec, golden-file, independent Python recovery, and deployment gates cover the encoder instead. Frame checksums, truncation/window rejection, and GCM authentication remain unchanged. They do not detect a source changing after initial hashing: changing a file during archive violates the static-source precondition and may record content under the wrong identity.
+This is a deliberate defense-in-depth tradeoff, not proof that Microsoft code cannot have bugs: encoder defects are no longer checked on each upload. Cross-codec, golden-file, independent Python recovery, and archive/restore tests cover the encoder instead. Frame checksums, truncation/window rejection, and GCM authentication remain unchanged. They do not detect a source changing after initial hashing: changing a file during archive violates the static-source precondition and may record content under the wrong identity.
 
-### Compatibility and shipping gates
+### Compatibility coverage
 
 `ZstdCompatibilityTests` exercises both writer/reader directions for chunks, canonical filetrees, shards, and snapshots, with and without encryption. An existing encrypted zstd golden chunk anchors historical compatibility. `ZstdCompressionServiceTests` covers legacy gzip/empty payloads, checksum corruption, truncation including missing checksum bytes, the decode-window cap, cancellation, and sync/async stream ownership. `ZstdRecoveryTests` decodes newly written encrypted frames with `recover-chunk.py` and Python `zstandard`.
 
-The `Compression compatibility` workflow runs on Windows x64, Linux x64, and macOS arm64. It also archives and lists empty, small, and large binary files using the published self-contained single-file CLI, then independently recovers the large and tar chunks, in plaintext and encrypted repositories. A separate Linux job runs the framework-dependent CLI inside the actual production Docker image, exercising that image's native runtime. These live probes use disposable containers and delete them afterward; missing credentials fail the gate rather than report success. Release builds and image publication depend on this workflow.
+These tests remain in the normal suites on Windows x64, Linux x64, and macOS arm64. Integration recovery tests archive encrypted large and tar chunks, then independently recover their contents; the representative E2E workflow covers archive/restore behavior. Python-based tests visibly skip when their interpreter or libraries are unavailable. The existing release workflow installs those dependencies and verifies Python recovery against historical golden files; its configuration is unchanged.
 
-**Do not ship until all platform/deployment gates pass and their performance artifacts have been reviewed.** This ADR remains proposed until that evidence is accepted.
+The migration-only deployment/benchmark workflow and its two Python drivers were removed after collecting the evidence below: their codec/recovery coverage largely duplicated the test suites, and shared-runner measurements were not performance thresholds. They are not ongoing release dependencies. The published executable/container probes provided packaging evidence during migration; in-process tests do not replace that distinct check.
+
+This ADR remains proposed until compatibility and performance evidence is accepted. In particular, the Windows text regressions below remain a release decision.
 
 ### Performance evidence
 
@@ -91,23 +93,23 @@ Stored sizes were unchanged. Removing the verifier and upload-time rehash reduce
 
 The storage double retains/copies complete bodies, and RSS includes runtime/GC effects, body buffers, and all iterations. These peaks are not the production streaming memory budget or per-decoder allocations. Shared-host timing noise is substantial: mixed GCM baseline throughput ranged from 158 to 273 MiB/s across the three processes. File input is warm in the OS cache, and there are no Azure/network or multi-chunk-worker timings here. Real-repository throughput and the platform regressions remain release decisions.
 
-Reproduce each measurement from the repository root, using a fresh Python process per invocation:
+Re-run codec and upload timing/CPU measurements from the repository root, using a fresh process per invocation:
 
 ```bash
 dotnet build src/Arius.Benchmarks/Arius.Benchmarks.csproj -c Release
-python3 .github/scripts/measure-compression.py previous mixed
-python3 .github/scripts/measure-compression.py framework mixed
-python3 .github/scripts/measure-compression.py upload mixed
-python3 .github/scripts/measure-compression.py upload mixed --encrypted
+dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression previous mixed
+dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression framework mixed
+dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression-upload mixed plaintext
+dotnet src/Arius.Benchmarks/bin/Release/net11.0/Arius.Benchmarks.dll compression-upload mixed encrypted
 ```
 
-Also run `text` and `random`. To compare revisions, build the same upload harness with each pipeline revision into separate directories and select each DLL with `--assembly <path>`. The driver uses per-child OS peak RSS on Unix and `PeakWorkingSet64` on Windows, so native allocations are included. The updated workflow collects codec CPU time and plaintext/GCM upload-stack measurements for subsequent runs.
+Also run `text` and `random`. To compare revisions, build the same upload harness with each pipeline revision into separate directories and invoke each DLL directly. The harness reports native-inclusive peak working set on Windows. The historical Unix RSS measurements above used a temporary per-child OS collector; reproducing those memory measurements requires an external OS profiler. Benchmarks remain manual tooling, not automatic CI or release gates.
 
 ### Native deployment implications
 
 Unlike the pure-managed port, the framework codec requires the runtime's native compression component. Official Microsoft .NET 11 runtime packs vendor zstd in that component; no separate system `libzstd` installation is required for those packs. Distribution-built .NET runtimes may instead link system zstd and must supply it.
 
-Self-contained publication must retain the RID-specific native assets. Single-file publication keeps `IncludeNativeLibrariesForSelfExtract=true` and needs a writable native-extraction location. The existing .NET 11 container base supplies the framework-dependent native assets. Browser/WASI, custom runtime builds, musl, and AOT are not certified by the three supported release-RID gates.
+Self-contained publication must retain the RID-specific native assets. Single-file publication keeps `IncludeNativeLibrariesForSelfExtract=true` and needs a writable native-extraction location. The existing .NET 11 container base supplies the framework-dependent native assets. The migration probes exercised Windows x64, Linux x64, macOS arm64, and the production Linux container, not Browser/WASI, custom runtime builds, musl, or AOT.
 
 ## Alternatives
 
