@@ -14,17 +14,15 @@ Both wrappers are thin pass-through decorators that delegate every `Read`/`Write
 flowchart LR
   src["source FileStream\n(or tar temp file)"] --> ps[ProgressStream]
   ps -->|"CopyToAsync"| zstd["zstd CompressionStream"]
-  zstd --> tee[TeeStream]
-  tee --> enc["AES-256-GCM\nencryption stream"]
+  zstd --> enc["AES-256-GCM\nencryption stream"]
   enc --> cnt[CountingStream]
   cnt --> ow["blobs.OpenWriteAsync"]
-  tee -. "tee for inline verify" .-> ver[RoundTripVerifier]
 ```
 
 - **`ProgressStream(inner, IProgress<long>)`** wraps the *source* at the top of the chain so progress tracks logical bytes read off disk, not compressed bytes on the wire. `Length` is delegated to the inner `FileStream`, so the consumer knows the total up front and can compute a percentage. Reports are **coalesced to at most one per 500 ms**: the first read reports immediately, later reads wait for the interval, and the true total is emitted at EOF or disposal. Empty sources report nothing. The download path reuses it the same way, wrapping the blob's read stream.
 - **`CountingStream(inner)`** sits at the *bottom* of the chain, directly above `OpenWriteAsync`, and increments `BytesWritten` on every write. It is read *after* the chain is disposed to capture the final compressed-and-encrypted blob size, which `UploadChunkAsync` then writes into blob metadata (`chunk-size`).
 
-The note in `UploadChunkAsync` is load-bearing here: the encryption stream is disposed *explicitly* before reading `BytesWritten`, because GCM flushes its final auth tag on dispose — reading the count earlier would undercount by the tag bytes.
+The nested disposal scopes in `UploadChunkAsync` are load-bearing here: compression finalizes before encryption, and both are disposed before reading `BytesWritten`, because GCM flushes its final auth tag on dispose — reading the count earlier would undercount by the tag bytes. The source is copied directly, without a decoder branch or another hash pass.
 
 ## Key invariants
 

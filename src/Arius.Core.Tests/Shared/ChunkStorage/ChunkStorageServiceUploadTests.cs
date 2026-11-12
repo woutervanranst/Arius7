@@ -23,6 +23,35 @@ public class ChunkStorageServiceUploadTests
     private const long NoTierCeiling = 0;
 
     [Test]
+    [Arguments(false, 0)]
+    [Arguments(true, 0)]
+    [Arguments(false, 256 * 1024)]
+    [Arguments(true, 256 * 1024)]
+    public async Task UploadLargeAsync_WithoutDecodingOrRehashing_StoresCompleteRestorableChunk(bool encrypted, int size)
+    {
+        var blobs = new FakeInMemoryBlobContainerService();
+        var encryption = encrypted ? IEncryptionService.EncryptedInstance : IEncryptionService.PlaintextInstance;
+        var service = new ChunkStorageService(blobs, new EncryptOnlyEncryptionService(encryption), new EncodeOnlyCompressionService());
+        var content = new byte[size];
+        new Random(220).NextBytes(content);
+        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
+        using var source = new MemoryStream(content, writable: false);
+
+        var result = await service.UploadLargeAsync(chunkHash, source, size, BlobTier.Hot, NoTierCeiling);
+
+        source.CanRead.ShouldBeTrue();
+        var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash));
+        result.StoredSize.ShouldBe(metadata.ContentLength!.Value);
+        metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
+        var stored = await blobs.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
+        await using var decrypted = encryption.WrapForDecryption(stored.Stream);
+        await using var decoded = new ZstdCompressionService().WrapForDecompression(decrypted);
+        using var restored = new MemoryStream();
+        await decoded.CopyToAsync(restored);
+        restored.ToArray().ShouldBe(content);
+    }
+
+    [Test]
     public async Task UploadLargeAsync_StoresChunkAndReturnsStoredSize()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -252,31 +281,6 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
-    public async Task UploadLargeAsync_FailsLoudly_AndDoesNotRecord_WhenStoredChunkDoesNotRoundTrip()
-    {
-        // Uploading content under a hash it does not produce simulates a frame that won't restore to its
-        // chunk hash (e.g. an encoder bug). The inline round-trip verification must catch it: fail loudly
-        // and leave no recorded blob, never silently store an unrecoverable chunk.
-        var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
-        var content = new byte[4096];
-        Random.Shared.NextBytes(content);
-        var wrongHash = ChunkHash.Parse("0000000000000000000000000000000000000000000000000000000000000000");
-
-        await Should.ThrowAsync<InvalidDataException>(() => service.UploadLargeAsync(
-            chunkHash: wrongHash,
-            content: new MemoryStream(content),
-            sourceSize: content.Length,
-            tier: BlobTier.Archive,
-            smallFileThreshold: NoTierCeiling,
-            progress: null,
-            cancellationToken: CancellationToken.None));
-
-        var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(wrongHash));
-        metadata.Exists.ShouldBeFalse();
-    }
-
-    [Test]
     public async Task UploadThinAsync_CreatesPointerBlobWithMetadata()
     {
         var blobs = new FakeInMemoryBlobContainerService();
@@ -359,9 +363,7 @@ public class ChunkStorageServiceUploadTests
     [Test]
     public async Task UploadLargeAsync_EncryptedRepository_TagsBlobWithGcmEncryptedContentType()
     {
-        // With a passphrase the service encrypts, so the blob must carry the encrypted content type
-        // (the plaintext tests only exercise the unencrypted branch). The inline round-trip
-        // verification still runs against the pre-encryption compressed bytes and must pass.
+        // With a passphrase the service encrypts, so the blob must carry the encrypted content type.
         var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new ContentTypeCapturingBlobContainerService();
         var service = new ChunkStorageService(blobs, encryption, ICompressionService.ZtdInstance);
@@ -385,8 +387,7 @@ public class ChunkStorageServiceUploadTests
     [Test]
     public async Task UploadLargeAsync_RewindsContent_WhenSourceIsNotAtStart()
     {
-        // A source handed in mid-stream must be rewound to position 0 and read in full; the round-trip
-        // verifier only reproduces the chunk hash if every byte from the start was compressed.
+        // A source handed in mid-stream must be rewound and copied from the start.
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance);
         var content = new byte[4096];
@@ -408,36 +409,8 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
-    public async Task UploadLargeAsync_SkipsRoundTripVerification_ForCodecThatDoesNotRequireIt()
-    {
-        // The zstd path verifies the stored chunk round-trips (see the wrong-hash test above); the legacy
-        // gzip codec opts out (RequireRoundTripVerification == false), so ChunkStorageService skips the tee.
-        // With verification skipped, an upload under a hash the content does NOT produce is recorded as-is
-        // rather than failing loudly — proving the verification is gated on the codec's flag.
-        var blobs = new FakeInMemoryBlobContainerService();
-        var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, new GZipCompressionService());
-        var content = new byte[4096];
-        Random.Shared.NextBytes(content);
-        var wrongHash = ChunkHash.Parse("0000000000000000000000000000000000000000000000000000000000000000");
-
-        var result = await service.UploadLargeAsync(
-            chunkHash: wrongHash,
-            content: new MemoryStream(content),
-            sourceSize: content.Length,
-            tier: BlobTier.Archive,
-            smallFileThreshold: NoTierCeiling,
-            progress: null,
-            cancellationToken: CancellationToken.None);
-
-        result.AlreadyExisted.ShouldBeFalse();
-        (await blobs.GetMetadataAsync(BlobPaths.ChunkPath(wrongHash))).Exists.ShouldBeTrue();
-    }
-
-    [Test]
     public async Task UploadLargeAsync_GZipCodec_RoundTripsThroughUploadAndDownload()
     {
-        // A full compress→encrypt→upload→download→decrypt→decompress cycle on the legacy gzip codec,
-        // exercising the no-verifier upload path and proving ChunkStorageService both writes and reads gzip.
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, IEncryptionService.PlaintextInstance, new GZipCompressionService());
         var content = new byte[4096];
@@ -460,12 +433,9 @@ public class ChunkStorageServiceUploadTests
     }
 
     [Test]
-    public async Task UploadLargeAsync_NonVerifyingCodec_RoundTripsEncryptedMultiBlockContent()
+    public async Task UploadLargeAsync_GZipCodec_RoundTripsEncryptedMultiBlockContent()
     {
-        // The riskiest combination this change introduces: the no-verifier upload path (verifier == null,
-        // compression streams straight into the encryption chain with leaveOpen:true) under real AES-GCM, where
-        // the encryption stream must be disposed exactly once so its auth tag is flushed before BytesWritten is
-        // read. Use content larger than the 80 KiB CopyToAsync buffer so the frame spans multiple writes.
+        // Exceed the copy buffer so GCM must finalize a multi-block encrypted body.
         var encryption = IEncryptionService.EncryptedInstance;
         var blobs = new FakeInMemoryBlobContainerService();
         var service = new ChunkStorageService(blobs, encryption, new GZipCompressionService());

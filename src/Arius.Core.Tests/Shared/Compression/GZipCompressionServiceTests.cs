@@ -6,18 +6,11 @@ namespace Arius.Core.Tests.Shared.Compression;
 
 /// <summary>
 /// Tests for the legacy gzip codec: round-trip correctness, interop with the BCL <see cref="GZipStream"/>
-/// (so old "+gzip" blobs decode), header detection, and that it opts out of inline round-trip verification.
+/// (so old "+gzip" blobs decode) and header detection.
 /// </summary>
 public class GZipCompressionServiceTests
 {
     private static readonly ICompressionService Sut = new GZipCompressionService();
-
-    [Test]
-    public void DoesNotRequireRoundTripVerification()
-    {
-        // The BCL gzip encoder is mature and trusted, so chunk uploads skip inline verification. (Contrast zstd.)
-        Sut.RequireRoundTripVerification.ShouldBeFalse();
-    }
 
     [Test]
     [Arguments(0)]

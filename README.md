@@ -64,6 +64,8 @@ arius update
 
 ### Archive
 
+Keep source files unchanged for the entire archive run. For actively edited data, archive a stable copy or filesystem snapshot.
+
 ```bash
 arius archive ./photos \
   -a mystorageaccount \
