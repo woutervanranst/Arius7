@@ -1,7 +1,7 @@
 # Performance and tuning constants
 
 > **Code:** `src/Arius.Core/Features/ArchiveCommand/ArchiveCommandHandler.cs` · `RestoreCommand/RestoreCommandHandler.cs` · `Shared/ChunkIndex/ChunkIndexService.cs` · `Shared/Compression/ZstdCompressionService.cs` · `Shared/ChunkStorage/ChunkStorageService.cs` · `Shared/FileTree/FileTreeBuilder.cs` · benchmarks under `src/Arius.Benchmarks`, `src/Arius.AzureBlob.Benchmarks`
-> · **Decisions:** [ADR-0012 zstd codec](../../decisions/adr-0012-zstd-as-new-compression-algorithm.md) · [ADR-0024 framework codec and upload validation](../../decisions/adr-0024-framework-zstandard-codec.md) · [ADR-0015 chunk-index scalability](../../decisions/adr-0015-chunk-index-scalability.md)
+> · **Decisions:** [ADR-0012 zstd codec](../../decisions/adr-0012-zstd-as-new-compression-algorithm.md) · [ADR-0024 framework zstd codec](../../decisions/adr-0024-framework-zstandard-codec.md) · [ADR-0015 chunk-index scalability](../../decisions/adr-0015-chunk-index-scalability.md)
 > · **Terms:** [chunk](../../glossary.md#chunk) · [large chunk](../../glossary.md#large-chunk) · [tar chunk](../../glossary.md#tar-chunk) · [shard](../../glossary.md#shard) · [chunk index](../../glossary.md#chunk-index) · [chunk size](../../glossary.md#chunk-size)
 
 ## Purpose
