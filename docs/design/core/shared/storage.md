@@ -117,7 +117,7 @@ The Azure impl maps SDK `RequestFailedException`s to three Core exceptions so ca
 
 - **Core has zero Azure types.** No `Azure.*` reference crosses into Arius.Core — the interfaces use only Core types (`RelativePath`, `BlobTier`, the `Blob*Exception`s). ([ADR-0013](../../../decisions/adr-0013-core-host-separation.md))
 - **Blob names come only from `BlobPaths`.** Names are derived from typed hashes; no caller string-concatenates a blob path. A repository's layout is whatever `BlobPaths` says it is.
-- **`arius_type` presence = committed.** Metadata is written after compression, encryption, and the body write finalize successfully; never write the sentinel before those succeed. No `arius_complete` key exists. ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md), amended by [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md))
+- **`arius_type` presence = committed.** Metadata is written after the body succeeds; never write the sentinel before the body is fully written. No `arius_complete` key exists. ([ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md))
 - **ETag is opaque.** Compare with string equality only; never parse it. Across `UploadResult`/`DownloadResult`/`BlobMetadata`/`BlobListItem` it is the same change-detection token.
 - **`OpenWriteAsync` / `UploadAsync(overwrite:false)` are create-if-not-exists.** They use `IfNoneMatch=*` optimistic concurrency and throw `BlobAlreadyExistsException` *before* any body is written — the basis of crash-safe idempotent retries.
 - **A container is an Arius repository iff `snapshots/` is non-empty.** `GetContainerNamesAsync` filters on this; an empty/placeholder `snapshots/` blob alone doesn't count.

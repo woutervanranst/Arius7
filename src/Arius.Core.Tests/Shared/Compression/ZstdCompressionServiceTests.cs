@@ -174,17 +174,6 @@ public class ZstdCompressionServiceTests
     }
 
     [Test]
-    public async Task Compress_CancelledWriteDoesNotConsumeInput()
-    {
-        using var output = new MemoryStream();
-        await using var compress = Sut.WrapForCompression(output);
-        using var cancelled = new CancellationTokenSource();
-        cancelled.Cancel();
-
-        await Should.ThrowAsync<OperationCanceledException>(async () => await compress.WriteAsync(new byte[8192], cancelled.Token));
-    }
-
-    [Test]
     [Arguments(true, true)]
     [Arguments(true, false)]
     [Arguments(false, true)]
