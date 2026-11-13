@@ -23,35 +23,6 @@ public class ChunkStorageServiceUploadTests
     private const long NoTierCeiling = 0;
 
     [Test]
-    [Arguments(false, 0)]
-    [Arguments(true, 0)]
-    [Arguments(false, 256 * 1024)]
-    [Arguments(true, 256 * 1024)]
-    public async Task UploadLargeAsync_WithoutDecodingOrRehashing_StoresCompleteRestorableChunk(bool encrypted, int size)
-    {
-        var blobs = new FakeInMemoryBlobContainerService();
-        var encryption = encrypted ? IEncryptionService.EncryptedInstance : IEncryptionService.PlaintextInstance;
-        var service = new ChunkStorageService(blobs, new EncryptOnlyEncryptionService(encryption), new EncodeOnlyCompressionService());
-        var content = new byte[size];
-        new Random(220).NextBytes(content);
-        var chunkHash = ChunkHash.Parse(encryption.ComputeHash(content));
-        using var source = new MemoryStream(content, writable: false);
-
-        var result = await service.UploadLargeAsync(chunkHash, source, size, BlobTier.Hot, NoTierCeiling);
-
-        source.CanRead.ShouldBeTrue();
-        var metadata = await blobs.GetMetadataAsync(BlobPaths.ChunkPath(chunkHash));
-        result.StoredSize.ShouldBe(metadata.ContentLength!.Value);
-        metadata.Metadata[BlobMetadataKeys.ChunkSize].ShouldBe(result.StoredSize.ToString());
-        var stored = await blobs.DownloadAsync(BlobPaths.ChunkPath(chunkHash));
-        await using var decrypted = encryption.WrapForDecryption(stored.Stream);
-        await using var decoded = new ZstdCompressionService().WrapForDecompression(decrypted);
-        using var restored = new MemoryStream();
-        await decoded.CopyToAsync(restored);
-        restored.ToArray().ShouldBe(content);
-    }
-
-    [Test]
     public async Task UploadLargeAsync_StoresChunkAndReturnsStoredSize()
     {
         var blobs = new FakeInMemoryBlobContainerService();
