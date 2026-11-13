@@ -6,7 +6,7 @@ namespace Arius.Core.Shared.ChunkStorage;
 /// Manages chunk storage and rehydration for feature handlers.
 /// </summary>
 /// <remarks>
-/// Large and tar chunk content must remain unchanged from hashing through upload completion.
+/// Assumption: Large and tar chunk content remain unchanged from hashing through upload completion.
 /// </remarks>
 public interface IChunkStorageService
 {

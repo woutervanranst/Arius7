@@ -8,6 +8,7 @@ namespace Arius.Core.Shared.Compression;
 [SharedWithinAssembly]
 internal sealed class GZipCompressionService : ICompressionService
 {
+    // gzip frame magic: 0x1F 0x8B (little-endian on disk).
     private const byte Magic0 = 0x1F;
     private const byte Magic1 = 0x8B;
 
