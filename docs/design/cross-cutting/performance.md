@@ -45,7 +45,7 @@ Long-running handlers are channel-connected stages with **bounded** channels so 
 
 The archive file-pair channel (Enumerate → Hash) is deliberately **unbounded**, not listed above: bounding it throttled enumeration to hashing's pace, delaying the scan-total event on large trees ([archive-command](../core/features/archive-command.md#stage-channel-pipeline)).
 
-Each chunk streams through compression and encryption with no upload-time decompression or rehashing, so per-chunk memory stays flat. [ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md) records why this replaced the per-upload round-trip check, with measurements.
+Each chunk streams through compression and encryption. An upload does not decompress or hash its data again, so the memory for one chunk stays flat. [ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md) gives the reason for this change and the measurements.
 
 ### The small-file tar threshold
 
@@ -65,7 +65,7 @@ flowchart LR
 
 ### Codec: zstd level
 
-`ZstdCompressionService.DefaultCompressionLevel` is the single compression size/speed knob. **The code value is `15`**, lowered from ADR-0012's original level **19**; level changes are performance decisions backed by measurement. The encoder is single-threaded per stream with level-derived windows and no long-distance matching; archive parallelizes across chunks instead ([compression](../core/shared/compression.md), [ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md)).
+`ZstdCompressionService.DefaultCompressionLevel` is the single compression size/speed knob. **The code value is `15`.** ADR-0012 chose level **19**, and a later change lowered it. Only a measurement can justify a level change. The encoder uses one thread for each stream. It uses the window size from the level and does not use long-distance matching. Archive runs in parallel across chunks instead ([compression](../core/shared/compression.md), [ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md)).
 
 ### Routing: shard split threshold
 
@@ -73,7 +73,7 @@ flowchart LR
 
 ## Key invariants
 
-- **Channels and per-chunk buffers stay bounded.** Upload must never materialize a whole large chunk. Any new pipeline stage mirrors this (AGENTS: *prefer streaming/batching/bounded pipelines over whole-repository in-memory materialization*).
+- **Channels and per-chunk buffers stay bounded.** An upload must never hold a whole large chunk in memory. Any new pipeline stage mirrors this (AGENTS: *prefer streaming/batching/bounded pipelines over whole-repository in-memory materialization*).
 - **Fan-out is sized to the stage's bottleneck, not copied.** Local-work stages (thin entries, flush) run wide; large-blob-I/O stages run narrow. A refactor that uniformly raises every worker count would oversubscribe the network path and the per-compressor memory budget without speeding the bottleneck.
 - **`MaxShardEntryCount = 1024` and `MinShardPrefixLength = 2` are a coupled pair** verified by ADR-0015's confirmation checks; changing the threshold changes the steady-state write-amplification and shard count (the ~4096-shard design point fits one 5000-blob Azure list page).
 - **The zstd level is the only codec size/speed knob.** Preserve single-compressor behavior, level-derived windows, disabled long-distance matching, and the 128 MiB decode cap (ADR-0024).
@@ -84,7 +84,7 @@ flowchart LR
 
 - **Per-stage `const` over a config object** — the knobs live next to the code they govern and ride the numbered `// ── Stage N ──` handler structure, so a reader sees the bottleneck and its fan-out together. There is no operator tuning surface by design; ADR-0015 makes the same call for the shard layout (adapts with no operator tuning).
 - **Bounded everything** — durability-first plus large-repository scale rules out whole-repository materialization. See [memory-boundedness](./memory-boundedness.md).
-- **zstd level as a measured knob, not a constant of nature** — ADR-0012 fixes the standard-frame format; ADR-0024 the provider and validation policy. The current `15` is a later measured adjustment from `19`.
+- **zstd level as a measured knob, not a constant of nature** — ADR-0012 sets the standard-frame format. ADR-0024 sets the provider and the validation policy. The current level `15` is a later change from `19`, based on measurement.
 - **Shard threshold optimizes the common path** — daily incrementals over cold rebuilds; the rationale and the write-amplification arithmetic live once in [ADR-0015](../../decisions/adr-0015-chunk-index-scalability.md).
 
 ### How benchmarks inform the constants

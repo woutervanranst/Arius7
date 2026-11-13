@@ -71,5 +71,5 @@ factory here too.
 - Service **lifetime** is the sharp edge: the per-repository model assumes a short-lived
   provider; `ChunkIndexService` is single-shot after flush. ADR-0016, ADR-0017; see
   [`../../docs/design/cross-cutting/service-lifetimes.md`](../../docs/design/cross-cutting/service-lifetimes.md).
-- Sources are assumed static during an archive run; upload trusts the earlier chunk hash and does
-  not rehash or decode-verify (ADR-0024). Never re-download archive-tier blobs to check them.
+- Assume that sources do not change during an archive run. An upload trusts the earlier chunk hash.
+  It does not hash again or decode to verify (ADR-0024). Never download archive-tier blobs to check them.

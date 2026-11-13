@@ -9,49 +9,54 @@ supersedes: "ADR-0012 (codec provider and upload round-trip policy); ADR-0017 (c
 
 ## Context and Problem Statement
 
-.NET 11 ships a framework-serviced zstd implementation, so Arius can drop its managed port (`ZstdSharp.Port`). This changes the codec provider only, not the RFC 8878 repository format or any content, chunk, or filetree identity. ADR-0012 also verified every upload by decompressing and re-hashing the compressed bytes, to guard against bugs in that managed port.
+.NET 11 includes a Zstandard (zstd) implementation. Arius can use it and remove the managed port (`ZstdSharp.Port`). This change affects the codec provider only. The RFC 8878 repository format does not change. No content, chunk, or filetree identity changes.
 
-The question: which codec provider do we use, and does the upload-time round-trip verifier stay?
+ADR-0012 also verified each upload. The upload decompressed the compressed bytes and hashed them again. This check protected against bugs in the managed port.
+
+The question: which codec provider does Arius use, and does the upload verifier stay?
 
 ## Decision Outcome
 
-**Provider.** Use `System.IO.Compression.ZstandardStream` behind the existing `ICompressionService`. Preserve quality 15, the content checksum, the level-derived window, and no long-distance matching. Cap the decoder window at 128 MiB. Keep lazy gzip/zstd detection and the zero-byte legacy payload rule.
+**Provider.** Use `System.IO.Compression.ZstandardStream` behind `ICompressionService`. Keep these settings: quality 15, content checksum on, window size from the quality level, long-distance matching off. Limit the decoder window to 128 MiB. Keep the lazy gzip/zstd detection. Keep the rule that a zero-byte payload is empty content.
 
-**Verification.** Remove the per-upload verifier (`IUploadVerifier`, `RoundTripVerifier`, `NoopVerifier`, `TeeStream`, the verification pipe and the codec capability flag). Upload now copies source bytes straight through compression and encryption, and trusts the chunk hash computed earlier, including a hashcache reuse decision. The compression frame, encryption trailer and storage write must all finalize before the commit metadata is written, so ADR-0017's body-first, metadata-sentinel, snapshot-last protocol is unchanged.
+**Verification.** Remove the upload verifier: `IUploadVerifier`, `RoundTripVerifier`, `NoopVerifier`, `TeeStream`, the verification pipe, and the codec capability flag. An upload now copies the source bytes through compression and encryption. It trusts the chunk hash that Arius calculated earlier, including a hashcache reuse decision. Compression, encryption, and the storage write must all finish before Arius writes the commit metadata. The protocol of ADR-0017 does not change: body first, metadata sentinel, snapshot last.
 
-**Static sources.** Source files are assumed unchanged throughout an archive run. The verifier incidentally detected a file changing between hashing and upload; that detection is deliberately dropped. A file edited mid-archive may be recorded under the wrong identity, so the README and CLI guide tell users to archive a stable copy or filesystem snapshot. This revises issue #220's requirement to keep inline verification, at the maintainer's request.
+**Static sources.** Arius assumes that source files do not change during an archive run. The verifier detected a file that changed between hashing and upload. This ADR removes that detection on purpose. If a file changes during an archive run, Arius can record its content under the wrong identity. The README and the CLI guide tell users to archive a stable copy or a filesystem snapshot. This decision changes the requirement of issue #220 to keep inline verification. The maintainer requested the change.
 
-**Tradeoff.** Encoder bugs are no longer checked on every upload; this is defence in depth traded for less CPU and less machinery, not proof that framework code is bug-free. Coverage moves to tests (below). Frame checksums, truncation and window rejection, and GCM authentication on reads are unchanged.
+**Risk.** Arius no longer checks for encoder bugs on each upload. This removes one layer of protection. It does not prove that the framework code has no bugs. Tests give the coverage (see below). These protections do not change: frame checksums, truncation and window checks, and GCM authentication on reads.
 
 ## Consequences
 
-- Corrupt and truncated frames now throw `InvalidDataException` (previously `ZstdException` / `EndOfStreamException`); a window violation throws `IOException`.
-- The framework encoder never enables zstd worker threads and exposes no setting for it, so each stream uses one compressor and archive still parallelizes across chunks. Recheck this when changing runtimes.
-- The codec needs the runtime's native compression component. Official Microsoft .NET 11 runtimes bundle zstd; distribution-built runtimes may need system zstd. Self-contained publishing must keep the RID-specific native assets, and single-file builds keep `IncludeNativeLibrariesForSelfExtract=true` with a writable extraction location. Not exercised: Browser/WASI, custom runtime builds, musl, AOT.
-- The migration-only cross-codec tests, deployment workflow and benchmark harness are removed; they live in the migration commits (`0530dcad`, `c580bc04`, `4be4269f`).
+- A corrupt frame or a truncated frame now causes `InvalidDataException`. Before, they caused `ZstdException` and `EndOfStreamException`. A window violation causes `IOException`.
+- The framework encoder does not use zstd worker threads, and it has no setting for them. Each stream uses one compressor. Archive still runs in parallel across chunks. Check this again when you change the runtime.
+- The codec needs the native compression component of the runtime. Microsoft .NET 11 runtimes include zstd. A runtime that a Linux distribution builds can need the system zstd package.
+- A self-contained publish must keep the native assets for its RID. A single-file build must keep `IncludeNativeLibrariesForSelfExtract=true` and needs a writable folder for extraction.
+- These targets were not tested: Browser/WASI, custom runtime builds, musl, AOT.
+- The migration-only cross-codec tests, deployment workflow, and benchmark harness are removed. They remain in commits `0530dcad`, `c580bc04`, and `4be4269f`.
 
 ## Compatibility coverage
 
 - `ZstdCompatibilityTests` reads a historical encrypted zstd golden chunk.
-- `ZstdCompressionServiceTests` covers legacy gzip and empty payloads, checksum corruption, truncation (including missing checksum bytes), the window cap, cancellation and stream ownership.
-- `RecoveryScriptTests` (integration) archives encrypted large and tar chunks through the real pipeline and recovers them with `recover-chunk.py`. The release workflow runs the same script against the golden files.
-- The representative E2E workflow covers archive and restore. All of this runs on Windows x64, Linux x64 and macOS arm64; Python-based tests visibly skip when Python or its libraries are missing.
+- `ZstdCompressionServiceTests` covers these cases: legacy gzip and empty payloads, checksum corruption, truncation (including missing checksum bytes), the window limit, cancellation, and stream ownership.
+- `RecoveryScriptTests` (integration) archives encrypted large chunks and tar chunks through the real pipeline. It then recovers them with `recover-chunk.py`. The release workflow runs the same script on the golden files.
+- The representative E2E workflow covers archive and restore.
+- The tests run on Windows x64, Linux x64, and macOS arm64. A Python-based test shows a skip reason when Python or its libraries are not available.
 
 ## Performance evidence
 
-Local macOS arm64 measurements on a shared host (32 MiB workloads, fresh process per case), plus one short CI run on all three RIDs. These show lower resource use, not a universal speed-up.
+The local measurements use macOS arm64 on a shared host. Each case uses a 32 MiB workload in a new process. The CI measurement is one short run on all three RIDs. The results show lower resource use. They do not show a general speed increase.
 
-- **Codec, local:** stored sizes are identical to the previous codec. Compression throughput is +4% to +23%; decode throughput varies by workload (-13% to +45%).
-- **Codec, CI** ([run 43101837735](https://github.com/woutervanranst/Arius7/actions/runs/43101837735)): mixed and random data improve 28-57% on encode on every RID. **Windows x64 text regressed (encode -26%, decode -42%)** and needs representative follow-up before release. Peak RSS drops 7-11 MiB everywhere.
-- **Removing the verifier** (real `ChunkStorageService`, in-memory storage, 320 MiB per case): CPU time -6.7% to -33.6%, peak RSS -7 to -77 MiB, median throughput -2% to +16% (repeated text flat, mixed and random faster). Timing noise on the shared host is substantial, and there are no network or multi-worker timings.
+- **Codec, local:** The stored sizes are the same as with the previous codec. Compression throughput changes by +4% to +23%. Decode throughput changes by -13% to +45%, depending on the workload.
+- **Codec, CI** ([run 43101837735](https://github.com/woutervanranst/Arius7/actions/runs/43101837735)): Encode throughput for mixed and random data increases by 28% to 57% on all RIDs. **On Windows x64, text data is slower (encode -26%, decode -42%).** Investigate this with representative data before release. Peak RSS decreases by 7 to 11 MiB on all RIDs.
+- **Verifier removal** (real `ChunkStorageService`, in-memory storage, 320 MiB per case): CPU time decreases by 6.7% to 33.6%. Peak RSS decreases by 7 to 77 MiB. Median throughput changes by -2% to +16%. Repeated text is almost the same. Mixed and random data are faster. The timing noise on the shared host is large. The test has no network and no multi-worker timings.
 
-This ADR stays proposed until the Windows text regression is resolved and the evidence is accepted.
+This ADR stays proposed until the Windows text regression is resolved and the maintainer accepts the evidence.
 
 ## Alternatives
 
-- **Keep the managed codec:** managed-only deployment, but codec servicing stays outside the framework. A native wrapper adds a dependency and deployment contract for no gain over the framework.
-- **Keep the per-upload decoder:** stronger encoder-bug defence, at the cost of a second codec context, a tee, a bounded pipe and a background task.
-- **Keep only a source-copy hasher:** still detects mid-archive edits, but adds CPU work and helper code for a condition the static-source contract excludes.
+- **Keep the managed codec.** Deployment stays managed-only, but the framework does not service the codec. A native wrapper adds a dependency and a deployment contract and gives no benefit over the framework.
+- **Keep the upload decoder.** It gives stronger protection against encoder bugs. It needs a second codec context, a tee, a bounded pipe, and a background task.
+- **Keep only a source-copy hasher.** It still detects edits during an archive run. It adds CPU work and helper code for a condition that the static-source rule excludes.
 
 ## References
 
