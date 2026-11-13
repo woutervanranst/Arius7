@@ -15,7 +15,7 @@ The compression boundary that all blob bodies pass through. `ICompressionService
 
 `ZstdCompressionService` is the only registered implementation (`ServiceCollectionExtensions` binds it as a singleton). It writes RFC 8878 zstd frames via the framework's `ZstandardStream` and owns a static `GZipCompressionService` instance to which it delegates legacy reads.
 
-The write path uses quality 15 (`DefaultCompressionLevel`, the one ratio/speed knob), appends the content checksum, uses the level-derived window with no long-distance matching, and compresses single-threaded. Decoding caps the window at 128 MiB. Native deployment notes and evidence: [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md).
+The write path uses quality 15 (`DefaultCompressionLevel`, the only ratio/speed setting). It adds the content checksum. It uses the window size from the quality level and does not use long-distance matching. It compresses with one thread. The decoder limits the window to 128 MiB. [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) gives the deployment notes and the evidence.
 
 The read path never consults blob metadata. `WrapForDecompression` returns an `AutoDetectDecompressionStream` that, on first read, peeks 4 bytes, then routes:
 
@@ -32,19 +32,19 @@ flowchart TD
 
 The peeked bytes are replayed via a `PrefixedStream` so the chosen decoder sees a complete frame (the magic is "un-peeked"). `read == 0` maps to empty content because the legacy gzip era wrote empty payloads as 0-byte blobs.
 
-**No upload verification.** [`ChunkStorageService`](./chunk-storage.md) streams through compression and encryption without decoding its output or rehashing the source; it trusts the earlier chunk hash and assumes static sources ([ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md)). Encoder compatibility is covered by golden-file and recovery-script tests; checksums and truncation checks still apply on reads.
+**No verification on upload.** [`ChunkStorageService`](./chunk-storage.md) sends the data through compression and encryption. It does not decode the output or hash the source again. It trusts the earlier chunk hash and assumes that sources do not change ([ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md)). Golden-file tests and recovery-script tests cover encoder compatibility. Reads still use checksums and truncation checks.
 
 ## Key invariants
 
 - **New blobs are zstd; old gzip blobs stay readable forever.** The read path must remain self-describing (magic-byte detection), never dependent on content-type or external metadata.
 - **A frame written today is restorable by a default-configured reader.** Window size and long-distance matching stay at zstd's level-derived defaults, kept under the decompressor's 128 MiB `ZSTD_d_windowLogMax` cap — no large-window/LDM frames.
-- **Checksums on, one compressor per stream.** The framework has no worker-count option; recheck its single-threaded behaviour when upgrading the runtime.
-- **Sources must stay static during archive.** Changes between hashing and upload are not detected.
+- **Checksums are on. Each stream uses one compressor.** The framework has no worker-count option. Check its single-thread behavior again when you upgrade the runtime.
+- **Sources must not change during an archive run.** Arius does not detect a change between hashing and upload.
 - **0-byte source ⇒ empty content**, not a format error (legacy empty-payload compatibility).
 
 ## Why this shape
 
-The format choice is recorded in [ADR-0012](../../../decisions/adr-0012-zstd-as-new-compression-algorithm.md); [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) changed the provider and dropped upload-time round-trips. The stream-wrapping `ICompressionService` boundary exists to keep codec mechanics out of the storage, filetree, snapshot, and chunk-index serializers — mirroring `IEncryptionService` so the two layers compose as `compress → encrypt` on write and `decrypt → decompress` on read.
+[ADR-0012](../../../decisions/adr-0012-zstd-as-new-compression-algorithm.md) records the format choice. [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) changed the provider and removed the round-trip check on upload. The stream-wrapping `ICompressionService` boundary exists to keep codec mechanics out of the storage, filetree, snapshot, and chunk-index serializers — mirroring `IEncryptionService` so the two layers compose as `compress → encrypt` on write and `decrypt → decompress` on read.
 
 > Note: ADR-0012's prose cites level 19; the code default is currently 15. The level is a tunable performance knob — treat the code constant as authoritative and any change as a measured performance decision (per the ADR).
 
