@@ -19,21 +19,21 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
 
     /// <summary>
     /// zstd compression level for new blobs. This is the one performance/size knob: higher = smaller but slower.
-    /// Level 15 preserves Arius's existing ratio/speed tradeoff.
+    /// Level 15 balances compression ratio and speed.
     /// </summary>
     public const int DefaultCompressionLevel = 15;
 
-    private const int MaxDecodeWindowLog2 = 27; // Preserve the previous decoder's 128 MiB cap.
+    // Caps the decoder window at 128 MiB (2^27) so a crafted frame cannot force a larger allocation.
+    private const int MaxDecodeWindowLog2 = 27;
 
     public Stream WrapForCompression(Stream destination, bool leaveOpen = true)
         => new ZstandardStream(destination, new ZstandardCompressionOptions
         {
             Quality = compressionLevel,
             AppendChecksum = true,
-            WindowLog2 = 0, // Retain the level-derived window, not a fixed framework profile.
+            WindowLog2 = 0, // Derive the window size from the compression level.
             EnableLongDistanceMatching = false,
-            // The framework creates one fresh ZSTD_CCtx and exposes no worker-count option;
-            // it never enables ZSTD_c_nbWorkers. Archive parallelizes across chunks instead.
+            // Compression is single-threaded; archive parallelizes across chunks instead.
         }, leaveOpen);
 
     public Stream WrapForDecompression(Stream source, bool leaveOpen = false)

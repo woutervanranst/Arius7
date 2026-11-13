@@ -90,7 +90,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                     await (progressStream ?? content).CopyToAsync(compressionStream, cancellationToken);
                 }
 
-                // Both the compression frame and encryption trailer must be finalized before counting.
+                // Include the compression frame and encryption trailer in the stored size.
                 storedSize = countingStream.BytesWritten;
             }
 
