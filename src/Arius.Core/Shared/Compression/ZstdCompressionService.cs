@@ -3,34 +3,46 @@ using System.IO.Compression;
 namespace Arius.Core.Shared.Compression;
 
 /// <summary>
-/// Writes checksummed RFC 8878 frames and reads Zstandard or legacy gzip payloads.
+/// zstd-based <see cref="ICompressionService"/> backed by the framework's native zstd implementation.
+/// Writes standard RFC 8878 frames with the content checksum enabled;
+/// reads auto-detect zstd vs legacy gzip from the stream header.
 /// </summary>
 [SharedWithinAssembly]
 internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompressionService.DefaultCompressionLevel)
     : ICompressionService
 {
-    private static ReadOnlySpan<byte> ZstdMagic => [0x28, 0xB5, 0x2F, 0xFD];
+    // Magic number at the start of a zstd frame (little-endian on disk).
+    private static ReadOnlySpan<byte> ZstdMagic => [0x28, 0xB5, 0x2F, 0xFD]; // 0xFD2FB528
 
+    // Legacy "+gzip" blobs are decoded by the gzip codec; reads delegate to it when a gzip frame is detected.
     private static readonly GZipCompressionService LegacyGzip = new();
 
+    /// <summary>
+    /// zstd compression level for new blobs. This is the one performance/size knob: higher = smaller but slower.
+    /// Level 15 preserves Arius's existing ratio/speed tradeoff.
+    /// </summary>
     public const int DefaultCompressionLevel = 15;
 
-    private const int MaxDecodeWindowLog2 = 27; // Cap the decoding window at 128 MiB to bound memory use.
+    private const int MaxDecodeWindowLog2 = 27; // Preserve the previous decoder's 128 MiB cap.
 
     public Stream WrapForCompression(Stream destination, bool leaveOpen = true)
         => new ZstandardStream(destination, new ZstandardCompressionOptions
         {
             Quality = compressionLevel,
             AppendChecksum = true,
-            WindowLog2 = 0, // Use the compression level's window size.
+            WindowLog2 = 0, // Retain the level-derived window, not a fixed framework profile.
             EnableLongDistanceMatching = false,
+            // The framework creates one fresh ZSTD_CCtx and exposes no worker-count option;
+            // it never enables ZSTD_c_nbWorkers. Archive parallelizes across chunks instead.
         }, leaveOpen);
 
     public Stream WrapForDecompression(Stream source, bool leaveOpen = false)
         => new AutoDetectDecompressionStream(source, leaveOpen);
 
     /// <summary>
-    /// Defers format detection until the first read to avoid blocking during construction.
+    /// Read-only stream that peeks the leading magic bytes of <paramref name="source"/> on first read,
+    /// selects the matching decompressor (zstd or legacy gzip), and delegates thereafter. Detection is
+    /// lazy so neither sync nor async callers pay an eager blocking read.
     /// </summary>
     private sealed class AutoDetectDecompressionStream(Stream source, bool leaveOpen) : Stream
     {
@@ -104,7 +116,10 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
         {
             var prefixed = new PrefixedStream(header, read, source, leaveOpen);
 
-            // Legacy gzip payloads can be empty because GZipStream emits a header only after a write.
+            // An empty source means empty content. Legacy gzip wrote empty payloads (e.g. an empty
+            // filetree or empty file) as a 0-byte blob — System.IO.Compression only emits the gzip
+            // header on first write — so read those back as empty rather than a format error. New zstd
+            // blobs always carry a non-empty frame, so this path is hit only for legacy empty content.
             if (read == 0)
                 return prefixed;
 
@@ -114,6 +129,7 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
                     MaxWindowLog2 = MaxDecodeWindowLog2,
                 }, leaveOpen: false);
 
+            // Legacy "+gzip" blob: hand the un-peeked stream to the gzip codec to decode.
             if (GZipCompressionService.IsGZipHeader(header.AsSpan(0, read)))
                 return LegacyGzip.WrapForDecompression(prefixed, leaveOpen: false);
 
@@ -125,7 +141,7 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
             if (disposing)
             {
                 if (_inner is not null)
-                    _inner.Dispose();
+                    _inner.Dispose();      // disposes the PrefixedStream, which disposes _source unless leaveOpen
                 else if (!leaveOpen)
                     source.Dispose();
             }
@@ -145,7 +161,8 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
     }
 
     /// <summary>
-    /// Replays the detection header so the decoder receives the complete frame.
+    /// Read-only stream that first replays a small already-read prefix, then continues from the
+    /// underlying source. Used to "un-peek" the magic bytes consumed during format detection.
     /// </summary>
     private sealed class PrefixedStream(byte[] prefix, int prefixLength, Stream source, bool leaveOpen)
         : Stream

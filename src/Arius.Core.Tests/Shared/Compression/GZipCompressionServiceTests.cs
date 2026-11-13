@@ -4,6 +4,10 @@ using Arius.Core.Shared.Compression;
 
 namespace Arius.Core.Tests.Shared.Compression;
 
+/// <summary>
+/// Tests for the legacy gzip codec: round-trip correctness, interop with the BCL <see cref="GZipStream"/>
+/// (so old "+gzip" blobs decode) and header detection.
+/// </summary>
 public class GZipCompressionServiceTests
 {
     private static readonly ICompressionService Sut = new GZipCompressionService();
@@ -38,6 +42,8 @@ public class GZipCompressionServiceTests
     [Test]
     public async Task Decompress_ReadsBlobWrittenByBclGZipStream()
     {
+        // The whole reason this codec exists: blobs written by the gzip era of Arius (raw BCL GZipStream)
+        // must still decode.
         var original = Encoding.UTF8.GetBytes("content written by the gzip era of Arius");
 
         var gz = new MemoryStream();
@@ -52,9 +58,9 @@ public class GZipCompressionServiceTests
     [Test]
     public void IsGZipHeader_RejectsNonGZipAndTooShortHeaders()
     {
-        GZipCompressionService.IsGZipHeader([0x28, 0xB5, 0x2F, 0xFD]).ShouldBeFalse(); // Zstandard frame magic.
-        GZipCompressionService.IsGZipHeader([0x1F]).ShouldBeFalse();
-        GZipCompressionService.IsGZipHeader([]).ShouldBeFalse();
+        GZipCompressionService.IsGZipHeader([0x28, 0xB5, 0x2F, 0xFD]).ShouldBeFalse(); // zstd magic
+        GZipCompressionService.IsGZipHeader([0x1F]).ShouldBeFalse();                   // truncated
+        GZipCompressionService.IsGZipHeader([]).ShouldBeFalse();                       // empty
     }
 
     private static async Task<byte[]> CompressAsync(byte[] data)
