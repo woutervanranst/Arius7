@@ -3,17 +3,20 @@ using Arius.Core.Shared.Storage;
 namespace Arius.Core.Shared.ChunkStorage;
 
 /// <summary>
-/// Manages chunk storage and rehydration for feature handlers.
+/// Owns chunk blob operations that feature handlers orchestrate: upload, download,
+/// hydration state, rehydration start, and cleanup planning.
 /// </summary>
 /// <remarks>
-/// Large and tar chunk content must remain unchanged from hashing through upload completion.
+/// Large and tar uploads trust the supplied chunk hash. Source content must remain unchanged
+/// from hashing through upload completion; uploads do not rehash or round-trip verify it.
 /// </remarks>
 public interface IChunkStorageService
 {
     /// <summary>
-    /// Returns the metadata needed to record the chunk in the chunk index.
-    /// An archive-tier request keeps chunks whose stored size is at or below <paramref name="smallFileThreshold"/> online;
-    /// <see cref="ChunkUploadResult.ActualTier"/> reports the stored tier.
+    /// Uploads a large-file chunk blob and returns the stored chunk metadata needed for index recording.
+    /// <paramref name="tier"/> is a <i>ceiling</i>: a chunk whose stored size is within
+    /// <paramref name="smallFileThreshold"/> is kept online rather than archived, and the tier it actually
+    /// landed on is reported as <see cref="ChunkUploadResult.ActualTier"/>.
     /// </summary>
     Task<ChunkUploadResult> UploadLargeAsync(
         ChunkHash chunkHash,
@@ -25,8 +28,8 @@ public interface IChunkStorageService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns the metadata needed to create thin chunks.
-    /// Applies the same archive-tier size policy as <see cref="UploadLargeAsync"/>.
+    /// Uploads a tar bundle chunk blob and returns the stored chunk metadata needed for thin entries.
+    /// <paramref name="tier"/> is a ceiling, exactly as for <see cref="UploadLargeAsync"/>.
     /// </summary>
     Task<ChunkUploadResult> UploadTarAsync(
         ChunkHash chunkHash,
@@ -48,13 +51,16 @@ public interface IChunkStorageService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns a plaintext payload stream, preferring a readable rehydrated copy when present.
+    /// Downloads the readable form of a chunk as a plaintext payload stream, preferring a ready rehydrated copy when present.
     /// </summary>
     Task<Stream> DownloadAsync(
         ChunkHash chunkHash,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Resolves whether a chunk is directly available, needs rehydration, is pending rehydration, or is unknown.
+    /// </summary>
     Task<ChunkHydrationStatus> GetHydrationStatusAsync(
         ChunkHash chunkHash,
         CancellationToken cancellationToken = default);
@@ -74,8 +80,9 @@ public interface IChunkStorageService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Maps chunk hashes to rehydrated-copy readiness: <c>true</c> means readable,
-    /// and <c>false</c> means rehydration is incomplete.
+    /// Lists chunks that currently have a rehydrated copy via a single prefix listing (no per-chunk calls),
+    /// mapping each chunk hash to whether that copy is ready to download (<c>true</c>, non-archive tier) or
+    /// still rehydrating (<c>false</c>, archive tier).
     /// </summary>
     Task<IReadOnlyDictionary<ChunkHash, bool>> ListRehydratedChunksAsync(
         CancellationToken cancellationToken = default);

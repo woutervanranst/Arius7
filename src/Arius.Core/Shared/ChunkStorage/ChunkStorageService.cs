@@ -8,6 +8,8 @@ namespace Arius.Core.Shared.ChunkStorage;
 [SharedWithinAssembly]
 internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncryptionService encryption, ICompressionService compression) : IChunkStorageService
 {
+    // --- UPLOAD 
+
     public Task<ChunkUploadResult> UploadLargeAsync(ChunkHash chunkHash, Stream content, long sourceSize, BlobTier tier, long smallFileThreshold, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
         => UploadChunkAsync(chunkHash, content, sourceSize, tier, smallFileThreshold, progress, BlobMetadataKeys.TypeLarge, isTar: false, cancellationToken);
 
@@ -88,7 +90,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                     await (progressStream ?? content).CopyToAsync(compressionStream, cancellationToken);
                 }
 
-                // Include the compression frame and authentication tag in the stored size.
+                // Both the compression frame and encryption trailer must be finalized before counting.
                 storedSize = countingStream.BytesWritten;
             }
 
@@ -98,11 +100,12 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                 [BlobMetadataKeys.ChunkSize] = storedSize.ToString(),
             };
 
-            if (!isTar) // Per-file original sizes are stored on thin chunks.
+            if (!isTar) // Saving the original size on TAR blobs is not useful; the original size sits on the respective thin chunks.
                 metadata[BlobMetadataKeys.OriginalSize] = sourceSize.ToString();
 
             await blobs.SetMetadataAsync(blobName, metadata, cancellationToken);
 
+            // Apply storage policy - if, after compression, the chunk is smaller than the threshold, don't put it in the archive tier.
             var actualTier = GetActualStorageTier(tier, storedSize, smallFileThreshold);
             await blobs.SetTierAsync(blobName, actualTier, cancellationToken);
 
@@ -110,7 +113,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         }
         catch (BlobAlreadyExistsException)
         {
-            // Type metadata marks a completed upload; its absence identifies a partial chunk.
+            // DESIGN DECISION: The Metadata is written only after a successful upload, so we can assume that if the blob has this metadata, the upload completed successfully
             var existing = await blobs.GetMetadataAsync(blobName, cancellationToken);
 
             if (existing.Metadata.ContainsKey(BlobMetadataKeys.AriusType))
@@ -130,7 +133,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
             return isTar ? ContentTypes.TarPlaintext : ContentTypes.LargePlaintext;
         }
 
-        // Keep small chunks online to avoid rehydration costs.
+        // Bringing a small chunk back from the archive tier costs far more than the storage it saves; the break-even for a 1 MB chunk is ~5.5 years. Cold is the cheapest tier that stays online.
         static BlobTier GetActualStorageTier(BlobTier targetTier, long storedSize, long smallFileThreshold)
             => targetTier == BlobTier.Archive && storedSize <= smallFileThreshold
                 ? BlobTier.Cold
@@ -142,6 +145,8 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
                 : null;
     }
 
+    
+    // --- DOWNLOAD
     
     public Task<Stream> DownloadAsync(ChunkHash chunkHash, IProgress<long>? progress = null, CancellationToken cancellationToken = default) 
         => DownloadCoreAsync(chunkHash, progress, cancellationToken);
@@ -206,21 +211,26 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
     }
 
 
+    // -- LIST
+
     public async Task<IReadOnlyDictionary<ChunkHash, bool>> ListRehydratedChunksAsync(CancellationToken cancellationToken = default)
     {
         var rehydrated = new Dictionary<ChunkHash, bool>();
         await foreach (var item in blobs.ListAsync(BlobPaths.ChunksRehydratedPrefix, includeMetadata: false, cancellationToken: cancellationToken))
         {
+            // The rehydrated blob name is "chunks-rehydrated/{chunkHash}"; the final segment is the hash.
             if (!ChunkHash.TryParse(item.Name.Name.ToString(), out var chunkHash))
                 continue;
 
-            // An archive-tier copy is unreadable until rehydration completes.
+            // Tier != Archive → the copy is hydrated and ready to download; Archive → still rehydrating.
             rehydrated[chunkHash] = item.Tier is not null && item.Tier != BlobTier.Archive;
         }
 
         return rehydrated;
     }
 
+
+    // --- HELPER CLASSES
 
     private sealed class RehydratedChunkCleanupPlan(IBlobContainerService blobs, IReadOnlyList<RelativePath> blobNames, long totalBytes) : IRehydratedChunkCleanupPlan
     {
@@ -254,7 +264,11 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
     }
 
     /// <summary>
-    /// Owns the download pipeline so disposal releases all underlying streams.
+    /// Wraps the fully constructed chunk download pipeline returned by <see cref="DownloadCoreAsync"/>.
+    /// Unlike <see cref="ProgressStream"/> and <see cref="CountingStream"/>, this is not a reusable behavior wrapper
+    /// that adds a cross-cutting read/write concern. Its only job is to expose the final readable stream while owning
+    /// disposal of the chunk-specific stack underneath it: decompression, decryption, optional progress reporting, and
+    /// the underlying blob download stream.
     /// </summary>
     private sealed class ChunkDownloadStream(Stream inner) : Stream
     {
@@ -268,7 +282,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
         public override void Flush() => inner.Flush();
         public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
 
-        // Avoid Stream's synchronous fallback for asynchronous reads and copies.
+        // Override the async members so restore uses the inner stream's asynchronous read and copy paths.
         public override int Read(Span<byte> buffer) => inner.Read(buffer);
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => inner.ReadAsync(buffer, offset, count, cancellationToken);
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => inner.ReadAsync(buffer, cancellationToken);
