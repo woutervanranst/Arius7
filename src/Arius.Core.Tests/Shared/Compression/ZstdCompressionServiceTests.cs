@@ -35,9 +35,8 @@ public class ZstdCompressionServiceTests
     [Arguments(8 * 1024 * 1024)]
     public async Task RoundTripTest(int size)
     {
-        // Companion to Compress_Then_Decompress_RoundTrips_ByteForByte, which feeds incompressible random
-        // bytes (mostly the "store" path). Real backup data compresses, so this also drives the match
-        // finder and entropy stages in the production codec.
+        // Compressible and textual input exercise the match finder and entropy stages,
+        // which incompressible random data (mostly stored raw) does not.
         foreach (var original in new[] { Compressible(size), Textual(size) })
         {
             var compressed = await CompressAsync(original);
@@ -103,10 +102,8 @@ public class ZstdCompressionServiceTests
     [Test]
     public async Task Decompress_TruncatedZstdFrame_ThrowsInsteadOfReturningPartialBytes()
     {
-        // A frame whose tail (end marker + XXH64 trailer) never arrived — e.g. a crash or a forgotten
-        // Dispose mid-upload. Read to EOF, the framework decoder must surface this as a throw
-        // rather than silently returning a partial prefix. (This is why restore reads each chunk to the end:
-        // the truncation guard only fires once the consumer reaches EOF.)
+        // A frame missing its tail (end marker and checksum), e.g. from a crash mid-upload, must throw
+        // when read to EOF rather than return a partial prefix.
         var original = new byte[8192];
         Random.Shared.NextBytes(original);
         var compressed = await CompressAsync(original);
@@ -141,7 +138,7 @@ public class ZstdCompressionServiceTests
         // Standard empty frames at and above the cap; no large allocation is needed.
         byte[] frame = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88, 0x01, 0x00, 0x00];
         (await DecompressAsync(frame)).ShouldBeEmpty();
-        frame[5] = 0x90; // 256 MiB. The framework reports a window-limit violation as IOException.
+        frame[5] = 0x90; // Window descriptor: 256 MiB.
         await Should.ThrowAsync<IOException>(async () => await DecompressAsync(frame));
     }
 
