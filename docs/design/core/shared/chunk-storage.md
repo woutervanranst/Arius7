@@ -61,10 +61,6 @@ The conflict path (`catch (BlobAlreadyExistsException)`) is what makes re-runs i
 
 This exists because the two sizes differ. The archive command routes a *file* to the large or tar path by its **uncompressed** size, but what gets billed and rehydrated is the **stored** (compressed + encrypted) blob — and a file above the threshold can compress back well within it. Rehydrating such a chunk costs far more than the archive tier saves on it; v5 Arius put the break-even for a 1 MB chunk at roughly 5.5 years. Applying the ceiling here rather than in the handler is what makes it exact: `storedSize` does not exist until the write block closes, a few lines above the `SetTierAsync` call, and both the large and tar upload paths funnel through this one method (so the tiny end-of-run partial tar bundle is covered too). See [ADR-0023](../../../decisions/adr-0023-archive-tier-small-chunk-ceiling.md).
 
-### Static-source upload contract
-
-Source files must not change during an archive run. An upload trusts the chunk hash that Arius calculated earlier. It sends the source bytes through compression and encryption. It does not hash the source again, decode the output, or download an archive-tier blob. The body write closes before Arius sets the commit metadata. ([ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) replaces the round-trip guard of ADR-0012 and ADR-0017. The metadata-sentinel protocol does not change.)
-
 ### Thin chunk upload
 
 `UploadThinAsync` uploads an **empty** body to `chunks/<content-hash>` with metadata `arius_type=thin`, `parent_chunk_hash`, `original_size`, `chunk_size`, always at `BlobTier.Cool`. It runs the same conflict recovery as large/tar: an existing blob with `arius_type` is accepted (`return false`); one without is deleted and retried. The return value distinguishes *created* (`true`) from *already-committed* (`false`).
@@ -116,7 +112,6 @@ Cleanup is two-phase so restore can preview before deleting: `PlanRehydratedClea
 ## Why this shape
 
 - **No transaction, no coordinator, no pre-flight scan.** Body-first + metadata-sentinel makes the commit a property of the blob itself, so any re-run converges by reading metadata — the alternatives (per-chunk `HEAD`, a distributed lock, a per-tar sidecar manifest) were rejected in [ADR-0017](../../../decisions/adr-0017-idempotent-non-distributed-recovery.md).
-- **No verification on upload.** Tests cover codec compatibility and recovery. An upload does not decompress and hash its output again ([ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md)).
 - **Three explicit upload methods, not a kind switch.** The realizations differ in body shape and metadata, not in a runtime kind flag — separate methods keep callers honest about which one they mean (spec scenarios: *"call `UploadTarAsync` rather than a generic kind-switching upload API"*).
 - **Plan/execute cleanup split.** Restore must show the user a confirmation total before deleting rehydrated blobs; capturing it during the single planning enumeration avoids listing `chunks-rehydrated/` twice.
 
