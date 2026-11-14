@@ -45,15 +45,14 @@ public sealed class AppDatabase
             );
 
             CREATE TABLE IF NOT EXISTS repositories (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                alias        TEXT NOT NULL,
-                container    TEXT NOT NULL,
-                account_id   INTEGER NOT NULL REFERENCES storage_accounts(id),
-                local_path   TEXT,
-                default_tier TEXT NOT NULL DEFAULT 'archive',
-                region_hint  TEXT,
-                passphrase   TEXT,
-                created_at   TEXT NOT NULL,
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                alias       TEXT NOT NULL,
+                container   TEXT NOT NULL,
+                account_id  INTEGER NOT NULL REFERENCES storage_accounts(id),
+                local_path  TEXT,
+                region_hint TEXT,
+                passphrase  TEXT,
+                created_at  TEXT NOT NULL,
                 UNIQUE(account_id, container)
             );
 
@@ -110,6 +109,8 @@ public sealed class AppDatabase
         EnsureColumn(connection, table: "repositories", column: "region_hint", type: "TEXT");
         EnsureColumn(connection, table: "jobs", column: "state_json", type: "TEXT");
         EnsureColumn(connection, table: "jobs", column: "outcome",    type: "TEXT");
+
+        MigrateDefaultTierToRepositoryDefaults(connection);
 
         // Reconcile orphaned "running" jobs BEFORE creating the unique index below. A database can already
         // hold two 'running' rows for the same repo, which would make the CREATE UNIQUE INDEX fail with a
@@ -171,6 +172,32 @@ public sealed class AppDatabase
         using var alter = connection.CreateCommand();
         alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type};";
         alter.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// One-time move of the legacy per-repository <c>default_tier</c> column into <c>repository_defaults</c>:
+    /// recognised tiers become explicit repository-level values (blank/unknown ones are dropped so the repository
+    /// inherits), then the column is dropped. A no-op once the column is gone. Runs in one transaction, so a crash
+    /// leaves the column (and the migration to redo) rather than a half-migrated database.
+    /// </summary>
+    private static void MigrateDefaultTierToRepositoryDefaults(SqliteConnection connection)
+    {
+        using var probe = connection.CreateCommand();
+        probe.CommandText = "SELECT COUNT(*) FROM pragma_table_info('repositories') WHERE name = 'default_tier';";
+        if (Convert.ToInt64(probe.ExecuteScalar()) == 0)
+            return;
+
+        using var transaction = connection.BeginTransaction();
+        using var migrate = connection.CreateCommand();
+        migrate.Transaction = transaction;
+        migrate.CommandText = """
+            INSERT OR IGNORE INTO repository_defaults(repo_id, option, value)
+                SELECT id, 'tier', lower(trim(default_tier)) FROM repositories
+                WHERE lower(trim(default_tier)) IN ('hot', 'cool', 'cold', 'archive');
+            ALTER TABLE repositories DROP COLUMN default_tier;
+            """;
+        migrate.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     private SqliteConnection OpenConnection()
@@ -274,7 +301,7 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, region_hint, passphrase, created_at FROM repositories ORDER BY alias;";
+        command.CommandText = "SELECT id, alias, container, account_id, local_path, region_hint, passphrase, created_at FROM repositories ORDER BY alias;";
         using var reader = command.ExecuteReader();
         var result = new List<RepositoryRecord>();
         while (reader.Read())
@@ -286,26 +313,25 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, alias, container, account_id, local_path, default_tier, region_hint, passphrase, created_at FROM repositories WHERE id = $id;";
+        command.CommandText = "SELECT id, alias, container, account_id, local_path, region_hint, passphrase, created_at FROM repositories WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadRepository(reader) : null;
     }
 
-    public long InsertRepository(string alias, string container, long accountId, string? localPath, string defaultTier, string? encryptedPassphrase)
+    public long InsertRepository(string alias, string container, long accountId, string? localPath, string? encryptedPassphrase)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO repositories(alias, container, account_id, local_path, default_tier, passphrase, created_at)
-            VALUES ($alias, $container, $accountId, $localPath, $defaultTier, $passphrase, $createdAt);
+            INSERT INTO repositories(alias, container, account_id, local_path, passphrase, created_at)
+            VALUES ($alias, $container, $accountId, $localPath, $passphrase, $createdAt);
             SELECT last_insert_rowid();
             """;
         command.Parameters.AddWithValue("$alias", alias);
         command.Parameters.AddWithValue("$container", container);
         command.Parameters.AddWithValue("$accountId", accountId);
         command.Parameters.AddWithValue("$localPath", (object?)localPath ?? DBNull.Value);
-        command.Parameters.AddWithValue("$defaultTier", defaultTier);
         command.Parameters.AddWithValue("$passphrase", (object?)encryptedPassphrase ?? DBNull.Value);
         command.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
         return (long)command.ExecuteScalar()!;
@@ -315,7 +341,7 @@ public sealed class AppDatabase
     /// Updates the mutable repository properties. A <c>null</c> argument leaves that column unchanged
     /// (so callers need not resupply secrets that are not being rotated).
     /// </summary>
-    public void UpdateRepository(long id, string? alias, string? localPath, string? defaultTier, string? encryptedPassphrase)
+    public void UpdateRepository(long id, string? alias, string? localPath, string? encryptedPassphrase)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -323,14 +349,12 @@ public sealed class AppDatabase
             UPDATE repositories SET
                 alias        = COALESCE($alias, alias),
                 local_path   = COALESCE($localPath, local_path),
-                default_tier = COALESCE($defaultTier, default_tier),
                 passphrase   = COALESCE($passphrase, passphrase)
             WHERE id = $id;
             """;
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$alias", (object?)alias ?? DBNull.Value);
         command.Parameters.AddWithValue("$localPath", (object?)localPath ?? DBNull.Value);
-        command.Parameters.AddWithValue("$defaultTier", (object?)defaultTier ?? DBNull.Value);
         command.Parameters.AddWithValue("$passphrase", (object?)encryptedPassphrase ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
@@ -860,8 +884,7 @@ public sealed class AppDatabase
         reader.GetString(2),
         reader.GetInt64(3),
         reader.IsDBNull(4) ? null : reader.GetString(4),
-        reader.GetString(5),
-        reader.IsDBNull(6) ? null : reader.GetString(6),  // region_hint (cached configured region)
-        reader.IsDBNull(7) ? null : reader.GetString(7),  // passphrase
-        DateTimeOffset.Parse(reader.GetString(8)));
+        reader.IsDBNull(5) ? null : reader.GetString(5),  // region_hint (cached configured region)
+        reader.IsDBNull(6) ? null : reader.GetString(6),  // passphrase
+        DateTimeOffset.Parse(reader.GetString(7)));
 }

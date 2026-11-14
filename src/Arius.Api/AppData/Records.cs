@@ -12,7 +12,6 @@ public sealed record RepositoryRecord(
     string          Container,
     long            AccountId,
     string?         LocalPath,
-    string          DefaultTier,
     string?         RegionHint,
     string?         EncryptedPassphrase,
     DateTimeOffset  CreatedAt);
@@ -25,8 +24,7 @@ public sealed record RepositoryConnection(
     string? AccountKey,
     string  Container,
     string? Passphrase,
-    string? LocalPath,
-    string  DefaultTier);
+    string? LocalPath);
 
 /// <summary>A one-off or scheduled archive/restore run.</summary>
 public sealed record JobRecord(

@@ -1,3 +1,4 @@
+using Arius.Api.AppData;
 using Cronos;
 
 namespace Arius.Api.Jobs;
@@ -52,7 +53,9 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             {
                 var jobId = Guid.NewGuid().ToString();
                 logger.LogInformation("Firing scheduled archive for repository {RepositoryId} (job {JobId})", schedule.RepositoryId, jobId);
-                _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, repo.DefaultTier, removeLocal: false, writePointers: false, fastHash: false, trigger: "schedule");
+                var defaults = database.ResolveRepositoryDefaults(schedule.RepositoryId);
+                var (removeLocal, writePointers) = OptionDefaults.ToArchiveFlags(defaults.OnDisk.Value);
+                _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, defaults.Tier.Value, removeLocal, writePointers, defaults.FastHash.Value, trigger: "schedule");
             }
             else if (repo is not null)
             {

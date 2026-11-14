@@ -48,7 +48,7 @@ public class RepositoryProviderRegistryRemovalTests
         await using var registry = new RepositoryProviderRegistry(database, secrets, composer, NullLoggerFactory.Instance);
 
         var accountId    = database.InsertAccount(accountName, secrets.Protect("key"));
-        var repositoryId = database.InsertRepository(accountName, containerName, accountId, localPath: null, defaultTier: "Archive", encryptedPassphrase: secrets.Protect("pass"));
+        var repositoryId = database.InsertRepository(accountName, containerName, accountId, localPath: null, encryptedPassphrase: secrets.Protect("pass"));
 
         try
         {
