@@ -1,7 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import { AccountDto, CreateRepositoryRequest, FsListDto, JobDetailDto, JobDto, JobWarningsDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
+import { AccountDto, CreateRepositoryRequest, FsListDto, GlobalDefaultsDto, JobDetailDto, JobDto, JobWarningsDto, RepositoryDefaultsDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
+import { SetValues } from '../defaults/defaults';
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
 @Injectable({ providedIn: 'root' })
@@ -43,7 +44,7 @@ export class ApiService {
     return this.http.get<RepositoryDto>(`/api/repos/${id}`);
   }
 
-  patchRepository(id: number, body: Partial<{ alias: string; localPath: string; defaultTier: string; passphrase: string }>): Observable<RepositoryDto> {
+  patchRepository(id: number, body: Partial<{ alias: string; localPath: string; passphrase: string }>): Observable<RepositoryDto> {
     return this.http.patch<RepositoryDto>(`/api/repos/${id}`, body);
   }
 
@@ -97,6 +98,23 @@ export class ApiService {
 
   deleteSchedule(repoId: number, scheduleId: number): Observable<void> {
     return this.http.delete<void>(`/api/repos/${repoId}/schedules/${scheduleId}`);
+  }
+
+  getGlobalDefaults(): Observable<GlobalDefaultsDto> {
+    return this.http.get<GlobalDefaultsDto>('/api/settings/defaults');
+  }
+
+  /** Body is the set-values object: absent/null inherits. The server rejects unknown keys, so send only option keys. */
+  putGlobalDefaults(set: SetValues): Observable<GlobalDefaultsDto> {
+    return this.http.put<GlobalDefaultsDto>('/api/settings/defaults', set);
+  }
+
+  getRepositoryDefaults(repoId: number): Observable<RepositoryDefaultsDto> {
+    return this.http.get<RepositoryDefaultsDto>(`/api/repos/${repoId}/defaults`);
+  }
+
+  putRepositoryDefaults(repoId: number, set: SetValues): Observable<RepositoryDefaultsDto> {
+    return this.http.put<RepositoryDefaultsDto>(`/api/repos/${repoId}/defaults`, set);
   }
 
   /** The running backend's build version, read from the X-Arius-Version response header. */
