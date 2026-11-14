@@ -1,5 +1,5 @@
 import { Component, HostListener, inject, signal, ViewEncapsulation, ChangeDetectionStrategy } from '@angular/core';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { MetronicInitService } from './core/services/metronic-init.service';
 import { ArchiveRestoreDrawerComponent } from './features/drawer/archive-restore-drawer.component';
@@ -10,7 +10,8 @@ import { SearchStore } from './core/state/search.store';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ApiService } from './core/api/api.service';
 
-interface RailItem { label: string; icon: string; link: string; }
+/** `activeFor`: the top-level URL segments on which the item is shown as current. */
+interface RailItem { label: string; icon: string; link: string; activeFor: string[]; }
 
 /**
  * The Arius application shell (Metronic demo8): an icon rail over a muted page, a floating white
@@ -20,7 +21,7 @@ interface RailItem { label: string; icon: string; link: string; }
   selector: 'body[app-root]',
   standalone: true,
   encapsulation: ViewEncapsulation.None,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ArchiveRestoreDrawerComponent, PropertiesDrawerComponent, AccountDrawerComponent, GlobalSearchOverlayComponent],
+  imports: [RouterOutlet, RouterLink, ArchiveRestoreDrawerComponent, PropertiesDrawerComponent, AccountDrawerComponent, GlobalSearchOverlayComponent],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <!-- Icon rail -->
@@ -32,9 +33,11 @@ interface RailItem { label: string; icon: string; link: string; }
 
       <nav class="flex flex-col items-center gap-2 mt-5">
         @for (item of nav; track item.link) {
+          @let active = item.activeFor.includes(currentSegment());
           <a [routerLink]="item.link"
              [attr.data-testid]="'rail-' + item.label.toLowerCase()"
-             routerLinkActive="!text-[#3b82f6] !bg-white !border-[#ececef] shadow-sm"
+             [attr.aria-current]="active ? 'page' : null"
+             [class]="active ? '!text-[#3b82f6] !bg-white !border-[#ececef] shadow-sm' : ''"
              class="flex flex-col items-center justify-center gap-1 text-[#71717a] border border-transparent transition-colors"
              style="width:64px;height:62px;border-radius:13px">
             <i class="ki-filled {{ item.icon }}" style="font-size:21px"></i>
@@ -101,10 +104,10 @@ export class AppComponent {
   protected readonly searchVisible = () => this.currentSegment() !== 'overview'; // hidden on Overview
 
   protected readonly nav: RailItem[] = [
-    { label: 'Overview', icon: 'ki-element-11', link: '/overview' },
-    { label: 'Repos', icon: 'ki-folder', link: '/repos' },
-    { label: 'Jobs', icon: 'ki-technology-2', link: '/jobs' },
-    { label: 'Settings', icon: 'ki-setting-2', link: '/settings' },
+    // Repository pages (/repos/…) are opened from Overview, so Overview stays current there.
+    { label: 'Overview', icon: 'ki-element-11', link: '/overview', activeFor: ['overview', 'repos'] },
+    { label: 'Jobs', icon: 'ki-technology-2', link: '/jobs', activeFor: ['jobs'] },
+    { label: 'Settings', icon: 'ki-setting-2', link: '/settings', activeFor: ['settings'] },
   ];
 
   constructor() {
@@ -114,7 +117,7 @@ export class AppComponent {
     document.body.style.setProperty('--sidebar-width', '86px');
 
     this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => {
-      this.currentSegment.set(this.router.url.split('/').filter(Boolean)[0] ?? 'overview');
+      this.currentSegment.set(this.router.parseUrl(this.router.url).root.children['primary']?.segments[0]?.path ?? 'overview');
       queueMicrotask(() => this.kt.init());
     });
   }

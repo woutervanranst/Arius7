@@ -19,12 +19,11 @@ are defined in the [glossary](../glossary.md).
 
 ## The layout
 
-A narrow icon rail on the left switches between the four top-level areas:
+A narrow icon rail on the left switches between the three top-level areas:
 
 | Rail item | What it is |
 |---|---|
-| **Overview** | KPI cards, a **Storage accounts** table, and the **Repositories** table — whose header carries the **Add existing** / **New repository** buttons. The repository table shows each repository's tier, region, account, and last locally recorded archive-run time. Your home screen. |
-| **Repos** | The same repository columns in a dedicated list. |
+| **Overview** | KPI cards, a **Storage accounts** table, and the **Repositories** table — whose header carries the **Add existing** / **New repository** buttons. The repository table shows each repository's tier, region, account, and last locally recorded archive-run time. Your home screen; it stays highlighted while you are inside a repository. |
 | **Jobs** | Every archive/restore run (one-off and scheduled) with a live output console. |
 | **Settings** | Placeholder for now. |
 
@@ -35,7 +34,7 @@ The top bar shows a breadcrumb and — on every screen except Overview — a glo
 
 ## First run — add a repository
 
-Open the app, go to **Overview** (or **Repos**), and choose one of the two buttons in the
+Open the app, go to **Overview**, and choose one of the two buttons in the
 **Repositories** card header. Both are two-step wizards; the difference is whether the container
 already exists.
 

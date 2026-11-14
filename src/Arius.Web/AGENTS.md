@@ -22,7 +22,7 @@ Angular 22 (standalone components, signals), Metronic v9 themed with Tailwind v4
 - `src/app/core/` — app-wide singletons, no UI: `api/api.service.ts` (REST `/api`),
   `api/realtime.service.ts` (SignalR), `api/api-models.ts` (DTOs), `state/*.store.ts`
   (signal stores), `ktui/`, `services/metronic-init.service.ts`.
-- `src/app/features/` — one folder per route/feature (`overview`, `repos`, `repo`, `jobs`,
+- `src/app/features/` — one folder per route/feature (`overview`, `repo`, `jobs`,
   `search`, `wizards`, `drawer`, `settings`). Keep a feature's logic inside its slice.
 - `src/app/shared/` — reusable presentational components (`state-ring`, `state-legend`,
   `live-console`).

@@ -7,11 +7,6 @@ export const routes: Routes = [
     loadComponent: () => import('./features/overview/overview.component').then(m => m.OverviewComponent),
   },
   {
-    path: 'repos',
-    pathMatch: 'full',
-    loadComponent: () => import('./features/repos/repos.component').then(m => m.ReposComponent),
-  },
-  {
     path: 'repos/add',
     loadComponent: () => import('./features/wizards/add/add-repo-wizard.component').then(m => m.AddRepoWizardComponent),
   },
