@@ -1,3 +1,5 @@
+using Arius.Api.AppData;
+
 namespace Arius.Api.Contracts;
 
 // ── Accounts ────────────────────────────────────────────────────────────────
@@ -80,3 +82,14 @@ public sealed record FsEntryDto(string Name, string Path);
 
 /// <summary>A directory listing: the resolved path, its parent (null at the root), and immediate subdirectories.</summary>
 public sealed record FsListDto(string Path, string? Parent, IReadOnlyList<FsEntryDto> Entries);
+
+// ── Archive/restore defaults ──────────────────────────────────────────────────
+
+/// <summary>Global defaults as set, the factory values beneath them, and per option the aliases of repositories that inherit it.</summary>
+public sealed record GlobalDefaultsDto(
+    DefaultValues Set,
+    DefaultValues Factory,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> InheritedBy);
+
+/// <summary>A repository's own defaults and what it would inherit for each option if it set none.</summary>
+public sealed record RepositoryDefaultsDto(DefaultValues Set, ResolvedDefaults Inherited);

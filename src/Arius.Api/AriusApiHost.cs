@@ -84,6 +84,7 @@ public static class AriusApiHost
         api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
         api.MapAccountEndpoints();
         api.MapRepositoryEndpoints();
+        api.MapDefaultsEndpoints();
         api.MapBrowseEndpoints();
         api.MapJobEndpoints();
         api.MapFilesystemEndpoints();
