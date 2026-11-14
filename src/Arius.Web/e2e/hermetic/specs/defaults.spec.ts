@@ -28,7 +28,11 @@ test('defaults flow down Factory -> Global settings -> Repository properties -> 
   await expect(repoArchive.locator('[data-option="onDisk"]').getByTestId('default-source')).toHaveText('Set for this repository');
   await page.getByTestId('defaults-save').click();
   await expect(page.getByTestId('defaults-save')).toBeDisabled();
-  await expect(page.getByTestId('schedule-summary').or(page.getByText('No schedules.'))).toBeVisible();
+
+  // A schedule runs with this repository's resolved defaults: factory tier, the repository's own on-disk choice, fast hash off.
+  await page.getByTestId('schedule-cron').fill('0 2 * * *');
+  await page.getByTestId('schedule-add').click();
+  await expect(page.getByTestId('schedule-summary')).toHaveText('Archive · keep files only · fast hash off');
 
   // The drawer now inherits from the repository; a per-run change is marked and can be reset.
   await page.goto(`/repos/${repoId}`);

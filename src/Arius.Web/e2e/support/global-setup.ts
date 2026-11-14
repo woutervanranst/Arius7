@@ -60,7 +60,7 @@ export default async function globalSetup() {
       },
     })).json();
     const tierResponse = await ctx.put(`${API}/api/repos/${repo.id}/defaults`, {
-      data: { tier: process.env.ARIUS_E2E_TIER ?? 'hot' },
+      data: { tier: (process.env.ARIUS_E2E_TIER ?? 'hot').toLowerCase() },
     });
     if (!tierResponse.ok()) throw new Error(`Setting the seeded repository's tier failed (${tierResponse.status()}).`);
 
