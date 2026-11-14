@@ -18,7 +18,7 @@ public sealed class JobGuardTests
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
         var database = new AppDatabase(path);
         var accountId = database.InsertAccount("acc", encryptedAccountKey: null);
-        var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
+        var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, encryptedPassphrase: null);
         return (database, repositoryId);
     }
 
@@ -68,7 +68,7 @@ public sealed class JobGuardTests
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
         var seed = new AppDatabase(path);
         var accountId = seed.InsertAccount("acc", encryptedAccountKey: null);
-        var repositoryId = seed.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
+        var repositoryId = seed.InsertRepository("alias", "container", accountId, localPath: null, encryptedPassphrase: null);
         seed.InsertJob("j1", repositoryId, "archive", "one-off", "running");
 
         // A second 'running' row for the same repo can't go through InsertJob (the guard's unique

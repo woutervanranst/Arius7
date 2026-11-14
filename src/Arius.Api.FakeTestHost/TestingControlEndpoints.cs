@@ -30,8 +30,9 @@ public static class TestingControlEndpoints
                 container: req.Container ?? "e2e-container",
                 accountId: accountId,
                 localPath: dest,
-                defaultTier: req.DefaultTier ?? "Archive",
                 encryptedPassphrase: secrets.Protect("passphrase"));
+            if (req.DefaultTier is not null)
+                db.ReplaceRepositoryDefaults(repoId, DefaultValues.None with { Tier = req.DefaultTier.ToLowerInvariant() });
             return Results.Ok(new { repoId, localPath = dest });
         });
 

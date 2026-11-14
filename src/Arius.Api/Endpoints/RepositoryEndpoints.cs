@@ -45,7 +45,6 @@ internal static class RepositoryEndpoints
                 request.Container,
                 request.AccountId,
                 request.LocalPath,
-                NormalizeTier(request.DefaultTier),
                 secrets.Protect(request.Passphrase));
 
             // Region is left unresolved here (the container may not exist yet); the client refetches the list, which resolves and caches it.
@@ -61,7 +60,6 @@ internal static class RepositoryEndpoints
                 id,
                 request.Alias,
                 request.LocalPath,
-                request.DefaultTier is null ? null : NormalizeTier(request.DefaultTier),
                 secrets.Protect(request.Passphrase));
 
             // Connection material may have changed — drop the cached read provider so it rebuilds, discard any
@@ -139,12 +137,9 @@ internal static class RepositoryEndpoints
         var accountName = db.GetAccount(repository.AccountId)?.Name ?? "";
         return new RepositoryDto(
             repository.Id, repository.Alias, repository.Container, repository.AccountId, accountName,
-            repository.LocalPath, repository.DefaultTier,
+            repository.LocalPath, db.ResolveRepositoryDefaults(repository.Id).Tier.Value,
             Region:          region,
             RegionIsDefault: regionIsDefault,
             LastArchiveStartedAt: lastArchiveStartedAt);
     }
-
-    private static string NormalizeTier(string? tier)
-        => string.IsNullOrWhiteSpace(tier) ? "archive" : tier.Trim().ToLowerInvariant();
 }

@@ -15,7 +15,7 @@ public sealed class DefaultsStoreTests
     }
 
     private static long AddRepository(AppDatabase database, long accountId, string alias) =>
-        database.InsertRepository(alias, $"container-{alias}", accountId, localPath: null, "archive", encryptedPassphrase: null);
+        database.InsertRepository(alias, $"container-{alias}", accountId, localPath: null, encryptedPassphrase: null);
 
     [Test]
     public async Task Fresh_database_has_no_defaults_set()

@@ -44,7 +44,6 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
             container: "itest-container",
             accountId: accountId,
             localPath: localPath ?? Path.Combine(Path.GetTempPath(), $"arius-itest-src-{Guid.NewGuid():N}"),
-            defaultTier: "Archive",
             encryptedPassphrase: secrets.Protect("passphrase"));
     }
 

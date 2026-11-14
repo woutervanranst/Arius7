@@ -30,14 +30,12 @@ public sealed record CreateRepositoryRequest(
     string  Container,
     string  Alias,
     string? Passphrase,
-    string? LocalPath,
-    string? DefaultTier);
+    string? LocalPath);
 
 /// <summary>Properties-screen update. Null fields are left unchanged (so secrets need not be resupplied).</summary>
 public sealed record UpdateRepositoryRequest(
     string? Alias,
     string? LocalPath,
-    string? DefaultTier,
     string? Passphrase);
 
 // ── Snapshots / stats ───────────────────────────────────────

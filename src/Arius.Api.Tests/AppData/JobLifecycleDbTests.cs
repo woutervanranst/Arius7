@@ -10,7 +10,7 @@ public sealed class JobLifecycleDbTests
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db"); // TODO scan codebase for GetTempPath and use canonical test paths
         var database = new AppDatabase(path);
         var accountId = database.InsertAccount("acc", encryptedAccountKey: null);
-        var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
+        var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, encryptedPassphrase: null);
         return (database, repositoryId);
     }
 
@@ -37,7 +37,7 @@ public sealed class JobLifecycleDbTests
         db.SetJobStatus("j1", "rehydrating");
 
         var acc2 = db.InsertAccount("acc2", null);
-        var repo2 = db.InsertRepository("a2", "c2", acc2, null, "archive", null);
+        var repo2 = db.InsertRepository("a2", "c2", acc2, null, null);
         db.InsertJob("j2", repo2, "restore", "one-off", "running");   // stays running
 
         var rows = db.ListActiveRehydrations();
@@ -53,7 +53,7 @@ public sealed class JobLifecycleDbTests
         db.SetJobStatus("await", "awaiting-cost");
 
         var acc2 = db.InsertAccount("acc2", null);
-        var repo2 = db.InsertRepository("a2", "c2", acc2, null, "archive", null);
+        var repo2 = db.InsertRepository("a2", "c2", acc2, null, null);
         db.InsertJob("rehy", repo2, "restore", "one-off", "running");
         db.SetJobStatus("rehy", "rehydrating");
 

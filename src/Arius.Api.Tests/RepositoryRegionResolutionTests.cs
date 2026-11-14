@@ -19,7 +19,7 @@ public sealed class RepositoryRegionResolutionTests
         var path = Path.Combine(Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
         var database = new AppDatabase(path);
         var accountId = database.InsertAccount("acc", encryptedAccountKey: null);
-        var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, "archive", encryptedPassphrase: null);
+        var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, encryptedPassphrase: null);
         return (database, repositoryId);
     }
 

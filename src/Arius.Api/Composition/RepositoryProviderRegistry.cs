@@ -230,8 +230,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
             AccountKey:   _secrets.Unprotect(account.EncryptedAccountKey),
             Container:    repository.Container,
             Passphrase:   _secrets.Unprotect(repository.EncryptedPassphrase),
-            LocalPath:    repository.LocalPath,
-            DefaultTier:  repository.DefaultTier);
+            LocalPath:    repository.LocalPath);
     }
 
     public async ValueTask DisposeAsync()
