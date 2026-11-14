@@ -298,8 +298,6 @@ These verbs describe how Arius keeps a local cache consistent with the remote re
 - *Filetree:* `FileTreeBuilder.SynchronizeAsync` builds the Merkle tree bottom-up and uploads any **missing** tree blobs so the remote filetree matches the staged local tree.
 *Code:* `ChunkIndexLocalStore.MarkPendingFlushesSynchronized`; `FileTreeBuilder.SynchronizeAsync`.
 
-> **Not the same as round-trip *verification*.** The inline check that a just-compressed chunk frame decodes back to its [chunk hash](#chunk-hash) before the chunk is committed (`RoundTripVerifier`) is about *codec correctness*, not cache trust. See [compression](design/core/shared/compression.md).
-
 ---
 
 ## Repository structure
