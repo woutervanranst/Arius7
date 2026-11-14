@@ -45,8 +45,6 @@ Long-running handlers are channel-connected stages with **bounded** channels so 
 
 The archive file-pair channel (Enumerate → Hash) is deliberately **unbounded**, not listed above: bounding it throttled enumeration to hashing's pace, delaying the scan-total event on large trees ([archive-command](../core/features/archive-command.md#stage-channel-pipeline)).
 
-Each chunk streams through compression and encryption. An upload does not decompress or hash its data again, so the memory for one chunk stays flat. [ADR-0024](../../decisions/adr-0024-framework-zstandard-codec.md) gives the reason for this change and the measurements.
-
 ### The small-file tar threshold
 
 ```mermaid
