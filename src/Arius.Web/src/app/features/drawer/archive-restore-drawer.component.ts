@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
-import { TitleCasePipe } from '@angular/common';
 import { ApiService } from '../../core/api/api.service';
+import { ARCHIVE_OPTIONS, RESTORE_OPTIONS, replaceNote, runPill } from '../../core/defaults/defaults';
 import { DrawerStore } from '../../core/state/drawer.store';
+import { DefaultFieldComponent } from '../../shared/default-field/default-field.component';
 
 /** Right slide-over for Archive and Restore: a plain idle form. Start hands the job to the floating
  *  pill and dismisses the drawer — live progress, the cost modal and warnings live on `/jobs/:id`. */
@@ -9,7 +10,7 @@ import { DrawerStore } from '../../core/state/drawer.store';
   selector: 'arius-drawer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TitleCasePipe],
+  imports: [DefaultFieldComponent],
   template: `
     @if (arType(); as type) {
       <div class="ar-scrim" (click)="store.close()"></div>
@@ -33,22 +34,13 @@ import { DrawerStore } from '../../core/state/drawer.store';
           @if (type === 'archive') {
             <!-- Archive form -->
             <div class="ar-fld"><span>Source folder</span><div class="ar-ro ar-mono">{{ repoLocal() || '— set a local folder in Properties —' }}</div></div>
-            <div class="ar-fld"><span>Upload tier</span>
-              <div class="ar-seg">
-                @for (t of tiers; track t) {
-                  <button data-testid="tier-seg" [attr.data-tier]="t" [class.on]="store.archiveTier() === t" (click)="store.archiveTier.set(t)">{{ t | titlecase }}</button>
-                }
-              </div>
-            </div>
-            <div class="ar-fld">
-              <span>On disk after archive:</span>
-              <div class="ar-seg">
-                <button data-testid="seg-on-disk" [attr.data-on-disk]="'keep'" [class.on]="store.archiveOnDisk() === 'keep'" (click)="store.archiveOnDisk.set('keep')">Keep files only</button>
-                <button data-testid="seg-on-disk" [attr.data-on-disk]="'keep-pointers'" [class.on]="store.archiveOnDisk() === 'keep-pointers'" (click)="store.archiveOnDisk.set('keep-pointers')">Keep files + pointers</button>
-                <button data-testid="seg-on-disk" [attr.data-on-disk]="'replace'" [class.on]="store.archiveOnDisk() === 'replace'" (click)="store.archiveOnDisk.set('replace')">Replace with pointers</button>
-              </div>
-            </div>
-            <label class="ar-toggle"><input type="checkbox" data-testid="toggle-fast-hash" [checked]="store.fastHash()" (change)="store.fastHash.set(!store.fastHash())" /> Fast hash — skip re-reading unchanged files</label>
+            @if (store.run(); as run) {
+              @let resolved = store.resolved()!;
+              @for (key of archiveOptions; track key) {
+                <arius-default-field [option]="key" [value]="run[key]" [pill]="runPill(key, run, resolved)" [note]="runNote"
+                  (picked)="store.pick(key, $event)" (reset)="store.resetOption(key)" />
+              }
+            }
           } @else {
             <!-- Restore form -->
             <div class="ar-target">
@@ -58,8 +50,13 @@ import { DrawerStore } from '../../core/state/drawer.store';
                 <div style="font-size:12px;color:#a1a1aa">{{ store.version() ? 'Snapshot ' + store.version() : 'Latest snapshot' }}</div>
               </div>
             </div>
-            <label class="ar-toggle"><input type="checkbox" [checked]="store.overwrite()" (change)="store.overwrite.set(!store.overwrite())" /> Overwrite existing files</label>
-            <label class="ar-toggle"><input type="checkbox" [checked]="store.restoreNoPointers()" (change)="store.restoreNoPointers.set(!store.restoreNoPointers())" /> Skip pointer files</label>
+            @if (store.run(); as run) {
+              @let resolved = store.resolved()!;
+              @for (key of restoreOptions; track key) {
+                <arius-default-field [option]="key" [value]="run[key]" [pill]="runPill(key, run, resolved)"
+                  (picked)="store.pick(key, $event)" (reset)="store.resetOption(key)" />
+              }
+            }
             <div class="ar-note">Archive-tier chunks require rehydration; you'll be asked to approve the cost before any download begins.</div>
           }
         </div>
@@ -67,7 +64,7 @@ import { DrawerStore } from '../../core/state/drawer.store';
         <!-- Footer -->
         <div class="flex items-center justify-end gap-2.5" style="padding:16px 20px;border-top:1px solid #f0f0f2">
           <button class="ar-btn-outline" (click)="store.close()">Close</button>
-          <button class="ar-btn-primary" data-testid="drawer-start" (click)="store.start()">
+          <button class="ar-btn-primary" data-testid="drawer-start" [disabled]="!store.run()" (click)="store.start()">
             <i class="ki-filled {{ type === 'archive' ? 'ki-cloud-add' : 'ki-cloud-download' }}"></i>
             {{ type === 'archive' ? 'Start archive' : 'Start restore' }}
           </button>
@@ -84,11 +81,6 @@ import { DrawerStore } from '../../core/state/drawer.store';
     .ar-fld { margin-bottom:16px }
     .ar-fld > span { display:block;font-size:13px;font-weight:600;color:#3f3f46;margin-bottom:7px }
     .ar-ro { background:#f7f7f8;border:1px solid #ececef;border-radius:9px;padding:9px 12px;font-size:12.5px;color:#52525b }
-    .ar-seg { display:flex;gap:8px }
-    .ar-seg > button { flex:1;height:40px;border-radius:9px;border:1.5px solid #e4e4e7;background:#fff;color:#52525b;font-size:13px;font-weight:600 }
-    .ar-seg > button.on { border-color:#3b82f6;background:#eff4ff;color:#3b82f6 }
-    .ar-toggle { display:flex;align-items:center;gap:9px;font-size:13.5px;color:#3f3f46;margin-bottom:12px }
-    .ar-toggle small { color:#a1a1aa }
     .ar-note { font-size:12px;color:#71717a;background:#f7f9ff;border:1px solid #dbeafe;border-radius:9px;padding:10px 12px;margin-top:6px }
     .ar-target { display:flex;align-items:center;gap:12px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:11px;padding:14px 16px;margin-bottom:16px }
   `],
@@ -96,7 +88,10 @@ import { DrawerStore } from '../../core/state/drawer.store';
 export class ArchiveRestoreDrawerComponent {
   protected readonly store = inject(DrawerStore);
   private readonly api = inject(ApiService);
-  protected readonly tiers = ['hot', 'cool', 'cold', 'archive'];
+  protected readonly archiveOptions = ARCHIVE_OPTIONS;
+  protected readonly restoreOptions = RESTORE_OPTIONS;
+  protected readonly runPill = runPill;
+  protected readonly runNote = replaceNote('run');
 
   // This drawer only handles archive/restore; the Properties panel is a separate component.
   protected readonly arType = computed(() => {
