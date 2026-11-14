@@ -1,5 +1,7 @@
 /** DTOs mirroring Arius.Api's contracts (camelCase over the wire). */
 
+import { DefaultValues, OptionKey, ResolvedDefaults, SetValues } from '../defaults/defaults';
+
 export interface AccountDto {
   id: number;
   name: string;
@@ -237,4 +239,17 @@ export interface FsListDto {
   path: string;
   parent: string | null;
   entries: FsEntryDto[];
+}
+
+/** GET/PUT /api/settings/defaults: what global settings set, the factory values, and which repositories inherit each option. */
+export interface GlobalDefaultsDto {
+  set: SetValues;
+  factory: DefaultValues;
+  inheritedBy: Record<OptionKey, string[]>;
+}
+
+/** GET/PUT /api/repos/{id}/defaults: what the repository sets, and the values it inherits (source is never 'repository'). */
+export interface RepositoryDefaultsDto {
+  set: SetValues;
+  inherited: ResolvedDefaults;
 }
