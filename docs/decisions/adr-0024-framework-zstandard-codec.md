@@ -1,5 +1,5 @@
 ---
-status: "proposed"
+status: "accepted"
 date: 2026-11-12
 confidence: "medium"
 supersedes: "ADR-0012 (codec provider and upload round-trip policy); ADR-0017 (codec round-trip guard only)"
@@ -43,11 +43,49 @@ Keep the behavior of the old codec:
 
 The local measurements use macOS arm64 on a shared host. Each case uses a 32 MiB workload in a new process. The CI measurement is one short run on all three RIDs. The results show lower resource use. They do not show a general speed increase.
 
-- **Codec, local:** The stored sizes are the same as with the previous codec. Compression throughput changes by +4% to +23%. Decode throughput changes by -13% to +45%, depending on the workload.
-- **Codec, CI** ([run 43101837735](https://github.com/woutervanranst/Arius7/actions/runs/43101837735)): Encode throughput for mixed and random data increases by 28% to 57% on all RIDs. **On Windows x64, text data is slower (encode -26%, decode -42%).** Investigate this with representative data before release. Peak RSS decreases by 7 to 11 MiB on all RIDs.
-- **Verifier removal** (real `ChunkStorageService`, in-memory storage, 320 MiB per case): CPU time decreases by 6.7% to 33.6%. Peak RSS decreases by 7 to 77 MiB. Median throughput changes by -2% to +16%. The timing noise on the shared host is large. The test has no network and no multi-worker timings.
+### Codec, local
 
-This ADR stays proposed until the Windows text regression is resolved and the maintainer accepts the evidence.
+The stored sizes are the same as with the previous codec. Compression throughput changes by +4% to +23%. Decode throughput changes by -13% to +45%, depending on the workload.
+
+| Workload | Codec | Stored bytes | Compress MiB/s | Encode CPU ms / 96 MiB | Decode MiB/s | Decode CPU ms / 96 MiB | Peak RSS MiB |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Repeated text | ZstdSharp.Port | 3,155 | 72.7 | 1,333 | 6,626 | 14.4 | 173.0 |
+| Repeated text | .NET 11 Native | 3,155 | 78.3 | 1,226 | 9,582 | 10.0 | 163.9 |
+| Half text / half seeded random | ZstdSharp.Port | 16,781,910 | 325.7 | 296 | 8,789 | 10.9 | 187.7 |
+| Half text / half seeded random | .NET 11 Native | 16,781,910 | 338.7 | 279 | 11,325 | 8.5 | 179.9 |
+| Seeded random | ZstdSharp.Port | 33,555,213 | 187.4 | 541 | 10,226 | 9.4 | 206.0 |
+| Seeded random | .NET 11 Native | 33,555,213 | 231.3 | 414 | 8,934 | 10.7 | 195.7 |
+
+### Codec, CI
+
+[Run 43101837735](https://github.com/woutervanranst/Arius7/actions/runs/43101837735). Encode throughput for mixed and random data increases by 28% to 57% on all RIDs. **On Windows x64, text data is slower (encode -26%, decode -42%).** Investigate this with representative data before release. Peak RSS decreases by 7 to 11 MiB on all RIDs. Changes are relative to the previous codec.
+
+| RID | Workload | Encode throughput change | Decode throughput change | Peak RSS change |
+|---|---|---:|---:|---:|
+| Linux x64 | Text | -5.1% | +65.1% | -7.3 MiB |
+| Linux x64 | Mixed | +56.6% | +52.6% | -7.5 MiB |
+| Linux x64 | Random | +56.0% | +5.2% | -10.1 MiB |
+| Windows x64 | Text | -26.1% | -42.4% | -7.9 MiB |
+| Windows x64 | Mixed | +45.6% | +51.0% | -9.1 MiB |
+| Windows x64 | Random | +57.4% | -8.2% | -11.2 MiB |
+| macOS arm64 | Text | +26.2% | +21.3% | -7.7 MiB |
+| macOS arm64 | Mixed | +31.1% | +21.0% | -8.2 MiB |
+| macOS arm64 | Random | +28.4% | +16.8% | -10.1 MiB |
+
+### Verifier removal
+
+Real `ChunkStorageService`, in-memory storage, 320 MiB per case, median of three processes. "Before" is the framework codec with the upload decoder; "after" is the direct-copy pipeline. CPU % uses 100% = one core. CPU time decreases by 6.7% to 33.6%. Peak RSS decreases by 7 to 77 MiB. Median throughput changes by -2% to +16%. The timing noise on the shared host is large. The test has no network and no multi-worker timings.
+
+| Workload | Encryption | Upload MiB/s, before / after | CPU ms / 320 MiB, before / after | CPU %, before / after | Peak RSS MiB, before / after |
+|---|---|---:|---:|---:|---:|
+| Text | Plaintext | 75.5 / 74.0 | 4,703 / 4,387 | 111 / 102 | 170.2 / 160.9 |
+| Text | GCM | 71.9 / 71.9 | 4,873 / 4,548 | 110 / 102 | 171.3 / 162.8 |
+| Mixed | Plaintext | 273.5 / 318.1 | 1,768 / 1,174 | 150 / 117 | 538.1 / 494.0 |
+| Mixed | GCM | 246.9 / 265.1 | 1,913 / 1,388 | 148 / 115 | 309.4 / 302.1 |
+| Random | Plaintext | 180.5 / 183.8 | 2,415 / 1,913 | 136 / 109 | 614.5 / 537.3 |
+| Random | GCM | 149.3 / 169.8 | 2,748 / 2,026 | 130 / 108 | 624.8 / 610.1 |
+
+The maintainer accepted this ADR with this evidence. The Windows x64 text regression is not resolved: check it with representative data.
 
 ## Alternatives
 
