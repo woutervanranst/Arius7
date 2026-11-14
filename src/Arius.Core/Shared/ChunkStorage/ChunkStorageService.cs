@@ -73,24 +73,24 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
             await using (var writeStream = await blobs.OpenWriteAsync(blobName, contentType, cancellationToken))
             {
                 var countingStream = new CountingStream(writeStream);
-                await using (var encryptionStream = encryption.WrapForEncryption(countingStream))
-                {
-                    await using var compressionStream = compression.WrapForCompression(encryptionStream, leaveOpen: true);
-                    var progressStream = progress is null
-                        ? null
-                        : new ProgressStream(content, new CallbackProgress(bytesRead =>
-                        {
-                            if (bytesRead <= reportedBytes)
-                                return;
+                await using var encryptionStream = encryption.WrapForEncryption(countingStream);
+                var compressionStream = compression.WrapForCompression(encryptionStream, leaveOpen: true);
 
-                            reportedBytes = bytesRead;
-                            progress.Report(bytesRead);
-                        }));
+                var progressStream = progress is null
+                    ? null
+                    : new ProgressStream(content, new CallbackProgress(bytesRead =>
+                    {
+                        if (bytesRead <= reportedBytes)
+                            return;
 
-                    await (progressStream ?? content).CopyToAsync(compressionStream, cancellationToken);
-                }
+                        reportedBytes = bytesRead;
+                        progress.Report(bytesRead);
+                    }));
 
-                // Include the compression frame and encryption trailer in the stored size.
+                await (progressStream ?? content).CopyToAsync(compressionStream, cancellationToken);
+
+                await compressionStream.DisposeAsync();  // finalize the frame → encryption
+                await encryptionStream.DisposeAsync();   // NOTE: leave Dispose to get a correct BytesWritten
                 storedSize = countingStream.BytesWritten;
             }
 
