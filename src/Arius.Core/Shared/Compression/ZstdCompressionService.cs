@@ -29,8 +29,7 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
         {
             Quality = compressionLevel,
             AppendChecksum = true,
-            WindowLog2 = 0, // Derive the window size from the compression level.
-            EnableLongDistanceMatching = false,
+            // Window size and long-distance matching are deliberately left at their defaults (see docs/design/core/shared/compression.md).
             // Compression is single-threaded; archive parallelizes across chunks instead.
         }, leaveOpen);
 
