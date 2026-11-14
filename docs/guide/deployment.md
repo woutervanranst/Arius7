@@ -13,10 +13,6 @@ service providers, secrets at rest), see the maintainer doc
 [design/hosts/web.md](../design/hosts/web.md). This page is the operator view: how to
 deploy it.
 
-Released binaries and the supported container do not need a separate zstd installation.
-Single-file CLI binaries need a writable folder for native-library extraction. A .NET runtime
-that a Linux distribution builds can need the system zstd package.
-
 ---
 
 ## At a glance
