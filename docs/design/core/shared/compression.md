@@ -15,7 +15,7 @@ The compression boundary that all blob bodies pass through. `ICompressionService
 
 `ZstdCompressionService` is the only registered implementation (`ServiceCollectionExtensions` binds it as a singleton). It writes RFC 8878 zstd frames via the framework's `ZstandardStream` and owns a static `GZipCompressionService` instance to which it delegates legacy reads.
 
-The write path uses quality 15 (`DefaultCompressionLevel`, the only ratio/speed setting). It adds the content checksum. It uses the window size from the quality level and does not use long-distance matching. It compresses with one thread. The decoder limits the window to 128 MiB. [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) gives the deployment notes and the evidence.
+The write path uses quality 15 (`DefaultCompressionLevel`, the only ratio/speed setting). It adds the content checksum. It uses the window size from the quality level and does not use long-distance matching. It compresses with one thread. The decoder window limit stays at the framework default of 128 MiB. [ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md) gives the deployment notes and the evidence.
 
 The read path never consults blob metadata. `WrapForDecompression` returns an `AutoDetectDecompressionStream` that, on first read, peeks 4 bytes, then routes:
 

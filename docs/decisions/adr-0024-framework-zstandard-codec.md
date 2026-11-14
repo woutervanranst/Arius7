@@ -19,8 +19,7 @@ Use `System.IO.Compression.ZstandardStream` behind `ICompressionService`. Remove
 
 Keep the behavior of the old codec:
 
-- Quality 15, content checksum on, window size from the quality level, long-distance matching off.
-- A decoder window limit of 128 MiB.
+- Quality 15 and content checksum on. Window size, long-distance matching and the decoder window limit (128 MiB) stay at the framework defaults.
 - Lazy gzip/zstd detection on read. A zero-byte payload is empty content.
 
 ## Consequences
@@ -35,7 +34,7 @@ Keep the behavior of the old codec:
 ## Compatibility coverage
 
 - `ZstdCompatibilityTests` reads a historical encrypted zstd golden chunk.
-- `ZstdCompressionServiceTests` covers these cases: legacy gzip and empty payloads, checksum corruption, truncation (including missing checksum bytes), the window limit, cancellation, and stream ownership.
+- `ZstdCompressionServiceTests` covers these cases: legacy gzip and empty payloads, checksum corruption, truncation (including missing checksum bytes), cancellation, and stream ownership.
 - `RecoveryScriptTests` (integration) archives encrypted large chunks and tar chunks through the real pipeline. It then recovers them with `recover-chunk.py`. The release workflow runs the same script on the golden files.
 - The representative E2E workflow covers archive and restore.
 - The tests run on Windows x64, Linux x64, and macOS arm64. A Python-based test shows a skip reason when Python or its libraries are not available.

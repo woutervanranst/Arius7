@@ -76,7 +76,7 @@ flowchart LR
 - **Channels and per-chunk buffers stay bounded.** An upload must never hold a whole large chunk in memory. Any new pipeline stage mirrors this (AGENTS: *prefer streaming/batching/bounded pipelines over whole-repository in-memory materialization*).
 - **Fan-out is sized to the stage's bottleneck, not copied.** Local-work stages (thin entries, flush) run wide; large-blob-I/O stages run narrow. A refactor that uniformly raises every worker count would oversubscribe the network path and the per-compressor memory budget without speeding the bottleneck.
 - **`MaxShardEntryCount = 1024` and `MinShardPrefixLength = 2` are a coupled pair** verified by ADR-0015's confirmation checks; changing the threshold changes the steady-state write-amplification and shard count (the ~4096-shard design point fits one 5000-blob Azure list page).
-- **The zstd level is the only codec size/speed knob.** Preserve single-compressor behavior, level-derived windows, disabled long-distance matching, and the 128 MiB decode cap (ADR-0024).
+- **The zstd level is the only codec size/speed knob.** Preserve single-compressor behavior, level-derived windows, disabled long-distance matching, and the framework-default 128 MiB decode limit (ADR-0024).
 - **`SmallFileThreshold` < `TarTargetSize`.** The per-file route decision must sit below the bundle seal size, or large files would land in tars and defeat the dedup-by-large-chunk path.
 - **The routing threshold is uncompressed; the archive-tier ceiling is stored.** They read the same option but compare different sizes, and collapsing them (or deriving one from the other) would silently move the tier ceiling whenever routing is retuned.
 
