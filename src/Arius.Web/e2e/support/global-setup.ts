@@ -50,16 +50,19 @@ export default async function globalSetup() {
     });
     const accountId = (await created.json()).id;
 
-    await ctx.post(`${API}/api/repos`, {
+    const repo = await (await ctx.post(`${API}/api/repos`, {
       data: {
         accountId,
         container,
         alias: process.env.ARIUS_E2E_ALIAS ?? container,
         passphrase: process.env.ARIUS_E2E_PASSPHRASE ?? null,
         localPath: '',
-        defaultTier: process.env.ARIUS_E2E_TIER ?? 'hot',
       },
+    })).json();
+    const tierResponse = await ctx.put(`${API}/api/repos/${repo.id}/defaults`, {
+      data: { tier: process.env.ARIUS_E2E_TIER ?? 'hot' },
     });
+    if (!tierResponse.ok()) throw new Error(`Setting the seeded repository's tier failed (${tierResponse.status()}).`);
 
     repos = (await (await ctx.get(`${API}/api/repos`)).json()) as { id: number; container: string }[];
   }

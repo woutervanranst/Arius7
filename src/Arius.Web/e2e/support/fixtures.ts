@@ -12,9 +12,14 @@ export interface RepoInfo {
 
 /**
  * Provides the first configured repository (id/alias/container) so specs don't hardcode an id, plus
- * a `patchRepo` helper for specs that temporarily change `localPath` (archive) and restore it after.
+ * a `patchRepo` helper for specs that temporarily change `localPath` (archive) and restore it after,
+ * and a `setRepoDefaults` helper that sets a repository's archive/restore defaults (e.g. its tier).
  */
-export const test = base.extend<{ repo: RepoInfo; patchRepo: (id: number, body: Record<string, unknown>) => Promise<void> }>({
+export const test = base.extend<{
+  repo: RepoInfo;
+  patchRepo: (id: number, body: Record<string, unknown>) => Promise<void>;
+  setRepoDefaults: (id: number, body: Record<string, unknown>) => Promise<void>;
+}>({
   repo: async ({ request }, use) => {
     const reposResponse = await request.get('/api/repos');
     expect(reposResponse.ok(), `GET /api/repos failed (${reposResponse.status()})`).toBeTruthy();
@@ -32,6 +37,12 @@ export const test = base.extend<{ repo: RepoInfo; patchRepo: (id: number, body: 
     await use(async (id, body) => {
       const patchResponse = await request.patch(`/api/repos/${id}`, { data: body });
       expect(patchResponse.ok(), `PATCH /api/repos/${id} failed (${patchResponse.status()})`).toBeTruthy();
+    });
+  },
+  setRepoDefaults: async ({ request }, use) => {
+    await use(async (id, body) => {
+      const defaultsResponse = await request.put(`/api/repos/${id}/defaults`, { data: body });
+      expect(defaultsResponse.ok(), `PUT /api/repos/${id}/defaults failed (${defaultsResponse.status()})`).toBeTruthy();
     });
   },
 });

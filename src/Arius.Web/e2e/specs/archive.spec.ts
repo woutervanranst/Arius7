@@ -41,7 +41,7 @@ test.describe('archive drawer', () => {
   // Destructive: creates a dedicated container so the main repo's data is never replaced. Start
   // dismisses the drawer and hands the job to the floating pill — progress and completion are
   // observed on the pill / job history.
-  test('real archive of a temp folder streams to completion @write', async ({ page, request, repo }) => {
+  test('real archive of a temp folder streams to completion @write', async ({ page, request, repo, setRepoDefaults }) => {
     test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
     test.setTimeout(200_000);
 
@@ -50,10 +50,11 @@ test.describe('archive drawer', () => {
     fs.writeFileSync(path.join(src, 'notes.md'), '# notes\n'.repeat(50));
 
     const created = await (await request.post('/api/repos', {
-      data: { accountId: repo.accountId, container: scratchContainer(`write-${Date.now()}`), alias: 'E2E Write Target', passphrase: 'e2etest', localPath: src, defaultTier: 'hot' },
+      data: { accountId: repo.accountId, container: scratchContainer(`write-${Date.now()}`), alias: 'E2E Write Target', passphrase: 'e2etest', localPath: src },
     })).json();
 
     try {
+      await setRepoDefaults(created.id, { tier: 'hot' });
       await page.goto(`/repos/${created.id}/files`);
       await page.getByTestId('btn-archive').click();
       await page.getByTestId('drawer-start').click();

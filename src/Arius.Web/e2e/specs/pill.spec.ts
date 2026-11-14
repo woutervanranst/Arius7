@@ -5,7 +5,7 @@ import { test, expect } from '../support/fixtures';
 import { scratchContainer } from '../support/scratch';
 
 // Destructive: creates a dedicated container so the main repo's data is never replaced.
-test('pill appears after Start and opens the job detail page @write', async ({ page, request, repo }) => {
+test('pill appears after Start and opens the job detail page @write', async ({ page, request, repo, setRepoDefaults }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
   test.setTimeout(120_000);
 
@@ -13,10 +13,11 @@ test('pill appears after Start and opens the job detail page @write', async ({ p
   fs.writeFileSync(path.join(src, 'hello.txt'), `arius e2e ${Date.now()}`);
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer(`pill-${Date.now()}`), alias: 'E2E Pill Target', passphrase: 'e2etest', localPath: src, defaultTier: 'hot' },
+    data: { accountId: repo.accountId, container: scratchContainer(`pill-${Date.now()}`), alias: 'E2E Pill Target', passphrase: 'e2etest', localPath: src },
   })).json();
 
   try {
+    await setRepoDefaults(created.id, { tier: 'hot' });
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.getByTestId('drawer-start').click();

@@ -5,7 +5,7 @@ import { scratchContainer } from '../support/scratch';
 // (no archive), so it needs no @write; global-setup also purges any scratch repo a failed run leaves.
 test('delete repository removes it from Arius and returns to the overview', async ({ page, request, repo }) => {
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer('delete'), alias: 'E2E Delete Me', localPath: '', defaultTier: 'cold', passphrase: 'e2etest' },
+    data: { accountId: repo.accountId, container: scratchContainer('delete'), alias: 'E2E Delete Me', localPath: '', passphrase: 'e2etest' },
   })).json();
 
   try {

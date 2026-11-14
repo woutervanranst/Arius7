@@ -8,7 +8,7 @@ import { scratchContainer } from '../support/scratch';
 // the two restore-destination behaviours. Start dismisses the drawer and hands the job to the floating
 // pill — progress, the cost modal and the restored-file count are all observed on the pill / the job's
 // `/jobs/:id` detail page.
-test('restore writes files to an empty destination, and skips them when already present @write', async ({ page, request, repo }) => {
+test('restore writes files to an empty destination, and skips them when already present @write', async ({ page, request, repo, setRepoDefaults }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive restore round-trip');
   test.setTimeout(300_000);
 
@@ -17,7 +17,7 @@ test('restore writes files to an empty destination, and skips them when already 
   fs.writeFileSync(path.join(src, 'notes.md'), '# notes\n'.repeat(50));
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer(`roundtrip-${Date.now()}`), alias: 'E2E Round-trip', passphrase: 'e2etest', localPath: src, defaultTier: 'hot' },
+    data: { accountId: repo.accountId, container: scratchContainer(`roundtrip-${Date.now()}`), alias: 'E2E Round-trip', passphrase: 'e2etest', localPath: src },
   })).json();
 
   // Poll the repo's job list for the newest job of `kind` that isn't `excludeId` (so scenario B's
@@ -39,6 +39,7 @@ test('restore writes files to an empty destination, and skips them when already 
   };
 
   try {
+    await setRepoDefaults(created.id, { tier: 'hot' });
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.getByTestId('drawer-start').click();
