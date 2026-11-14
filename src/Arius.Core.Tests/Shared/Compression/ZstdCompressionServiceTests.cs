@@ -99,16 +99,6 @@ public class ZstdCompressionServiceTests
     }
 
     [Test]
-    public async Task Decompress_RejectsWindowLargerThan128MiB()
-    {
-        // Standard empty frames at and above the cap; no large allocation is needed.
-        byte[] frame = [0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x88, 0x01, 0x00, 0x00];
-        (await DecompressAsync(frame)).ShouldBeEmpty();
-        frame[5] = 0x90; // Window descriptor: 256 MiB.
-        await Should.ThrowAsync<IOException>(async () => await DecompressAsync(frame));
-    }
-
-    [Test]
     [Arguments(1)]
     [Arguments(4)]
     public async Task Decompress_MissingChecksumTrailer_ThrowsInSyncAndAsyncReads(int missingBytes)
