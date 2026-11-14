@@ -223,7 +223,6 @@ export interface CreateRepositoryRequest {
   alias: string;
   passphrase: string | null;
   localPath: string | null;
-  defaultTier: string | null;
 }
 
 // ── Filesystem browse (local-path picker) ─────────────────────────────────────

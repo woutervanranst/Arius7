@@ -140,7 +140,6 @@ export class AddRepoWizardComponent {
       alias: this.alias || this.selectedContainer(),
       passphrase: this.passphrase || null,
       localPath: this.localPath || null,
-      defaultTier: null,
     }).subscribe({
       next: r => this.router.navigate(['/repos', r.id, 'files']),
       error: e => this.error.set(e?.error ?? e?.message ?? 'Could not add repository.'),
