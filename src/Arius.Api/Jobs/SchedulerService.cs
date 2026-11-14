@@ -48,21 +48,37 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             if (now < schedule.NextRun.Value)
                 continue;
 
-            var repo = database.GetRepository(schedule.RepositoryId);
-            if (repo is not null && !database.HasActiveJob(schedule.RepositoryId))
+            // A failure for one schedule (e.g. a corrupt stored default) must not starve the others, and the
+            // schedule still advances so it is not retried every minute.
+            try
             {
-                var jobId = Guid.NewGuid().ToString();
-                logger.LogInformation("Firing scheduled archive for repository {RepositoryId} (job {JobId})", schedule.RepositoryId, jobId);
-                var defaults = database.ResolveRepositoryDefaults(schedule.RepositoryId);
-                var (removeLocal, writePointers) = OptionDefaults.ToArchiveFlags(defaults.OnDisk.Value);
-                _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, defaults.Tier.Value, removeLocal, writePointers, defaults.FastHash.Value, trigger: "schedule");
+                var repo = database.GetRepository(schedule.RepositoryId);
+                if (repo is not null && !database.HasActiveJob(schedule.RepositoryId))
+                {
+                    var jobId = Guid.NewGuid().ToString();
+                    logger.LogInformation("Firing scheduled archive for repository {RepositoryId} (job {JobId})", schedule.RepositoryId, jobId);
+                    var (tier, removeLocal, writePointers, fastHash) = ScheduledArchiveArgs(database, schedule.RepositoryId);
+                    _ = runner.RunArchiveAsync(schedule.RepositoryId, jobId, tier, removeLocal, writePointers, fastHash, trigger: "schedule");
+                }
+                else if (repo is not null)
+                {
+                    logger.LogWarning("Skipped scheduled archive for repository {RepositoryId} — a job is already in progress", schedule.RepositoryId);
+                }
             }
-            else if (repo is not null)
+            catch (Exception ex)
             {
-                logger.LogWarning("Skipped scheduled archive for repository {RepositoryId} — a job is already in progress", schedule.RepositoryId);
+                logger.LogError(ex, "Scheduled archive for repository {RepositoryId} (schedule {ScheduleId}) failed to start", schedule.RepositoryId, schedule.Id);
             }
             database.SetScheduleNextRun(schedule.Id, expression.GetNextOccurrence(now, TimeZoneInfo.Utc));
         }
+    }
+
+    /// <summary>The archive options a scheduled run uses: the repository's resolved defaults mapped to archive flags.</summary>
+    internal static (string Tier, bool RemoveLocal, bool WritePointers, bool FastHash) ScheduledArchiveArgs(AppDatabase database, long repositoryId)
+    {
+        var defaults = database.ResolveRepositoryDefaults(repositoryId);
+        var (removeLocal, writePointers) = OptionDefaults.ToArchiveFlags(defaults.OnDisk.Value);
+        return (defaults.Tier.Value, removeLocal, writePointers, defaults.FastHash.Value);
     }
 
     private static bool TryParse(string cron, out CronExpression expression)
