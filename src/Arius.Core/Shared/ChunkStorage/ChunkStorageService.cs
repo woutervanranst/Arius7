@@ -74,7 +74,7 @@ internal sealed class ChunkStorageService(IBlobContainerService blobs, IEncrypti
             {
                 var countingStream = new CountingStream(writeStream);
                 await using var encryptionStream = encryption.WrapForEncryption(countingStream);
-                var compressionStream = compression.WrapForCompression(encryptionStream, leaveOpen: true);
+                await using var compressionStream = compression.WrapForCompression(encryptionStream, leaveOpen: true);
 
                 var progressStream = progress is null
                     ? null

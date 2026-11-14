@@ -377,6 +377,11 @@ public class ChunkStorageServiceUploadTests
 
         result.AlreadyExisted.ShouldBeFalse();
         result.OriginalSize.ShouldBe(content.Length);
+
+        await using var download = await service.DownloadAsync(chunkHash);
+        var restored = new MemoryStream();
+        await download.CopyToAsync(restored);
+        restored.ToArray().ShouldBe(content);
     }
 
     [Test]
