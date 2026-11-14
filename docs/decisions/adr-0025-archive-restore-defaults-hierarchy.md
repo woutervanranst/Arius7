@@ -80,7 +80,7 @@ Scheduled runs: the repository's resolved tier, on-disk value and fast hash
 
 ### Confirmation
 
-`Arius.Api.Tests` covers resolution order, set vs. inherited, Reset, the `default_tier` migration, boundary validation, and the scheduler firing with resolved values. Vitest covers pill selection and the drawer's pre-fill and "changed for this run" logic. A hermetic Playwright e2e saves a global setting and checks that an inheriting repository pre-fills its drawer with it while a repository with its own value does not.
+`Arius.Api.Tests` covers the resolution order, explicit-false-overrides-inherited, the `onDisk` to archive-flag mapping the scheduler uses, the defaults store (round-trips, resolving both levels, delete cascade) and the `default_tier` migration. `Arius.Api.Integration.Tests` covers the defaults endpoints: global changes reaching inheriting repositories, a repository's own value surviving a global change, the resolved tier in the repository DTO, and rejection of unknown options and invalid tiers. The scheduler itself is not exercised by a test; it calls the same resolution and flag mapping. Vitest covers the pure resolution and pill logic (`defaults.spec.ts`) and the drawer store's pre-fill from resolved defaults, per-run changes and Reset, and the flags sent on start (`drawer.store.spec.ts`). A hermetic Playwright e2e saves a global setting and checks that an inheriting repository pre-fills its drawer with it while a repository with its own value does not.
 
 ## Pros and Cons of the Options
 
