@@ -19,12 +19,10 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
 
     /// <summary>
     /// zstd compression level for new blobs. This is the one performance/size knob: higher = smaller but slower.
+    /// Level 19 favours ratio (matching the previous gzip <c>SmallestSize</c> intent) but requires ~85 MB per compressor.
     /// Level 15 balances compression ratio and speed.
     /// </summary>
     public const int DefaultCompressionLevel = 15;
-
-    // Caps the decoder window at 128 MiB (2^27) so a crafted frame cannot force a larger allocation.
-    private const int MaxDecodeWindowLog2 = 27;
 
     public Stream WrapForCompression(Stream destination, bool leaveOpen = true)
         => new ZstandardStream(destination, new ZstandardCompressionOptions
@@ -124,10 +122,7 @@ internal sealed class ZstdCompressionService(int compressionLevel = ZstdCompress
                 return prefixed;
 
             if (read >= ZstdMagic.Length && header.AsSpan(0, ZstdMagic.Length).SequenceEqual(ZstdMagic))
-                return new ZstandardStream(prefixed, new ZstandardDecompressionOptions
-                {
-                    MaxWindowLog2 = MaxDecodeWindowLog2,
-                }, leaveOpen: false);
+                return new ZstandardStream(prefixed, CompressionMode.Decompress, leaveOpen: false);
 
             // Legacy "+gzip" blob: hand the un-peeked stream to the gzip codec to decode.
             if (GZipCompressionService.IsGZipHeader(header.AsSpan(0, read)))
