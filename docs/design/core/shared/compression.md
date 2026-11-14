@@ -24,7 +24,7 @@ flowchart TD
     R["AutoDetectDecompressionStream<br/>peek 4 magic bytes"] --> E{read == 0?}
     E -- "yes (legacy empty blob)" --> P["PrefixedStream → empty content"]
     E -- no --> Z{zstd magic<br/>0xFD2FB528?}
-    Z -- yes --> ZD["ZstandardStream<br/>128 MiB window cap"]
+    Z -- yes --> ZD["ZstandardStream"]
     Z -- no --> G{gzip magic<br/>0x1F 0x8B?}
     G -- yes --> GD["GZipCompressionService.WrapForDecompression"]
     G -- no --> X["throw InvalidDataException"]
@@ -32,14 +32,11 @@ flowchart TD
 
 The peeked bytes are replayed via a `PrefixedStream` so the chosen decoder sees a complete frame (the magic is "un-peeked"). `read == 0` maps to empty content because the legacy gzip era wrote empty payloads as 0-byte blobs.
 
-**No verification on upload.** [`ChunkStorageService`](./chunk-storage.md) sends the data through compression and encryption. It does not decode the output or hash the source again. It trusts the earlier chunk hash and assumes that sources do not change ([ADR-0024](../../../decisions/adr-0024-framework-zstandard-codec.md)). Golden-file tests and recovery-script tests cover encoder compatibility. Reads still use checksums and truncation checks.
-
 ## Key invariants
 
 - **New blobs are zstd; old gzip blobs stay readable forever.** The read path must remain self-describing (magic-byte detection), never dependent on content-type or external metadata.
 - **A frame written today is restorable by a default-configured reader.** Window size and long-distance matching stay at zstd's level-derived defaults, kept under the decompressor's 128 MiB `ZSTD_d_windowLogMax` cap — no large-window/LDM frames.
 - **Checksums are on. Each stream uses one compressor.** The framework has no worker-count option. Check its single-thread behavior again when you upgrade the runtime.
-- **Sources must not change during an archive run.** Arius does not detect a change between hashing and upload.
 - **0-byte source ⇒ empty content**, not a format error (legacy empty-payload compatibility).
 
 ## Why this shape
