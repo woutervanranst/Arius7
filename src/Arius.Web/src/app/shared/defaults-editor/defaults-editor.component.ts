@@ -53,8 +53,15 @@ export class DefaultsEditorComponent {
 
   readonly save = output<SetValues>();
 
-  /** Edits in flight; follows `saved` whenever the host hands a new one (after a save, or a reload). */
-  protected readonly draft = linkedSignal<SetValues>(() => this.saved());
+  /**
+   * Edits in flight; follows `saved` whenever the host hands a new one (after a save, or a reload) —
+   * except that edits made while a save was in flight are kept rather than overwritten by its response.
+   */
+  protected readonly draft = linkedSignal<SetValues, SetValues>({
+    source: this.saved,
+    computation: (saved, previous) =>
+      previous && !sameSet(previous.value, previous.source) && !sameSet(previous.value, saved) ? previous.value : saved,
+  });
   protected readonly dirty = computed(() => !sameSet(this.draft(), this.saved()));
   protected readonly onDiskNote = computed(() => replaceNote(this.level(), this.inheritedBy()?.onDisk));
   protected readonly cards = computed(() => {
