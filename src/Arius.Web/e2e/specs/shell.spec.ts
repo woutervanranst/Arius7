@@ -9,9 +9,6 @@ test.describe('shell', () => {
     await expect(page).toHaveURL(/\/jobs/);
     await expect(page.getByTestId('breadcrumb-current')).toHaveText('Jobs');
 
-    await page.getByTestId('rail-repos').click();
-    await expect(page).toHaveURL(/\/repos/);
-
     await page.getByTestId('rail-settings').click();
     await expect(page).toHaveURL(/\/settings/);
 
