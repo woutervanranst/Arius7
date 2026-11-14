@@ -1,9 +1,12 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/api/api.service';
-import { RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
+import { RepositoryDefaultsDto, RepositoryDto, ScheduleDto } from '../../../core/api/api-models';
+import { resolve, SetValues, valuesOf } from '../../../core/defaults/defaults';
+import { DefaultsEditorComponent } from '../../../shared/defaults-editor/defaults-editor.component';
+import { ON_DISK } from '../../../shared/default-field/default-field.component';
 import { FolderPickerComponent } from '../../../shared/folder-picker/folder-picker.component';
 
 /** Properties tab: friendly alias, read-only account/container, passphrase (rotate), local folder, schedules, and repository delete. The account key belongs to the storage account (edit it from the Overview), not the repository. */
@@ -11,7 +14,7 @@ import { FolderPickerComponent } from '../../../shared/folder-picker/folder-pick
   selector: 'arius-properties-tab',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, DatePipe, FolderPickerComponent],
+  imports: [FormsModule, DatePipe, FolderPickerComponent, DefaultsEditorComponent],
   template: `
     @if (repo(); as r) {
       <div class="ar-card" style="max-width:680px;padding:24px">
@@ -48,14 +51,21 @@ import { FolderPickerComponent } from '../../../shared/folder-picker/folder-pick
         @if (saveError()) { <div data-testid="prop-save-error" style="text-align:right;color:#dc2626;font-size:12.5px;margin-top:8px">{{ saveError() }}</div> }
       </div>
 
+      <!-- Repository defaults -->
+      @if (defaults(); as d) {
+        <arius-defaults-editor level="repository" [saved]="d.set" [inherited]="d.inherited" (save)="saveDefaults($event)" />
+        @if (defaultsError()) { <div data-testid="defaults-save-error" style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ defaultsError() }}</div> }
+      }
+
       <!-- Scheduled archives -->
       <div class="ar-card" style="max-width:680px;padding:20px 24px;margin-top:18px">
         <div style="font-size:15.5px;font-weight:600;color:#18181b">Scheduled archives</div>
-        <p style="font-size:12.5px;color:#a1a1aa;margin:2px 0 14px">Cron schedules fire archive runs automatically (UTC).</p>
+        <p style="font-size:12.5px;color:#a1a1aa;margin:2px 0 14px">Cron schedules fire archive runs automatically (UTC) with this repository's archive defaults.</p>
         @for (s of schedules(); track s.id) {
           <div class="flex items-center gap-3" data-testid="schedule-row" style="padding:9px 0;border-top:1px solid #f4f4f5">
             <i class="ki-filled ki-calendar-tick" style="color:#6d28d9"></i>
             <span class="ar-mono" style="font-size:13px;color:#27272a">{{ s.cron }}</span>
+            <span data-testid="schedule-summary" style="font-size:12px;color:#71717a">{{ scheduleSummary() }}</span>
             <span style="font-size:12px;color:#a1a1aa;margin-left:auto">{{ s.nextRun ? 'next ' + (s.nextRun | date:'dd MMM HH:mm') : 'computing…' }}</span>
             <button class="ar-icon-btn" data-testid="schedule-delete" (click)="removeSchedule(s.id)"><i class="ki-filled ki-trash"></i></button>
           </div>
@@ -66,13 +76,6 @@ import { FolderPickerComponent } from '../../../shared/folder-picker/folder-pick
           <input class="ar-input ar-mono" data-testid="schedule-cron" style="flex:1" placeholder="cron e.g. 0 2 * * *" [(ngModel)]="newCron" />
           <button class="ar-btn-primary" data-testid="schedule-add" [disabled]="!newCron" (click)="addSchedule()"><i class="ki-filled ki-plus"></i>Add</button>
         </div>
-        <!-- Scheduled archives currently always run without --fast-hash; this disabled toggle
-             is a placeholder until per-schedule fast-hash is wired through. -->
-        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:#a1a1aa"
-               title="Planned — scheduled archives will be able to opt into fast-hash; not wired up yet.">
-          <input type="checkbox" data-testid="schedule-fast-hash" disabled />
-          Fast-hash scheduled runs <span style="font-style:italic">(coming soon)</span>
-        </label>
       </div>
 
       <!-- Danger zone -->
@@ -119,6 +122,17 @@ export class PropertiesTabComponent {
   protected readonly saveError = signal<string | null>(null);
   protected readonly deleteError = signal<string | null>(null);
   protected readonly schedules = signal<ScheduleDto[]>([]);
+  protected readonly defaults = signal<RepositoryDefaultsDto | null>(null);
+  protected readonly defaultsError = signal<string | null>(null);
+  /** What a scheduled archive of this repository runs with: the resolved repository-level defaults. */
+  protected readonly scheduleSummary = computed(() => {
+    const d = this.defaults();
+    if (!d) return '';
+    const v = valuesOf(resolve(d.set, d.inherited, 'repository'));
+    const tier = v.tier.charAt(0).toUpperCase() + v.tier.slice(1);
+    const onDisk = ON_DISK.find(o => o.value === v.onDisk)!.label.toLowerCase();
+    return `${tier} · ${onDisk} · fast hash ${v.fastHash ? 'on' : 'off'}`;
+  });
   protected newCron = '';
   protected readonly confirmingDelete = signal(false);
 
@@ -129,7 +143,9 @@ export class PropertiesTabComponent {
       this.repo.set(null);
       const repoSub = this.api.getRepository(id).subscribe(r => { this.repo.set(r); this.reset(r); });
       const schedulesSub = this.api.getSchedules(id).subscribe(s => this.schedules.set(s));
-      onCleanup(() => { repoSub.unsubscribe(); schedulesSub.unsubscribe(); });   // drop in-flight requests if repoId changes first
+      this.defaults.set(null);
+      const defaultsSub = this.api.getRepositoryDefaults(id).subscribe(d => this.defaults.set(d));
+      onCleanup(() => { repoSub.unsubscribe(); schedulesSub.unsubscribe(); defaultsSub.unsubscribe(); });   // drop in-flight requests if repoId changes first
     });
   }
 
@@ -143,6 +159,14 @@ export class PropertiesTabComponent {
 
   protected removeSchedule(id: number): void {
     this.api.deleteSchedule(+this.repoId(), id).subscribe(() => this.loadSchedules());
+  }
+
+  protected saveDefaults(set: SetValues): void {
+    this.defaultsError.set(null);
+    this.api.putRepositoryDefaults(+this.repoId(), set).subscribe({
+      next: d => this.defaults.set(d),
+      error: () => this.defaultsError.set('Could not save defaults — please try again.'),
+    });
   }
 
   protected deleteRepository(): void {

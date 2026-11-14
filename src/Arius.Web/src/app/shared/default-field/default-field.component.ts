@@ -38,7 +38,7 @@ const TIERS: { value: Tier; label: string; hint: string }[] = [
   { value: 'archive', label: 'Archive', hint: 'Cheapest storage · restores need rehydration (hours) · 180-day minimum' },
 ];
 
-const ON_DISK: { value: OnDisk; label: string; hint: string }[] = [
+export const ON_DISK: { value: OnDisk; label: string; hint: string }[] = [
   { value: 'keep', label: 'Keep files only', hint: 'Local files stay as they are.' },
   { value: 'keep-pointers', label: 'Keep files + pointers', hint: 'Also writes a .pointer.arius file next to each archived file.' },
   { value: 'replace', label: 'Replace with pointers', hint: '' },

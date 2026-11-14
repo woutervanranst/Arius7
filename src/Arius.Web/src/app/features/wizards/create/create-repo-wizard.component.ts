@@ -1,18 +1,17 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { TitleCasePipe } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/api/api.service';
 import { FolderPickerComponent } from '../../../shared/folder-picker/folder-picker.component';
 
-/** New repository: 2-step wizard (storage account → new container with tier + passphrase). */
+/** New repository: 2-step wizard (storage account → new container with passphrase). */
 @Component({
   selector: 'arius-create-wizard',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, TitleCasePipe, FolderPickerComponent],
+  imports: [FormsModule, FolderPickerComponent],
   template: `
     <div style="max-width:620px;margin:0 auto">
       <div style="font-size:13px;color:#71717a">Step <b>{{ step() }}</b> of 2 · {{ step() === 1 ? 'Storage account' : 'New container' }}</div>
@@ -48,11 +47,6 @@ import { FolderPickerComponent } from '../../../shared/folder-picker/folder-pick
         <label class="ar-field"><span>Container name <span class="ar-req">*</span></span><input class="ar-input ar-mono" data-testid="create-container" [ngModel]="container()" (ngModelChange)="container.set($event)" placeholder="e.g. arius-photos" /></label>
         <label class="ar-field"><span>Friendly alias</span><input class="ar-input" data-testid="create-alias" [(ngModel)]="alias" [placeholder]="container() || 'defaults to the container name'" /></label>
         <div class="ar-field"><span>Local path</span><arius-folder-picker [(value)]="localPath" /></div>
-        <div class="ar-field"><span>Default tier</span>
-          <div class="ar-seg">
-            @for (t of tiers; track t) { <button [class.on]="tier() === t" (click)="tier.set(t)">{{ t | titlecase }}</button> }
-          </div>
-        </div>
         <label class="ar-field"><span>Passphrase <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="passphrase" [(ngModel)]="passphrase" /></label>
         <label class="ar-field"><span>Confirm passphrase <span class="ar-req">*</span></span><input class="ar-input ar-mono" type="password" data-testid="passphrase-confirm" [(ngModel)]="passphrase2" /></label>
         <div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:10px 12px">
@@ -95,11 +89,9 @@ export class CreateRepoWizardComponent {
   protected alias = '';
   protected readonly container = signal('');
   protected localPath = '';
-  protected readonly tier = signal('cold');
   protected passphrase = '';
   protected passphrase2 = '';
   protected readonly error = signal<string | null>(null);
-  protected readonly tiers = ['hot', 'cool', 'cold', 'archive'];
 
   // A method (not a computed) because alias/passphrase are plain ngModel properties, not signals —
   // OnPush re-evaluates this on each ngModel change. Container is required; the friendly alias is optional.
@@ -130,7 +122,6 @@ export class CreateRepoWizardComponent {
       alias: this.alias || this.container(),
       passphrase: this.passphrase || null,
       localPath: this.localPath || null,
-      defaultTier: this.tier(),
     }).subscribe({
       next: r => this.router.navigate(['/repos', r.id, 'files']),
       error: e => this.error.set(e?.error ?? e?.message ?? 'Could not create repository.'),
