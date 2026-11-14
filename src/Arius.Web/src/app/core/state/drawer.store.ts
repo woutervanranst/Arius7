@@ -1,5 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { ApiService } from '../api/api.service';
 import { RealtimeService } from '../api/realtime.service';
+import { DefaultValues, OptionKey, ResolvedDefaults, archiveFlags, resolve, valuesOf } from '../defaults/defaults';
 import { JobPillStore } from './job-pill.store';
 
 export type DrawerType = 'archive' | 'restore' | 'properties' | 'account' | null;
@@ -13,6 +15,8 @@ export type DrawerType = 'archive' | 'restore' | 'properties' | 'account' | null
 export class DrawerStore {
   private readonly realtime = inject(RealtimeService);
   private readonly pill = inject(JobPillStore);
+  private readonly api = inject(ApiService);
+  private openSeq = 0;
 
   readonly type = signal<DrawerType>(null);
   readonly repoId = signal(0);
@@ -27,13 +31,9 @@ export class DrawerStore {
   /** Set when StartArchive/StartRestore rejects (e.g. the busy-repo HubException); surfaced by the drawer. */
   readonly error = signal<string | null>(null);
 
-  // Archive form
-  readonly archiveTier = signal('archive');
-  readonly archiveOnDisk = signal<'keep' | 'keep-pointers' | 'replace'>('keep');
-  readonly fastHash = signal(false);
-  // Restore form
-  readonly overwrite = signal(false);
-  readonly restoreNoPointers = signal(false);
+  /** The repository's resolved defaults (with provenance), and this run's values — null until they load. */
+  readonly resolved = signal<ResolvedDefaults | null>(null);
+  readonly run = signal<DefaultValues | null>(null);
 
   openProperties(repoId: number): void {
     this.error.set(null);
@@ -47,23 +47,42 @@ export class DrawerStore {
     this.accountId.set(accountId);
   }
 
-  openArchive(repoId: number, tier: string): void {
-    this.error.set(null);
-    this.type.set('archive');
-    this.repoId.set(repoId);
-    this.archiveTier.set(tier || 'archive');
-    this.archiveOnDisk.set('keep');
-    this.fastHash.set(false);
+  openArchive(repoId: number): void {
+    this.open('archive', repoId);
   }
 
   openRestore(repoId: number, version: string | null, collectedPaths: string[]): void {
-    this.error.set(null);
-    this.type.set('restore');
-    this.repoId.set(repoId);
+    this.open('restore', repoId);
     this.version.set(version);
     this.collectedPaths.set(collectedPaths);
-    this.overwrite.set(false);
-    this.restoreNoPointers.set(false);
+  }
+
+  pick(key: OptionKey, value: DefaultValues[OptionKey]): void {
+    this.run.update(run => run && { ...run, [key]: value });
+  }
+
+  resetOption(key: OptionKey): void {
+    const resolved = this.resolved();
+    if (resolved) this.pick(key, resolved[key].value);
+  }
+
+  /** Opens the drawer and pre-fills the run from the repository's resolved defaults; a response for a superseded open is dropped. */
+  private open(type: 'archive' | 'restore', repoId: number): void {
+    this.error.set(null);
+    this.type.set(type);
+    this.repoId.set(repoId);
+    this.resolved.set(null);
+    this.run.set(null);
+    const seq = ++this.openSeq;
+    this.api.getRepositoryDefaults(repoId).subscribe({
+      next: dto => {
+        if (seq !== this.openSeq) return;
+        const resolved = resolve(dto.set, dto.inherited, 'repository');
+        this.resolved.set(resolved);
+        this.run.set(valuesOf(resolved));
+      },
+      error: () => { if (seq === this.openSeq) this.error.set('Could not load this repository\'s defaults.'); },
+    });
   }
 
   close(): void {
@@ -71,22 +90,22 @@ export class DrawerStore {
   }
 
   async start(): Promise<void> {
+    const run = this.run();
+    if (!run) return;
     this.error.set(null);
     const kind = this.type();
     let id: string;
     try {
       if (kind === 'archive') {
         id = await this.realtime.startArchive(this.repoId(), {
-          tier: this.archiveTier(),
-          removeLocal: this.archiveOnDisk() === 'replace',
-          // Both 'keep-pointers' and 'replace' write pointers; 'replace' (remove-local) requires them,
-          // since the handler rejects removing a binary while writing no pointer.
-          writePointers: this.archiveOnDisk() !== 'keep',
-          fastHash: this.fastHash(),
+          tier: run.tier,
+          // 'replace' (remove-local) requires pointers: the handler rejects removing a binary while writing none.
+          ...archiveFlags(run.onDisk),
+          fastHash: run.fastHash,
         });
       } else {
         id = await this.realtime.startRestore(this.repoId(), {
-          version: this.version(), targetPaths: this.collectedPaths(), overwrite: this.overwrite(), noPointers: this.restoreNoPointers(),
+          version: this.version(), targetPaths: this.collectedPaths(), overwrite: run.overwrite, noPointers: run.noPointers,
         });
       }
     } catch (e) {
