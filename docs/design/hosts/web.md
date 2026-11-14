@@ -1,6 +1,6 @@
 # Web host (Arius.Api + Arius.Web)
 
-> **Code:** `src/Arius.Api/` · `src/Arius.Web/`  ·  **Decisions:** [ADR-0013](../../decisions/adr-0013-core-host-separation.md) · [ADR-0010](../../decisions/adr-0010-use-feature-handlers-for-application-use-cases.md) · [ADR-0020](../../decisions/adr-0020-provider-agnostic-cost-estimation.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [chunk](../../glossary.md#chunk) · [storage tier hint](../../glossary.md#storage-tier-hint) · [filetree](../../glossary.md#filetree)
+> **Code:** `src/Arius.Api/` · `src/Arius.Web/`  ·  **Decisions:** [ADR-0013](../../decisions/adr-0013-core-host-separation.md) · [ADR-0010](../../decisions/adr-0010-use-feature-handlers-for-application-use-cases.md) · [ADR-0020](../../decisions/adr-0020-provider-agnostic-cost-estimation.md) · [ADR-0025](../../decisions/adr-0025-archive-restore-defaults-hierarchy.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [chunk](../../glossary.md#chunk) · [storage tier hint](../../glossary.md#storage-tier-hint) · [filetree](../../glossary.md#filetree)
 
 ## Purpose
 
@@ -26,7 +26,7 @@ flowchart LR
         hub[Hubs/JobsHub — /hubs/arius]
         runner[Jobs/JobRunner]
         reg[Composition/RepositoryProviderRegistry]
-        appdb[(AppData — app SQLite<br/>accounts · repos · jobs · schedules · stats cache)]
+        appdb[(AppData — app SQLite<br/>accounts · repos · jobs · schedules · defaults · stats cache)]
     end
     api_c -->|HTTP /api| ep
     rt_c -->|WebSocket /hubs/arius| hub
@@ -42,7 +42,7 @@ flowchart LR
 
 `AriusApiHost.AddAriusApi()`/`MapAriusApi()` (`src/Arius.Api/AriusApiHost.cs`) wires the whole host — extracted from `Program.cs` as extension methods so a test host can reuse the identical pipeline (see [testing](../cross-cutting/testing.md#the-apiweb-scripted-fake-core-harness)); `Program.cs` itself now only calls them: it registers the app database, `SecretProtector`, the Azure adapters via `AddAzureBlobStorage()` (the `IBlobServiceFactory` the registry uses, plus the cost estimator — which is only meaningfully resolved inside the per-repo providers, since it needs a container's [region](../core/shared/cost.md)), the per-repo `RepositoryProviderRegistry` (behind `TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>()`, so a host that pre-registers a different composer wins), the `JobRunner`, the `SchedulerService`, SignalR (camelCase payloads), CORS for the dev `ng serve` origin (`http://localhost:4200`), then static-file serving for the SPA. Routes split cleanly so client-side SPA routes never collide with the server: REST lives under `/api`, the hub under `/hubs/arius`, and `MapFallbackToFile("index.html")` serves the Angular app for everything else. An `/api`-group endpoint filter stamps every response with an `X-Arius-Version` header (`AriusVersion.Display`), CORS-exposed so the dev SPA can read it cross-origin.
 
-The SPA is a standalone-component Angular 21 app (Metronic/KTUI + Tailwind 4 — Metronic ships as **vendored** compiled assets under `public/assets/`, referenced from `angular.json` `styles`/`scripts`, not as an npm dependency; `MetronicInitService` and the `kt-init` directive only re-initialise KTUI's JS for DOM added dynamically) with lazy-loaded feature routes (`app.routes.ts`: `overview`, `repos/:repoId/{files,statistics,properties}`, `jobs`, `settings`, the add/create wizards). Two thin core services own all server traffic: `ApiService` (typed `HttpClient` over `/api`) and `RealtimeService` (`@microsoft/signalr` over `/hubs/arius`). `proxy.conf.json` forwards `/api` and `/hubs` to the .NET host during dev. `ApiService.getAppVersion()` reads that header (off `/api/health`) for the version badge in the rail.
+The SPA is a standalone-component Angular 21 app (Metronic/KTUI + Tailwind 4 — Metronic ships as **vendored** compiled assets under `public/assets/`, referenced from `angular.json` `styles`/`scripts`, not as an npm dependency; `MetronicInitService` and the `kt-init` directive only re-initialise KTUI's JS for DOM added dynamically) with lazy-loaded feature routes (`app.routes.ts`: `overview`, `repos/:repoId/{files,statistics}`, `jobs`, `settings`, the add/create wizards). Two thin core services own all server traffic: `ApiService` (typed `HttpClient` over `/api`) and `RealtimeService` (`@microsoft/signalr` over `/hubs/arius`). `proxy.conf.json` forwards `/api` and `/hubs` to the .NET host during dev. `ApiService.getAppVersion()` reads that header (off `/api/health`) for the version badge in the rail.
 
 ### Per-repository service provider
 
@@ -156,13 +156,14 @@ A never-answered prompt cannot pin the restore — and its per-repo write lock �
 
 ### App database and secrets
 
-`AppData/AppDatabase` is the host's own SQLite store — **separate from Core's chunk-index cache** — holding `storage_accounts`, `repositories`, `jobs`, `schedules`, and the `statistics_cache` (raw `SqliteConnection`, WAL, parameterized commands, mirroring Core's local-store idiom). The schema (`AppDatabase.CreateOrUpgradeSchema`) is five tables, all hanging off `repositories`:
+`AppData/AppDatabase` is the host's own SQLite store — **separate from Core's chunk-index cache** — holding `storage_accounts`, `repositories`, `jobs`, `schedules`, the option defaults (`global_defaults`, `repository_defaults`), and the `statistics_cache` (raw `SqliteConnection`, WAL, parameterized commands, mirroring Core's local-store idiom). The schema (`AppDatabase.CreateOrUpgradeSchema`) is seven tables; all but `storage_accounts` and `global_defaults` hang off `repositories`:
 
 ```mermaid
 erDiagram
     storage_accounts ||--o{ repositories     : "owns"
     repositories     ||--o{ jobs             : "runs"
     repositories     ||--o{ schedules        : "fires"
+    repositories     ||--o{ repository_defaults : "overrides"
     repositories     ||--o{ statistics_cache : "memoizes"
 
     storage_accounts {
@@ -177,7 +178,6 @@ erDiagram
         TEXT    container    "unique per account"
         INTEGER account_id   FK
         TEXT    local_path
-        TEXT    default_tier "default archive"
         TEXT    passphrase   "DP ciphertext, nullable"
         TEXT    created_at
     }
@@ -200,6 +200,15 @@ erDiagram
         INTEGER enabled "1 or 0"
         TEXT    next_run
     }
+    global_defaults {
+        TEXT    option PK "tier, onDisk, fastHash, overwrite or noPointers"
+        TEXT    value
+    }
+    repository_defaults {
+        INTEGER repo_id FK "PK with option"
+        TEXT    option  PK
+        TEXT    value
+    }
     statistics_cache {
         INTEGER repo_id     PK,FK
         TEXT    version     PK
@@ -210,7 +219,15 @@ erDiagram
     }
 ```
 
-Note there is **no region column**: the storage [region](../core/shared/cost.md) is not host state — it lives in each container's own metadata. `DeleteRepository` cascades to its `jobs` / `schedules` / `statistics_cache` rows in one transaction; an account cannot be deleted while it still owns repositories. It is the only persistent state the SPA reads through REST: account CRUD + key rotation (`AccountEndpoints`, `GET`/`POST`/`PATCH`/`DELETE` — an account is just a name + an encrypted key), repository CRUD (`RepositoryEndpoints`), a server-side directory browser for the local-path picker (`FilesystemEndpoints` → `/fs/list`, listing folders as the **Api host/container** sees them), job history and cron schedules (`JobEndpoints`), and the snapshot/statistics reads behind `BrowseEndpoints` — `SnapshotsListQuery` goes to Core live, while `StatisticsQuery` (which now also carries region-priced cost) is **memoized** in `statistics_cache` (below). Secrets — Azure account keys and repository passphrases — are stored as **ASP.NET Data Protection** ciphertext (`SecretProtector`, keyed by a key ring persisted to the mounted volume) and **never** serialized back to the client (the DTOs expose only `HasKey`, never the key/passphrase).
+Note there is **no region column**: the storage [region](../core/shared/cost.md) is not host state — it lives in each container's own metadata. `DeleteRepository` cascades to its `jobs` / `schedules` / `statistics_cache` / `repository_defaults` rows in one transaction; an account cannot be deleted while it still owns repositories. It is the only persistent state the SPA reads through REST: account CRUD + key rotation (`AccountEndpoints`, `GET`/`POST`/`PATCH`/`DELETE` — an account is just a name + an encrypted key), repository CRUD (`RepositoryEndpoints`), a server-side directory browser for the local-path picker (`FilesystemEndpoints` → `/fs/list`, listing folders as the **Api host/container** sees them), job history and cron schedules (`JobEndpoints`), and the snapshot/statistics reads behind `BrowseEndpoints` — `SnapshotsListQuery` goes to Core live, while `StatisticsQuery` (which now also carries region-priced cost) is **memoized** in `statistics_cache` (below). Secrets — Azure account keys and repository passphrases — are stored as **ASP.NET Data Protection** ciphertext (`SecretProtector`, keyed by a key ring persisted to the mounted volume) and **never** serialized back to the client (the DTOs expose only `HasKey`, never the key/passphrase).
+
+### Archive and restore defaults
+
+The five archive/restore options (upload tier, on-disk-after-archive, fast hash, overwrite, skip pointer files) obtain their value from a four-level hierarchy — Factory → Global settings → Repository properties → Run — where the nearest level that sets an option wins ([ADR-0025](../../decisions/adr-0025-archive-restore-defaults-hierarchy.md)). The first three levels are host state; the Run level is the explicit set of values the drawers send to `JobsHub`, which therefore needs no knowledge of defaults.
+
+Levels 1 and 2 must be able to say *not set*, so each is a key/value table keyed by option (`global_defaults`, and `repository_defaults` keyed by repository id) where a missing row means "inherit". `OptionDefaults.Resolve` is the single place the rule is applied, and returns every option's effective value together with the level it came from. Everything that needs a value goes through it: the `DefaultsEndpoints` (`/settings/defaults`, `/repos/{id}/defaults`, which also report what is set at the level so the UI can render provenance pills and **Reset**), `RepositoryDto`'s tier, and `SchedulerService`, which fires each scheduled archive with the repository's resolved tier, on-disk value (mapped to `removeLocal` / `writePointers`) and fast hash instead of hard-coded flags. Endpoint writes replace a level's whole set and validate at the boundary (a known tier, a known on-disk value, no unknown option).
+
+The legacy `repositories.default_tier` column is migrated once, idempotently, into `repository_defaults` as a *set* repository-level value, then dropped. A change to defaults only changes resolution, not connection material, so it never evicts a read provider or clears the statistics cache.
 
 ### Statistics cache
 
@@ -222,6 +239,7 @@ A repository's statistics are a **pure function of its snapshot set**, and the h
 
 ## Key invariants
 
+- **Defaults resolve in one place.** Whatever needs an effective archive/restore option value — the endpoints, repository DTOs, the scheduler — calls `OptionDefaults.Resolve`; nothing re-implements the precedence. A repository-level value always beats the global one, so a global change can never alter a repository that set its own value.
 - **One provider per repository; never a shared global Core container.** Core's singletons are repo-scoped; mixing repositories in one provider would cross-contaminate caches and secrets. `RepositoryProviderRegistry` is the single place providers are built.
 - **A job provider is single-use and self-disposed.** Reusing a job provider would reuse a chunk index that is single-shot after `FlushAsync`; the `JobRunner` disposes it in `finally`. Read providers, by contrast, are cached and must be **evicted** (`Evict`) on properties change, delete, or after an archive — otherwise the SPA serves a stale snapshot.
 - **Mutating jobs serialize per repository.** Two archive/restore jobs on the same repo must not run concurrently (shared on-disk Core state). Enforced by the per-repo `SemaphoreSlim`; cross-repo concurrency is intentionally unrestricted.

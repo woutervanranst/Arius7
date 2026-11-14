@@ -25,7 +25,7 @@ A narrow icon rail on the left switches between the three top-level areas:
 |---|---|
 | **Overview** | KPI cards, a **Storage accounts** table, and the **Repositories** table — whose header carries the **Add existing** / **New repository** buttons. The repository table shows each repository's tier, region, account, and last locally recorded archive-run time. Your home screen; it stays highlighted while you are inside a repository. |
 | **Jobs** | Every archive/restore run (one-off and scheduled) with a live output console. |
-| **Settings** | Placeholder for now. |
+| **Settings** | Global defaults for archive and restore options, used by every repository that doesn't set its own (see [Defaults: where values come from](#defaults-where-values-come-from)). |
 
 The top bar shows a breadcrumb and — on every screen except Overview — a global search box. Press
 **⌘K** (macOS) or **Ctrl+K** (Windows/Linux) anywhere to open search; **Esc** closes it.
@@ -81,9 +81,6 @@ Click **Add repository** — you land on the repository's Files view.
   `arius-photos`). One container per repository. It's the first field you fill.
 - **Friendly alias** *(optional)* — display name; defaults to the container name when left blank.
 - **Local path** *(optional)* — same meaning as above, with the same **[…]** server-folder browser.
-- **Default tier** — `Hot`, `Cool`, `Cold`, or `Archive`. This is the tier preselected for archive
-  runs; you can still override per run. `Archive` is the cheapest to store and the slowest/most
-  expensive to read back (it requires rehydration — see below).
 - **Passphrase** + **Confirm passphrase** — must match. The form won't enable **Create repository**
   until the container name, passphrase, and confirmation are all filled and matching. Mandatory
   fields are marked with a red asterisk, and a warning reminds you the passphrase cannot be recovered.
@@ -184,9 +181,14 @@ snapshot.
   must match before **Save changes** is enabled. Leaving it blank keeps the current one. Note that
   existing snapshots stay readable with the passphrase they were written with — rotating affects
   future writes, it does not re-encrypt the archive.
+- **Archive defaults** and **Restore defaults** — this repository's own defaults for the upload tier,
+  what happens to local files after an archive, fast hash, and the two restore options. Each option
+  either follows the global setting or is set for this repository; they have their own **Save** and
+  **Discard** buttons. See [Defaults: where values come from](#defaults-where-values-come-from).
 - **Scheduled archives** — add a cron expression (e.g. `0 2 * * *`, interpreted in **UTC**) to fire
-  archive runs automatically. Existing schedules show their next run time and a trash button to
-  delete them.
+  archive runs automatically, using this repository's archive defaults. Each schedule shows a
+  one-line summary of the values it will use (for example *Cool · keep files only · fast hash off*),
+  its next run time, and a trash button to delete it.
 - **Delete repository** *(danger zone)* — removes the repository from Arius after a confirm step.
   The Azure container and its blobs are **not** deleted; you can re-add it later with **Add
   existing**.
@@ -199,10 +201,11 @@ Click **Archive** in the repository header to open the Archive drawer (a right s
 
 1. **Source folder** — shown read-only; it's the repository's local path. If it's empty, set one in
    **Properties** first (there's nothing local to archive otherwise).
-2. **Upload tier** — `Hot` / `Cool` / `Cold` / `Archive` (defaults to the repository's default
-   tier). This is where the newly uploaded chunks land.
+2. **Upload tier** — `Hot` / `Cool` / `Cold` / `Archive`. This is where the newly uploaded chunks
+   land. `Archive` is the cheapest to store and the slowest and most expensive to read back (it
+   requires rehydration — see below).
 3. **On disk after archive** — a three-way choice:
-   - **Keep files only** — upload, write no pointer sidecars (the default).
+   - **Keep files only** — upload, write no pointer sidecars.
    - **Keep files + pointers** — also write `.pointer.arius` sidecars next to the binaries
      (`--write-pointers`).
    - **Replace with pointers** — after a successful upload, delete the local binaries and leave only
@@ -211,6 +214,10 @@ Click **Archive** in the repository header to open the Archive drawer (a right s
    run; faster on large, stable trees, off by default (`--fast-hash`).
 5. Click **Start archive**. The drawer switches to the live stream (see *Watching live progress*).
    Small files are bundled automatically (1 MB threshold, ~64 MB tar target).
+
+The tier, on-disk and fast-hash fields start out filled in from the repository's
+[defaults](#defaults-where-values-come-from), and each one says where its value came from. Change
+any of them to change this run only; nothing is saved.
 
 ---
 
@@ -223,11 +230,14 @@ Open the Restore drawer in one of two ways:
   you were viewing.
 
 The drawer shows the **target** (whole repository or *N* collected files) and the snapshot, then two
-options:
+options, both switches:
 
 - **Overwrite existing files** — re-restore files even if they're already present at the
-  destination. Off by default (identical files are skipped).
+  destination. When off, identical files are skipped.
 - **Skip pointer files** — don't write pointers.
+
+Both start out filled in from the repository's [defaults](#defaults-where-values-come-from) and
+say where their value came from; changing one affects this restore only.
 
 Click **Start restore**.
 
@@ -251,6 +261,42 @@ The modal adapts to what's being restored:
 Click **Approve & restore** to proceed, or **Decline** to cancel. Closing the drawer (or losing the
 connection — e.g. closing the tab) while the modal is up also declines and cancels the restore. A
 genuinely free restore skips the modal entirely.
+
+---
+
+## Defaults: where values come from
+
+Five options are chosen the same way everywhere: the upload tier, what happens to local files after
+an archive, fast hash (archive), and overwrite existing files and skip pointer files (restore). Each
+one gets its value from the nearest of four levels that sets it:
+
+1. **Factory defaults** — what Arius ships with: `Archive` tier, keep files only, and every switch
+   off. Fast hash is never on unless someone turns it on.
+2. **Global settings** — the **Settings** page. Applies to every repository.
+3. **Repository properties** — the defaults in a repository's **Properties**. Applies to that
+   repository only, and wins over the global setting.
+4. **Run** — the Archive or Restore drawer. Applies to that one run only and is not saved.
+
+Scheduled archives have no drawer, so they use the repository's values (level 3, falling back to the
+levels above it).
+
+Next to each field a small pill says where its value comes from:
+
+| Pill | Meaning |
+|---|---|
+| *Inherited from factory defaults* / *…global settings* / *…repository properties* | Nobody set it at this level; the value follows the level named. Change it up there and it changes here. |
+| *Set in global settings* / *Set for this repository* | Chosen at this level. It stays that way until you press **Reset**, even if you later pick the same value the level above has, so it won't follow later changes from above. |
+| *Changed for this run* | You changed it in a drawer for this run only. |
+
+**Reset** (shown next to a "set" or "changed" pill) puts the option back to following the level above.
+Global settings start empty, so everything begins as inherited from factory defaults. Changing a
+global setting changes every repository that doesn't set its own value for that option; a repository
+that does is unaffected.
+
+> **"Replace with pointers" deletes local files.** Each file is removed once it is safely archived,
+> leaving only its pointer file. Set globally, it applies to every repository that inherits it,
+> scheduled runs included — Settings lists which repositories those are. Set on a repository, its
+> scheduled runs do this unattended.
 
 ---
 

@@ -30,3 +30,4 @@ New decision? Copy [`adr-template.md`](adr-template.md).
 | [0022](adr-0022-scripted-fake-core-test-harness.md) | Scripted-fake-Core harness for Api/Web test coverage |
 | [0023](adr-0023-archive-tier-small-chunk-ceiling.md) | Treat the requested upload tier as a ceiling: never archive a chunk within the small-file threshold |
 | [0024](adr-0024-framework-zstandard-codec.md) | Replace ZstdSharp.Port with the .NET 11 Zstandard library |
+| [0025](adr-0025-archive-restore-defaults-hierarchy.md) | Resolve archive and restore defaults by live inheritance across four levels |
