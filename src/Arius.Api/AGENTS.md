@@ -12,10 +12,10 @@ Read the root [`../../AGENTS.md`](../../AGENTS.md) first — it owns the cross-c
 ## Layout
 - `Program.cs` — composition root. Everything app-level is a singleton; `SchedulerService` is the one `IHostedService`. REST under `/api`, hub at `/hubs/arius`, Angular SPA from `wwwroot` with a fallback to `index.html`.
 - `Composition/RepositoryProviderRegistry.cs` — builds per-repo Core service graphs.
-- `Endpoints/` — minimal-API `Map*Endpoints()` extensions (Account/Repository/Browse/Job); thin, sync CRUD over `AppDatabase`.
+- `Endpoints/` — minimal-API `Map*Endpoints()` extensions (Account/Repository/Browse/Job/Defaults); thin, sync CRUD over `AppDatabase`.
 - `Hubs/JobsHub.cs` + `Hubs/{Archive,Restore}Forwarders.cs` — SignalR surface and Core→client event forwarders.
 - `Jobs/` — `JobRunner`, `JobSink`, `RestoreApprovalRegistry`, `SchedulerService`, `JobFormat`.
-- `AppData/` — `AppDatabase`, `Records.cs`, `SecretProtector`.
+- `AppData/` — `AppDatabase`, `Records.cs`, `OptionDefaults` (the four-level defaults hierarchy; resolve through it, never re-implement precedence), `SecretProtector`.
 - `Contracts/` — `Dtos.cs`, `EntryDto.cs` (+ `EntryMapping.ToDto`). Map Core types to DTOs here, never expose Core records directly.
 
 ## Project-local idioms & gotchas
@@ -24,7 +24,7 @@ Read the root [`../../AGENTS.md`](../../AGENTS.md) first — it owns the cross-c
 - **`AddMediator()` must be called in `BuildAsync`**, not inside `AddArius` — the Mediator source generator runs against *this* assembly, so it must register the forwarders living here. Adding a new Core event to forward = add an `INotificationHandler<T>` in `Hubs/`; it's picked up automatically.
 - **`JobRunner` serializes writers per repo** via a `SemaphoreSlim` keyed by repositoryId — two mutating jobs never share a repo's on-disk state. Restore's `ConfirmRehydration` callback streams a `CostEstimate` then awaits `RestoreApprovalRegistry`; a dropped SignalR connection (`OnDisconnectedAsync`) declines it.
 - **`JobSink` is the only client channel**: `Log`/`Progress`/`CostEstimate`/`Done` to the job's SignalR group. It also holds the aggregate counters (`Interlocked`) feeding the drawer's stat grid.
-- **App SQLite (`AppDatabase`: accounts/repos/jobs/schedules) is separate from Core's chunk-index cache.** Raw `SqliteConnection` + WAL + parameterized commands, mirroring Core's local-store idiom.
+- **App SQLite (`AppDatabase`: accounts/repos/jobs/schedules/global_defaults/repository_defaults/statistics_cache) is separate from Core's chunk-index cache.** Raw `SqliteConnection` + WAL + parameterized commands, mirroring Core's local-store idiom.
 - **Secrets at rest**: account keys and passphrases go through `SecretProtector` (ASP.NET Data Protection, key ring on the mounted volume) — *not* Core's passphrase content encryption. Never store plaintext keys; always `Protect`/`Unprotect`.
 
 ## Run & test

@@ -138,5 +138,6 @@ nav:
       - decisions/adr-0022-scripted-fake-core-test-harness.md
       - decisions/adr-0023-archive-tier-small-chunk-ceiling.md
       - decisions/adr-0024-framework-zstandard-codec.md
+      - decisions/adr-0025-archive-restore-defaults-hierarchy.md
   - Glossary: glossary.md
   - History: history/INDEX.md
