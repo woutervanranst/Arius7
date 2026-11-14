@@ -11,7 +11,7 @@ import { scratchContainer } from '../support/scratch';
 //
 // Uses a per-run-unique container: repo deletion leaves the Azure blobs behind, and re-archiving a
 // reused scratch container yields a nondeterministic snapshot count, so each run starts clean.
-test('snapshot picker numbers snapshots newest-first with the newest as LATEST + default @write', async ({ page, request, repo }) => {
+test('snapshot picker numbers snapshots newest-first with the newest as LATEST + default @write', async ({ page, request, repo, setRepoDefaults }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive two-snapshot archive');
   test.setTimeout(420_000);
 
@@ -19,7 +19,7 @@ test('snapshot picker numbers snapshots newest-first with the newest as LATEST +
   fs.writeFileSync(path.join(src, 'first.txt'), `arius e2e snap1 ${Date.now()}`);
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer(`snaporder-${Date.now()}`), alias: 'E2E Snapshot Order', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
+    data: { accountId: repo.accountId, container: scratchContainer(`snaporder-${Date.now()}`), alias: 'E2E Snapshot Order', passphrase: 'e2etest', localPath: src },
   })).json();
 
   // Confirm completion from the backend (the new snapshot lands), not the live "Archive complete"
@@ -38,6 +38,7 @@ test('snapshot picker numbers snapshots newest-first with the newest as LATEST +
   };
 
   try {
+    await setRepoDefaults(created.id, { tier: 'cold' });
     await archive(1);
     fs.writeFileSync(path.join(src, 'second.txt'), `arius e2e snap2 ${Date.now()}`);
     await archive(2);

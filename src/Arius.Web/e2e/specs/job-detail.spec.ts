@@ -10,7 +10,7 @@ import { scratchContainer } from '../support/scratch';
 // Destructive + slow: archives a tiny folder to the Hot tier in a dedicated container, then restores
 // it to an empty destination. An online restore surfaces the estimated-cost modal on the job page;
 // approving it lets the download proceed (no rehydration, so no priority choice, no real cost).
-test('restore cost modal + approve flow lives on the job page @write', async ({ page, request, repo }) => {
+test('restore cost modal + approve flow lives on the job page @write', async ({ page, request, repo, setRepoDefaults }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive restore flow');
   test.setTimeout(300_000);
 
@@ -18,10 +18,11 @@ test('restore cost modal + approve flow lives on the job page @write', async ({ 
   fs.writeFileSync(path.join(src, 'hello.txt'), `arius e2e ${Date.now()}`);
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer(`jobdetail-${Date.now()}`), alias: 'E2E Job Detail', passphrase: 'e2etest', localPath: src, defaultTier: 'hot' },
+    data: { accountId: repo.accountId, container: scratchContainer(`jobdetail-${Date.now()}`), alias: 'E2E Job Detail', passphrase: 'e2etest', localPath: src },
   })).json();
 
   try {
+    await setRepoDefaults(created.id, { tier: 'hot' });
     // 1) archive to the Hot tier, then wait for it to finish (via the API — the pill/console is transient)
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();

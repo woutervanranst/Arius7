@@ -23,7 +23,7 @@ test('properties shows the repo fields and supports schedule add + delete', asyn
 // existing snapshots. DB-only (no archive), so it needs no @write.
 test('properties: passphrase requires a matching confirmation, then saves', async ({ page, request, repo }) => {
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer('passphrase'), alias: 'E2E Passphrase', localPath: '', defaultTier: 'cold', passphrase: 'original' },
+    data: { accountId: repo.accountId, container: scratchContainer('passphrase'), alias: 'E2E Passphrase', localPath: '', passphrase: 'original' },
   })).json();
 
   try {

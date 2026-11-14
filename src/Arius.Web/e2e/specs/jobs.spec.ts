@@ -38,7 +38,7 @@ test('jobs screen renders the sectioned overview, no live console', async ({ pag
 });
 
 // Destructive: creates a dedicated container so the main repo's data is never replaced.
-test('Detail › on an active row opens the job detail page @write', async ({ page, request, repo }) => {
+test('Detail › on an active row opens the job detail page @write', async ({ page, request, repo, setRepoDefaults }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive archive flow');
   test.setTimeout(120_000);
 
@@ -46,10 +46,11 @@ test('Detail › on an active row opens the job detail page @write', async ({ pa
   fs.writeFileSync(path.join(src, 'hello.txt'), `arius e2e ${Date.now()}`);
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer(`jobsoverview-${Date.now()}`), alias: 'E2E Jobs Overview', passphrase: 'e2etest', localPath: src, defaultTier: 'hot' },
+    data: { accountId: repo.accountId, container: scratchContainer(`jobsoverview-${Date.now()}`), alias: 'E2E Jobs Overview', passphrase: 'e2etest', localPath: src },
   })).json();
 
   try {
+    await setRepoDefaults(created.id, { tier: 'hot' });
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();
     await page.getByTestId('drawer-start').click();

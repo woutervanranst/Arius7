@@ -10,7 +10,7 @@ import { scratchContainer } from '../support/scratch';
 // real rehydration is run). The cost modal lives on the /jobs/:id detail page: Start dismisses the
 // drawer and hands the job to the pill; the detail page renders the cost modal from the
 // attach-replayed CostEstimate while the restore is parked at confirm-cost.
-test('restore of archive-tier data opens the cost-approval modal on the job page @write', async ({ page, request, repo }) => {
+test('restore of archive-tier data opens the cost-approval modal on the job page @write', async ({ page, request, repo, setRepoDefaults }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive cost-approval flow');
   test.setTimeout(300_000);
 
@@ -22,10 +22,11 @@ test('restore of archive-tier data opens the cost-approval modal on the job page
   fs.writeFileSync(path.join(src, 'archived.bin'), crypto.randomBytes(2_000_000)); // 2 MB → large chunk → Archive tier
 
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer(`cost-${Date.now()}`), alias: 'E2E Cost Target', passphrase: 'e2etest', localPath: src, defaultTier: 'archive' },
+    data: { accountId: repo.accountId, container: scratchContainer(`cost-${Date.now()}`), alias: 'E2E Cost Target', passphrase: 'e2etest', localPath: src },
   })).json();
 
   try {
+    await setRepoDefaults(created.id, { tier: 'archive' });
     // 1) archive to the Archive tier, then wait for it to finish (via the API — the pill is transient)
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-archive').click();

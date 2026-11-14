@@ -8,13 +8,13 @@ import { scratchContainer } from '../support/scratch';
 // Destructive: archives four distinct files into one repo, each at a different access tier, so the
 // statistics tier breakdown has more than the single tier the shared seed produces. Per-run-unique
 // container; the global teardown deletes scratch containers afterwards.
-test('statistics tier breakdown lists every archived tier, in API order @write', async ({ page, request, repo }) => {
+test('statistics tier breakdown lists every archived tier, in API order @write', async ({ page, request, repo, setRepoDefaults }) => {
   test.skip(!process.env.ARIUS_E2E_WRITE, 'set ARIUS_E2E_WRITE=1 to run the destructive multi-tier archive');
   test.setTimeout(420_000);
 
   const src = fs.mkdtempSync(path.join(os.tmpdir(), 'arius-e2e-tiers-'));
   const created = await (await request.post('/api/repos', {
-    data: { accountId: repo.accountId, container: scratchContainer(`tiers-${Date.now()}`), alias: 'E2E Tiers', passphrase: 'e2etest', localPath: src, defaultTier: 'cold' },
+    data: { accountId: repo.accountId, container: scratchContainer(`tiers-${Date.now()}`), alias: 'E2E Tiers', passphrase: 'e2etest', localPath: src },
   })).json();
 
   // Each run adds one new file (distinct content → a new chunk) and uploads it at the chosen tier,
@@ -40,6 +40,7 @@ test('statistics tier breakdown lists every archived tier, in API order @write',
   };
 
   try {
+    await setRepoDefaults(created.id, { tier: 'cold' });
     await archiveAtTier('hot', 'a.txt', 1);
     await archiveAtTier('cool', 'b.txt', 2);
     await archiveAtTier('cold', 'c.txt', 3);
