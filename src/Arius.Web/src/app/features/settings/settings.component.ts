@@ -16,6 +16,11 @@ import { DefaultsEditorComponent } from '../../shared/defaults-editor/defaults-e
     @if (defaults(); as d) {
       <arius-defaults-editor level="settings" [saved]="d.set" [inherited]="inherited()!" [inheritedBy]="d.inheritedBy" (save)="save($event)" />
       @if (saveError()) { <div data-testid="defaults-save-error" style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ saveError() }}</div> }
+    } @else if (loadError()) {
+      <div style="padding:24px 0;font-size:13px">
+        <span data-testid="defaults-load-error" style="color:#dc2626">Could not load defaults.</span>
+        <button class="ar-btn-outline" data-testid="defaults-load-retry" style="margin-left:10px" (click)="load()">Retry</button>
+      </div>
     } @else {
       <div style="padding:24px 0;color:#a1a1aa;font-size:13px">Loading…</div>
     }
@@ -26,9 +31,18 @@ export class SettingsComponent {
   protected readonly defaults = signal<GlobalDefaultsDto | null>(null);
   protected readonly inherited = computed(() => { const d = this.defaults(); return d ? fromFactory(d.factory) : null; });
   protected readonly saveError = signal<string | null>(null);
+  protected readonly loadError = signal(false);
 
   constructor() {
-    this.api.getGlobalDefaults().subscribe(d => this.defaults.set(d));
+    this.load();
+  }
+
+  protected load(): void {
+    this.loadError.set(false);
+    this.api.getGlobalDefaults().subscribe({
+      next: d => this.defaults.set(d),
+      error: () => this.loadError.set(true),
+    });
   }
 
   protected save(set: SetValues): void {

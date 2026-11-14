@@ -163,9 +163,11 @@ export class PropertiesTabComponent {
 
   protected saveDefaults(set: SetValues): void {
     this.defaultsError.set(null);
-    this.api.putRepositoryDefaults(+this.repoId(), set).subscribe({
-      next: d => this.defaults.set(d),
-      error: () => this.defaultsError.set('Could not save defaults — please try again.'),
+    const id = +this.repoId();
+    // Ignore a response that lands after the router switched this component to another repository.
+    this.api.putRepositoryDefaults(id, set).subscribe({
+      next: d => { if (+this.repoId() === id) this.defaults.set(d); },
+      error: () => { if (+this.repoId() === id) this.defaultsError.set('Could not save defaults — please try again.'); },
     });
   }
 

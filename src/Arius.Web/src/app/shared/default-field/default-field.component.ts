@@ -66,9 +66,9 @@ export const ON_DISK: { value: OnDisk; label: string; hint: string }[] = [
       <div class="ar-seg">
         @for (s of segs; track s.value) {
           @if (option() === 'tier') {
-            <button type="button" data-testid="tier-seg" [attr.data-tier]="s.value" [class.on]="value() === s.value" (click)="picked.emit(s.value)">{{ s.label }}</button>
+            <button type="button" data-testid="tier-seg" [attr.data-tier]="s.value" [class.on]="value() === s.value" [attr.aria-pressed]="value() === s.value" (click)="picked.emit(s.value)">{{ s.label }}</button>
           } @else {
-            <button type="button" data-testid="seg-on-disk" [attr.data-on-disk]="s.value" [class.on]="value() === s.value" (click)="picked.emit(s.value)">{{ s.label }}</button>
+            <button type="button" data-testid="seg-on-disk" [attr.data-on-disk]="s.value" [class.on]="value() === s.value" [attr.aria-pressed]="value() === s.value" (click)="picked.emit(s.value)">{{ s.label }}</button>
           }
         }
       </div>
