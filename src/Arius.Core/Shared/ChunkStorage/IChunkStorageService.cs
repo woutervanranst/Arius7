@@ -7,8 +7,7 @@ namespace Arius.Core.Shared.ChunkStorage;
 /// hydration state, rehydration start, and cleanup planning.
 /// </summary>
 /// <remarks>
-/// Large and tar uploads trust the supplied chunk hash. Source content must remain unchanged
-/// from hashing through upload completion; uploads do not rehash or round-trip verify it.
+/// Assumption: Source content must remain unchanged from hashing through upload completion.
 /// </remarks>
 public interface IChunkStorageService
 {
