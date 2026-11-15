@@ -91,7 +91,7 @@ arius restore ./photos \
   -c photos-backup
 ```
 
-Filter paths with `--target-path`.
+Restore only some files or folders with `--target` / `-t` (repeatable, e.g. `-t photos/2024 -t docs/tax.pdf`).
 
 ### List files in a snapshot
 
