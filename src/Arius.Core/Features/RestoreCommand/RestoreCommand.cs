@@ -25,10 +25,12 @@ public sealed record RestoreOptions
     public string? Version { get; init; }
 
     /// <summary>
-    /// Optional repository-relative path within the snapshot to restore.
-    /// <c>null</c> restores the full snapshot.
+    /// Repository-relative files or directories within the snapshot to restore; a file is restored when it is,
+    /// or lies under, any of them. A pointer-file path selects the binary file it stands in for.
+    /// Empty (or containing <see cref="RelativePath.Root"/>) restores the full snapshot.
+    /// A target that selects no file fails the restore before anything is written.
     /// </summary>
-    public RelativePath? TargetPath { get; init; }
+    public IReadOnlyList<RelativePath> TargetPaths { get; init; } = [];
 
     /// <summary>If <c>true</c>, replace existing local files instead of skipping conflicting files.</summary>
     public bool Overwrite { get; init; } = false;

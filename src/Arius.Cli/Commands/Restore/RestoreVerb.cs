@@ -1,6 +1,7 @@
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console.Rendering;
@@ -33,6 +34,11 @@ internal static class RestoreVerb
         {
             Description = "Overwrite local files without prompting",
         };
+        var targetOption = new Option<string[]>("-t", "--target")
+        {
+            Description                    = "Repository-relative file or directory to restore (repeatable; default: everything)",
+            AllowMultipleArgumentsPerToken = true,
+        };
 
         var cmd = new Command("restore", "Restore files from Azure Blob Storage to a local directory");
         cmd.Options.Add(accountOption);
@@ -43,6 +49,7 @@ internal static class RestoreVerb
         cmd.Options.Add(versionOption);
         cmd.Options.Add(noPointersRestore);
         cmd.Options.Add(overwriteOption);
+        cmd.Options.Add(targetOption);
 
         cmd.SetAction(async (parseResult, ct) =>
         {
@@ -54,11 +61,24 @@ internal static class RestoreVerb
             var version    = parseResult.GetValue(versionOption);
             var noPointers = parseResult.GetValue(noPointersRestore);
             var overwrite  = parseResult.GetValue(overwriteOption);
+            var targets    = parseResult.GetValue(targetOption) ?? [];
 
             var resolvedAccount = CliBuilder.ResolveAccount(account);
             if (resolvedAccount is null)
             {
                 AnsiConsole.MarkupLine("[red]Error:[/] No account provided. Use --account / -a or set ARIUS_ACCOUNT.");
+                return 1;
+            }
+
+            RelativePath[] targetPaths;
+            try
+            {
+                // Shell completion appends a separator to directory names; RelativePath rejects it.
+                targetPaths = targets.Select(target => RelativePath.FromPlatformRelativePath(target.TrimEnd('/', '\\'))).ToArray();
+            }
+            catch (FormatException ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Error:[/] Invalid --target value: {Markup.Escape(ex.Message)}");
                 return 1;
             }
 
@@ -119,6 +139,7 @@ internal static class RestoreVerb
                 {
                     RootDirectory = Path.GetFullPath(path),
                     Version       = version,
+                    TargetPaths   = targetPaths,
                     NoPointers    = noPointers,
                     Overwrite     = overwrite,
 

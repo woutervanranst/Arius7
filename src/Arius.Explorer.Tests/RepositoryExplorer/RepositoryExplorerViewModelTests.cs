@@ -247,6 +247,30 @@ public class RepositoryExplorerViewModelTests
     }
 
     [Test]
+    public async Task RestoreCommand_WhenOnlyLocalFilesAreSelected_DoesNotRestoreTheWholeSnapshot()
+    {
+        var settings = new FakeApplicationSettings();
+        var recentRepositoryManager = Substitute.For<IRecentRepositoryManager>();
+        var dialogService = Substitute.For<IDialogService>();
+        var mediator = Substitute.For<IMediator>();
+
+        using var repositorySession = new FakeRepositorySession { Mediator = mediator };
+        var logger = new FakeLogger<RepositoryExplorerViewModel>();
+        var viewModel = new RepositoryExplorerViewModel(settings, recentRepositoryManager, dialogService, repositorySession, logger)
+        {
+            Repository = CreateRepository(),
+            SelectedTreeNode = new TreeNodeViewModel(RelativePath.Root, showPlaceholder: false)
+        };
+
+        viewModel.SelectedFiles.Add(new FileItemViewModel(new RepositoryFileEntry(RelativePath.Parse("local-only.txt"), RepositoryEntryState.LocalBinary, ContentHashA, 1024, null, null)));
+        RepositoryExplorerViewModel.ShowMessageBox = static (_, _, _, _) => MessageBoxResult.Yes;
+
+        await viewModel.RestoreCommand.ExecuteAsync(null);
+
+        await mediator.DidNotReceive().Send(Arg.Any<RestoreCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
     public async Task RestoreCommand_WhenUserConfirms_RestoresFilesAndRefreshesNode()
     {
         var settings = new FakeApplicationSettings();
@@ -279,15 +303,17 @@ public class RepositoryExplorerViewModelTests
 
         viewModel.SelectedTreeNode = node;
         viewModel.SelectedFiles.Add(node.Items.Single());
+        viewModel.SelectedFiles.Add(new FileItemViewModel(new RepositoryFileEntry(RelativePath.Parse("sub/file-b.txt"), RepositoryEntryState.Repository | RepositoryEntryState.RepositoryHydrated, ContentHashA, 1024, null, null)));
         RepositoryExplorerViewModel.ShowMessageBox = static (_, _, _, _) => MessageBoxResult.Yes;
 
         await viewModel.RestoreCommand.ExecuteAsync(null);
         await WaitForAsync(viewModel, () => viewModel.SelectedTreeNode?.Items.Count == 1 && viewModel.SelectedFiles.Count == 0);
 
+        // All selected files restore in one command (one cost prompt, shared chunks downloaded once).
         await mediator.Received(1).Send(
             Arg.Is<RestoreCommand>(command =>
                 command.Options.RootDirectory == "C:/data" &&
-                command.Options.TargetPath == RelativePath.Parse("file-a.txt") &&
+                command.Options.TargetPaths.SequenceEqual(new[] { RelativePath.Parse("file-a.txt"), RelativePath.Parse("sub/file-b.txt") }) &&
                 command.Options.Overwrite &&
                 command.Options.NoPointers == false),
             Arg.Any<CancellationToken>());

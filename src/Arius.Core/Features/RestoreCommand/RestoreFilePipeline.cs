@@ -35,7 +35,7 @@ internal sealed class RestoreFilePipeline(
         StrongBox<long>?   skipped,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var files = WalkAsync(rootHash, opts.TargetPath, emitProgress: emitEvents, cancellationToken)
+        var files = WalkAsync(rootHash, opts.TargetPaths, emitProgress: emitEvents, cancellationToken)
             .WhereParallelAsync(
                 RouteWorkers,
                 (file, ct) => ShouldRestoreAsync(file, fs, opts, emitEvents, skipped, ct),
@@ -47,13 +47,13 @@ internal sealed class RestoreFilePipeline(
     }
 
     /// <summary>
-    /// Walks the snapshot filetree breadth-first and yields files under <paramref name="targetPrefix"/>,
-    /// or every file when no target path is supplied. Optionally emits traversal progress.
+    /// Walks the snapshot filetree breadth-first and yields files under any of <paramref name="targetPaths"/>,
+    /// or every file when none are supplied. Optionally emits traversal progress.
     /// </summary>
     private async IAsyncEnumerable<FileToRestore> WalkAsync(
-        FileTreeHash  rootHash,
-        RelativePath? targetPrefix,
-        bool          emitProgress,
+        FileTreeHash                rootHash,
+        IReadOnlyList<RelativePath> targetPaths,
+        bool                        emitProgress,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var total                 = 0;
@@ -61,7 +61,7 @@ internal sealed class RestoreFilePipeline(
         var lastEmit              = DateTimeOffset.UtcNow;
 
         var walker = new FileTreeWalker(fileTreeService);
-        await foreach (var file in walker.WalkFilesAsync(rootHash, targetPrefix, cancellationToken).ConfigureAwait(false))
+        await foreach (var file in walker.WalkFilesAsync(rootHash, targetPaths, cancellationToken).ConfigureAwait(false))
         {
             yield return file;
             total++;

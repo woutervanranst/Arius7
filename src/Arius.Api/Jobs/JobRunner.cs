@@ -181,10 +181,6 @@ public sealed class JobRunner(
                 provider, sink, jobId, destination, version, targetPaths, overwrite, noPointers,
                 confirmRehydration: async (estimate, ct) =>
                 {
-                    // Same priority for the whole run — a later target that also needs rehydration must not
-                    // re-prompt (idempotent restore reuses the already-approved answer).
-                    if (runApprovedPriority is not null) return runApprovedPriority;
-
                     lastEstimate = estimate;
                     sink.Log(estimate.ChunksNeedingRehydration > 0
                         ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
@@ -228,8 +224,7 @@ public sealed class JobRunner(
                     costDeclined = true;
                     sink.Log("Restore declined.", "warn");
                     return null;   // Core exits with ChunksPendingRehydration = the still-needed count
-                },
-                shouldStop: () => costDeclined);
+                });
 
             if (!success)
             {
@@ -281,46 +276,34 @@ public sealed class JobRunner(
         }
     }
 
-    /// <summary>Runs the restore command over the resolved targets with the supplied cost callback, summing
-    /// <see cref="RestoreResult.ChunksPendingRehydration"/>. Returns (totalPending, success, error). Shared by the
-    /// initial run and <see cref="ResumeRestoreAsync"/>. The caller owns status bookkeeping + persistence.</summary>
+    /// <summary>Runs one restore command over all target paths (empty = whole repository) with the supplied cost
+    /// callback. Returns (pending, success, error). Shared by the initial run and <see cref="ResumeRestoreAsync"/>.
+    /// The caller owns status bookkeeping + persistence.</summary>
     private async Task<(int Pending, bool Success, string? Error)> RunRestoreOnceAsync(
         ServiceProvider provider, JobSink sink, string jobId, string destination, string? version,
         IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers,
-        Func<RestoreCostEstimate, CancellationToken, Task<RehydratePriority?>> confirmRehydration,
-        Func<bool>? shouldStop = null)
+        Func<RestoreCostEstimate, CancellationToken, Task<RehydratePriority?>> confirmRehydration)
     {
         var mediator = provider.GetRequiredService<IMediator>();
-        var targets = targetPaths.Count == 0 ? new string?[] { null } : targetPaths.Cast<string?>().ToArray();
-        var totalPending = 0;
-
-        foreach (var target in targets)
+        var result = await mediator.Send(new RestoreCommand(new RestoreOptions
         {
-            var result = await mediator.Send(new RestoreCommand(new RestoreOptions
-            {
-                RootDirectory      = destination,
-                Version            = version,
-                TargetPath         = target is null ? null : RelativePath.Parse(target),
-                Overwrite          = overwrite,
-                NoPointers         = noPointers,
-                ConfirmRehydration = confirmRehydration,
-                // Stream large-file download progress into the sink so bytesRestored (and thus rate/ETA) advances
-                // continuously as a big file downloads, instead of only jumping when the whole file lands — the same
-                // Core ProgressStream hook the CLI uses. Tar-bundle small files stay
-                // per-file (their FileRestored events are already fine-grained), which also avoids double-counting a
-                // tar's bytes against its extracted files.
-                CreateLargeFileDownloadProgress = (relativePath, size) => new Progress<long>(c => sink.ReportRestoreStreamed(relativePath.ToString(), c)),
-            }), sink.Cts.Token);
+            RootDirectory      = destination,
+            Version            = version,
+            TargetPaths        = targetPaths.Select(RelativePath.Parse).ToArray(),
+            Overwrite          = overwrite,
+            NoPointers         = noPointers,
+            ConfirmRehydration = confirmRehydration,
+            // Stream large-file download progress into the sink so bytesRestored (and thus rate/ETA) advances
+            // continuously as a big file downloads, instead of only jumping when the whole file lands — the same
+            // Core ProgressStream hook the CLI uses. Tar-bundle small files stay
+            // per-file (their FileRestored events are already fine-grained), which also avoids double-counting a
+            // tar's bytes against its extracted files.
+            CreateLargeFileDownloadProgress = (relativePath, size) => new Progress<long>(c => sink.ReportRestoreStreamed(relativePath.ToString(), c)),
+        }), sink.Cts.Token);
 
-            if (!result.Success) return (totalPending, false, result.ErrorMessage);
-            totalPending += result.ChunksPendingRehydration;
-
-            // A decline/timeout on any target aborts the whole job — stop processing further targets so a later
-            // target cannot un-poison the run's terminal status. ResumeRestoreAsync passes no predicate (non-prompting,
-            // never declines/times-out).
-            if (shouldStop?.Invoke() == true) break;
-        }
-        return (totalPending, true, null);
+        return result.Success
+            ? (result.ChunksPendingRehydration, true, null)
+            : (0, false, result.ErrorMessage);
     }
 
     /// <summary>Re-drives a parked/rehydrating restore with the SAME jobId, non-prompting (honors the persisted

@@ -77,4 +77,47 @@ public class RestoreCommandTests
         cmd.Options.Overwrite.ShouldBeTrue();
         cmd.Options.NoPointers.ShouldBeTrue();
     }
+
+    [Test]
+    public async Task Restore_NoTarget_RestoresFullSnapshot()
+    {
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr");
+
+        exitCode.ShouldBe(0);
+        ReceivedOptions(harness).TargetPaths.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Restore_RepeatedTargetOption_ParsedIntoTargetPaths()
+    {
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr -t photos --target \"docs/Invoice 1,2.pdf\"");
+
+        exitCode.ShouldBe(0);
+        ReceivedOptions(harness).TargetPaths.ShouldBe([RelativePath.Parse("photos"), RelativePath.Parse("docs/Invoice 1,2.pdf")]);
+    }
+
+    [Test]
+    public async Task Restore_TargetOptionWithSeveralValues_ParsedIntoTargetPaths()
+    {
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr -t photos/ docs/a.pdf.pointer.arius");
+
+        exitCode.ShouldBe(0);
+        ReceivedOptions(harness).TargetPaths.ShouldBe([RelativePath.Parse("photos"), RelativePath.Parse("docs/a.pdf.pointer.arius")]);
+    }
+
+    [Test]
+    public async Task Restore_InvalidTarget_ReturnsExitCode1WithoutRestoring()
+    {
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr -t /absolute/path");
+
+        exitCode.ShouldBe(1);
+        harness.RestoreHandler.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    static RestoreOptions ReceivedOptions(CliHarness harness) =>
+        ((RestoreCommand)harness.RestoreHandler.ReceivedCalls().Single().GetArguments()[0]!).Options;
 }

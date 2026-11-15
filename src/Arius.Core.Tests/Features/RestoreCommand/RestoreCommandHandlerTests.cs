@@ -533,7 +533,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreDirectory.ToString(),
-                TargetPath = RelativePath.Parse("photos"),
+                TargetPaths = [RelativePath.Parse("photos")],
                 Overwrite = true,
             }),
             CancellationToken.None);
@@ -568,7 +568,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreDirectory.ToString(),
-                TargetPath = RelativePath.Root,
+                TargetPaths = [RelativePath.Root],
                 Overwrite = true,
             }),
             CancellationToken.None);
@@ -602,7 +602,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreDirectory.ToString(),
-                TargetPath = RelativePath.Parse("photos/pic.jpg"),
+                TargetPaths = [RelativePath.Parse("photos/pic.jpg")],
                 Overwrite = true,
                 NoPointers = true,
             }),
@@ -612,6 +612,154 @@ public class RestoreCommandHandlerTests
         restoreResult.FilesRestored.ShouldBe(1);
         fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
         fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg.pointer.arius")).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Handle_MultipleTargets_RestoresUnionOfFilesAndDirectories()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-multi-target-{Guid.NewGuid():N}",
+            $"ctr-restore-multi-target-{Guid.NewGuid():N}");
+
+        await ArchiveFilesAsync(fixture, "photos/pic.jpg", "photos/other.jpg", "docs/a.txt", "docs/b.txt", "root.txt");
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                TargetPaths   = [RelativePath.Parse("photos"), RelativePath.Parse("docs/a.txt"), RelativePath.Parse("photos/pic.jpg")],
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(3);
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/other.jpg")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("docs/a.txt")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("docs/b.txt")).ShouldBeFalse();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("root.txt")).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Handle_PointerFileTarget_RestoresItsBinaryFile()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-pointer-target-{Guid.NewGuid():N}",
+            $"ctr-restore-pointer-target-{Guid.NewGuid():N}");
+
+        await ArchiveFilesAsync(fixture, "photos/pic.jpg", "photos/other.jpg");
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                TargetPaths   = [RelativePath.Parse("photos/pic.jpg.pointer.arius")],
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(1);
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg.pointer.arius")).ShouldBeTrue();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/other.jpg")).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Handle_UnmatchedTarget_FailsBeforeCostPromptOrWrites()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-unmatched-target-{Guid.NewGuid():N}",
+            $"ctr-restore-unmatched-target-{Guid.NewGuid():N}");
+
+        await ArchiveFilesAsync(fixture, "photos/pic.jpg");
+
+        var prompted = false;
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                TargetPaths   = [RelativePath.Parse("photos/pic.jpg"), RelativePath.Parse("photos/typo.jpg")],
+                ConfirmRehydration = (_, _) =>
+                {
+                    prompted = true;
+                    return Task.FromResult<RehydratePriority?>(RehydratePriority.Standard);
+                },
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeFalse();
+        restoreResult.ErrorMessage.ShouldNotBeNull().ShouldContain("photos/typo.jpg");
+        restoreResult.ErrorMessage.ShouldNotContain("photos/pic.jpg");
+        prompted.ShouldBeFalse();
+        fixture.RestoreFileSystem.FileExists(RelativePath.Parse("photos/pic.jpg")).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Handle_TargetWhoseFilesAreIdenticalLocally_CountsAsMatched()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-identical-target-{Guid.NewGuid():N}",
+            $"ctr-restore-identical-target-{Guid.NewGuid():N}");
+
+        await ArchiveFilesAsync(fixture, "photos/pic.jpg");
+        await fixture.RestoreFileSystem.WriteAllBytesAsync(
+            RelativePath.Parse("photos/pic.jpg"),
+            fixture.LocalFileSystem.ReadAllBytes(RelativePath.Parse("photos/pic.jpg")),
+            CancellationToken.None);
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                TargetPaths   = [RelativePath.Parse("photos")],
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesSkipped.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task Handle_TargetsSharingATarChunk_DownloadChunkOnce()
+    {
+        await using var fixture = await RepositoryTestFixture.CreateInMemoryAsync(
+            $"acct-restore-shared-tar-targets-{Guid.NewGuid():N}",
+            $"ctr-restore-shared-tar-targets-{Guid.NewGuid():N}");
+
+        await ArchiveFilesAsync(fixture, "aaa/first.bin", "zzz/second.bin", "mmm/unselected.bin");
+
+        var blobs = (FakeInMemoryBlobContainerService)fixture.BlobContainer;
+        blobs.RequestedBlobNames.Clear();
+
+        var restoreResult = await fixture.CreateRestoreHandler().Handle(
+            new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
+            {
+                RootDirectory = fixture.RestoreDirectory.ToString(),
+                TargetPaths   = [RelativePath.Parse("aaa/first.bin"), RelativePath.Parse("zzz")],
+            }),
+            CancellationToken.None);
+
+        restoreResult.Success.ShouldBeTrue(restoreResult.ErrorMessage);
+        restoreResult.FilesRestored.ShouldBe(2);
+        blobs.RequestedBlobNames.Count(n => n.ToString().StartsWith("chunks/")).ShouldBe(1);
+    }
+
+    /// <summary>Writes one small distinct file per path and archives them into a single tar chunk.</summary>
+    static async Task ArchiveFilesAsync(RepositoryTestFixture fixture, params string[] paths)
+    {
+        for (var i = 0; i < paths.Length; i++)
+            await fixture.LocalFileSystem.WriteAllBytesAsync(RelativePath.Parse(paths[i]), [(byte)i, 1, 2, 3], CancellationToken.None);
+
+        var archiveResult = await fixture.CreateArchiveHandler().Handle(
+            new Arius.Core.Features.ArchiveCommand.ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory      = fixture.LocalDirectory.ToString(),
+                UploadTier         = BlobTier.Cool,
+                SmallFileThreshold = 1024 * 1024,
+            }),
+            CancellationToken.None);
+
+        archiveResult.Success.ShouldBeTrue(archiveResult.ErrorMessage);
     }
 
     [Test]
@@ -638,7 +786,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreDirectory.ToString(),
-                TargetPath = RelativePath.Parse("photos/pic.jpg"),
+                TargetPaths = [RelativePath.Parse("photos/pic.jpg")],
                 Overwrite = true,
             }),
             CancellationToken.None);
@@ -744,7 +892,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreDirectory.ToString(),
-                TargetPath    = targetPath,
+                TargetPaths    = [targetPath],
                 Overwrite     = true,
                 ConfirmRehydration = (estimate, _) =>
                 {
@@ -796,7 +944,7 @@ public class RestoreCommandHandlerTests
             new Core.Features.RestoreCommand.RestoreCommand(new RestoreOptions
             {
                 RootDirectory = fixture.RestoreDirectory.ToString(),
-                TargetPath    = targetPath,
+                TargetPaths    = [targetPath],
                 Overwrite     = true,
             }),
             CancellationToken.None);
