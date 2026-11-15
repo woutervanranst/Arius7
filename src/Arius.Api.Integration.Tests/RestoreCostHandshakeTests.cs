@@ -69,4 +69,38 @@ public class RestoreCostHandshakeTests
         await Assert.That(outcome!.Contains("\"filesRestored\":3")).IsTrue();
         await Assert.That(outcome!.Contains("\"FilesRestored\"")).IsFalse();
     }
+
+    [Test]
+    public async Task Multiple_target_paths_run_as_one_restore_with_one_cost_prompt()
+    {
+        await using var factory = new AriusApiFactory();
+        var dest = Path.Combine(Path.GetTempPath(), $"arius-itest-dst-{Guid.NewGuid():N}");
+        var repoId = factory.SeedRepository(localPath: dest);
+
+        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.RehydratingRestore() with
+        {
+            PostApproveEvents =
+            [
+                new FileRestoredEvent(RelativePath.Parse("photos/a.jpg"), 1000),
+                new FileRestoredEvent(RelativePath.Parse("docs/b.txt"), 1000),
+            ],
+            Result = new RestoreResult { Success = true, FilesRestored = 2, FilesSkipped = 0, ChunksPendingRehydration = 0 },
+        });
+
+        var runner = factory.Services.GetRequiredService<JobRunner>();
+        var approvals = factory.Services.GetRequiredService<RestoreApprovalRegistry>();
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        var jobId = Guid.NewGuid().ToString();
+
+        var run = runner.RunRestoreAsync(repoId, jobId, connectionId: "test", version: null,
+            targetPaths: ["photos", "docs/b.txt"], overwrite: false, noPointers: false);
+
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        approvals.Resolve(jobId, RehydratePriority.Standard);
+
+        await run;
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
+        // One restore over both targets: each file is counted once, not once per target.
+        await Assert.That(db.GetJob(jobId)!.Outcome!.Contains("\"filesRestored\":2")).IsTrue();
+    }
 }

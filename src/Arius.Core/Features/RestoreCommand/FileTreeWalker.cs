@@ -9,45 +9,70 @@ namespace Arius.Core.Features.RestoreCommand;
 internal sealed class FileTreeWalker(IFileTreeService fileTreeService)
 {
     /// <summary>
-    /// Walks snapshot filetrees breadth-first and yields files under <paramref name="targetPrefix"/>,
-    /// or all files when no target path is supplied.
+    /// Walks snapshot filetrees breadth-first and yields the files that are, or lie under, any of
+    /// <paramref name="targetPaths"/>, or all files when <paramref name="targetPaths"/> is empty. Each file is
+    /// yielded once, even when targets overlap. Throws after the walk when a target selected no file.
     /// </summary>
     public async IAsyncEnumerable<FileToRestore> WalkFilesAsync(
-        FileTreeHash rootHash,
-        RelativePath? targetPrefix,
+        FileTreeHash                      rootHash,
+        IReadOnlyCollection<RelativePath> targetPaths,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var pending = new Queue<(FileTreeHash TreeHash, RelativePath Path)>();
-        pending.Enqueue((rootHash, RelativePath.Root));
+        var targets = targetPaths.ToHashSet();
+        // Directories on the way down to a target: walked, but their files are not selected by that target.
+        var targetAncestors = targets.SelectMany(AncestorsAndSelf).ToHashSet();
+        var matchedTargets  = new HashSet<RelativePath>();
+
+        // Selected: the directory is, or lies under, a target, so all of its files are selected.
+        var pending = new Queue<(FileTreeHash TreeHash, RelativePath Path, bool Selected)>();
+        pending.Enqueue((rootHash, RelativePath.Root, targets.Count == 0 || targets.Contains(RelativePath.Root)));
 
         while (pending.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (treeHash, currentPath) = pending.Dequeue();
-
-            if (targetPrefix is not null && !IsPathRelevant(currentPath, targetPrefix.Value))
-                continue;
+            var (treeHash, currentPath, selected) = pending.Dequeue();
 
             var entries = await fileTreeService.ReadAsync(treeHash, cancellationToken).ConfigureAwait(false);
 
+            var directoryMatchesRecorded = false;
             foreach (var fileEntry in entries.OfType<FileEntry>())
             {
                 var entryPath = currentPath / fileEntry.Name;
-                if (targetPrefix is not null && !entryPath.StartsWith(targetPrefix.Value))
+                var isTarget  = targets.Contains(entryPath);
+                if (!selected && !isTarget)
                     continue;
+
+                if (isTarget)
+                    matchedTargets.Add(entryPath);
+
+                // Targets at or above this directory are the same for all its files: record them once.
+                if (selected && !directoryMatchesRecorded && targets.Count > 0)
+                {
+                    directoryMatchesRecorded = true;
+                    matchedTargets.UnionWith(AncestorsAndSelf(currentPath).Where(targets.Contains));
+                }
 
                 yield return new FileToRestore(entryPath, fileEntry.ContentHash, fileEntry.Created, fileEntry.Modified);
             }
 
             foreach (var directoryEntry in entries.OfType<DirectoryEntry>())
-                pending.Enqueue((directoryEntry.FileTreeHash, currentPath / directoryEntry.Name));
+            {
+                var childPath     = currentPath / directoryEntry.Name;
+                var childSelected = selected || targets.Contains(childPath);
+                if (childSelected || targetAncestors.Contains(childPath))
+                    pending.Enqueue((directoryEntry.FileTreeHash, childPath, childSelected));
+            }
         }
-    }
 
-    private static bool IsPathRelevant(RelativePath currentPath, RelativePath targetPrefix)
-    {
-        return currentPath == RelativePath.Root
-            || targetPrefix.StartsWith(currentPath)
-            || currentPath.StartsWith(targetPrefix);
+        // A target that selects nothing is almost always a typo; restore fails before the cost prompt and any write.
+        var unmatchedTargets = targets.Where(target => !matchedTargets.Contains(target)).ToArray();
+        if (unmatchedTargets.Length > 0)
+            throw new InvalidOperationException($"{unmatchedTargets.Length} target path(s) not found in the snapshot: {string.Join(", ", unmatchedTargets.Take(5))}.");
+
+        static IEnumerable<RelativePath> AncestorsAndSelf(RelativePath path)
+        {
+            for (RelativePath? current = path; current is not null; current = current.Value.Parent)
+                yield return current.Value;
+        }
     }
 }

@@ -90,10 +90,17 @@ public sealed class RestoreCommandHandler(
     {
         var opts = command.Options;
 
-        logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} targetPath={TargetPath} overwrite={Overwrite} noPointers={NoPointers}", opts.RootDirectory, accountName, containerName, opts.Version ?? "latest", opts.TargetPath?.ToString() ?? "(all)", opts.Overwrite, opts.NoPointers);
+        logger.LogInformation("[restore] Start: target={RootDir} account={Account} container={Container} version={Version} targetPaths={TargetPaths} overwrite={Overwrite} noPointers={NoPointers}", opts.RootDirectory, accountName, containerName, opts.Version ?? "latest", opts.TargetPaths.Count == 0 ? "(all)" : $"{opts.TargetPaths.Count}: {string.Join(", ", opts.TargetPaths.Take(5))}", opts.Overwrite, opts.NoPointers);
 
         try
         {
+            opts = opts with
+            {
+                TargetPaths = opts.TargetPaths.Contains(RelativePath.Root)
+                    ? []
+                    : opts.TargetPaths.Select(path => path.IsPointerPath() ? path.ToBinaryPath() : path).Distinct().ToArray(),
+            };
+
             // ── Stage 1: Resolve snapshot ─────────────────────────────────────────
             logger.LogInformation("[phase] resolve-snapshot");
             var snapshot = await snapshotSvc.ResolveAsync(opts.Version, cancellationToken);

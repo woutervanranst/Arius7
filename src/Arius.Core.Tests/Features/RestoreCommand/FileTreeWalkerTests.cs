@@ -25,7 +25,7 @@ public class FileTreeWalkerTests
 
         var walker = await CreateWalkerAsync(rootTree, childTree, nestedTree);
 
-        var files = await walker.WalkFilesAsync(await ComputeHashAsync(rootTree), targetPrefix: null, CancellationToken.None)
+        var files = await walker.WalkFilesAsync(await ComputeHashAsync(rootTree), [], CancellationToken.None)
             .Select(file => file.RelativePath)
             .ToListAsync();
 
@@ -49,7 +49,7 @@ public class FileTreeWalkerTests
 
         var walker = await CreateWalkerAsync(rootTree, photosTree, photoshopTree);
 
-        var files = await walker.WalkFilesAsync(await ComputeHashAsync(rootTree), RelativePath.Parse("photos"), CancellationToken.None)
+        var files = await walker.WalkFilesAsync(await ComputeHashAsync(rootTree), [RelativePath.Parse("photos")], CancellationToken.None)
             .Select(file => file.RelativePath)
             .ToListAsync();
 
@@ -66,7 +66,7 @@ public class FileTreeWalkerTests
 
         var walker = await CreateWalkerAsync(rootTree, photosTree);
 
-        var files = await walker.WalkFilesAsync(await ComputeHashAsync(rootTree), RelativePath.Parse("photos/pic.jpg"), CancellationToken.None)
+        var files = await walker.WalkFilesAsync(await ComputeHashAsync(rootTree), [RelativePath.Parse("photos/pic.jpg")], CancellationToken.None)
             .ToListAsync();
 
         var file = files.Single();
@@ -74,6 +74,74 @@ public class FileTreeWalkerTests
         file.ContentHash.ShouldBe(FakeContentHash('1'));
         file.Created.ShouldBe(s_created);
         file.Modified.ShouldBe(s_modified);
+    }
+
+    [Test]
+    public async Task WalkFilesAsync_MultipleTargets_YieldsEachSelectedFileOnce()
+    {
+        var photosTree = Entries(
+            FileEntryOf("pic.jpg", FakeContentHash('1')),
+            FileEntryOf("other.jpg", FakeContentHash('2')));
+        var docsTree = Entries(
+            FileEntryOf("a.txt", FakeContentHash('3')),
+            FileEntryOf("b.txt", FakeContentHash('4')));
+        var rootTree = Entries(
+            DirectoryEntryOf("photos", await ComputeHashAsync(photosTree)),
+            DirectoryEntryOf("docs", await ComputeHashAsync(docsTree)),
+            FileEntryOf("root.txt", FakeContentHash('5')));
+
+        var walker = await CreateWalkerAsync(rootTree, photosTree, docsTree);
+
+        // "photos/pic.jpg" overlaps "photos": the file must still be yielded once.
+        var files = await walker.WalkFilesAsync(
+                await ComputeHashAsync(rootTree),
+                [RelativePath.Parse("photos"), RelativePath.Parse("docs/a.txt"), RelativePath.Parse("photos/pic.jpg")],
+                CancellationToken.None)
+            .Select(file => file.RelativePath)
+            .ToListAsync();
+
+        files.ShouldBe([
+            RelativePath.Parse("photos/pic.jpg"),
+            RelativePath.Parse("photos/other.jpg"),
+            RelativePath.Parse("docs/a.txt")
+        ], ignoreOrder: true);
+    }
+
+    [Test]
+    public async Task WalkFilesAsync_TargetDirectoryWithOnlyNestedFiles_YieldsThem()
+    {
+        var yearTree = Entries(FileEntryOf("pic.jpg", FakeContentHash('1')));
+        var photosTree = Entries(DirectoryEntryOf("2024", await ComputeHashAsync(yearTree)));
+        var rootTree = Entries(
+            DirectoryEntryOf("photos", await ComputeHashAsync(photosTree)),
+            FileEntryOf("root.txt", FakeContentHash('2')));
+
+        var walker = await CreateWalkerAsync(rootTree, photosTree, yearTree);
+
+        var files = await walker.WalkFilesAsync(await ComputeHashAsync(rootTree), [RelativePath.Parse("photos")], CancellationToken.None)
+            .Select(file => file.RelativePath)
+            .ToListAsync();
+
+        files.ShouldBe([RelativePath.Parse("photos/2024/pic.jpg")]);
+    }
+
+    [Test]
+    public async Task WalkFilesAsync_TargetSelectingNoFile_ThrowsNamingOnlyThatTarget()
+    {
+        var photosTree = Entries(FileEntryOf("pic.jpg", FakeContentHash('1')));
+        var rootTree = Entries(DirectoryEntryOf("photos", await ComputeHashAsync(photosTree)));
+
+        var walker = await CreateWalkerAsync(rootTree, photosTree);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await walker.WalkFilesAsync(
+                    await ComputeHashAsync(rootTree),
+                    [RelativePath.Parse("photos"), RelativePath.Parse("photos/pic.jpg"), RelativePath.Parse("photos/typo.jpg")],
+                    CancellationToken.None)
+                .ToListAsync());
+
+        ex.Message.ShouldContain("1 target path(s) not found");
+        ex.Message.ShouldContain("photos/typo.jpg");
     }
 
     private static async Task<FileTreeWalker> CreateWalkerAsync(params IReadOnlyList<FileTreeEntry>[] trees)

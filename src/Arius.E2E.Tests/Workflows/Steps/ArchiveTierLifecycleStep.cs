@@ -65,7 +65,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
             .Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = state.Fixture.RestoreDirectory.ToString(),
-                TargetPath = targetChunk.TargetRelativePath,
+                TargetPaths = [targetChunk.TargetRelativePath],
                 Overwrite = true,
                 ConfirmRehydration = (estimate, _) =>
                 {
@@ -105,7 +105,7 @@ internal sealed record ArchiveTierLifecycleStep(string Name, RelativePath Target
             var readyResult = await state.Fixture.CreateRestoreHandler().Handle(new RestoreCommand(new RestoreOptions
             {
                 RootDirectory = readyRestoreDirectory.ToString(),
-                TargetPath = targetChunk.TargetRelativePath,
+                TargetPaths = [targetChunk.TargetRelativePath],
                 Overwrite = true,
                 ConfirmCleanup = (count, _, _) =>
                 {

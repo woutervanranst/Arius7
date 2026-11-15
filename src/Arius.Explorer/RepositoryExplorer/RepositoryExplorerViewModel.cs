@@ -385,8 +385,13 @@ public partial class RepositoryExplorerViewModel : ObservableObject
     [RelayCommand]
     private async Task RestoreAsync()
     {
-        // Validate prerequisites
-        if (Repository == null || !SelectedFiles.Any())
+        // Local-only files cannot be restored, and an empty TargetPaths would restore the whole snapshot.
+        var targetPaths = SelectedFiles
+            .Where(item => item.File.State.HasFlag(RepositoryEntryState.Repository))
+            .Select(item => item.File.RelativePath)
+            .ToArray();
+
+        if (Repository == null || targetPaths.Length == 0)
             return;
 
         await EnsureHydrationStatusesAsync(SelectedFiles, CancellationToken.None);
@@ -418,23 +423,20 @@ public partial class RepositoryExplorerViewModel : ObservableObject
         {
             IsLoading = true;
 
-            foreach (var selectedFile in SelectedFiles)
+            var command = new RestoreCommand(new RestoreOptions
             {
-                var command = new RestoreCommand(new RestoreOptions
-                {
-                    RootDirectory = Repository.LocalDirectoryPath,
-                    TargetPath = selectedFile.File.RelativePath,
-                    Overwrite = true,
-                    NoPointers = false,
-                });
+                RootDirectory = Repository.LocalDirectoryPath,
+                TargetPaths = targetPaths,
+                Overwrite = true,
+                NoPointers = false,
+            });
 
-                var result = await repositorySession.Mediator.Send(command);
-                if (!result.Success)
-                {
-                    throw new InvalidOperationException(result.ErrorMessage ?? $"Restore failed for {selectedFile.File.RelativePath}.");
-                }
+            var result = await repositorySession.Mediator.Send(command);
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(result.ErrorMessage ?? "Restore failed.");
             }
-            
+
             SelectedFiles.Clear();
 
             // Refresh the view after restore
