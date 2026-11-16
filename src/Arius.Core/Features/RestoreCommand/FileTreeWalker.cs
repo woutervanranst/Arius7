@@ -19,11 +19,11 @@ internal sealed class FileTreeWalker(IFileTreeService fileTreeService)
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var targets = targetPaths.ToHashSet();
-        // Directories on the way down to a target: walked, but their files are not selected by that target.
+        // Ancestors of a target are walked to reach it, but their own files are not selected by it.
         var targetAncestors = targets.SelectMany(AncestorsAndSelf).ToHashSet();
         var matchedTargets  = new HashSet<RelativePath>();
 
-        // Selected: the directory is, or lies under, a target, so all of its files are selected.
+        // Selected: the directory is, or lies under, a target, so every file in it is restored.
         var pending = new Queue<(FileTreeHash TreeHash, RelativePath Path, bool Selected)>();
         pending.Enqueue((rootHash, RelativePath.Root, targets.Count == 0 || targets.Contains(RelativePath.Root)));
 
@@ -45,7 +45,7 @@ internal sealed class FileTreeWalker(IFileTreeService fileTreeService)
                 if (isTarget)
                     matchedTargets.Add(entryPath);
 
-                // Targets at or above this directory are the same for all its files: record them once.
+                // All files in a selected directory match the same targets (those at or above it); record them once.
                 if (selected && !directoryMatchesRecorded && targets.Count > 0)
                 {
                     directoryMatchesRecorded = true;
@@ -64,7 +64,7 @@ internal sealed class FileTreeWalker(IFileTreeService fileTreeService)
             }
         }
 
-        // A target that selects nothing is almost always a typo; restore fails before the cost prompt and any write.
+        // A target that selects nothing is most likely a typo: fail before the cost prompt or any write.
         var unmatchedTargets = targets.Where(target => !matchedTargets.Contains(target)).ToArray();
         if (unmatchedTargets.Length > 0)
             throw new InvalidOperationException($"{unmatchedTargets.Length} target path(s) not found in the snapshot: {string.Join(", ", unmatchedTargets.Take(5))}.");

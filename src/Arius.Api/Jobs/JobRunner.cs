@@ -293,11 +293,8 @@ public sealed class JobRunner(
             Overwrite          = overwrite,
             NoPointers         = noPointers,
             ConfirmRehydration = confirmRehydration,
-            // Stream large-file download progress into the sink so bytesRestored (and thus rate/ETA) advances
-            // continuously as a big file downloads, instead of only jumping when the whole file lands — the same
-            // Core ProgressStream hook the CLI uses. Tar-bundle small files stay
-            // per-file (their FileRestored events are already fine-grained), which also avoids double-counting a
-            // tar's bytes against its extracted files.
+            // Large files report download progress as they stream, so bytesRestored (and the rate/ETA derived from it)
+            // advances continuously. Files in a tar chunk report per file, which avoids counting the tar's bytes twice.
             CreateLargeFileDownloadProgress = (relativePath, size) => new Progress<long>(c => sink.ReportRestoreStreamed(relativePath.ToString(), c)),
         }), sink.Cts.Token);
 
