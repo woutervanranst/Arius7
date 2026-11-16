@@ -7,7 +7,10 @@ using Arius.Api.Downloads;
 using Arius.Api.FakeTestHost;
 using Arius.Api.Integration.Tests.Harness;
 using Arius.Api.Jobs;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
+using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests;
@@ -16,17 +19,22 @@ public class DownloadEndpointsTests
 {
     private static readonly DownloadFile[] Collected = [new("photos/a.jpg", 1000), new("docs/b.txt", 500)];
 
-    private static async Task<(long RepoId, string JobId, Task Run)> StartDownloadAsync(AriusApiFactory factory, bool gated = false, bool awaitRun = true)
+    private static async Task<(long RepoId, string JobId, Task Run)> StartDownloadAsync(AriusApiFactory factory, bool gated = false, bool awaitRun = true, DownloadFile[]? files = null)
     {
+        files ??= Collected;
         var repoId = factory.SeedRepository();
-        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.OnlineDownload(gated));
+        // The scripted Core restores exactly the collected files (writing "scripted:{path}" for each).
+        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.OnlineDownload(gated) with
+        {
+            PostApproveEvents = files.Select(f => (INotification)new FileRestoredEvent(RelativePath.Parse(f.Path), f.Size)).ToList(),
+        });
 
         var runner = factory.Services.GetRequiredService<JobRunner>();
         var approvals = factory.Services.GetRequiredService<RestoreApprovalRegistry>();
         var db = factory.Services.GetRequiredService<AppDatabase>();
         var jobId = Guid.NewGuid().ToString();
 
-        var run = runner.RunDownloadAsync(repoId, jobId, "v1", Collected);
+        var run = runner.RunDownloadAsync(repoId, jobId, "v1", files);
         await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
         approvals.Resolve(jobId, RehydratePriority.Standard);
         if (awaitRun) await run;
@@ -45,7 +53,7 @@ public class DownloadEndpointsTests
         var state = await client.GetFromJsonAsync<JsonElement>($"/api/jobs/{jobId}/download");
 
         var files = state.GetProperty("files").EnumerateArray().ToList();
-        await Assert.That(files.Select(f => f.GetProperty("path").GetString())).IsEquivalentTo(["docs/b.txt", "photos/a.jpg"]);
+        await Assert.That(files.Select(f => f.GetProperty("path").GetString()!)).IsEquivalentTo(["docs/b.txt", "photos/a.jpg"]);
         await Assert.That(files.Single(f => f.GetProperty("path").GetString() == "photos/a.jpg").GetProperty("downloaded").GetBoolean()).IsTrue();
         await Assert.That(files.Single(f => f.GetProperty("path").GetString() == "docs/b.txt").GetProperty("downloaded").GetBoolean()).IsFalse();
         await Assert.That(files.All(f => f.GetProperty("ready").GetBoolean())).IsTrue();
@@ -86,6 +94,43 @@ public class DownloadEndpointsTests
         await Assert.That(contents["photos/a.jpg"]).IsEqualTo("scripted:photos/a.jpg");
         await Assert.That(contents["docs/b.txt"]).IsEqualTo("scripted:docs/b.txt");
         await Assert.That(db.ListDownloadFiles(jobId).All(f => f.Downloaded)).IsTrue();
+    }
+
+    [Test]
+    public async Task A_zip_keeps_non_ascii_paths_and_same_named_files_from_different_folders_apart()
+    {
+        await using var factory = new AriusApiFactory();
+        var (_, jobId, _) = await StartDownloadAsync(factory, files: [new("docs/ü c.txt", 10), new("a/x.txt", 20), new("b/x.txt", 30)]);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync($"/api/jobs/{jobId}/download/content?set=all");
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await using var zip = new ZipArchive(await response.Content.ReadAsStreamAsync(), ZipArchiveMode.Read);
+        var contents = new Dictionary<string, string>();
+        foreach (var entry in zip.Entries)
+        {
+            using var reader = new StreamReader(entry.Open());
+            contents[entry.FullName] = await reader.ReadToEndAsync();
+        }
+        await Assert.That(contents.Keys.Order()).IsEquivalentTo(["a/x.txt", "b/x.txt", "docs/ü c.txt"]);
+        await Assert.That(contents["a/x.txt"]).IsEqualTo("scripted:a/x.txt");
+        await Assert.That(contents["b/x.txt"]).IsEqualTo("scripted:b/x.txt");
+        await Assert.That(contents["docs/ü c.txt"]).IsEqualTo("scripted:docs/ü c.txt");
+    }
+
+    [Test]
+    public async Task A_single_non_ascii_file_downloads_under_its_own_name()
+    {
+        await using var factory = new AriusApiFactory();
+        var (_, jobId, _) = await StartDownloadAsync(factory, files: [new("docs/ü c.txt", 10)]);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync($"/api/jobs/{jobId}/download/content?set=all");
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(response.Content.Headers.ContentDisposition!.FileNameStar).IsEqualTo("ü c.txt");
+        await Assert.That(await response.Content.ReadAsStringAsync()).IsEqualTo("scripted:docs/ü c.txt");
     }
 
     [Test]
