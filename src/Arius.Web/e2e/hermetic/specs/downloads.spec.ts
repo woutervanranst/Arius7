@@ -43,11 +43,19 @@ test('a rehydrating download offers the ready file now', async ({ page, request,
   const download = page.waitForEvent('download');
   await page.getByTestId('download-ready').click();
   expect((await download).suggestedFilename()).toBe('a.jpg');
+  await expect(page.getByTestId('download-file-row').filter({ hasText: 'photos/a.jpg' })).toContainText('Downloaded');
   await expect(page.getByText('prepares the rest by itself')).toBeVisible();
 });
 
-test('settings saves the download clean-up period and cleans up all now', async ({ page, control }) => {
-  void control;   // fixture resets the app db (including the download settings) before the spec
+test('settings saves the download clean-up period and cleans up all now', async ({ page, request, control }) => {
+  // A finished download leaves files on the server for "Clean up all now" to remove.
+  const repoId = await control.seedRepo({ alias: 'dl-settings' });
+  await control.scenario(repoId, 'onlineDownload');
+  const jobId = await control.startDownload(repoId, files);
+  await expect.poll(async () => (await (await request.get(`/api/jobs/${jobId}`)).json()).status).toBe('awaiting-cost');
+  await page.goto(`/jobs/${jobId}`);
+  await page.getByTestId('cost-approve').click();
+  await expect.poll(async () => (await (await request.get(`/api/jobs/${jobId}`)).json()).status).toBe('completed');
 
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: 'Archive' })).toBeVisible();
@@ -60,6 +68,8 @@ test('settings saves the download clean-up period and cleans up all now', async 
   await page.reload();
   await expect(page.getByTestId('cleanup-days')).toHaveValue('3');
 
+  // Staging folders of earlier specs (the db reset doesn't remove them) count too, so only assert there is something to clean up.
+  await expect(page.getByTestId('download-usage')).not.toContainText('0 downloads');
   await page.getByTestId('cleanup-all').click();
   await expect(page.getByTestId('download-usage')).toContainText('0 downloads');
 });
