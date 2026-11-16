@@ -43,14 +43,16 @@ internal static class DownloadEndpoints
                 var path = staging.FilePathFor(id, file.Path);
                 await Results.File(path, "application/octet-stream", Path.GetFileName(file.Path), enableRangeProcessing: true).ExecuteAsync(http);
 
-                if (CountsAsDownloaded(http.RequestAborted.IsCancellationRequested, http.Request.GetTypedHeaders().Range, new FileInfo(path).Length))
+                // A 416 (range past the end) transfers nothing, so only 200/206 can count.
+                if (http.Response.StatusCode is StatusCodes.Status200OK or StatusCodes.Status206PartialContent
+                    && CountsAsDownloaded(http.RequestAborted.IsCancellationRequested, http.Request.GetTypedHeaders().Range, new FileInfo(path).Length))
                     db.MarkDownloadFilesDownloaded(id, [file.Path]);
                 return Results.Empty;
             }
 
             var alias = db.GetRepository(job.RepositoryId)?.Alias ?? "download";
             var archiveName = DownloadNaming.ArchiveName(
-                alias, job.StartedAt ?? DateTimeOffset.UtcNow, selected.Count, all.Count(f => f.Ready),
+                alias, job.StartedAt ?? DateTimeOffset.UtcNow, selected.Count, all.Count,
                 remaining: set == "remaining" && all.Any(f => f.Downloaded));
 
             http.Response.ContentType = "application/zip";
