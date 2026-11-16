@@ -39,6 +39,19 @@ public class ListQueryParsingTests
     }
 
     [Test]
+    public async Task ListQuery_PrefixWithBackslashSeparators_ParsedCorrectly()
+    {
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync(@"ls -a acct -k key -c ctr --prefix photos\2024\");
+
+        exitCode.ShouldBe(0);
+
+        var call = harness.ListQueryHandler.ReceivedCalls().Single();
+        var cmd = (ListQuery)call.GetArguments()[0]!;
+        cmd.Options.Prefix.ShouldBe(RelativePath.Parse("photos/2024"));
+    }
+
+    [Test]
     public async Task ListQuery_Defaults_Applied()
     {
         var harness = new CliHarness();

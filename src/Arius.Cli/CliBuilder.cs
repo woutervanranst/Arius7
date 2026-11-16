@@ -8,6 +8,7 @@ using Arius.Cli.Commands.Update;
 using Arius.Core;
 using Arius.Core.Shared;
 using Arius.Core.Shared.Encryption;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -201,6 +202,15 @@ public static class CliBuilder
 
         return $"[red]Error:[/] {Markup.Escape(ex.Message)} {hint}";
     }
+
+    /// <summary>
+    /// Parses a user-typed repository path (<c>restore --target</c>, <c>ls --prefix</c>). Accepts <c>\</c> as a
+    /// separator on every OS (repository paths never contain it) and drops the trailing separator shell completion
+    /// appends to directory names; <see cref="RelativePath"/> rejects both.
+    /// </summary>
+    /// <exception cref="FormatException">The value is not a valid repository-relative path.</exception>
+    internal static RelativePath ParseRepositoryPath(string value) =>
+        RelativePath.Parse(value.Replace('\\', '/').TrimEnd('/'));
 
     /// <summary>
     /// Logs the captured console output to the audit log, then closes and flushes the logger.

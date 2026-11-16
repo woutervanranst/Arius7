@@ -73,9 +73,7 @@ internal static class RestoreVerb
             RelativePath[] targetPaths;
             try
             {
-                // Accept '\' on every OS (repository paths never contain it), and drop the trailing
-                // separator shell completion appends to directory names; RelativePath rejects both.
-                targetPaths = targets.Select(target => RelativePath.Parse(target.Replace('\\', '/').TrimEnd('/'))).ToArray();
+                targetPaths = targets.Select(CliBuilder.ParseRepositoryPath).ToArray();
             }
             catch (FormatException ex)
             {

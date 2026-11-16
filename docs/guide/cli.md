@@ -146,7 +146,7 @@ arius restore <path> -a <account> -c <container> [-k <key>] [-p <passphrase>]
 |-------------------|------|---------|----------|---------|
 | `path` | path | — | **Yes** | Local directory to restore into. |
 | `--version`, `-v` | string | latest | No | Which *snapshot* to restore. A **partial timestamp** is accepted (e.g. `2026-06-17` or `2026-06-17T14`); it matches the snapshot whose timestamp starts with that text. Omit to restore the latest. |
-| `--target`, `-t` | path (repeatable) | everything | No | A file or folder **inside the backup** (relative to its root, e.g. `photos/2024` or `docs/tax.pdf`) to restore. Repeat the option (`-t a -t b`) or list several values (`-t a b`). A folder restores everything under it; a `.pointer.arius` path restores the file it stands in for. If any target matches nothing in the snapshot, the restore stops before downloading anything and names the unmatched targets. |
+| `--target`, `-t` | path (repeatable) | everything | No | A file or folder **inside the backup** (relative to its root, e.g. `photos/2024` or `docs/tax.pdf`; `\` also works as a separator on every OS) to restore. Repeat the option (`-t a -t b`) or list several values (`-t a b`). A folder restores everything under it; a `.pointer.arius` path restores the file it stands in for. If any target matches nothing in the snapshot, the restore stops before downloading anything and names the unmatched targets. |
 | `--overwrite` | flag | off | No | Overwrite existing local files that differ, without prompting. Without it, locally-modified files are kept. |
 | `--no-pointers` | flag | off | No | Skip creating `.pointer.arius` sidecar files during the restore. |
 | *(plus the four [global options](#global-options))* | | | | |
@@ -218,7 +218,7 @@ arius ls [path] -a <account> -c <container> [-k <key>] [-p <passphrase>]
 |-------------------|------|---------|----------|---------|
 | `path` | path | none | No | Optional local directory to overlay. When given, the state cell reflects whether each file exists locally as a pointer and/or binary. The directory must exist. |
 | `--version`, `-v` | string | latest | No | Snapshot to list. Partial-timestamp match, same rule as `restore`. |
-| `--prefix` | string | none | No | Only list entries under this path prefix (a trailing slash is optional). |
+| `--prefix` | string | none | No | Only list entries under this path prefix (a trailing slash is optional; `\` also works as a separator on every OS). |
 | `--filter`, `-f` | string | none | No | Case-insensitive filename substring filter. |
 | *(plus the four [global options](#global-options))* | | | | |
 
