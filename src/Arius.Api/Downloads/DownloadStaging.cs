@@ -43,9 +43,11 @@ public sealed class DownloadStaging(string root)
             Directory.Delete(folder, recursive: true);
     }
 
+    /// <summary>Names of the job staging folders under the root; only GUID-named folders count, so a foreign folder
+    /// (e.g. a user's <c>Downloads</c> when the data directory is misplaced) is never listed, counted or cleaned up.</summary>
     public IReadOnlyList<string> ListJobIds() =>
         Directory.Exists(root)
-            ? Directory.EnumerateDirectories(root).Select(d => Path.GetFileName(d)).ToList()
+            ? Directory.EnumerateDirectories(root).Select(d => Path.GetFileName(d)).Where(name => Guid.TryParse(name, out _)).ToList()
             : [];
 
     /// <summary>Total size of the job folder's files; files (or the folder) deleted meanwhile by a concurrent clean-up count as 0.</summary>

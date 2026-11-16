@@ -51,20 +51,23 @@ public sealed class DownloadStagingTests
     public async Task Delete_ListJobIds_and_SizeOf_reflect_the_folders_on_disk()
     {
         var (staging, root) = Create();
+        var job1 = Guid.NewGuid().ToString();
+        var job2 = Guid.NewGuid().ToString();
         try
         {
-            Stage(staging, "job-1", "a.txt", "12345");
-            Stage(staging, "job-1", "sub/b.txt", "123");
-            Stage(staging, "job-2", "c.txt", "1");
+            Stage(staging, job1, "a.txt", "12345");
+            Stage(staging, job1, "sub/b.txt", "123");
+            Stage(staging, job2, "c.txt", "1");
+            Stage(staging, "Downloads", "not-a-job.txt", "1");   // a non-GUID folder is not a staging folder
 
-            staging.Exists("job-1").ShouldBeTrue();
-            staging.ListJobIds().OrderBy(x => x).ToArray().ShouldBe(["job-1", "job-2"]);
-            staging.SizeOf("job-1").ShouldBe(8);
+            staging.Exists(job1).ShouldBeTrue();
+            staging.ListJobIds().OrderBy(x => x).ToArray().ShouldBe(new[] { job1, job2 }.OrderBy(x => x).ToArray());
+            staging.SizeOf(job1).ShouldBe(8);
 
-            staging.Delete("job-1");
+            staging.Delete(job1);
 
-            staging.Exists("job-1").ShouldBeFalse();
-            staging.ListJobIds().ShouldBe(["job-2"]);
+            staging.Exists(job1).ShouldBeFalse();
+            staging.ListJobIds().ShouldBe([job2]);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
