@@ -49,7 +49,7 @@ import { DefaultFieldComponent } from '../../shared/default-field/default-field.
             <div class="ar-target">
               <i class="ki-filled {{ icon(type) }}" style="color:#6d28d9"></i>
               <div>
-                <div style="font-weight:600;color:#27272a">{{ type === 'restore' && store.collected().length === 0 ? 'Whole repository' : store.targets().length + ' collected files · ' + formatBytes(store.targetBytes()) }}</div>
+                <div style="font-weight:600;color:#27272a">{{ type === 'restore' && store.collected().length === 0 ? 'Whole repository' : store.targets().length + (store.targets().length === 1 ? ' collected file · ' : ' collected files · ') + formatBytes(store.targetBytes()) }}</div>
                 <div style="font-size:12px;color:#a1a1aa">{{ store.version() ? 'Snapshot ' + store.version() : 'Latest snapshot' }}</div>
               </div>
             </div>
