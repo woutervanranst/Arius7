@@ -151,7 +151,14 @@ public sealed class JobRunner(
         if (database.GetRepository(repositoryId) is null) { sink.Done("failed", "Repository not found."); return; }
         if (!TryInsertRestoreJob(sink, repositoryId, jobId, "download", "Download")) return;
 
-        database.InsertDownloadFiles(jobId, files);
+        try { database.InsertDownloadFiles(jobId, files); }
+        catch (Exception ex)
+        {
+            // The job row is already inserted as running: terminalize it, or it would block the repository until restart.
+            logger.LogError(ex, "Download job {JobId} failed to record its files", jobId);
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
+            return;
+        }
         sink.FileRestored = path => database.MarkDownloadFileReady(jobId, path);
 
         await RunRestoreJobAsync(sink, repositoryId, jobId, startedAt, version, files.Select(f => f.Path).ToArray(),
@@ -356,6 +363,7 @@ public sealed class JobRunner(
 
         var sink = new JobSink(jobId, hub);
         var registered = false;
+        var noun = job.Kind == "download" ? "Download" : "Restore";
 
         var gate = LockFor(job.RepositoryId);
         await gate.WaitAsync();
@@ -381,13 +389,15 @@ public sealed class JobRunner(
             // UPDATE then matches nothing and we bail (finally releases the gate + removes the sink) instead of
             // running a cancelled restore to completion. Registration above already routes an in-[register,flip)
             // cancel through CancelLive (token trip), so the two paths together close the resurrection window.
-            if (!database.TryResumeToRunning(jobId, "Resuming restore…")) return;
+            if (!database.TryResumeToRunning(jobId, $"Resuming {noun.ToLowerInvariant()}…")) return;
             sink.SetStatus("running");
             provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
 
-            var noun = job.Kind == "download" ? "Download" : "Restore";
+            // A download restores into its staging folder (where PruneUnready works), not whatever destination was persisted.
+            var destination = resume.Destination;
             if (job.Kind == "download")
             {
+                destination = staging.PathFor(jobId);
                 // Files restored by an earlier pass are the only ones that are complete; anything else under the
                 // staging folder is a partial write the next pass overwrites (Overwrite is false, so remove it first).
                 var files = database.ListDownloadFiles(jobId);
@@ -397,7 +407,7 @@ public sealed class JobRunner(
 
             var persistedPriority = resume.Priority == "High" ? RehydratePriority.High : RehydratePriority.Standard;
             var (pending, success, error) = await RunRestoreOnceAsync(
-                provider, sink, jobId, resume.Destination, resume.Version, resume.TargetPaths,
+                provider, sink, jobId, destination, resume.Version, resume.TargetPaths,
                 resume.Overwrite, resume.NoPointers,
                 confirmRehydration: (_, _) => Task.FromResult<RehydratePriority?>(persistedPriority));
 
@@ -423,7 +433,7 @@ public sealed class JobRunner(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Restore resume {JobId} failed", jobId);
+            logger.LogError(ex, "{Noun} resume {JobId} failed", noun, jobId);
             FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
         }
         finally
