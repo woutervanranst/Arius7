@@ -73,8 +73,9 @@ internal static class RestoreVerb
             RelativePath[] targetPaths;
             try
             {
-                // Shell completion appends a separator to directory names; RelativePath rejects it.
-                targetPaths = targets.Select(target => RelativePath.FromPlatformRelativePath(target.TrimEnd('/', '\\'))).ToArray();
+                // Accept '\' on every OS (repository paths never contain it), and drop the trailing
+                // separator shell completion appends to directory names; RelativePath rejects both.
+                targetPaths = targets.Select(target => RelativePath.Parse(target.Replace('\\', '/').TrimEnd('/'))).ToArray();
             }
             catch (FormatException ex)
             {
