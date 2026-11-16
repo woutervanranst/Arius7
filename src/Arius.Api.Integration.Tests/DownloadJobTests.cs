@@ -94,6 +94,58 @@ public class DownloadJobTests
     }
 
     [Test]
+    public async Task A_resume_pass_marks_files_restored_after_rehydration_ready_and_completes_the_job()
+    {
+        await using var factory = new AriusApiFactory();
+        var repoId = factory.SeedRepository();
+
+        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.RehydratingDownloadStaysPending());
+
+        var runner = factory.Services.GetRequiredService<JobRunner>();
+        var approvals = factory.Services.GetRequiredService<RestoreApprovalRegistry>();
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        var staging = factory.Services.GetRequiredService<DownloadStaging>();
+        var jobId = Guid.NewGuid().ToString();
+
+        var run = runner.RunDownloadAsync(repoId, jobId, "v1", [new DownloadFile("photos/a.jpg", 1000), new DownloadFile("docs/b.txt", 500)]);
+
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        approvals.Resolve(jobId, RehydratePriority.Standard);
+        await run;
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("rehydrating");
+
+        // The archive-tier chunk is now rehydrated: the resume pass restores the remaining file.
+        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.RehydratingDownloadStaysPending() with
+        {
+            PostApproveEvents = [ new FileRestoredEvent(RelativePath.Parse("docs/b.txt"), 500) ],
+            Result = new RestoreResult { Success = true, FilesRestored = 1, FilesSkipped = 0, ChunksPendingRehydration = 0 },
+        });
+        await runner.ResumeRestoreAsync(jobId);
+
+        await Assert.That(db.ListDownloadFiles(jobId).All(f => f.Ready)).IsTrue();
+        await Assert.That(File.Exists(Path.Combine(staging.PathFor(jobId), "docs", "b.txt"))).IsTrue();
+        var job = db.GetJob(jobId)!;
+        await Assert.That(job.Status).IsEqualTo("completed");
+        await Assert.That(job.Detail).IsEqualTo("Download complete.");
+    }
+
+    [Test]
+    public async Task A_download_whose_files_cannot_be_recorded_fails_instead_of_leaving_the_job_running()
+    {
+        await using var factory = new AriusApiFactory();
+        var repoId = factory.SeedRepository();
+        var runner = factory.Services.GetRequiredService<JobRunner>();
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        var jobId = Guid.NewGuid().ToString();
+
+        // The same path twice violates the (job_id, path) key, so recording the collected files throws.
+        await runner.RunDownloadAsync(repoId, jobId, "v1", [new DownloadFile("a.txt", 1), new DownloadFile("a.txt", 1)]);
+
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("failed");
+        await Assert.That(db.HasActiveJob(repoId)).IsFalse();
+    }
+
+    [Test]
     [Arguments(null, "a", "Choose a snapshot to download from.")]
     [Arguments("v1", null, "Collect at least one file to download.")]
     [Arguments("v1", "../x", "'../x' is not a valid repository path.")]
