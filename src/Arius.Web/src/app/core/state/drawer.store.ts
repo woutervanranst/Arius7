@@ -1,9 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import { RealtimeService } from '../api/realtime.service';
 import { DefaultValues, OptionKey, ResolvedDefaults, archiveFlags, resolve, valuesOf } from '../defaults/defaults';
 import { JobPillStore } from './job-pill.store';
-import { SnapshotStore } from './snapshot.store';
 
 /** A file the user ticked in the Files tab; `inRepository` is false for local-only files, which a restore/download cannot target. */
 export interface CollectedFile { path: string; size: number; inRepository: boolean }
@@ -20,7 +20,6 @@ export class DrawerStore {
   private readonly realtime = inject(RealtimeService);
   private readonly pill = inject(JobPillStore);
   private readonly api = inject(ApiService);
-  private readonly snapshots = inject(SnapshotStore);
   private openSeq = 0;
 
   readonly type = signal<DrawerType>(null);
@@ -119,6 +118,18 @@ export class DrawerStore {
     this.type.set(null);
   }
 
+  /** The newest snapshot's version from a fresh fetch (the list is oldest-first); sets an inline error and returns null when there is none. */
+  private async newestSnapshotVersion(): Promise<string | null> {
+    try {
+      const newest = (await firstValueFrom(this.api.getSnapshots(this.repoId()))).at(-1)?.version;
+      if (newest) return newest;
+      this.error.set('This repository has no snapshots to download from.');
+    } catch {
+      this.error.set('Could not load the latest snapshot.');
+    }
+    return null;
+  }
+
   async start(): Promise<void> {
     if (!this.canStart()) return;
     const run = this.run()!;
@@ -127,9 +138,16 @@ export class DrawerStore {
     let id: string;
     try {
       if (kind === 'download') {
+        // Pin to the newest snapshot when none is selected, so a snapshot published mid-job can't change what is fetched.
+        // Fetched fresh: the shared snapshot list is not refreshed after an archive, so it can be stale.
+        let version = this.version();
+        if (!version) {
+          const newest = await this.newestSnapshotVersion();
+          if (!newest) return;
+          version = newest;
+        }
         id = await this.realtime.startDownload(this.repoId(), {
-          // Pin to the newest snapshot when none is selected, so a snapshot published mid-job can't change what is fetched.
-          version: this.version() ?? this.snapshots.snapshots().at(-1)?.version ?? '',
+          version,
           files: this.targets().map(({ path, size }) => ({ path, size })),
         });
       } else if (kind === 'archive') {
