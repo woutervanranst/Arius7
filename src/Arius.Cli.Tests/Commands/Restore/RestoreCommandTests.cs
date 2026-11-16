@@ -2,6 +2,7 @@ using Arius.Cli.Tests.TestSupport;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Storage;
 using NSubstitute;
+using Spectre.Console;
 
 namespace Arius.Cli.Tests.Commands.Restore;
 
@@ -126,6 +127,38 @@ public class RestoreCommandTests
 
         exitCode.ShouldBe(1);
         harness.RestoreHandler.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Restore_FailureMessageWithBrackets_PrintedLiterally()
+    {
+        var harness = new CliHarness();
+        harness.RestoreHandler
+            .Handle(Arg.Any<RestoreCommand>(), Arg.Any<CancellationToken>())
+            .Returns(new RestoreResult
+            {
+                Success                  = false,
+                FilesRestored            = 0,
+                FilesSkipped             = 0,
+                ChunksPendingRehydration = 0,
+                ErrorMessage             = "not found: a[b",
+            });
+
+        var savedConsole = AnsiConsole.Console;
+        var recorder = savedConsole.CreateRecorder();
+        AnsiConsole.Console = recorder;
+        int exitCode;
+        try
+        {
+            exitCode = await harness.InvokeAsync("restore /data -a acct -k key -c ctr -t a[b");
+        }
+        finally
+        {
+            AnsiConsole.Console = savedConsole;
+        }
+
+        exitCode.ShouldBe(1);
+        recorder.ExportText().ShouldContain("Restore failed: not found: a[b");
     }
 
     static RestoreOptions ReceivedOptions(CliHarness harness) =>

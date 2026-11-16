@@ -328,7 +328,7 @@ internal static class RestoreVerb
 
                 if (result is null || !result.Success)
                 {
-                    AnsiConsole.MarkupLine($"[red]Restore failed:[/] {result?.ErrorMessage}");
+                    AnsiConsole.MarkupLine($"[red]Restore failed:[/] {Markup.Escape(result?.ErrorMessage ?? string.Empty)}");
                     return 1;
                 }
 
