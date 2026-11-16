@@ -10,6 +10,8 @@ public sealed class ScriptedRestoreHandler(IPublisher publisher, RestoreScenario
 {
     public async ValueTask<RestoreResult> Handle(RestoreCommand command, CancellationToken cancellationToken)
     {
+        scenario.Received.Enqueue(command);
+
         foreach (var evt in scenario.PreCostEvents)
             await publisher.Publish(evt, cancellationToken);
 
