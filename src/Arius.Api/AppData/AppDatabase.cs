@@ -101,6 +101,20 @@ public sealed class AppDatabase
                 created_at  TEXT NOT NULL,
                 PRIMARY KEY (repo_id, version, full)
             );
+
+            -- Per-file state of a 'download' job: the repository-relative files it collected, whether each is
+            -- staged on the server (ready) and whether the browser has fetched it (downloaded).
+            CREATE TABLE IF NOT EXISTS download_files (
+                job_id     TEXT    NOT NULL REFERENCES jobs(id),
+                path       TEXT    NOT NULL,
+                size       INTEGER NOT NULL,
+                ready      INTEGER NOT NULL DEFAULT 0,
+                downloaded INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (job_id, path)
+            );
+
+            -- Server-wide app settings that are not part of the defaults hierarchy (e.g. download clean-up).
+            CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """;
         create.ExecuteNonQuery();
 
@@ -378,7 +392,15 @@ public sealed class AppDatabase
     {
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
-        // Cascade: a repository's jobs/schedules/cached statistics reference it, so remove them first.
+        // Cascade: a repository's jobs/schedules/cached statistics reference it, so remove them first
+        // (download_files hangs off jobs, so it goes before them).
+        using (var downloadFiles = connection.CreateCommand())
+        {
+            downloadFiles.Transaction = transaction;
+            downloadFiles.CommandText = "DELETE FROM download_files WHERE job_id IN (SELECT id FROM jobs WHERE repo_id = $id);";
+            downloadFiles.Parameters.AddWithValue("$id", id);
+            downloadFiles.ExecuteNonQuery();
+        }
         foreach (var table in new[] { "jobs", "schedules", "statistics_cache", "repository_defaults" })
         {
             using var child = connection.CreateCommand();
@@ -698,8 +720,8 @@ public sealed class AppDatabase
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "DELETE FROM repository_defaults; DELETE FROM global_defaults; " +
-            "DELETE FROM jobs; DELETE FROM schedules; DELETE FROM statistics_cache; " +
+            "DELETE FROM repository_defaults; DELETE FROM global_defaults; DELETE FROM app_settings; " +
+            "DELETE FROM download_files; DELETE FROM jobs; DELETE FROM schedules; DELETE FROM statistics_cache; " +
             "DELETE FROM repositories; DELETE FROM storage_accounts;";
         command.ExecuteNonQuery();
     }
@@ -727,6 +749,126 @@ public sealed class AppDatabase
         command.CommandText = "UPDATE jobs SET status = 'interrupted', finished_at = $t WHERE status IN ('running','awaiting-cost');";
         command.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToString("O"));
         return command.ExecuteNonQuery();
+    }
+
+    // ── Downloads ─────────────────────────────────────────────────────────────
+
+    private const string CleanupEnabledKey = "downloads.cleanupEnabled";
+    private const string CleanupDaysKey    = "downloads.cleanupDays";
+
+    /// <summary>Records the files a download job collected, all not-ready and not-downloaded, in one transaction.</summary>
+    public void InsertDownloadFiles(string jobId, IReadOnlyList<DownloadFile> files)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        foreach (var file in files)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = "INSERT INTO download_files(job_id, path, size) VALUES ($jobId, $path, $size);";
+            insert.Parameters.AddWithValue("$jobId", jobId);
+            insert.Parameters.AddWithValue("$path", file.Path);
+            insert.Parameters.AddWithValue("$size", file.Size);
+            insert.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
+
+    public IReadOnlyList<DownloadFile> ListDownloadFiles(string jobId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT path, size, ready, downloaded FROM download_files WHERE job_id = $jobId ORDER BY path;";
+        command.Parameters.AddWithValue("$jobId", jobId);
+        using var reader = command.ExecuteReader();
+        var result = new List<DownloadFile>();
+        while (reader.Read())
+            result.Add(new DownloadFile(reader.GetString(0), reader.GetInt64(1), reader.GetInt64(2) != 0, reader.GetInt64(3) != 0));
+        return result;
+    }
+
+    public void MarkDownloadFileReady(string jobId, string path)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE download_files SET ready = 1 WHERE job_id = $jobId AND path = $path;";
+        command.Parameters.AddWithValue("$jobId", jobId);
+        command.Parameters.AddWithValue("$path", path);
+        command.ExecuteNonQuery();
+    }
+
+    public void MarkDownloadFilesDownloaded(string jobId, IReadOnlyCollection<string> paths)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        foreach (var path in paths)
+        {
+            using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE download_files SET downloaded = 1 WHERE job_id = $jobId AND path = $path;";
+            update.Parameters.AddWithValue("$jobId", jobId);
+            update.Parameters.AddWithValue("$path", path);
+            update.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
+
+    /// <summary>Jobs of kind <c>download</c> in any status, optionally repo-scoped, newest <c>started_at</c> first.</summary>
+    public IReadOnlyList<JobRecord> ListDownloadJobs(long? repositoryId = null)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT id, repo_id, kind, trigger, status, pct, detail, started_at, finished_at, state_json, outcome " +
+            "FROM jobs WHERE kind = 'download'" +
+            (repositoryId is null ? "" : " AND repo_id = $r") +
+            " ORDER BY COALESCE(started_at, '') DESC;";
+        if (repositoryId is not null) command.Parameters.AddWithValue("$r", repositoryId);
+        using var reader = command.ExecuteReader();
+        var result = new List<JobRecord>();
+        while (reader.Read())
+            result.Add(ReadJob(reader));
+        return result;
+    }
+
+    /// <summary>The server-wide download clean-up setting; absent rows fall back to <see cref="DownloadSettings.Default"/>.</summary>
+    public DownloadSettings GetDownloadSettings()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT key, value FROM app_settings WHERE key IN ($enabled, $days);";
+        command.Parameters.AddWithValue("$enabled", CleanupEnabledKey);
+        command.Parameters.AddWithValue("$days", CleanupDaysKey);
+        using var reader = command.ExecuteReader();
+        var settings = DownloadSettings.Default;
+        while (reader.Read())
+        {
+            var value = reader.GetString(1);
+            settings = reader.GetString(0) == CleanupEnabledKey
+                ? settings with { CleanupEnabled = value == "true" }
+                : settings with { CleanupDays = int.Parse(value) };
+        }
+        return settings;
+    }
+
+    public void SaveDownloadSettings(DownloadSettings settings)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        foreach (var (key, value) in new[]
+        {
+            (CleanupEnabledKey, settings.CleanupEnabled ? "true" : "false"),
+            (CleanupDaysKey, settings.CleanupDays.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+        })
+        {
+            using var upsert = connection.CreateCommand();
+            upsert.Transaction = transaction;
+            upsert.CommandText = "INSERT INTO app_settings(key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
+            upsert.Parameters.AddWithValue("$key", key);
+            upsert.Parameters.AddWithValue("$value", value);
+            upsert.ExecuteNonQuery();
+        }
+        transaction.Commit();
     }
 
     // ── Schedules ───────────────────────────────────────────────────────────
