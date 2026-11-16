@@ -107,6 +107,38 @@ public class DownloadEndpointsTests
     }
 
     [Test]
+    public async Task A_zip_of_the_ready_files_says_k_of_n_of_the_collected_files()
+    {
+        await using var factory = new AriusApiFactory();
+        var (_, jobId, _) = await StartDownloadAsync(factory);
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        db.InsertDownloadFiles(jobId, [new DownloadFile("music/c.mp3", 10)]);   // collected but not ready (still rehydrating)
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync($"/api/jobs/{jobId}/download/content?set=all");
+
+        var started = db.GetJob(jobId)!.StartedAt!.Value.ToString("yyyy-MM-dd");
+        await Assert.That(response.Content.Headers.ContentDisposition!.FileName).IsEqualTo($"itest-{started} (2 of 3).zip");
+    }
+
+    [Test]
+    public async Task A_range_past_the_end_is_refused_and_does_not_mark_the_file_downloaded()
+    {
+        await using var factory = new AriusApiFactory();
+        var (_, jobId, _) = await StartDownloadAsync(factory);
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        db.MarkDownloadFilesDownloaded(jobId, ["photos/a.jpg"]);
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/jobs/{jobId}/download/content?set=remaining");
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(100, null);
+        using var response = await client.SendAsync(request);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.RequestedRangeNotSatisfiable);
+        await Assert.That(db.ListDownloadFiles(jobId).Single(f => f.Path == "docs/b.txt").Downloaded).IsFalse();
+    }
+
+    [Test]
     public async Task Cleaning_up_an_in_progress_download_is_refused_and_keeps_its_files()
     {
         await using var factory = new AriusApiFactory();
