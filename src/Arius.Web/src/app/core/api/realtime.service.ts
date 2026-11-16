@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
 import { filter } from 'rxjs/operators';
-import { CostEstimateMsg, DoneMsg, EntryDto, isNonTerminal, JobAttachState, JobSnapshot, ListEntriesOptions, SearchHitDto } from './api-models';
+import { CostEstimateMsg, DoneMsg, DownloadFileRequest, EntryDto, isNonTerminal, JobAttachState, JobSnapshot, ListEntriesOptions, SearchHitDto } from './api-models';
 
 /** What {@link RealtimeService.forwardReattach} re-emits for a reattached job's state. */
 export interface ReattachEmissions {
@@ -149,6 +149,12 @@ export class RealtimeService {
   async startRestore(repositoryId: number, opts: { version: string | null; targetPaths: string[]; overwrite: boolean; noPointers: boolean }): Promise<string> {
     await this.ensureStarted();
     return this.connection!.invoke<string>('StartRestore', repositoryId, opts.version, opts.targetPaths, opts.overwrite, opts.noPointers);
+  }
+
+  /** Starts a browser download of the given files from a pinned snapshot version. Watch cost$ for the approval modal. */
+  async startDownload(repositoryId: number, opts: { version: string; files: DownloadFileRequest[] }): Promise<string> {
+    await this.ensureStarted();
+    return this.connection!.invoke<string>('StartDownload', repositoryId, opts.version, opts.files);
   }
 
   /** Streams cross-repository search hits (filename filter across every repository). */

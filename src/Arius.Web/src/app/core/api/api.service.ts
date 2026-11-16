@@ -1,8 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import { AccountDto, CreateRepositoryRequest, FsListDto, GlobalDefaultsDto, JobDetailDto, JobDto, JobWarningsDto, RepositoryDefaultsDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
+import { AccountDto, CreateRepositoryRequest, DownloadSettingsDto, DownloadStateDto, DownloadUsageDto, FsListDto, GlobalDefaultsDto, JobDetailDto, JobDto, JobWarningsDto, PendingDownloadDto, RepositoryDefaultsDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
 import { SetValues } from '../defaults/defaults';
+
+/** Link target for fetching a download job's staged files; used as a plain link, never fetched by JS. */
+export function downloadContentUrl(jobId: string, set: 'all' | 'remaining'): string {
+  return `/api/jobs/${jobId}/download/content?set=${set}`;
+}
 
 /** Typed REST client for Arius.Api. Entry streaming lives in RealtimeService (SignalR). */
 @Injectable({ providedIn: 'root' })
@@ -86,6 +91,35 @@ export class ApiService {
 
   getJobWarnings(id: string): Observable<JobWarningsDto> {
     return this.http.get<JobWarningsDto>(`/api/jobs/${id}/warnings`);
+  }
+
+  getDownload(jobId: string): Observable<DownloadStateDto> {
+    return this.http.get<DownloadStateDto>(`/api/jobs/${jobId}/download`);
+  }
+
+  cleanUpDownload(jobId: string): Observable<void> {
+    return this.http.post<void>(`/api/jobs/${jobId}/download/cleanup`, null);
+  }
+
+  /** The repository's download job with files still to fetch; the server answers 204 (no body) when there is none. */
+  getPendingDownload(repoId: number): Observable<PendingDownloadDto | null> {
+    return this.http.get<PendingDownloadDto | null>(`/api/repos/${repoId}/downloads/pending`);
+  }
+
+  getDownloadSettings(): Observable<DownloadSettingsDto> {
+    return this.http.get<DownloadSettingsDto>('/api/settings/downloads');
+  }
+
+  putDownloadSettings(settings: DownloadSettingsDto): Observable<DownloadSettingsDto> {
+    return this.http.put<DownloadSettingsDto>('/api/settings/downloads', settings);
+  }
+
+  getDownloadUsage(): Observable<DownloadUsageDto> {
+    return this.http.get<DownloadUsageDto>('/api/downloads/usage');
+  }
+
+  cleanUpAllDownloads(): Observable<DownloadUsageDto> {
+    return this.http.post<DownloadUsageDto>('/api/downloads/cleanup', null);
   }
 
   getSchedules(repoId: number): Observable<ScheduleDto[]> {

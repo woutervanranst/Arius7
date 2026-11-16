@@ -9,7 +9,7 @@ import { RealtimeService } from '../../core/api/realtime.service';
 import { JobDto, JobOutcome, JobSnapshot, ScheduleDto, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount } from '../../shared/format';
-import { formatDuration, formatEta, phaseSentence, StatusMeta, statusMeta, archiveBarLayers, restoreBarLayers } from '../../shared/job-format';
+import { formatDuration, formatEta, isRestoreFamily, JobKind, jobKindIcon, jobKindLabel, phaseSentence, toJobKind, StatusMeta, statusMeta, archiveBarLayers, restoreBarLayers } from '../../shared/job-format';
 
 /** "04 Jul 14:02" — used for the "ran …" meta line and the history one-liner's snapshot timestamp. */
 function formatTimestamp(iso: string): string {
@@ -29,7 +29,9 @@ function parseOutcome(raw: string | null): JobOutcome | null {
 
 interface ActiveRow {
   job: JobDto;
-  kind: 'archive' | 'restore';
+  kind: JobKind;
+  restoreFamily: boolean;
+  icon: string;
   scanned: number;
   middle: number;
   top: number;
@@ -41,6 +43,8 @@ interface ActiveRow {
 interface HistoryRow {
   job: JobDto;
   kindLabel: string;
+  restoreFamily: boolean;
+  icon: string;
   summary: string;
   meta: StatusMeta;
   actionLabel: string;
@@ -93,8 +97,8 @@ interface HistoryRow {
                [style.borderTop]="first ? 'none' : '1px solid #f6f6f7'">
             <div style="display:flex;align-items:center;gap:12px">
               <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center"
-                   [style.background]="row.kind === 'restore' ? '#f5f3ff' : '#eff6ff'" [style.color]="row.kind === 'restore' ? '#6d28d9' : '#3b82f6'">
-                <i class="ki-filled" [class.ki-cloud-download]="row.kind === 'restore'" [class.ki-cloud-add]="row.kind !== 'restore'" style="font-size:16px"></i>
+                   [style.background]="row.restoreFamily ? '#f5f3ff' : '#eff6ff'" [style.color]="row.restoreFamily ? '#6d28d9' : '#3b82f6'">
+                <i class="ki-filled" [class]="'ki-filled ' + row.icon" style="font-size:16px"></i>
               </div>
               <div>
                 <div style="font-size:13.5px;font-weight:600;color:#27272a">{{ kindLabel(row.job) }} &middot; {{ row.job.repo }}</div>
@@ -102,7 +106,7 @@ interface HistoryRow {
               </div>
             </div>
             <div>
-              <arius-layered-bar [height]="8" [kind]="row.kind" [scanned]="row.scanned" [middle]="row.middle" [top]="row.top" />
+              <arius-layered-bar [height]="8" [kind]="row.restoreFamily ? 'restore' : 'archive'" [scanned]="row.scanned" [middle]="row.middle" [top]="row.top" />
               <div style="font-size:12px;color:#71717a;margin-top:6px">{{ row.phase }}</div>
             </div>
             <div>
@@ -129,8 +133,8 @@ interface HistoryRow {
                [style.borderTop]="first ? 'none' : '1px solid #f6f6f7'">
             <div style="display:flex;align-items:center;gap:12px">
               <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center"
-                   [style.background]="row.job.kind === 'restore' ? '#f5f3ff' : '#eff6ff'" [style.color]="row.job.kind === 'restore' ? '#6d28d9' : '#3b82f6'">
-                <i class="ki-filled" [class.ki-cloud-download]="row.job.kind === 'restore'" [class.ki-cloud-add]="row.job.kind !== 'restore'" style="font-size:16px"></i>
+                   [style.background]="row.restoreFamily ? '#f5f3ff' : '#eff6ff'" [style.color]="row.restoreFamily ? '#6d28d9' : '#3b82f6'">
+                <i class="ki-filled" [class]="'ki-filled ' + row.icon" style="font-size:16px"></i>
               </div>
               <div>
                 <div style="font-size:13.5px;font-weight:600;color:#27272a">{{ row.kindLabel }} &middot; {{ row.job.repo }}</div>
@@ -191,14 +195,15 @@ export class JobsComponent implements OnDestroy {
   private readonly doneSubs = new Map<string, Subscription>();
 
   protected readonly activeRows = computed<ActiveRow[]>(() => this.running().map(job => {
-    const kind: 'archive' | 'restore' = job.kind === 'restore' ? 'restore' : 'archive';
+    const kind = toJobKind(job.kind);
+    const restoreFamily = isRestoreFamily(kind);
     const s = this.snapshots()[job.id];
-    const layers = s ? (kind === 'restore' ? restoreBarLayers(s) : archiveBarLayers(s))
-                     : { scanned: kind === 'restore' ? 100 : 0, middle: 0, top: 0 };
+    const layers = s ? (restoreFamily ? restoreBarLayers(s) : archiveBarLayers(s))
+                     : { scanned: restoreFamily ? 100 : 0, middle: 0, top: 0 };
     const { scanned, middle, top } = layers;
-    const phase = s ? phaseSentence(s, kind) : (job.detail ?? (kind === 'restore' ? 'Resolving snapshot…' : 'Scanning…'));
+    const phase = s ? phaseSentence(s, kind) : (job.detail ?? (restoreFamily ? 'Resolving snapshot…' : 'Scanning…'));
     const eta = job.status === 'rehydrating' ? 'checked periodically' : formatEta(s?.etaSeconds ?? null);
-    return { job, kind, scanned, middle, top, phase, eta, meta: statusMeta(job.status) };
+    return { job, kind, restoreFamily, icon: jobKindIcon(kind), scanned, middle, top, phase, eta, meta: statusMeta(job.status) };
   }));
 
   protected readonly historyRows = computed<HistoryRow[]>(() => this.history().map(job => {
@@ -206,6 +211,8 @@ export class JobsComponent implements OnDestroy {
     return {
       job,
       kindLabel: this.kindLabel(job),
+      restoreFamily: isRestoreFamily(toJobKind(job.kind)),
+      icon: jobKindIcon(toJobKind(job.kind)),
       summary: this.outcomeSummary(job, outcome),
       meta: statusMeta(job.status),
       actionLabel: job.trigger === 'schedule' ? 'Edit ›' : 'Detail ›',
@@ -251,13 +258,13 @@ export class JobsComponent implements OnDestroy {
   }
 
   protected kindLabel(job: JobDto): string {
-    return job.kind === 'restore' ? 'Restore' : 'Archive';
+    return jobKindLabel(toJobKind(job.kind));
   }
 
   private outcomeSummary(job: JobDto, o: JobOutcome | null): string {
     if (!o) return job.detail ?? (statusMeta(job.status).label);
     const duration = o.durationSeconds != null ? formatDuration(o.durationSeconds) : null;
-    const parts = job.kind === 'restore'
+    const parts = isRestoreFamily(toJobKind(job.kind))
       ? [
           o.filesRestored != null ? `${formatCount(o.filesRestored)} files` : null,
           o.downloadedBytes != null ? formatBytes(o.downloadedBytes) : null,

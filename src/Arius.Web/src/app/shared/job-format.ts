@@ -82,10 +82,30 @@ export function phaseAtLeast(phase: string | undefined, target: string): boolean
   return p >= 0 && t >= 0 && p >= t;
 }
 
+export type JobKind = 'archive' | 'restore' | 'download';
+
+/** Normalizes a job's wire `kind` string; anything unknown is treated as an archive. */
+export function toJobKind(kind: string): JobKind {
+  return kind === 'restore' || kind === 'download' ? kind : 'archive';
+}
+
+/** Restore and download jobs both drive a RestoreCommand, so they share the restore progress model and violet palette. */
+export function isRestoreFamily(kind: JobKind): boolean {
+  return kind === 'restore' || kind === 'download';
+}
+
+export function jobKindLabel(kind: JobKind): 'Archive' | 'Restore' | 'Download' {
+  return kind === 'restore' ? 'Restore' : kind === 'download' ? 'Download' : 'Archive';
+}
+
+export function jobKindIcon(kind: JobKind): 'ki-cloud-add' | 'ki-cloud-download' | 'ki-exit-down' {
+  return kind === 'restore' ? 'ki-cloud-download' : kind === 'download' ? 'ki-exit-down' : 'ki-cloud-add';
+}
+
 /** One phase sentence for the pill / overview row / detail header. */
 export function phaseSentence(s: JobSnapshot, kind: string): string {
   const gb = (n: number) => (n / 1e9).toFixed(2) + ' GB';
-  if (kind === 'restore') {
+  if (isRestoreFamily(toJobKind(kind))) {
     if (s.chunksNeedingRehydration > 0 && s.bytesRestored === 0) return `Rehydrating — ${s.chunksNeedingRehydration} chunks from Archive tier`;
     return `Restoring — ${s.filesRestored} of ${s.restoreTotalFiles} files`;
   }
