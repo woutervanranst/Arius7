@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { ApiService } from '../../core/api/api.service';
 import { DownloadSettingsDto, DownloadUsageDto } from '../../core/api/api-models';
 import { formatBytes } from '../../shared/format';
@@ -82,6 +82,8 @@ export class TemporaryFilesCardComponent {
   protected readonly usage = signal<DownloadUsageDto | null>(null);
 
   constructor() {
+    // The one place validity is reported from: derived from the field's text, so it can't diverge from the hint.
+    effect(() => this.validChange.emit(!this.invalid()));
     this.api.getDownloadUsage().subscribe({ next: u => this.usage.set(u) });
   }
 
@@ -97,7 +99,6 @@ export class TemporaryFilesCardComponent {
     const text = (event.target as HTMLInputElement).value;
     this.text.set(text);
     const days = parseDays(text);
-    this.validChange.emit(days !== null);
     if (days !== null) this.changed.emit({ ...this.value(), cleanupDays: days });
   }
 
