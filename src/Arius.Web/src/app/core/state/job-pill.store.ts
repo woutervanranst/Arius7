@@ -141,6 +141,7 @@ export class JobPillStore {
     }).catch(() => {});
     this.subs.push(this.realtime.jobProgress(jobId).subscribe(s => {
       this.snapshot.set(s);
+      if (s.status) this.status.set(s.status);   // a running job can park (rehydrating) during this visit
       if (kind === 'download' && s.filesRestored !== this.lastFilesRestored) { this.lastFilesRestored = s.filesRestored; this.loadDownload(jobId); }
     }));
     this.subs.push(this.realtime.jobDone(jobId).subscribe(d => { this.status.set(d.status); this.finish(jobId); }));
