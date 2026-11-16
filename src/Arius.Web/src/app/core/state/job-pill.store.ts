@@ -92,6 +92,17 @@ export class JobPillStore {
     }
   }
 
+  /**
+   * The pill's Download link was clicked, so everything ready is on its way to the browser. Deferred so the clicked
+   * link's default download runs before the pill re-renders; not persisted as a dismissal.
+   */
+  markDownloaded(): void {
+    setTimeout(() => {
+      if (this.mode() === 'download-ready') this.dismissed.set(true);
+      else this.download.update(d => d && { ...d, downloaded: d.ready, remaining: 0, remainingBytes: 0 });
+    }, 0);
+  }
+
   /** Drop the pill entirely (e.g. leaving the repo). */
   detach(): void {
     const id = this.jobId();
