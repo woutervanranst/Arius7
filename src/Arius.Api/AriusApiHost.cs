@@ -45,12 +45,14 @@ public static class AriusApiHost
             sp.GetRequiredService<SecretProtector>(),
             sp.GetRequiredService<IRepositoryCoreComposer>(),
             sp.GetRequiredService<ILoggerFactory>()));
+        builder.Services.AddSingleton<Arius.Api.Downloads.DownloadCleaner>();
         builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
         builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
         builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
         builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
         builder.Services.AddHostedService<Arius.Api.Jobs.RehydrationPollingService>();
         builder.Services.AddHostedService<Arius.Api.Jobs.StaleApprovalSweepService>();
+        builder.Services.AddHostedService<Arius.Api.Jobs.DownloadCleanupService>();
 
         builder.Services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);

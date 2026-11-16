@@ -95,6 +95,25 @@ internal static class DownloadEndpoints
             return Results.NoContent();
         });
 
+        app.MapGet("/settings/downloads", (AppDatabase db) => Results.Ok(db.GetDownloadSettings()));
+
+        app.MapPut("/settings/downloads", (DownloadSettings settings, AppDatabase db) =>
+        {
+            if (settings.CleanupDays is < 1 or > 3650)
+                return Results.BadRequest("Clean-up days must be between 1 and 3650.");
+
+            db.SaveDownloadSettings(settings);
+            return Results.Ok(settings);
+        });
+
+        app.MapGet("/downloads/usage", (DownloadStaging staging) => Results.Ok(Usage(staging)));
+
+        app.MapPost("/downloads/cleanup", (DownloadCleaner cleaner, DownloadStaging staging) =>
+        {
+            cleaner.CleanUpAll();
+            return Results.Ok(Usage(staging));
+        });
+
         app.MapGet("/repos/{id:long}/downloads/pending", (long id, AppDatabase db, DownloadStaging staging) =>
         {
             foreach (var job in db.ListDownloadJobs(id))
@@ -115,6 +134,12 @@ internal static class DownloadEndpoints
     /// when some range reaches the last byte.</summary>
     internal static bool CountsAsDownloaded(bool aborted, RangeHeaderValue? range, long length) =>
         !aborted && (range is null || range.Ranges.Any(r => r.To is null || r.To >= length - 1));
+
+    private static DownloadUsageDto Usage(DownloadStaging staging)
+    {
+        var ids = staging.ListJobIds();
+        return new DownloadUsageDto(ids.Count, ids.Sum(staging.SizeOf));
+    }
 
     private static bool IsTerminal(JobRecord job) => JobStatuses.Terminal.Contains(job.Status);
 

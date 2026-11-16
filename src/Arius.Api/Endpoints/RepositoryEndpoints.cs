@@ -1,6 +1,7 @@
 using Arius.Api.AppData;
 using Arius.Api.Composition;
 using Arius.Api.Contracts;
+using Arius.Api.Downloads;
 using Arius.Core.Features.StorageAccountInfoQuery;
 using Mediator;
 
@@ -74,7 +75,7 @@ internal static class RepositoryEndpoints
                 lastArchiveStarts.TryGetValue(id, out var startedAt) ? startedAt : null));
         });
 
-        group.MapDelete("/{id:long}", (long id, AppDatabase db, RepositoryProviderRegistry registry) =>
+        group.MapDelete("/{id:long}", (long id, AppDatabase db, RepositoryProviderRegistry registry, DownloadStaging staging) =>
         {
             if (db.GetRepository(id) is null)
                 return Results.NotFound();
@@ -82,6 +83,9 @@ internal static class RepositoryEndpoints
             // Deleting disposes the repo's logger factory, which a concurrent job build resolves loggers from.
             if (db.HasActiveJob(id))
                 return Results.Conflict("Repository has an active job; wait for it to finish or cancel it before deleting.");
+
+            foreach (var job in db.ListDownloadJobs(id))
+                staging.Delete(job.Id);
 
             db.DeleteRepository(id);
             registry.Remove(id); // repo is gone for good → also dispose its rolling-log factory, not just Evict the provider

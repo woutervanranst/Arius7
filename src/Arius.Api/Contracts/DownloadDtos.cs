@@ -11,3 +11,6 @@ public sealed record DownloadStateDto(IReadOnlyList<DownloadFileDto> Files, bool
 
 /// <summary>A finished download that still has staged files the browser has not fetched.</summary>
 public sealed record PendingDownloadDto(string JobId, int ReadyFiles, int TotalFiles, int RemainingFiles, long RemainingBytes);
+
+/// <summary>Download staging folders currently on the server disk and their total size.</summary>
+public sealed record DownloadUsageDto(int Downloads, long Bytes);
