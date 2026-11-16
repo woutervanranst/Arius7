@@ -14,19 +14,21 @@ import { TemporaryFilesCardComponent } from './temporary-files-card.component';
   imports: [DefaultsEditorComponent, TemporaryFilesCardComponent],
   template: `
     <h1 class="ar-heading" style="font-size:22px;font-weight:700">Settings</h1>
-    @if (defaults(); as d) {
-      @if (downloadDraft(); as dl) {
-        <arius-defaults-editor level="settings" [saved]="d.set" [inherited]="inherited()!" [inheritedBy]="d.inheritedBy"
-          [extraDirty]="downloadDirty()" (save)="save($event)" (discarded)="discardDownload()">
-          <arius-temporary-files-card [value]="dl" (changed)="downloadDraft.set($event)" />
-        </arius-defaults-editor>
-        @if (saveError()) { <div data-testid="defaults-save-error" style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ saveError() }}</div> }
-      }
-    } @else if (loadError()) {
+    @if (loadError()) {
       <div style="padding:24px 0;font-size:13px">
         <span data-testid="defaults-load-error" style="color:#dc2626">Could not load defaults.</span>
         <button class="ar-btn-outline" data-testid="defaults-load-retry" style="margin-left:10px" (click)="load()">Retry</button>
       </div>
+    } @else if (defaults(); as d) {
+      @if (downloadDraft(); as dl) {
+        <arius-defaults-editor level="settings" [saved]="d.set" [inherited]="inherited()!" [inheritedBy]="d.inheritedBy"
+          [extraDirty]="downloadDirty() || downloadInvalid()" [saveBlocked]="downloadInvalid()" (save)="save($event)" (discarded)="discardDownload()">
+          <arius-temporary-files-card [value]="dl" (changed)="downloadDraft.set($event)" (validChange)="downloadInvalid.set(!$event)" />
+        </arius-defaults-editor>
+        @if (saveError()) { <div data-testid="defaults-save-error" style="color:#dc2626;font-size:12.5px;margin-top:8px">{{ saveError() }}</div> }
+      } @else {
+        <div style="padding:24px 0;color:#a1a1aa;font-size:13px">Loading…</div>
+      }
     } @else {
       <div style="padding:24px 0;color:#a1a1aa;font-size:13px">Loading…</div>
     }
@@ -43,6 +45,7 @@ export class SettingsComponent {
     const draft = this.downloadDraft();
     return !!saved && !!draft && (saved.cleanupEnabled !== draft.cleanupEnabled || saved.cleanupDays !== draft.cleanupDays);
   });
+  protected readonly downloadInvalid = signal(false);
   protected readonly saveError = signal<string | null>(null);
   protected readonly loadError = signal(false);
 
@@ -52,6 +55,8 @@ export class SettingsComponent {
 
   protected load(): void {
     this.loadError.set(false);
+    this.defaults.set(null);
+    this.downloadDraft.set(null);
     this.api.getGlobalDefaults().subscribe({
       next: d => this.defaults.set(d),
       error: () => this.loadError.set(true),
@@ -77,7 +82,9 @@ export class SettingsComponent {
   }
 
   protected discardDownload(): void {
-    this.downloadDraft.set(this.downloadSaved());
+    const saved = this.downloadSaved();
+    this.downloadDraft.set(saved && { ...saved });
+    this.downloadInvalid.set(false);
   }
 
   private setDownload(s: DownloadSettingsDto): void {
