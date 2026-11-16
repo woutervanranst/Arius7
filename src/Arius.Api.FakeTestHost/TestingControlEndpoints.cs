@@ -1,11 +1,15 @@
 using Arius.Api.AppData;
+using Arius.Api.Contracts;
+using Arius.Api.Jobs;
+using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Api.FakeTestHost;
 
 /// <summary>Out-of-process control surface for the hermetic Playwright suite — the runtime equivalent of the
 /// in-process AriusApiFactory.SeedRepository + factory.Scenarios.Set*. Only mapped by the Arius.Api.FakeTestHost host,
 /// so production never exposes it. Jobs still START through the real hub (StartArchive/StartRestore) — this only
-/// seeds a repo, picks a named scenario, and releases gated runs.</summary>
+/// seeds a repo, picks a named scenario, and releases gated runs. The one exception is /start-download, which
+/// bypasses the hub: the scripted Core can't list entries, so the Files tab can't collect files in this suite.</summary>
 public static class TestingControlEndpoints
 {
     public static IEndpointRouteBuilder MapTestingControlEndpoints(this IEndpointRouteBuilder app)
@@ -52,10 +56,24 @@ public static class TestingControlEndpoints
                 case "onlineRestore":
                     scenarios.SetRestore(req.RepoId, CanonicalScenarios.OnlineRestore(gated: req.Gated));
                     break;
+                case "onlineDownload":
+                    scenarios.SetRestore(req.RepoId, CanonicalScenarios.OnlineDownload(gated: req.Gated));
+                    break;
+                case "rehydratingDownloadStaysPending":
+                    scenarios.SetRestore(req.RepoId, CanonicalScenarios.RehydratingDownloadStaysPending());
+                    break;
                 default:
                     return Results.BadRequest(new { error = $"Unknown scenario '{req.Name}'." });
             }
             return Results.Ok();
+        });
+
+        g.MapPost("/start-download", (StartDownloadRequest req, JobRunner runner) =>
+        {
+            var jobId = Guid.NewGuid().ToString();
+            var files = req.Files.Select(f => new DownloadFile(RelativePath.Parse(f.Path).ToString(), f.Size)).ToList();
+            _ = runner.RunDownloadAsync(req.RepoId, jobId, req.Version, files);
+            return Results.Ok(new { jobId });
         });
 
         g.MapPost("/release/{repoId:long}", (long repoId, ScenarioGate gate) => { gate.Release(repoId); return Results.Ok(); });
@@ -64,5 +82,6 @@ public static class TestingControlEndpoints
     }
 
     private sealed record SeedRepoRequest(string? Alias, string? Container, string? LocalPath, string? DefaultTier);
+    private sealed record StartDownloadRequest(long RepoId, string Version, DownloadFileRequest[] Files);
     private sealed record ScenarioRequest(long RepoId, string Name, bool Gated = false);
 }
