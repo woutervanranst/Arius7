@@ -1,5 +1,6 @@
 import { archiveBarLayers, restoreBarLayers, phaseSentence, resolveRehydrationWindowHours,
-  formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta } from './job-format';
+  formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta,
+  toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from './job-format';
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 
 function snap(p: Partial<JobSnapshot>): JobSnapshot {
@@ -136,5 +137,31 @@ describe('resolveRehydrationWindowHours', () => {
   });
   it('returns null when neither is available', () => {
     expect(resolveRehydrationWindowHours(null, null, 'high')).toBeNull();
+  });
+});
+
+describe('job kind helpers', () => {
+  it('toJobKind keeps download and maps unknown kinds to archive', () => {
+    expect(toJobKind('download')).toBe('download');
+    expect(toJobKind('restore')).toBe('restore');
+    expect(toJobKind('archive')).toBe('archive');
+    expect(toJobKind('mystery')).toBe('archive');
+  });
+  it('jobKindLabel and jobKindIcon name Download with ki-exit-down', () => {
+    expect(jobKindLabel('download')).toBe('Download');
+    expect(jobKindIcon('download')).toBe('ki-exit-down');
+    expect(jobKindLabel('restore')).toBe('Restore');
+    expect(jobKindIcon('restore')).toBe('ki-cloud-download');
+    expect(jobKindLabel('archive')).toBe('Archive');
+    expect(jobKindIcon('archive')).toBe('ki-cloud-add');
+  });
+  it('isRestoreFamily is true for restore and download only', () => {
+    expect(isRestoreFamily('restore')).toBe(true);
+    expect(isRestoreFamily('download')).toBe(true);
+    expect(isRestoreFamily('archive')).toBe(false);
+  });
+  it('phaseSentence describes a download like a restore', () => {
+    expect(phaseSentence(snap({ chunksNeedingRehydration: 5, bytesRestored: 0 }), 'download')).toBe('Rehydrating — 5 chunks from Archive tier');
+    expect(phaseSentence(snap({ bytesRestored: 10, filesRestored: 2, restoreTotalFiles: 7 }), 'download')).toBe('Restoring — 2 of 7 files');
   });
 });

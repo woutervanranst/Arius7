@@ -168,7 +168,7 @@ export interface JobDto {
   id: string;
   repoId: number;
   repo: string;
-  kind: string;     // archive | restore
+  kind: string;     // archive | restore | download
   trigger: string;  // one-off | schedule
   status: string;   // JobStatus
   pct: number;
@@ -251,4 +251,48 @@ export interface GlobalDefaultsDto {
 export interface RepositoryDefaultsDto {
   set: SetValues;
   inherited: ResolvedDefaults;
+}
+
+// ── Browser download ──────────────────────────────────────────────────────────
+
+/** One file requested for a browser download (hub StartDownload). */
+export interface DownloadFileRequest {
+  path: string;
+  size: number;
+}
+
+/** GET /api/jobs/{id}/download: one file's staging state. */
+export interface DownloadFileDto {
+  path: string;
+  size: number;
+  ready: boolean;
+  downloaded: boolean;
+}
+
+/** GET /api/jobs/{id}/download: the job's files plus whether and when its staged files are cleaned up. */
+export interface DownloadStateDto {
+  files: DownloadFileDto[];
+  cleanedUp: boolean;
+  cleanupAt: string | null;
+}
+
+/** GET /api/repos/{id}/downloads/pending: a download job that still has files waiting to be fetched. */
+export interface PendingDownloadDto {
+  jobId: string;
+  readyFiles: number;
+  totalFiles: number;
+  remainingFiles: number;
+  remainingBytes: number;
+}
+
+/** GET/PUT /api/settings/downloads. */
+export interface DownloadSettingsDto {
+  cleanupEnabled: boolean;
+  cleanupDays: number;
+}
+
+/** GET /api/downloads/usage and POST /api/downloads/cleanup: staged downloads on the server. */
+export interface DownloadUsageDto {
+  downloads: number;
+  bytes: number;
 }
