@@ -109,6 +109,16 @@ public class RestoreCommandTests
     }
 
     [Test]
+    public async Task Restore_TargetWithBackslashSeparators_ParsedIntoTargetPaths()
+    {
+        var harness = new CliHarness();
+        var exitCode = await harness.InvokeAsync(@"restore /data -a acct -k key -c ctr -t photos\2024\ docs\a.pdf");
+
+        exitCode.ShouldBe(0);
+        ReceivedOptions(harness).TargetPaths.ShouldBe([RelativePath.Parse("photos/2024"), RelativePath.Parse("docs/a.pdf")]);
+    }
+
+    [Test]
     public async Task Restore_InvalidTarget_ReturnsExitCode1WithoutRestoring()
     {
         var harness = new CliHarness();
