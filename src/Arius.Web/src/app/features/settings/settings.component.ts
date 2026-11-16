@@ -84,7 +84,6 @@ export class SettingsComponent {
   protected discardDownload(): void {
     const saved = this.downloadSaved();
     this.downloadDraft.set(saved && { ...saved });
-    this.downloadInvalid.set(false);
   }
 
   private setDownload(s: DownloadSettingsDto): void {
