@@ -300,8 +300,9 @@ same cost approval, same rehydration handling — and never touches the reposito
 
 The job pill at the bottom of the screen follows along: **Rehydrating · 2 of 3 ready** with a
 **Download ready** link while files are being prepared, and **Download ready** with a **Download**
-link once the job has finished and files are still waiting. Both keep **View job ›**. If you
-dismiss it, it stays dismissed in this browser for that job.
+link once the job has finished and files are still waiting. Both keep **View job ›**. Dismissing
+the **Download ready** pill is remembered in this browser for that job; the progress pill comes back
+the next time you open the repository.
 
 A download that stops before completing (failed, cancelled, or interrupted by a server restart) keeps
 the files that were ready; you can still download them. The remaining files are not retried — start a
