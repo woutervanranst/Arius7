@@ -75,6 +75,14 @@ describe('JobPillStore visibility', () => {
 });
 
 describe('JobPillStore live stream', () => {
+  it('follows the status carried by progress snapshots, so running becomes rehydrating without a reattach', () => {
+    const { store, progress } = makeStore();
+    store.show('j1', 'restore');
+    expect(store.status()).toBe('running');
+    progress.next(snap({ status: 'rehydrating' }));
+    expect(store.status()).toBe('rehydrating');
+  });
+
   it('streams live progress into the snapshot', () => {
     const { store, progress } = makeStore();
     store.show('j1', 'archive');
