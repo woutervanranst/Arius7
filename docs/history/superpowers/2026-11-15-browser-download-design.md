@@ -1,7 +1,7 @@
 # Download collected files through the browser
 
 **Date:** 2026-11-15
-**Status:** Draft
+**Status:** Approved
 **Scope:** Arius.Web (Files tab, Archive/Restore drawer, job page, job pill, Jobs list, Settings page) and
 Arius.Api (a new `download` job kind, download/clean-up endpoints, clean-up service, one new setting).
 Core, CLI and Explorer are untouched.

@@ -1,10 +1,10 @@
 # Web host (Arius.Api + Arius.Web)
 
-> **Code:** `src/Arius.Api/` · `src/Arius.Web/`  ·  **Decisions:** [ADR-0013](../../decisions/adr-0013-core-host-separation.md) · [ADR-0010](../../decisions/adr-0010-use-feature-handlers-for-application-use-cases.md) · [ADR-0020](../../decisions/adr-0020-provider-agnostic-cost-estimation.md) · [ADR-0025](../../decisions/adr-0025-archive-restore-defaults-hierarchy.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [chunk](../../glossary.md#chunk) · [storage tier hint](../../glossary.md#storage-tier-hint) · [filetree](../../glossary.md#filetree)
+> **Code:** `src/Arius.Api/` · `src/Arius.Web/`  ·  **Decisions:** [ADR-0013](../../decisions/adr-0013-core-host-separation.md) · [ADR-0010](../../decisions/adr-0010-use-feature-handlers-for-application-use-cases.md) · [ADR-0020](../../decisions/adr-0020-provider-agnostic-cost-estimation.md) · [ADR-0025](../../decisions/adr-0025-archive-restore-defaults-hierarchy.md) · [ADR-0026](../../decisions/adr-0026-browser-downloads-staged-by-a-download-job.md)  ·  **Terms:** [snapshot](../../glossary.md#snapshot) · [chunk index](../../glossary.md#chunk-index) · [chunk](../../glossary.md#chunk) · [storage tier hint](../../glossary.md#storage-tier-hint) · [filetree](../../glossary.md#filetree)
 
 ## Purpose
 
-The browser front-end to Arius: a multi-repository manager that runs **archive**, **restore**, **ls/browse**, **statistics**, and **scheduling** against many repositories through one server. `Arius.Api` (ASP.NET Core minimal API) is the host that drives `Arius.Core` via `IMediator` and relays Core's progress events to the browser; `Arius.Web` (Angular SPA) is the client. They are **one deployable web application** — `Arius.Api` serves the built SPA from `wwwroot` and exposes REST under `/api` plus a SignalR hub at `/hubs/arius`, so they ship as a single container. (User-facing usage lives in [guide/web-ui.md](../../guide/web-ui.md); operator/deploy in [guide/deployment.md](../../guide/deployment.md).)
+The browser front-end to Arius: a multi-repository manager that runs **archive**, **restore**, **download**, **ls/browse**, **statistics**, and **scheduling** against many repositories through one server. `Arius.Api` (ASP.NET Core minimal API) is the host that drives `Arius.Core` via `IMediator` and relays Core's progress events to the browser; `Arius.Web` (Angular SPA) is the client. They are **one deployable web application** — `Arius.Api` serves the built SPA from `wwwroot` and exposes REST under `/api` plus a SignalR hub at `/hubs/arius`, so they ship as a single container. (User-facing usage lives in [guide/web-ui.md](../../guide/web-ui.md); operator/deploy in [guide/deployment.md](../../guide/deployment.md).)
 
 Unlike the CLI and Explorer hosts, this host adds a layer Core has no concept of: it manages a **fleet** of repositories and accounts in its own SQLite database, serializes long-running mutating work into **jobs**, and lets the user confirm the **estimated restore cost** before money is spent. Everything below the `IMediator` boundary is the same Core the CLI drives — see [ADR-0013](../../decisions/adr-0013-core-host-separation.md).
 
@@ -154,9 +154,35 @@ The handshake spans Core, the runner, and the hub:
 
 A never-answered prompt cannot pin the restore — and its per-repo write lock — forever: the out-of-band `StaleApprovalSweepService` declines any `awaiting-cost` job left unanswered past its window (~24h). There is no per-connection decline — a dropped connection is just one more client that stopped answering.
 
+### Download jobs
+
+A **download job** (`kind = download`, started by `JobsHub.StartDownload` → `JobRunner.RunDownloadAsync`; [ADR-0026](../../decisions/adr-0026-browser-downloads-staged-by-a-download-job.md)) gets collected files out of a repository and into the user's browser. It is the restore flow with a different destination: `RunDownloadAsync` shares everything but the destination and options with `RunRestoreAsync` (`RunRestoreJobAsync`), so the cost handshake, rehydration parking, auto-resume, `RehydrationPollingService` and the single-active-job rule apply unchanged. It sends one `RestoreCommand` (`TargetPaths` = the collected files) with `Overwrite = false`, `NoPointers = true` and a snapshot version pinned when the job starts, into `‹data dir›/downloads/‹jobId›` (`Downloads/DownloadStaging`, beside the app DB). Nothing is written into the repository's local folder, and Core is untouched.
+
+```mermaid
+flowchart LR
+    hub["JobsHub.StartDownload"] --> run["JobRunner.RunDownloadAsync"]
+    run --> files[("download_files: collected paths")]
+    run -->|RestoreCommand → staging folder| core[Core]
+    core -->|FileRestoredEvent| sink["JobSink.FileRestored"]
+    sink -->|ready = 1| files
+    files --> ep["GET /jobs/id/download/content"]
+    staging[("downloads/jobId")] --> ep
+    ep -->|one file, or ZIP built on the fly| browser[Browser]
+    ep -->|transfer completed → downloaded = 1| files
+    clean["DownloadCleanupService (hourly) · Clean up now"] -->|delete folder| staging
+```
+
+**Ready, downloaded, pending.** A collected file is *ready* once Core reports it restored (`FileRestoredEvent` → `JobSink.FileRestored` → `download_files.ready`), *downloaded* once the content endpoint has finished sending it, otherwise pending. Presence in the staging folder is deliberately not "ready": Core writes in place, so an interrupted pass leaves half-written files. Before every resume pass `DownloadStaging.PruneUnready` deletes staged files that are not ready — with `Overwrite = false` a half-written file would otherwise be kept as "local differs" — so ready files are skipped as identical and the rest are restored again.
+
+**Serving** (`Endpoints/DownloadEndpoints.cs`). `GET /jobs/{id}/download` returns the file list with ready/downloaded flags and the clean-up date; `GET /jobs/{id}/download/content?set=all|remaining` serves the ready files (or the ready-and-not-downloaded ones): a single file as itself (range requests supported), several as a ZIP written with `ZipArchive` straight to the response — repository-relative entry paths, no compression, no buffering, so no known length and no resume. The count is decided per request, so "remaining" with one file left is that file. A file is marked downloaded only when the response completed (a ranged request only when a range reaches the last byte); an aborted transfer never counts. `GET /repos/{id}/downloads/pending` backs the job pill after a reload: the latest finished, not cleaned-up download with ready files left. `POST /jobs/{id}/download/cleanup` deletes one finished job's folder.
+
+**Temporary files.** The clean-up period is one server-wide setting (`app_settings`; `GET`/`PUT /settings/downloads`, default on, 7 days), not part of the defaults hierarchy. `DownloadCleaner` deletes a staging folder when its job is gone (an orphan) or terminal and — when clean-up is on — finished at least that many days ago; `DownloadCleanupService` runs it hourly (mirroring `StaleApprovalSweepService`), and `GET /downloads/usage` / `POST /downloads/cleanup` back the Settings page's usage line and **Clean up all now**. A cleaned-up job keeps its row and file list; its page shows the files as cleaned up.
+
+**Constraints inherited, not changed.** A rehydrating download holds the repository's one active-job slot like a rehydrating restore. A restart during a pass marks the job `interrupted` (as for restore): its ready files stay downloadable, but it is not retried. There is no free-space check; a full disk fails the job like any restore I/O error. The Web leaves collected files that are not in the repository out of both Download and Restore before sending anything, so Core's fail-fast check on unmatched targets is not tripped.
+
 ### App database and secrets
 
-`AppData/AppDatabase` is the host's own SQLite store — **separate from Core's chunk-index cache** — holding `storage_accounts`, `repositories`, `jobs`, `schedules`, the option defaults (`global_defaults`, `repository_defaults`), and the `statistics_cache` (raw `SqliteConnection`, WAL, parameterized commands, mirroring Core's local-store idiom). The schema (`AppDatabase.CreateOrUpgradeSchema`) is seven tables; all but `storage_accounts` and `global_defaults` hang off `repositories`:
+`AppData/AppDatabase` is the host's own SQLite store — **separate from Core's chunk-index cache** — holding `storage_accounts`, `repositories`, `jobs`, `schedules`, the option defaults (`global_defaults`, `repository_defaults`), and the `statistics_cache`, the per-file `download_files` state and the server-wide `app_settings` (raw `SqliteConnection`, WAL, parameterized commands, mirroring Core's local-store idiom). The schema (`AppDatabase.CreateOrUpgradeSchema`) is nine tables; all but `storage_accounts`, `global_defaults` and `app_settings` hang off `repositories` (`download_files` through `jobs`):
 
 ```mermaid
 erDiagram
@@ -165,6 +191,7 @@ erDiagram
     repositories     ||--o{ schedules        : "fires"
     repositories     ||--o{ repository_defaults : "overrides"
     repositories     ||--o{ statistics_cache : "memoizes"
+    jobs             ||--o{ download_files   : "collects"
 
     storage_accounts {
         INTEGER id          PK
@@ -184,7 +211,7 @@ erDiagram
     jobs {
         TEXT    id          PK "GUID"
         INTEGER repo_id     FK
-        TEXT    kind        "archive or restore"
+        TEXT    kind        "archive, restore or download"
         TEXT    trigger     "one-off or schedule"
         TEXT    status
         REAL    pct
@@ -217,9 +244,20 @@ erDiagram
         TEXT    payload     "StatisticsDto JSON"
         TEXT    created_at
     }
+    download_files {
+        TEXT    job_id     PK,FK
+        TEXT    path       PK "repository-relative"
+        INTEGER size
+        INTEGER ready      "1 once Core reported it restored"
+        INTEGER downloaded "1 once the browser transfer completed"
+    }
+    app_settings {
+        TEXT key   PK "download clean-up on/off, days"
+        TEXT value
+    }
 ```
 
-Note there is **no region column**: the storage [region](../core/shared/cost.md) is not host state — it lives in each container's own metadata. `DeleteRepository` cascades to its `jobs` / `schedules` / `statistics_cache` / `repository_defaults` rows in one transaction; an account cannot be deleted while it still owns repositories. It is the only persistent state the SPA reads through REST: account CRUD + key rotation (`AccountEndpoints`, `GET`/`POST`/`PATCH`/`DELETE` — an account is just a name + an encrypted key), repository CRUD (`RepositoryEndpoints`), a server-side directory browser for the local-path picker (`FilesystemEndpoints` → `/fs/list`, listing folders as the **Api host/container** sees them), job history and cron schedules (`JobEndpoints`), and the snapshot/statistics reads behind `BrowseEndpoints` — `SnapshotsListQuery` goes to Core live, while `StatisticsQuery` (which now also carries region-priced cost) is **memoized** in `statistics_cache` (below). Secrets — Azure account keys and repository passphrases — are stored as **ASP.NET Data Protection** ciphertext (`SecretProtector`, keyed by a key ring persisted to the mounted volume) and **never** serialized back to the client (the DTOs expose only `HasKey`, never the key/passphrase).
+Note there is **no region column**: the storage [region](../core/shared/cost.md) is not host state — it lives in each container's own metadata. `DeleteRepository` cascades to its `jobs` / `download_files` / `schedules` / `statistics_cache` / `repository_defaults` rows in one transaction (the endpoint deletes the repository's download staging folders first); an account cannot be deleted while it still owns repositories. It is the only persistent state the SPA reads through REST: account CRUD + key rotation (`AccountEndpoints`, `GET`/`POST`/`PATCH`/`DELETE` — an account is just a name + an encrypted key), repository CRUD (`RepositoryEndpoints`), a server-side directory browser for the local-path picker (`FilesystemEndpoints` → `/fs/list`, listing folders as the **Api host/container** sees them), job history and cron schedules (`JobEndpoints`), and the snapshot/statistics reads behind `BrowseEndpoints` — `SnapshotsListQuery` goes to Core live, while `StatisticsQuery` (which now also carries region-priced cost) is **memoized** in `statistics_cache` (below). Secrets — Azure account keys and repository passphrases — are stored as **ASP.NET Data Protection** ciphertext (`SecretProtector`, keyed by a key ring persisted to the mounted volume) and **never** serialized back to the client (the DTOs expose only `HasKey`, never the key/passphrase).
 
 ### Archive and restore defaults
 
@@ -252,6 +290,9 @@ A repository's statistics are a **pure function of its snapshot set**, and the h
 - **A cost answer that races the prompt is never lost.** The approval waiter is armed (`RestoreApprovalRegistry.Prime`) *before* the estimate is pushed, so an approve/decline arriving before the run starts awaiting lands on the waiter rather than being dropped and leaking the repo lock until the sweep. `ApproveRestore` always resolves to a priority (default Standard), never a decline — only `DeclineRestore` cancels.
 - **A resume never resurrects a terminalized job.** `JobRunner.ResumeRestoreAsync` flips the row to `running` only through the guarded `AppDatabase.TryResumeToRunning` (applies only while still `rehydrating`/`awaiting-cost`), so a cancel that raced the resume can't be overwritten and driven to completion.
 - **An unanswered prompt is reclaimed out-of-band, not by disconnect.** `StaleApprovalSweepService` declines abandoned `awaiting-cost` jobs (~24h); the jobId-keyed registry has no per-connection ownership to release.
+- **A download file is ready only because Core said so.** `ready` comes from `FileRestoredEvent`, never from the file existing on disk, and staged files that are not ready are deleted before each resume pass; otherwise a half-written file from an interrupted pass would be served.
+- **Staging of an in-progress download is never deleted.** `DownloadCleaner` skips folders whose job is `running`, `awaiting-cost` or `rehydrating`, both for the periodic sweep and for **Clean up all now**; `POST /jobs/{id}/download/cleanup` refuses a non-terminal job. A download never writes into the repository's local folder.
+- **A transfer counts as downloaded only when it completed.** An aborted response, or a range that doesn't reach the last byte, leaves `downloaded` unchanged.
 - **Secrets never leave the server.** Account keys and passphrases are Data-Protection ciphertext at rest and are dropped from every client DTO.
 - **The statistics cache is invalidated on every snapshot-set change, never re-verified per read.** Whatever clears the read provider on a content change (archive job, properties change, delete) must also `ClearStatisticsCache`; otherwise the SPA serves figures computed against a superseded snapshot generation. (A change to the container's region metadata is not a snapshot-set change and is set out-of-band, so it does not bust this cache — see *Open seams*.)
 

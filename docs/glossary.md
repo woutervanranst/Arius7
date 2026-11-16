@@ -328,3 +328,20 @@ uncompressed bytes of all files, counting duplicates once per file; creating Ari
 resolve/create/list in `SnapshotService`
 (`src/Arius.Core/Shared/Snapshot/SnapshotService.cs`); named via
 `BlobPaths.SnapshotPath(...)`.
+
+---
+
+## Web host
+
+### download job
+
+**download job** — a Web UI job (kind `download`) that restores a selection of collected
+files into a per-job staging folder on the server so the browser can download them: one
+file as itself, several as a ZIP built on the fly. It is the restore flow with a different
+destination (`Overwrite = false`, no pointers, a pinned snapshot version); a file is *ready*
+once Core reports it restored, and the staging folder is cleaned up after a configurable
+number of days. See [ADR-0026](decisions/adr-0026-browser-downloads-staged-by-a-download-job.md).
+*Code:* `JobRunner.RunDownloadAsync` (`src/Arius.Api/Jobs/JobRunner.cs`), started by
+`JobsHub.StartDownload`; staging in `DownloadStaging`
+(`src/Arius.Api/Downloads/DownloadStaging.cs`); serving in `DownloadEndpoints`.
+Design: [Web host](design/hosts/web.md#download-jobs).
