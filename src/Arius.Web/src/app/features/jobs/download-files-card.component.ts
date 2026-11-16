@@ -6,6 +6,8 @@ import { NotificationService } from '../../core/services/notification.service';
 import { formatBytes } from '../../shared/format';
 import { DownloadAction, downloadActions, fileStatus, readyHeadline, readySubline, summarize } from './download-files';
 
+const RELOAD_THROTTLE_MS = 1000;
+
 /**
  * The download job's files card: a green summary (ready count, clean-up note, actions on one line) above the
  * file table. Downloads are plain `<a href download>` links to the server — never fetched by JS. The file list is
@@ -78,6 +80,9 @@ export class DownloadFilesCardComponent implements OnDestroy {
   protected readonly cleanedUp = signal(false);
   private readonly cleanupAt = signal<string | null>(null);
   private load: Subscription | null = null;
+  private inFlight = false;
+  private reloadAgain = false;
+  private trailing: ReturnType<typeof setTimeout> | null = null;
 
   protected readonly finished = computed(() => !isNonTerminal(this.status()));
   private readonly summary = computed(() => summarize(this.files()));
@@ -88,14 +93,22 @@ export class DownloadFilesCardComponent implements OnDestroy {
   protected readonly formatBytes = formatBytes;
 
   constructor() {
-    effect(() => { this.jobId(); this.status(); this.filesRestored(); this.reload(); });
+    // A job or status change reloads promptly; progress ticks (filesRestored) are coalesced into one trailing reload.
+    let last: { id: string; status: string } | null = null;
+    effect(() => {
+      const id = this.jobId(), status = this.status();
+      this.filesRestored();
+      if (last?.id !== id || last.status !== status) { last = { id, status }; this.reload(); }
+      else if (this.trailing === null) this.trailing = setTimeout(() => { this.trailing = null; this.reload(); }, RELOAD_THROTTLE_MS);
+    });
   }
 
   protected url(a: DownloadAction): string { return downloadContentUrl(this.jobId(), a.set); }
 
   /** Optimistic: the browser starts the transfer on click; the server records it once the response completes. */
   protected markDownloaded(a: DownloadAction): void {
-    this.files.update(list => list.map(f => f.ready && (a.set === 'all' || !f.downloaded) ? { ...f, downloaded: true } : f));
+    // Deferred so the actions list doesn't change before the anchor's default (download) action runs.
+    setTimeout(() => this.files.update(list => list.map(f => f.ready && (a.set === 'all' || !f.downloaded) ? { ...f, downloaded: true } : f)), 0);
   }
 
   protected cleanUp(): void {
@@ -115,13 +128,23 @@ export class DownloadFilesCardComponent implements OnDestroy {
   }
   protected statusOf(f: DownloadFileDto): string { return fileStatus(f, this.status(), this.cleanedUp()); }
 
+  /** At most one request in flight; a trigger that arrives meanwhile is remembered and re-run once it answers. */
   private reload(): void {
-    this.load?.unsubscribe();
-    this.load = this.api.getDownload(this.jobId()).subscribe({
-      next: d => { this.files.set(d.files); this.cleanedUp.set(d.cleanedUp); this.cleanupAt.set(d.cleanupAt); },
-      error: () => { /* keep the last known list; the next status or progress change reloads */ },
+    if (this.inFlight) { this.reloadAgain = true; return; }
+    this.inFlight = true;
+    const id = this.jobId();
+    const done = () => { this.inFlight = false; if (this.reloadAgain) { this.reloadAgain = false; this.reload(); } };
+    this.load = this.api.getDownload(id).subscribe({
+      next: d => {
+        if (this.jobId() === id) { this.files.set(d.files); this.cleanedUp.set(d.cleanedUp); this.cleanupAt.set(d.cleanupAt); }   // else the page moved to another job
+        done();
+      },
+      error: () => done(),   // keep the last known list; the next status or progress change reloads
     });
   }
 
-  ngOnDestroy(): void { this.load?.unsubscribe(); }
+  ngOnDestroy(): void {
+    this.load?.unsubscribe();
+    if (this.trailing !== null) clearTimeout(this.trailing);
+  }
 }

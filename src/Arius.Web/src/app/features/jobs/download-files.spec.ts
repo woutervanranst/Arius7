@@ -73,6 +73,11 @@ describe('readyHeadline', () => {
     expect(readyHeadline(some, false)).toBe('2 of 3 files ready · 20.5 MB');
   });
 
+  it('uses the singular "file" for a single file', () => {
+    expect(readyHeadline(summarize([file({ size: 1e6 })]), true)).toBe('All 1 file ready · 1.0 MB');
+    expect(readyHeadline(summarize([file({ size: 1e6 })]), false)).toBe('1 of 1 file ready · 1.0 MB');
+  });
+
   it('keeps the "n of m" wording for a finished download with files that never became ready', () => {
     const s = summarize([file({ size: 1e6 }), file({ ready: false })]);
     expect(readyHeadline(s, true)).toBe('1 of 2 files ready · 1.0 MB');
@@ -89,7 +94,8 @@ describe('readySubline', () => {
   });
 
   it('shows the clean-up date as d MMM', () => {
-    expect(readySubline(none, 'completed', '2026-11-22T12:00:00Z')).toBe('Kept on the server until 22 Nov, then cleaned up');
+    expect(readySubline(none, 'completed', new Date(2026, 10, 22, 12).toISOString())).toBe('Kept on the server until 22 Nov, then cleaned up');
+    expect(readySubline(none, 'completed', new Date(2026, 8, 5, 12).toISOString())).toBe('Kept on the server until 5 Sep, then cleaned up');
   });
 
   it('says files are kept until cleaned up when no clean-up date is set', () => {
