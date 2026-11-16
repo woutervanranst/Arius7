@@ -7,7 +7,8 @@ import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours, toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from '../../shared/job-format';
+import { DownloadFilesCardComponent } from './download-files-card.component';
 import { Subscription } from 'rxjs';
 
 /** One stage-summary row (derived from the live snapshot). */
@@ -15,7 +16,8 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
 
 /**
  * `/jobs/:id` — the unified archive/restore job detail page.
- * ONE component drives both kinds; the palette, KPI tiles, stage list and rehydration wait card
+ * ONE component drives all kinds (a download is a restore into a server staging folder, so it shares the
+ * restore palette, tiles and stages and adds the files card); the palette, KPI tiles, stage list and rehydration wait card
  * switch on `kind()`. On open it loads the persisted row (`getJob`) AND attaches to the live
  * SignalR stream (`attachToJob` → snapshot, then `jobProgress` deltas); reconnect re-attach is
  * automatic (RealtimeService). The layered bar reads byte fields; the cost modal renders from a
@@ -25,7 +27,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
   selector: 'arius-job-detail',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, RouterLink, LayeredBarComponent],
+  imports: [DatePipe, RouterLink, LayeredBarComponent, DownloadFilesCardComponent],
   template: `
     @if (detail(); as d) {
       <div data-testid="job-detail" style="max-width:1020px;background:#fff;border:1px solid #e4e4e7;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.04);overflow:hidden">
@@ -47,7 +49,7 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               <div style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center"
                    [style.background]="kind() === 'restore' ? '#f5f3ff' : '#eff6ff'"
                    [style.color]="accent()">
-                <i class="ki-filled" [class.ki-cloud-download]="kind() === 'restore'" [class.ki-cloud-add]="kind() !== 'restore'" style="font-size:20px"></i>
+                <i class="ki-filled {{ kindIcon() }}" style="font-size:20px"></i>
               </div>
               <div>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -108,7 +110,8 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
                   {{ formatCount(snap()?.chunksNeedingRehydration) }} chunks are being moved out of Archive tier by Azure@if (rehydrateWindowHours() != null) { (~{{ rehydrateWindowHours() }} h)}
                 </div>
                 <div style="font-size:12.5px;color:#a16207;margin-top:2px">
-                  Status is checked periodically — often at first for High priority, backed off for Standard. You can close this page.
+                  @if (isDownload()) { Arius checks periodically and prepares the rest by itself. You can close this page. }
+                  @else { Status is checked periodically — often at first for High priority, backed off for Standard. You can close this page. }
                   @if (hydratedBy()) { &middot; {{ hydratedBy() }} }
                 </div>
               </div>
@@ -119,18 +122,23 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
                   <span style="position:absolute;top:2px;width:16px;height:16px;border-radius:999px;background:#fff;transition:left .15s,right .15s"
                         [style.left]="autoResume() ? 'auto' : '2px'" [style.right]="autoResume() ? '2px' : 'auto'"></span>
                 </button>
-                Automatically restore as chunks become available
+                {{ isDownload() ? 'Automatically prepare files as chunks become available' : 'Automatically restore as chunks become available' }}
               </label>
               <button data-testid="restore-now" type="button" (click)="resumeNow()"
-                      style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:600;background:#7c3aed;color:#fff;border:none">Restore now</button>
+                      style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:600;background:#7c3aed;color:#fff;border:none">{{ isDownload() ? 'Prepare now' : 'Restore now' }}</button>
             </div>
+          }
+
+          <!-- Download files card (download jobs: ready files are fetched through plain links) -->
+          @if (isDownload()) {
+            <arius-download-files-card [jobId]="id()" [status]="status()" [filesRestored]="snap()?.filesRestored ?? 0" />
           }
 
           <!-- Review-cost prompt: awaiting-cost reload with no live push this session (no modal replay) -->
           @if (status() === 'awaiting-cost' && !cost() && !costResolved()) {
             <div style="display:flex;align-items:center;gap:12px;margin-top:20px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 18px">
               <i class="ki-filled ki-dollar" style="font-size:18px;color:#b45309"></i>
-              <div style="font-size:13px;color:#92400e">This restore is paused for cost approval. The estimate is delivered live — reattach from the job stream to review and approve it.</div>
+              <div style="font-size:13px;color:#92400e">This {{ isDownload() ? 'download' : 'restore' }} is paused for cost approval. The estimate is delivered live — reattach from the job stream to review and approve it.</div>
             </div>
           }
 
@@ -138,9 +146,9 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
           <div style="display:grid;gap:12px;margin-top:22px" [style.gridTemplateColumns]="kind() === 'restore' ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)'">
             @if (kind() === 'restore') {
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
-                <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Restored</div>
+                <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">{{ isDownload() ? 'Prepared' : 'Restored' }}</div>
                 <div style="font-size:19px;font-weight:700;color:#18181b;margin-top:3px">{{ formatCount(snap()?.filesRestored) }} / {{ formatCount(snap()?.restoreTotalFiles) }}</div>
-                <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">{{ formatBytes(snap()?.bytesRestored) }} on disk</div>
+                <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">{{ isDownload() ? 'on the server' : formatBytes(snap()?.bytesRestored) + ' on disk' }}</div>
               </div>
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
                 <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Ready to download</div>
@@ -236,13 +244,13 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
             <div style="padding:22px 24px">
               <div style="display:flex;align-items:center;gap:11px">
                 <div style="width:36px;height:36px;border-radius:10px;background:#fffbeb;color:#b45309;display:flex;align-items:center;justify-content:center"><i class="ki-filled ki-dollar" style="font-size:17px"></i></div>
-                <div style="font-size:15.5px;font-weight:700;color:#18181b">Confirm restore cost</div>
+                <div style="font-size:15.5px;font-weight:700;color:#18181b">{{ isDownload() ? 'Confirm download cost' : 'Confirm restore cost' }}</div>
               </div>
               <div style="font-size:13px;color:#52525b;line-height:1.6;margin-top:12px">
                 @if (needsRehydration()) {
                   {{ formatCount(c.chunksNeedingRehydration) }} of {{ formatCount(c.chunksAvailable + c.chunksNeedingRehydration) }} chunks ({{ formatBytes(c.bytesNeedingRehydration) }}) are in Archive tier and need rehydration before download.
                 } @else {
-                  Everything is already in an online tier — no rehydration needed. Confirm the download cost to restore.
+                  Everything is already in an online tier — no rehydration needed. Confirm the download cost to {{ isDownload() ? 'download' : 'restore' }}.
                 }
               </div>
               <div style="margin-top:14px;border:1px solid #f0f0f2;border-radius:11px;overflow:hidden">
@@ -283,8 +291,8 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               }
             </div>
             <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 24px;border-top:1px solid #f0f0f2;background:#fafafb">
-              <button data-testid="cost-decline" type="button" (click)="decline()" style="height:38px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:600;color:#71717a;background:none;border:none;cursor:pointer">Cancel restore</button>
-              <button data-testid="cost-approve" type="button" (click)="approve()" style="height:38px;padding:0 16px;border-radius:9px;font-size:13px;font-weight:600;background:#7c3aed;color:#fff;border:none;cursor:pointer">{{ needsRehydration() ? 'Rehydrate & restore' : 'Restore' }}</button>
+              <button data-testid="cost-decline" type="button" (click)="decline()" style="height:38px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:600;color:#71717a;background:none;border:none;cursor:pointer">{{ isDownload() ? 'Cancel download' : 'Cancel restore' }}</button>
+              <button data-testid="cost-approve" type="button" (click)="approve()" style="height:38px;padding:0 16px;border-radius:9px;font-size:13px;font-weight:600;background:#7c3aed;color:#fff;border:none;cursor:pointer">{{ needsRehydration() ? (isDownload() ? 'Rehydrate & download' : 'Rehydrate & restore') : (isDownload() ? 'Download' : 'Restore') }}</button>
             </div>
           </div>
         </div>
@@ -331,8 +339,12 @@ export class JobDetailComponent implements OnDestroy {
   private subs: Subscription[] = [];
   private currentId = '';
 
-  protected readonly kind = computed(() => this.detail()?.kind === 'restore' ? 'restore' : 'archive');
-  protected readonly kindLabel = computed(() => this.kind() === 'restore' ? 'Restore' : 'Archive');
+  private readonly jobKind = computed(() => toJobKind(this.detail()?.kind ?? ''));
+  /** Restore-family value ('restore' for restores and downloads) driving the bar, stages and tiles. */
+  protected readonly kind = computed(() => isRestoreFamily(this.jobKind()) ? 'restore' : 'archive');
+  protected readonly isDownload = computed(() => this.jobKind() === 'download');
+  protected readonly kindLabel = computed(() => jobKindLabel(this.jobKind()));
+  protected readonly kindIcon = computed(() => jobKindIcon(this.jobKind()));
   protected readonly accent = computed(() => this.kind() === 'restore' ? '#6d28d9' : '#3b82f6');
   protected readonly meta = computed(() => statusMeta(this.status()));
   protected readonly outcome = computed<JobOutcome | null>(() => {
