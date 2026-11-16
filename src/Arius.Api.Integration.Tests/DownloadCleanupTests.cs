@@ -62,6 +62,28 @@ public class DownloadCleanupTests
     }
 
     [Test]
+    public async Task A_folder_that_is_not_a_job_staging_folder_is_never_deleted_nor_counted()
+    {
+        await using var factory = new AriusApiFactory();
+        var cleaner = factory.Services.GetRequiredService<DownloadCleaner>();
+        var staging = factory.Services.GetRequiredService<DownloadStaging>();
+        var completed = AddDownload(factory, AddRepository(factory, 1), "completed");
+        var foreign   = Path.Combine(Path.GetDirectoryName(staging.PathFor(completed))!, "My holiday photos");
+        Directory.CreateDirectory(foreign);
+        File.WriteAllText(Path.Combine(foreign, "keep.txt"), "precious");
+        using var client = factory.CreateClient();
+
+        await Assert.That(await client.GetFromJsonAsync<DownloadUsageDto>("/api/downloads/usage")).IsEqualTo(new DownloadUsageDto(1, 5));
+
+        cleaner.CleanUpExpired(DateTimeOffset.UtcNow.AddDays(365));
+        await Assert.That(File.Exists(Path.Combine(foreign, "keep.txt"))).IsTrue();
+
+        cleaner.CleanUpAll();
+        await Assert.That(File.Exists(Path.Combine(foreign, "keep.txt"))).IsTrue();
+        await Assert.That(staging.Exists(completed)).IsFalse();
+    }
+
+    [Test]
     public async Task The_sweep_does_nothing_when_clean_up_is_off()
     {
         await using var factory = new AriusApiFactory();
