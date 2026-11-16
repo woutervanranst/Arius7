@@ -185,12 +185,19 @@ Everything that must persist lives under `/data` (the container sets `HOME=/data
 | Arius.Core caches (`~/.arius`) | `/data/.arius` | [chunk index](../glossary.md#chunk-index), [filetree](../glossary.md#filetree), [snapshot](../glossary.md#snapshot) caches — rebuildable, but speeds up browsing |
 | Per-repository logs | `/data/.arius/{account}-{container}/logs/` | One daily-rolling log per repository capturing every archive/restore/browse operation (in the same directory and line format the CLI uses) — your forensic trail |
 | App-wide log | `/data/logs/` | The same daily-rolling format for everything with no repository context: startup and shutdown, the scheduler, and provider-build failures. Survives a container restart, unlike `docker logs` |
+| Downloaded files | `/data/downloads/{jobId}/` | Files prepared for browser downloads, kept until cleaned up (7 days after the download finishes by default). Disposable, but can be large — size the volume for the downloads you expect |
 
 > **Back up `/data`.** If you lose the **Data-Protection keys** (`/data/keys`), the app
 > can no longer decrypt the Azure account keys and repository passphrases it has stored —
 > you'd have to re-enter them. Keeping `/data` on a single persistent volume (and backing
 > that volume up) is the whole point. The keys are written by ASP.NET Data Protection and
 > are tied to this key ring; they are never sent to the browser.
+
+Downloads started from the web UI are restored into `/data/downloads` first and sent to the browser from
+there, so they take space on the `/data` volume until they are cleaned up. Clean-up is on by default
+(7 days after a download finishes) and is changed under **Settings → Temporary files**; see
+[Temporary files](./web-ui.md#temporary-files). Files of a download that is still running or rehydrating are
+never removed. If the volume fills up, the download fails like any other restore write error.
 
 The caches under `/data/.arius` are safe to lose — Arius rebuilds them from the
 repository on demand — but keeping them avoids re-downloading index/tree state after a

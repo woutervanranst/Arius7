@@ -139,5 +139,6 @@ nav:
       - decisions/adr-0023-archive-tier-small-chunk-ceiling.md
       - decisions/adr-0024-framework-zstandard-codec.md
       - decisions/adr-0025-archive-restore-defaults-hierarchy.md
+      - decisions/adr-0026-browser-downloads-staged-by-a-download-job.md
   - Glossary: glossary.md
   - History: history/INDEX.md

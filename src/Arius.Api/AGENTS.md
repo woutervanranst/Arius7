@@ -10,11 +10,12 @@ Read the root [`../../AGENTS.md`](../../AGENTS.md) first — it owns the cross-c
 - Terms (chunk index, snapshot, tier, rehydration): [`../../docs/glossary.md`](../../docs/glossary.md)
 
 ## Layout
-- `Program.cs` — composition root. Everything app-level is a singleton; `SchedulerService` is the one `IHostedService`. REST under `/api`, hub at `/hubs/arius`, Angular SPA from `wwwroot` with a fallback to `index.html`.
+- `Program.cs` — composition root. Everything app-level is a singleton; the `IHostedService`s are `SchedulerService`, `RehydrationPollingService`, `StaleApprovalSweepService` and `DownloadCleanupService`. REST under `/api`, hub at `/hubs/arius`, Angular SPA from `wwwroot` with a fallback to `index.html`.
 - `Composition/RepositoryProviderRegistry.cs` — builds per-repo Core service graphs.
-- `Endpoints/` — minimal-API `Map*Endpoints()` extensions (Account/Repository/Browse/Job/Defaults); thin, sync CRUD over `AppDatabase`.
+- `Endpoints/` — minimal-API `Map*Endpoints()` extensions (Account/Repository/Browse/Job/Defaults/Download); thin, sync CRUD over `AppDatabase`.
 - `Hubs/JobsHub.cs` + `Hubs/{Archive,Restore}Forwarders.cs` — SignalR surface and Core→client event forwarders.
-- `Jobs/` — `JobRunner`, `JobSink`, `RestoreApprovalRegistry`, `SchedulerService`, `JobFormat`.
+- `Jobs/` — `JobRunner`, `JobSink`, `RestoreApprovalRegistry`, `SchedulerService`, `JobFormat`, and the other hosted services (`RehydrationPollingService`, `StaleApprovalSweepService`, `DownloadCleanupService`).
+- `Downloads/` — the `download` job's host-side file handling: `DownloadStaging` (per-job folders under `‹data dir›/downloads`), `DownloadCleaner` (retention and clean-up; never touches running/awaiting-cost/rehydrating jobs), `DownloadNaming`. `Endpoints/DownloadEndpoints.cs` serves a staged file or a ZIP. A download is a restore into staging, not a second code path: change `RunRestoreJobAsync`, not a copy.
 - `AppData/` — `AppDatabase`, `Records.cs`, `OptionDefaults` (the four-level defaults hierarchy; resolve through it, never re-implement precedence), `SecretProtector`.
 - `Contracts/` — `Dtos.cs`, `EntryDto.cs` (+ `EntryMapping.ToDto`). Map Core types to DTOs here, never expose Core records directly.
 

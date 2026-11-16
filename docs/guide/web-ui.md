@@ -24,8 +24,8 @@ A narrow icon rail on the left switches between the three top-level areas:
 | Rail item | What it is |
 |---|---|
 | **Overview** | KPI cards, a **Storage accounts** table, and the **Repositories** table — whose header carries the **Add existing** / **New repository** buttons. The repository table shows each repository's tier, region, account, and last locally recorded archive-run time. Your home screen; it stays highlighted while you are inside a repository. |
-| **Jobs** | Every archive/restore run (one-off and scheduled) with a live output console. |
-| **Settings** | Global defaults for archive and restore options, used by every repository that doesn't set its own (see [Defaults: where values come from](#defaults-where-values-come-from)). |
+| **Jobs** | Every archive, restore and download run (one-off and scheduled) with a live output console. |
+| **Settings** | Global defaults for archive and restore options, used by every repository that doesn't set its own (see [Defaults: where values come from](#defaults-where-values-come-from)), and how long downloaded files are kept on the server (see [Temporary files](#temporary-files)). |
 
 The top bar shows a breadcrumb and — on every screen except Overview — a global search box. Press
 **⌘K** (macOS) or **Ctrl+K** (Windows/Linux) anywhere to open search; **Esc** closes it.
@@ -151,8 +151,9 @@ substring). Each file row shows:
 highlights). A blue **collected bar** appears showing the count and total size, with **Clear**,
 **Download** and **Restore** buttons. Collecting respects the snapshot you're viewing — collect from a
 historical snapshot to restore that older version. Use **Restore** to open the Restore drawer
-scoped to exactly those files, or **Download** to open the Download drawer. Collected files that
-aren't in the repository (local-only files) are skipped, and the drawer says how many.
+scoped to exactly those files, or **Download** to open the Download drawer (see
+[Downloading collected files](#downloading-collected-files)). Collected files that aren't in the
+repository (local-only files) are skipped by both, and the drawer says how many.
 
 ### Statistics tab
 
@@ -222,7 +223,7 @@ any of them to change this run only; nothing is saved.
 
 ---
 
-## Restoring (downloading)
+## Restoring
 
 Open the Restore drawer in one of two ways:
 
@@ -246,10 +247,12 @@ Click **Start restore**.
 
 Restoring can cost money: reading from the **Cool** or **Cold** tiers incurs a per-GB data-retrieval
 charge, **Archive** chunks must be *rehydrated* first (this takes hours and is pricier), and
-downloading data out of Azure incurs egress. Whenever a restore has a non-zero estimated cost, Arius
-pauses **before downloading anything** and shows a cost-approval modal. The estimate includes data
-retrieval, operations, and internet egress (under Azure pricing the first 100 GiB/month of egress is
-free), priced for the repository's region (read from the container's metadata).
+reading data out of Azure incurs egress. Whenever a restore has a non-zero estimated cost, Arius
+pauses **before reading anything** and shows a cost-approval modal. The estimate includes data
+retrieval, operations, and internet egress, priced for the repository's region (read from the
+container's metadata). Azure's first 100 GiB/month of egress is free, but that allowance is shared by
+everything the storage account sends in the month and Arius can't know how much is left, so the
+estimate bills egress from the first byte — it can over-estimate, never under-estimate.
 
 The modal adapts to what's being restored:
 
@@ -262,6 +265,68 @@ The modal adapts to what's being restored:
 Click **Approve & restore** to proceed, or **Decline** to cancel. Closing the drawer (or losing the
 connection — e.g. closing the tab) while the modal is up also declines and cancels the restore. A
 genuinely free restore skips the modal entirely.
+
+---
+
+## Downloading collected files
+
+**Restore** writes files on the server. To get files onto the computer you're browsing from, use
+**Download**: one file arrives under its own name, several arrive as one ZIP. It works like Restore —
+same cost approval, same rehydration handling — and never touches the repository's local folder.
+
+1. In the Files tab, collect the files and click **Download** in the collected bar. The **Download**
+   drawer shows the collected files and snapshot, and **You'll receive** — the file's own name for
+   one file, otherwise `<alias>-<date>.zip`. There are no overwrite or pointer options; they don't
+   apply. Click **Start download**.
+2. The job page opens. If the download costs money, the cost confirmation appears, worded for a
+   download (**Confirm download cost**, **Cancel download**, **Download** or **Rehydrate &
+   download**). It covers every collected file at once.
+3. Arius prepares the files on the server. Files in the Hot, Cool and Cold tiers are ready right
+   away. Files in the Archive tier are rehydrated first, which takes hours; Arius checks periodically
+   and prepares them by itself, so you can close the page.
+4. The job page's files card shows how many files are ready, with a table of every file and its status
+   (**Rehydrating**, **Ready**, **Downloaded**) and the download buttons:
+
+   | Situation | Buttons |
+   |---|---|
+   | Some files ready, none downloaded yet | **Download ready files** while the job is still working, **Download** once it has finished |
+   | Some downloaded, others ready | **Download all** and **Download remaining** |
+   | Everything ready has been downloaded | **Download all** |
+
+   You can download what's ready while the rest rehydrates, then come back for the remaining files.
+   A single file (even when it's the only one remaining) downloads as itself, not as a ZIP. A file
+   counts as downloaded once the server has finished sending it; an aborted transfer doesn't count.
+   Your browser starts the save only when you click.
+
+The job pill at the bottom of the screen follows along: **Rehydrating · 2 of 3 ready** with a
+**Download ready** link while files are being prepared, and **Download ready** with a **Download**
+link once the job has finished and files are still waiting. Both keep **View job ›**. If you
+dismiss it, it stays dismissed in this browser for that job.
+
+A download that stops before completing (failed, cancelled, or interrupted by a server restart) keeps
+the files that were ready; you can still download them. The remaining files are not retried — start a
+new download for them. Like a restore, a download that is rehydrating counts as the repository's one
+active job, so other jobs on that repository (scheduled archives included) wait for it.
+
+### Temporary files
+
+Prepared files stay on the server until they are cleaned up; the job page says "Kept on the server
+until *date*, then cleaned up". By default they are deleted 7 days after the download finishes. The
+**Temporary files** card on the **Settings** page changes this:
+
+- The switch **Clean up downloaded files after *N* days** turns automatic clean-up on or off. Off keeps
+  the files until you clean them up yourself.
+- **Currently on the server** shows how many downloads are stored and how much space they use, with
+  **Clean up all now** to delete every finished download's files immediately.
+- On a job page, **Clean up now** deletes that download's files. The job stays in the Jobs list; its
+  page shows the files as cleaned up.
+
+Files of a download that is still running, waiting for cost approval, or rehydrating are never
+cleaned up, and deleting a repository deletes its downloaded files. **Clean up now** and **Clean up
+all now** act immediately; the switch and the number of days are saved with **Save settings**, together
+with the defaults. The Settings page is grouped into **Archive** and **Restore** sections, with
+**Temporary files** under **Restore**. The space is on the server's data volume (see the
+[deployment guide](./deployment.md#1-the-data-volume-keep-this-safe)).
 
 ---
 
@@ -316,7 +381,7 @@ You can **Hide** the drawer while a job runs (it keeps going) and **Close** it o
 ### The Jobs screen
 
 The **Jobs** rail item shows every run across all repositories in one table — repository, kind
-(archive/restore), trigger (*manual* or *schedule*), status, and a progress bar. Status badges:
+(archive/restore/download), trigger (*manual* or *schedule*), status, and a progress bar. Status badges:
 **Running**, **Rehydrating**, **Scheduled**, **Queued**, **Completed**, **Failed**. Counters at the
 top show how many are running and scheduled. Below the table, a **Live output** console aggregates
 log lines from active jobs — handy for keeping an eye on a scheduled archive that fired without you.
