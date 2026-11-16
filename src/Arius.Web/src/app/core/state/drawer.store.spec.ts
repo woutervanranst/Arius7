@@ -1,9 +1,8 @@
 import '@angular/compiler';   // JIT fallback so partially-compiled Angular injectables load under Node Vitest
 import { describe, expect, it, vi } from 'vitest';
-import { Injector, runInInjectionContext, signal } from '@angular/core';
+import { Injector, runInInjectionContext } from '@angular/core';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { CollectedFile, DrawerStore } from './drawer.store';
-import { SnapshotStore } from './snapshot.store';
 import { RealtimeService } from '../api/realtime.service';
 import { JobPillStore } from './job-pill.store';
 import { ApiService } from '../api/api.service';
@@ -23,13 +22,11 @@ function dto(set: SetValues): RepositoryDefaultsDto {
 function makeStore(realtime: Partial<RealtimeService> = {}, pill: Partial<JobPillStore> = {}, defaults: Observable<RepositoryDefaultsDto> = of(dto({}))) {
   const rt = { startArchive: vi.fn().mockResolvedValue('job'), startRestore: vi.fn().mockResolvedValue('job'), startDownload: vi.fn().mockResolvedValue('job'), ...realtime } as unknown as RealtimeService;
   const pl = { show: vi.fn(), ...pill } as unknown as JobPillStore;
-  const api = { getRepositoryDefaults: vi.fn().mockReturnValue(defaults) };
-  const snapshots = { snapshots: signal([{ version: 'v1' }, { version: 'v2' }]) } as unknown as SnapshotStore;
+  const api = { getRepositoryDefaults: vi.fn().mockReturnValue(defaults), getSnapshots: vi.fn().mockReturnValue(of([{ version: 'v1' }, { version: 'v2' }])) };
   const injector = Injector.create({ providers: [
     { provide: RealtimeService, useValue: rt },
     { provide: JobPillStore, useValue: pl },
     { provide: ApiService, useValue: api },
-    { provide: SnapshotStore, useValue: snapshots },
   ] });
   const store = runInInjectionContext(injector, () => new DrawerStore());
   return { store, realtime: rt, pill: pl, api };
@@ -168,11 +165,42 @@ describe('DrawerStore.start', () => {
     expect(store.type()).toBeNull();
   });
 
-  it('a download keeps the snapshot being viewed', async () => {
-    const { store, realtime } = makeStore();
+  it('a download keeps the snapshot being viewed without fetching the snapshot list', async () => {
+    const { store, realtime, api } = makeStore();
     store.openDownload(9, 'v1', [file('a', 1)]);
     await store.start();
     expect(realtime.startDownload).toHaveBeenCalledWith(9, { version: 'v1', files: [{ path: 'a', size: 1 }] });
+    expect(api.getSnapshots).not.toHaveBeenCalled();
+  });
+
+  it('a latest-snapshot download pins the newest version of a fresh fetch, not a stale cached list', async () => {
+    const { store, realtime, api } = makeStore();
+    api.getSnapshots.mockReturnValue(of([{ version: 'v1' }, { version: 'v2' }, { version: 'v3' }]));
+    store.openDownload(9, null, [file('a', 1)]);
+    await store.start();
+    expect(api.getSnapshots).toHaveBeenCalledWith(9);
+    expect(realtime.startDownload).toHaveBeenCalledWith(9, { version: 'v3', files: [{ path: 'a', size: 1 }] });
+  });
+
+  it('a latest-snapshot download fails inline and does not start when the repository has no snapshots', async () => {
+    const { store, realtime, pill, api } = makeStore();
+    api.getSnapshots.mockReturnValue(of([]));
+    store.openDownload(9, null, [file('a', 1)]);
+    await store.start();
+    expect(realtime.startDownload).not.toHaveBeenCalled();
+    expect(pill.show).not.toHaveBeenCalled();
+    expect(store.error()).toBeTruthy();
+    expect(store.type()).toBe('download');
+  });
+
+  it('a latest-snapshot download fails inline and does not start when the snapshot fetch fails', async () => {
+    const { store, realtime, api } = makeStore();
+    api.getSnapshots.mockReturnValue(throwError(() => new Error('x')));
+    store.openDownload(9, null, [file('a', 1)]);
+    await store.start();
+    expect(realtime.startDownload).not.toHaveBeenCalled();
+    expect(store.error()).toBeTruthy();
+    expect(store.type()).toBe('download');
   });
 
   it('a restore of collected files leaves out files that are not in the repository', async () => {
