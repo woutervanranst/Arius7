@@ -1,5 +1,6 @@
 using Arius.Api.AppData;
 using Arius.Api.Contracts;
+using Arius.Api.Downloads;
 using Arius.Api.Jobs;
 using Arius.Core.Shared.FileSystem;
 
@@ -8,7 +9,8 @@ namespace Arius.Api.FakeTestHost;
 /// <summary>Out-of-process control surface for the hermetic Playwright suite — the runtime equivalent of the
 /// in-process AriusApiFactory.SeedRepository + factory.Scenarios.Set*. Only mapped by the Arius.Api.FakeTestHost host,
 /// so production never exposes it. Jobs still START through the real hub (StartArchive/StartRestore) — this only
-/// seeds a repo, picks a named scenario, and releases gated runs. The one exception is /start-download, which
+/// seeds a repo, picks a named scenario, and releases gated runs. /reset clears the app db, the scenarios and every
+/// download staging folder, so specs start from nothing. The one exception is /start-download, which
 /// bypasses the hub: the scripted Core can't list entries, so the Files tab can't collect files in this suite.</summary>
 public static class TestingControlEndpoints
 {
@@ -16,9 +18,10 @@ public static class TestingControlEndpoints
     {
         var g = app.MapGroup("/api/testing");
 
-        g.MapPost("/reset", (AppDatabase db, ScenarioRegistry scenarios, ScenarioGate gate) =>
+        g.MapPost("/reset", (AppDatabase db, ScenarioRegistry scenarios, ScenarioGate gate, DownloadStaging staging) =>
         {
             db.ResetAll();
+            foreach (var jobId in staging.ListJobIds()) staging.Delete(jobId);
             scenarios.Clear();
             gate.ReleaseAll();
             return Results.Ok();
