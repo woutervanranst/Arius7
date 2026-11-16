@@ -86,4 +86,24 @@ public static class CanonicalScenarios
         ],
         Result: new RestoreResult { Success = true, FilesRestored = 12, FilesSkipped = 0, ChunksPendingRehydration = 0, ErrorMessage = null },
         Gated: gated);
+
+    /// <summary>A download job's restore: <see cref="OnlineRestore"/> shape, two collected files written to the job's staging folder.</summary>
+    public static RestoreScenario OnlineDownload(bool gated = false) => OnlineRestore(gated) with
+    {
+        PostApproveEvents =
+        [
+            new FileRestoredEvent(RelativePath.Parse("photos/a.jpg"), 1000),
+            new FileRestoredEvent(RelativePath.Parse("docs/b.txt"), 500),
+        ],
+        Result = new RestoreResult { Success = true, FilesRestored = 2, FilesSkipped = 0, ChunksPendingRehydration = 0, ErrorMessage = null },
+        WritesFiles = true,
+    };
+
+    /// <summary>A download that parks at <c>rehydrating</c> after approval: only <c>photos/a.jpg</c> is restored, one chunk is still pending.</summary>
+    public static RestoreScenario RehydratingDownloadStaysPending() => RehydratingRestore() with
+    {
+        PostApproveEvents = [ new FileRestoredEvent(RelativePath.Parse("photos/a.jpg"), 1000) ],
+        Result = new RestoreResult { Success = true, FilesRestored = 1, FilesSkipped = 0, ChunksPendingRehydration = 1, ErrorMessage = null },
+        WritesFiles = true,
+    };
 }

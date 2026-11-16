@@ -3,6 +3,7 @@ using System.Text.Json;
 using Arius.Api.AppData;
 using Arius.Api.Composition;
 using Arius.Api.Contracts;
+using Arius.Api.Downloads;
 using Arius.Api.Hubs;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
@@ -26,6 +27,7 @@ public sealed class JobRunner(
     IHubContext<JobsHub> hub,
     RestoreApprovalRegistry approvals,
     JobStateRegistry jobStates,
+    DownloadStaging staging,
     ILogger<JobRunner> logger)
 {
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _repoLocks = new();
@@ -130,28 +132,57 @@ public sealed class JobRunner(
         var startedAt = DateTimeOffset.UtcNow;
         var repo = database.GetRepository(repositoryId);
         if (repo is null) { sink.Done("failed", "Repository not found."); return; }
-        // Race-proof backstop for the cooperative HasActiveJob check (JobsHub/SchedulerService): the
-        // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
-        // Only the unique-constraint violation (SQLITE_CONSTRAINT_UNIQUE) means "already running" —
-        // any other SqliteException (disk full, corruption, …) gets its own message logged instead of
-        // being masked.
-        try { database.InsertJob(jobId, repositoryId, "restore", "one-off", "running"); }
-        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
-        {
-            sink.Done("failed", "A job is already running for this repository.");
-            return;
-        }
-        catch (SqliteException ex)
-        {
-            logger.LogError(ex, "Restore job {JobId} failed to start", jobId);
-            sink.Done("failed", ex.Message);
-            return;
-        }
+        if (!TryInsertRestoreJob(sink, repositoryId, jobId, "restore", "Restore")) return;
 
         var destination = string.IsNullOrWhiteSpace(repo.LocalPath)
             ? Path.Combine(Path.GetTempPath(), "arius-restore", repositoryId.ToString())
             : repo.LocalPath!;
 
+        await RunRestoreJobAsync(sink, repositoryId, jobId, startedAt, version, targetPaths, destination, overwrite, noPointers, "Restore");
+    }
+
+    /// <summary>Runs a download job: a restore of exactly <paramref name="files"/> from the pinned snapshot
+    /// <paramref name="version"/> into this job's staging folder (never the repository's local folder), with
+    /// <c>Overwrite = false</c> and <c>NoPointers = true</c>. Each restored file is marked ready as it lands.</summary>
+    public async Task RunDownloadAsync(long repositoryId, string jobId, string version, IReadOnlyList<DownloadFile> files)
+    {
+        var sink = new JobSink(jobId, hub);
+        var startedAt = DateTimeOffset.UtcNow;
+        if (database.GetRepository(repositoryId) is null) { sink.Done("failed", "Repository not found."); return; }
+        if (!TryInsertRestoreJob(sink, repositoryId, jobId, "download", "Download")) return;
+
+        database.InsertDownloadFiles(jobId, files);
+        sink.FileRestored = path => database.MarkDownloadFileReady(jobId, path);
+
+        await RunRestoreJobAsync(sink, repositoryId, jobId, startedAt, version, files.Select(f => f.Path).ToArray(),
+            staging.PathFor(jobId), overwrite: false, noPointers: true, "Download");
+    }
+
+    // Race-proof backstop for the cooperative HasActiveJob check (JobsHub/SchedulerService): the
+    // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
+    // Only the unique-constraint violation (SQLITE_CONSTRAINT_UNIQUE) means "already running" —
+    // any other SqliteException (disk full, corruption, …) gets its own message logged instead of
+    // being masked.
+    private bool TryInsertRestoreJob(JobSink sink, long repositoryId, string jobId, string kind, string noun)
+    {
+        try { database.InsertJob(jobId, repositoryId, kind, "one-off", "running"); }
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
+        {
+            sink.Done("failed", "A job is already running for this repository.");
+            return false;
+        }
+        catch (SqliteException ex)
+        {
+            logger.LogError(ex, "{Noun} job {JobId} failed to start", noun, jobId);
+            sink.Done("failed", ex.Message);
+            return false;
+        }
+        return true;
+    }
+
+    private async Task RunRestoreJobAsync(JobSink sink, long repositoryId, string jobId, DateTimeOffset startedAt, string? version,
+        IReadOnlyList<string> targetPaths, string destination, bool overwrite, bool noPointers, string noun)
+    {
         jobStates.Register(jobId, sink);
         // Before StartReporting, so [ETA] tracing also covers the provider-build phase.
         registry.AttachJobDiagnostics(sink, repositoryId);
@@ -222,19 +253,19 @@ public sealed class JobRunner(
                     }
 
                     costDeclined = true;
-                    sink.Log("Restore declined.", "warn");
+                    sink.Log($"{noun} declined.", "warn");
                     return null;   // Core exits with ChunksPendingRehydration = the still-needed count
                 });
 
             if (!success)
             {
-                FailOrCancel(sink, jobId, "failed", error, error ?? "Restore failed.");
+                FailOrCancel(sink, jobId, "failed", error, error ?? $"{noun} failed.");
                 return;
             }
 
             if (costDeclined)
             {
-                FailOrCancel(sink, jobId, "cancelled", "Restore declined at cost approval.", "Restore declined.");
+                FailOrCancel(sink, jobId, "cancelled", $"{noun} declined at cost approval.", $"{noun} declined.");
                 return;
             }
             // Some chunks still rehydrating — do NOT mark completed. Park as `rehydrating`
@@ -253,16 +284,16 @@ public sealed class JobRunner(
                 return;
             }
 
-            CompleteAndBroadcast(sink, jobId, "Restore complete.", startedAt, snapshotTimestamp: null);
+            CompleteAndBroadcast(sink, jobId, $"{noun} complete.", startedAt, snapshotTimestamp: null);
         }
         catch (OperationCanceledException)
         {
-            logger.LogInformation("Restore job {JobId} cancelled", jobId);
+            logger.LogInformation("{Noun} job {JobId} cancelled", noun, jobId);
             FailOrCancel(sink, jobId, "cancelled", "Cancelled.", "Cancelled.");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Restore job {JobId} failed", jobId);
+            logger.LogError(ex, "{Noun} job {JobId} failed", noun, jobId);
             sink.Log(ex.Message, "warn");
             FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
         }
@@ -354,6 +385,16 @@ public sealed class JobRunner(
             sink.SetStatus("running");
             provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
 
+            var noun = job.Kind == "download" ? "Download" : "Restore";
+            if (job.Kind == "download")
+            {
+                // Files restored by an earlier pass are the only ones that are complete; anything else under the
+                // staging folder is a partial write the next pass overwrites (Overwrite is false, so remove it first).
+                var files = database.ListDownloadFiles(jobId);
+                staging.PruneUnready(jobId, files.Where(f => f.Ready).Select(f => f.Path).ToHashSet());
+                sink.FileRestored = path => database.MarkDownloadFileReady(jobId, path);
+            }
+
             var persistedPriority = resume.Priority == "High" ? RehydratePriority.High : RehydratePriority.Standard;
             var (pending, success, error) = await RunRestoreOnceAsync(
                 provider, sink, jobId, resume.Destination, resume.Version, resume.TargetPaths,
@@ -362,7 +403,7 @@ public sealed class JobRunner(
 
             if (!success)
             {
-                FailOrCancel(sink, jobId, "failed", error, error ?? "Restore failed.");
+                FailOrCancel(sink, jobId, "failed", error, error ?? $"{noun} failed.");
                 return;
             }
             if (pending > 0)
@@ -374,7 +415,7 @@ public sealed class JobRunner(
                 database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, next)));
                 return;
             }
-            CompleteAndBroadcast(sink, jobId, "Restore complete.", job.StartedAt ?? resume.RehydrationStartedAt, null);
+            CompleteAndBroadcast(sink, jobId, $"{noun} complete.", job.StartedAt ?? resume.RehydrationStartedAt, null);
         }
         catch (OperationCanceledException)
         {

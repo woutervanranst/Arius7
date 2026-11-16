@@ -235,7 +235,10 @@ public sealed class JobSink
     /// <summary>Marks one file restored: bumps the file count and reconciles its bytes to <paramref name="size"/>.
     /// Streaming download progress (<see cref="ReportRestoreStreamed"/>) keyed by the same relative path may already
     /// have credited most of it, so this only tops up the remainder — no double-count.</summary>
-    public void AddRestored(string key, long size) { Interlocked.Increment(ref _filesRestored); CreditRestore(key, size); }
+    public void AddRestored(string key, long size) { Interlocked.Increment(ref _filesRestored); CreditRestore(key, size); FileRestored?.Invoke(key); }
+
+    /// <summary>Invoked with the restored file's relative path after <see cref="AddRestored"/> credits it (a download job marks the file ready).</summary>
+    public Action<string>? FileRestored { get; set; }
 
     // ── Restore(download) progress crediting — mirrors the upload path ───────────
     private readonly Dictionary<string, long> _restoreCredited = new();
