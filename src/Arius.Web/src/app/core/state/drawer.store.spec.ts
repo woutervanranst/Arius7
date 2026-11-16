@@ -1,8 +1,9 @@
 import '@angular/compiler';   // JIT fallback so partially-compiled Angular injectables load under Node Vitest
 import { describe, expect, it, vi } from 'vitest';
-import { Injector, runInInjectionContext } from '@angular/core';
+import { Injector, runInInjectionContext, signal } from '@angular/core';
 import { Observable, Subject, of, throwError } from 'rxjs';
-import { DrawerStore } from './drawer.store';
+import { CollectedFile, DrawerStore } from './drawer.store';
+import { SnapshotStore } from './snapshot.store';
 import { RealtimeService } from '../api/realtime.service';
 import { JobPillStore } from './job-pill.store';
 import { ApiService } from '../api/api.service';
@@ -20,17 +21,21 @@ function dto(set: SetValues): RepositoryDefaultsDto {
 }
 
 function makeStore(realtime: Partial<RealtimeService> = {}, pill: Partial<JobPillStore> = {}, defaults: Observable<RepositoryDefaultsDto> = of(dto({}))) {
-  const rt = { startArchive: vi.fn().mockResolvedValue('job'), startRestore: vi.fn().mockResolvedValue('job'), ...realtime } as unknown as RealtimeService;
+  const rt = { startArchive: vi.fn().mockResolvedValue('job'), startRestore: vi.fn().mockResolvedValue('job'), startDownload: vi.fn().mockResolvedValue('job'), ...realtime } as unknown as RealtimeService;
   const pl = { show: vi.fn(), ...pill } as unknown as JobPillStore;
   const api = { getRepositoryDefaults: vi.fn().mockReturnValue(defaults) };
+  const snapshots = { snapshots: signal([{ version: 'v1' }, { version: 'v2' }]) } as unknown as SnapshotStore;
   const injector = Injector.create({ providers: [
     { provide: RealtimeService, useValue: rt },
     { provide: JobPillStore, useValue: pl },
     { provide: ApiService, useValue: api },
+    { provide: SnapshotStore, useValue: snapshots },
   ] });
   const store = runInInjectionContext(injector, () => new DrawerStore());
   return { store, realtime: rt, pill: pl, api };
 }
+
+const file = (path: string, size: number, inRepository = true): CollectedFile => ({ path, size, inRepository });
 
 describe('DrawerStore open/close', () => {
   it('openProperties opens the properties drawer for a repo and clears any prior error', () => {
@@ -90,11 +95,11 @@ describe('DrawerStore open/close', () => {
 
   it('openRestore captures version + collected paths and pre-fills overwrite and noPointers', () => {
     const { store } = makeStore({}, {}, of(dto({ overwrite: true, noPointers: true })));
-    store.openRestore(2, 'v1', ['a', 'b']);
+    store.openRestore(2, 'v1', [file('a', 1), file('b', 2)]);
     expect(store.type()).toBe('restore');
     expect(store.repoId()).toBe(2);
     expect(store.version()).toBe('v1');
-    expect(store.collectedPaths()).toEqual(['a', 'b']);
+    expect(store.collected().map(f => f.path)).toEqual(['a', 'b']);
     expect(store.run()!.overwrite).toBe(true);
     expect(store.run()!.noPointers).toBe(true);
   });
@@ -144,12 +149,57 @@ describe('DrawerStore.start', () => {
 
   it('starts a restore with the captured options and hands off to the pill', async () => {
     const { store, realtime, pill } = makeStore({ startRestore: vi.fn().mockResolvedValue('job-r') });
-    store.openRestore(9, 'v2', ['x']);
+    store.openRestore(9, 'v2', [file('x', 1)]);
     store.pick('overwrite', true);
     await store.start();
     expect(realtime.startRestore).toHaveBeenCalledWith(9, { version: 'v2', targetPaths: ['x'], overwrite: true, noPointers: false });
     expect(pill.show).toHaveBeenCalledWith('job-r', 'restore');
     expect(store.type()).toBeNull();
+  });
+
+  it('a download sends only repository files, pinned to the latest snapshot, and hands off to the pill', async () => {
+    const { store, realtime, pill } = makeStore({ startDownload: vi.fn().mockResolvedValue('job-d') });
+    store.openDownload(9, null, [file('a', 1), file('b', 2, false)]);
+    expect(store.skippedCount()).toBe(1);
+    expect(store.targetBytes()).toBe(1);
+    await store.start();
+    expect(realtime.startDownload).toHaveBeenCalledWith(9, { version: 'v2', files: [{ path: 'a', size: 1 }] });
+    expect(pill.show).toHaveBeenCalledWith('job-d', 'download');
+    expect(store.type()).toBeNull();
+  });
+
+  it('a download keeps the snapshot being viewed', async () => {
+    const { store, realtime } = makeStore();
+    store.openDownload(9, 'v1', [file('a', 1)]);
+    await store.start();
+    expect(realtime.startDownload).toHaveBeenCalledWith(9, { version: 'v1', files: [{ path: 'a', size: 1 }] });
+  });
+
+  it('a restore of collected files leaves out files that are not in the repository', async () => {
+    const { store, realtime } = makeStore();
+    store.openRestore(9, null, [file('a', 1), file('b', 2, false)]);
+    await store.start();
+    expect(realtime.startRestore).toHaveBeenCalledWith(9, expect.objectContaining({ targetPaths: ['a'] }));
+  });
+
+  it('when every collected file is local-only, Start is disabled instead of restoring the whole repository', async () => {
+    const { store, realtime } = makeStore();
+    store.openRestore(9, null, [file('a', 1, false)]);
+    expect(store.canStart()).toBe(false);
+    await store.start();
+    expect(realtime.startRestore).not.toHaveBeenCalled();
+    expect(store.type()).toBe('restore');
+
+    store.openDownload(9, null, [file('a', 1, false)]);
+    expect(store.canStart()).toBe(false);
+    await store.start();
+    expect(realtime.startDownload).not.toHaveBeenCalled();
+  });
+
+  it('a whole-repository restore can start once defaults load', () => {
+    const { store } = makeStore();
+    store.openRestore(9, null, []);
+    expect(store.canStart()).toBe(true);
   });
 
   it('surfaces a start failure as an inline error and leaves the drawer open', async () => {

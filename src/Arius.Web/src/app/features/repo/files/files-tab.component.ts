@@ -5,7 +5,7 @@ import { toArray } from 'rxjs/operators';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../../core/api/api.service';
 import { RealtimeService } from '../../../core/api/realtime.service';
-import { DrawerStore } from '../../../core/state/drawer.store';
+import { CollectedFile, DrawerStore } from '../../../core/state/drawer.store';
 import { SnapshotStore } from '../../../core/state/snapshot.store';
 import { EntryDto } from '../../../core/api/api-models';
 import { StateRingComponent } from '../../../shared/state-ring/state-ring.component';
@@ -31,7 +31,8 @@ const byName = (a: EntryDto, b: EntryDto) => a.name.localeCompare(b.name, undefi
         <span style="font-size:13.5px;color:#1d4ed8"><b>{{ collectedCount() }}</b> files collected · {{ formatBytes(collectedBytes()) }}</span>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="ar-btn-outline" (click)="clearCollected()">Clear</button>
-          <button class="ar-btn-primary" data-testid="restore-collected" (click)="restoreCollected()"><i class="ki-filled ki-cloud-download"></i>Restore collected</button>
+          <button class="ar-btn-primary" data-testid="download-collected" (click)="downloadCollected()"><i class="ki-filled ki-exit-down"></i>Download</button>
+          <button class="ar-btn-primary" data-testid="restore-collected" (click)="restoreCollected()"><i class="ki-filled ki-cloud-download"></i>Restore</button>
         </div>
       </div>
     }
@@ -138,7 +139,7 @@ export class FilesTabComponent {
 
   protected readonly selectedFolder = signal('');
   protected readonly fileFilter = signal('');
-  protected readonly collected = signal<Map<string, number>>(new Map());
+  protected readonly collected = signal<Map<string, CollectedFile>>(new Map());
 
   protected readonly expanded = signal<Set<string>>(new Set());
   protected readonly dirCache = signal<Map<string, EntryDto[]>>(new Map());
@@ -196,7 +197,7 @@ export class FilesTabComponent {
     // Check the file's box: the row turns blue and it's added to the collector.
     const entry = this.files().find(f => f.relativePath === filePath);
     if (entry && !this.collected().has(entry.relativePath)) {
-      this.collected.update(m => new Map(m).set(entry.relativePath, entry.originalSize ?? 0));
+      this.collected.update(m => new Map(m).set(entry.relativePath, this.toCollected(entry)));
     }
     this.scrollRevealedIntoView(filePath);
   }
@@ -300,15 +301,21 @@ export class FilesTabComponent {
   protected toggleCollect(f: EntryDto): void {
     const next = new Map(this.collected());
     if (next.has(f.relativePath)) next.delete(f.relativePath);
-    else next.set(f.relativePath, f.originalSize ?? 0);
+    else next.set(f.relativePath, this.toCollected(f));
     this.collected.set(next);
+  }
+  private toCollected(f: EntryDto): CollectedFile {
+    return { path: f.relativePath, size: f.originalSize ?? 0, inRepository: f.stateFlags.repository };
   }
   protected clearCollected(): void { this.collected.set(new Map()); }
   protected restoreCollected(): void {
-    this.drawer.openRestore(+this.repoId(), this.snap.version(), [...this.collected().keys()]);
+    this.drawer.openRestore(+this.repoId(), this.snap.version(), [...this.collected().values()]);
+  }
+  protected downloadCollected(): void {
+    this.drawer.openDownload(+this.repoId(), this.snap.version(), [...this.collected().values()]);
   }
   protected readonly collectedCount = computed(() => this.collected().size);
-  protected readonly collectedBytes = computed(() => [...this.collected().values()].reduce((a, b) => a + b, 0));
+  protected readonly collectedBytes = computed(() => [...this.collected().values()].reduce((a, f) => a + f.size, 0));
 
   // ── State / tier labels (from flags) ──────────────
   protected stateMeta(f: EntryDto): { label: string; color: string } {

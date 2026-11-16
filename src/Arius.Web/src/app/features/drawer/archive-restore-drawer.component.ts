@@ -2,9 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } 
 import { ApiService } from '../../core/api/api.service';
 import { ARCHIVE_OPTIONS, RESTORE_OPTIONS, replaceNote, runPill } from '../../core/defaults/defaults';
 import { DrawerStore } from '../../core/state/drawer.store';
+import { downloadFileName } from '../../core/downloads/download-name';
+import { jobKindIcon, jobKindLabel } from '../../shared/job-format';
+import { formatBytes } from '../../shared/format';
 import { DefaultFieldComponent } from '../../shared/default-field/default-field.component';
 
-/** Right slide-over for Archive and Restore: a plain idle form. Start hands the job to the floating
+/** Right slide-over for Archive, Restore and Download: a plain idle form. Start hands the job to the floating
  *  pill and dismisses the drawer — live progress, the cost modal and warnings live on `/jobs/:id`. */
 @Component({
   selector: 'arius-drawer',
@@ -19,9 +22,9 @@ import { DefaultFieldComponent } from '../../shared/default-field/default-field.
         <div class="flex items-center gap-3" style="padding:18px 20px;border-bottom:1px solid #f0f0f2">
           <div style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center"
                [style.background]="type === 'archive' ? '#eff6ff' : '#f5f3ff'" [style.color]="type === 'archive' ? '#3b82f6' : '#6d28d9'">
-            <i class="ki-filled {{ type === 'archive' ? 'ki-cloud-add' : 'ki-cloud-download' }}" style="font-size:19px"></i>
+            <i class="ki-filled {{ icon(type) }}" style="font-size:19px"></i>
           </div>
-          <div data-testid="drawer-title" style="font-size:15.5px;font-weight:600;color:#18181b">{{ type === 'archive' ? 'Archive' : 'Restore' }} · {{ alias() }}</div>
+          <div data-testid="drawer-title" style="font-size:15.5px;font-weight:600;color:#18181b">{{ label(type) }} · {{ alias() }}</div>
           <button class="ms-auto ar-icon-btn" (click)="store.close()"><i class="ki-filled ki-cross"></i></button>
         </div>
 
@@ -42,15 +45,26 @@ import { DefaultFieldComponent } from '../../shared/default-field/default-field.
               }
             }
           } @else {
-            <!-- Restore form -->
+            <!-- Restore / Download form -->
             <div class="ar-target">
-              <i class="ki-filled ki-cloud-download" style="color:#6d28d9"></i>
+              <i class="ki-filled {{ icon(type) }}" style="color:#6d28d9"></i>
               <div>
-                <div style="font-weight:600;color:#27272a">{{ store.collectedPaths().length === 0 ? 'Whole repository' : store.collectedPaths().length + ' collected files' }}</div>
+                <div style="font-weight:600;color:#27272a">{{ type === 'restore' && store.collected().length === 0 ? 'Whole repository' : store.targets().length + ' collected files · ' + formatBytes(store.targetBytes()) }}</div>
                 <div style="font-size:12px;color:#a1a1aa">{{ store.version() ? 'Snapshot ' + store.version() : 'Latest snapshot' }}</div>
               </div>
             </div>
-            @if (store.run(); as run) {
+            @if (store.skippedCount() > 0) {
+              <div class="ar-note" data-testid="drawer-skipped">
+                @if (store.skippedCount() === 1) { 1 collected file isn&apos;t in the repository and is skipped }
+                @else { {{ store.skippedCount() }} collected files aren&apos;t in the repository and are skipped }
+              </div>
+            }
+            @if (type === 'download') {
+              <div class="ar-fld" style="margin-top:16px">
+                <span>You'll receive</span>
+                <div class="ar-ro ar-mono" data-testid="drawer-receive">{{ receiveName() }}</div>
+              </div>
+            } @else if (store.run(); as run) {
               @let resolved = store.resolved()!;
               @for (key of restoreOptions; track key) {
                 <arius-default-field [option]="key" [value]="run[key]" [pill]="runPill(key, run, resolved)"
@@ -64,9 +78,9 @@ import { DefaultFieldComponent } from '../../shared/default-field/default-field.
         <!-- Footer -->
         <div class="flex items-center justify-end gap-2.5" style="padding:16px 20px;border-top:1px solid #f0f0f2">
           <button class="ar-btn-outline" (click)="store.close()">Close</button>
-          <button class="ar-btn-primary" data-testid="drawer-start" [disabled]="!store.run()" (click)="store.start()">
-            <i class="ki-filled {{ type === 'archive' ? 'ki-cloud-add' : 'ki-cloud-download' }}"></i>
-            {{ type === 'archive' ? 'Start archive' : 'Start restore' }}
+          <button class="ar-btn-primary" data-testid="drawer-start" [disabled]="!store.canStart()" (click)="store.start()">
+            <i class="ki-filled {{ icon(type) }}"></i>
+            Start {{ type }}
           </button>
         </div>
       </aside>
@@ -92,15 +106,19 @@ export class ArchiveRestoreDrawerComponent {
   protected readonly restoreOptions = RESTORE_OPTIONS;
   protected readonly runPill = runPill;
   protected readonly runNote = replaceNote('run');
+  protected readonly formatBytes = formatBytes;
+  protected readonly icon = jobKindIcon;
+  protected readonly label = jobKindLabel;
 
-  // This drawer only handles archive/restore; the Properties panel is a separate component.
+  // This drawer handles archive/restore/download; the Properties panel is a separate component.
   protected readonly arType = computed(() => {
     const t = this.store.type();
-    return t === 'archive' || t === 'restore' ? t : null;
+    return t === 'archive' || t === 'restore' || t === 'download' ? t : null;
   });
 
   protected readonly alias = signal('repository');
   protected readonly repoLocal = signal('');
+  protected readonly receiveName = computed(() => downloadFileName(this.alias(), new Date(), this.store.targets().map(t => t.path)));
 
   constructor() {
     effect(() => {

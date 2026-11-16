@@ -3,6 +3,7 @@ import { ApiService } from '../api/api.service';
 import { RealtimeService } from '../api/realtime.service';
 import { JobSnapshot, isNonTerminal } from '../api/api-models';
 import { Subscription } from 'rxjs';
+import { JobKind } from '../../shared/job-format';
 
 /**
  * Repo-scoped floating-pill state. At most one active job per repo, so the pill adapts
@@ -17,7 +18,7 @@ export class JobPillStore {
   private currentRepoId = 0;
 
   readonly jobId = signal<string | null>(null);
-  readonly kind = signal<'archive' | 'restore'>('archive');
+  readonly kind = signal<JobKind>('archive');
   readonly status = signal<string>('running');
   readonly snapshot = signal<JobSnapshot | null>(null);
   private readonly dismissed = signal(false);
@@ -43,7 +44,7 @@ export class JobPillStore {
   }
 
   /** Direct hand-off from the drawer's Start (jobId known immediately). */
-  show(jobId: string, kind: 'archive' | 'restore'): void {
+  show(jobId: string, kind: JobKind): void {
     this.dismissed.set(false);
     this.attach(jobId, kind, 'running');
   }
@@ -61,7 +62,7 @@ export class JobPillStore {
     this.currentRepoId = 0;
   }
 
-  private attach(jobId: string, kind: 'archive' | 'restore', status: string): void {
+  private attach(jobId: string, kind: JobKind, status: string): void {
     if (this.jobId() === jobId) return;
     this.dismissed.set(false);   // a genuinely new job (new repo or new run) must not stay hidden by a prior dismiss
     this.teardown();

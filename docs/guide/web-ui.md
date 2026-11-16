@@ -147,11 +147,12 @@ substring). Each file row shows:
   archived*, *Archive tier*, *Rehydrating*.
 - **Size**, **Tier** (`Online` or `Archive`), and **Modified** date.
 
-**Collecting files to restore.** Click any file row to *collect* it (a checkmark fills in, the row
-highlights). A blue **collected bar** appears showing the count and total size, with **Clear** and
-**Restore collected** buttons. Collecting respects the snapshot you're viewing — collect from a
-historical snapshot to restore that older version. Use **Restore collected** to open the Restore
-drawer scoped to exactly those files.
+**Collecting files to restore or download.** Click any file row to *collect* it (a checkmark fills in, the row
+highlights). A blue **collected bar** appears showing the count and total size, with **Clear**,
+**Download** and **Restore** buttons. Collecting respects the snapshot you're viewing — collect from a
+historical snapshot to restore that older version. Use **Restore** to open the Restore drawer
+scoped to exactly those files, or **Download** to open the Download drawer. Collected files that
+aren't in the repository (local-only files) are skipped, and the drawer says how many.
 
 ### Statistics tab
 
@@ -226,7 +227,7 @@ any of them to change this run only; nothing is saved.
 Open the Restore drawer in one of two ways:
 
 - **Restore** in the repository header → restores the **whole repository** at the latest snapshot.
-- **Restore collected** in the Files tab → restores only the files you collected, at the snapshot
+- **Restore** in the Files tab's collected bar → restores only the files you collected, at the snapshot
   you were viewing.
 
 The drawer shows the **target** (whole repository or *N* collected files) and the snapshot, then two
