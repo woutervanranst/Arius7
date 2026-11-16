@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Download collected — mockup v4</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, -apple-system, "Segoe UI", sans-serif; background: #f4f4f5; color: #18181b; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.02em; }
+  .lead { color: #71717a; font-size: 13.5px; margin: 0 0 18px; line-height: 1.55; }
+  .step { display: flex; gap: 14px; align-items: baseline; margin: 34px 0 12px; }
+  .num { width: 26px; height: 26px; border-radius: 999px; background: #18181b; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step h2 { font-size: 16px; margin: 0; }
+  .step p { margin: 3px 0 0; font-size: 12.5px; color: #71717a; line-height: 1.5; }
+  .row { display: grid; gap: 16px; }
+  .cap { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #a1a1aa; margin-bottom: 7px; }
+  .chg { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: #f97316; border-radius: 5px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; letter-spacing: .03em; }
+  .hl { outline: 2px dashed #f97316; outline-offset: 3px; }
+  .card { background: #fff; border: 1px solid #e4e4e7; border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); overflow: hidden; }
+  .muted { color: #a1a1aa; }
+
+  /* Icons — one set, used everywhere: Restore = cloud-download, Download = arrow-to-tray */
+  .ic { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ic-lg { width: 19px; height: 19px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+  .btn-sm { height: 34px; padding: 0 12px; font-size: 12.5px; }
+  .btn-outline { background: #fff; border: 1px solid #e4e4e7; color: #3f3f46; }
+  .btn-primary { background: #3b82f6; border: 1px solid #3b82f6; color: #fff; }
+  .btn-violet { background: #7c3aed; border: 1px solid #7c3aed; color: #fff; }
+  .btn-violet-o { background: #fff; border: 1px solid #ddd6fe; color: #6d28d9; }
+  .btn-ghost { background: none; border: none; color: #71717a; }
+  .btn-danger-o { background: #fff; border: 1px solid #fecaca; color: #dc2626; }
+
+  .collected { display: flex; align-items: center; gap: 14px; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 11px; padding: 11px 16px; }
+  .collected span { font-size: 13.5px; color: #1d4ed8; }
+
+  .drawer { background: #fff; border: 1px solid #e4e4e7; border-radius: 14px; display: flex; flex-direction: column; }
+  .d-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #f0f0f2; }
+  .d-ic { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #f5f3ff; color: #6d28d9; }
+  .target { display: flex; align-items: center; gap: 12px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 11px; padding: 14px 16px; margin-bottom: 16px; color: #6d28d9; }
+  .target > div { color: #18181b; }
+  .note { font-size: 12px; color: #71717a; background: #f7f9ff; border: 1px solid #dbeafe; border-radius: 9px; padding: 10px 12px; line-height: 1.5; }
+  .fld { margin-bottom: 14px; }
+  .fld > div:first-child { font-size: 13px; font-weight: 600; color: #3f3f46; margin-bottom: 7px; }
+  .ro { background: #f7f7f8; border: 1px solid #ececef; border-radius: 9px; padding: 9px 12px; font-size: 12.5px; color: #52525b; font-family: ui-monospace, Menlo, monospace; }
+  .opt { display: flex; align-items: center; justify-content: space-between; border: 1px solid #ececef; border-radius: 9px; padding: 10px 12px; font-size: 13px; color: #3f3f46; margin-bottom: 8px; }
+  .opt span { color: #a1a1aa; font-size: 12px; }
+  .d-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid #f0f0f2; }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; }
+  .bar { height: 12px; border-radius: 999px; background: #ede9fe; overflow: hidden; position: relative; }
+  .bar > div { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 999px; }
+  .wait { display: flex; align-items: center; gap: 14px; margin-top: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 18px; flex-wrap: wrap; }
+  .ready { display: flex; align-items: center; gap: 12px; margin-top: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 14px 18px; flex-wrap: wrap; }
+  .dl-ic { width: 38px; height: 38px; border-radius: 10px; background: #dcfce7; color: #15803d; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .files { margin-top: 12px; border: 1px solid #ececef; border-radius: 11px; overflow: hidden; font-size: 12.5px; }
+  .files div { display: grid; grid-template-columns: 1fr 90px 120px; padding: 8px 14px; border-top: 1px solid #f4f4f5; align-items: center; }
+  .files div:first-child { border-top: none; background: #fafafb; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #a1a1aa; }
+
+  .pill { display: inline-flex; align-items: center; gap: 11px; background: #18181b; color: #fff; border-radius: 999px; padding: 9px 16px 9px 10px; box-shadow: 0 12px 32px rgba(9,9,11,.28); }
+  .pill a { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: #60a5fa; text-decoration: none; }
+  .callout { font-size: 12px; color: #9a3412; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 9px; padding: 9px 12px; margin-top: 12px; line-height: 1.5; }
+
+  /* Settings — mirrors defaults-editor + default-field */
+  .def-card { padding: 20px 24px; }
+  .def-title { font-size: 15.5px; font-weight: 600; color: #18181b; }
+  .def-desc { font-size: 12.5px; color: #a1a1aa; margin: 2px 0 16px; }
+  .def-field { margin-bottom: 16px; }
+  .def-label { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .def-label > span:first-child { font-size: 13px; font-weight: 600; color: #3f3f46; }
+  .src { font-size: 11px; font-weight: 500; border-radius: 999px; padding: 1px 8px; background: #f4f4f5; color: #71717a; }
+  .sw-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: #3f3f46; }
+  .sw { width: 34px; height: 20px; border-radius: 999px; background: #d4d4d8; position: relative; flex: none; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+  .sw.on { background: #3b82f6; }
+  .sw.on::after { left: 16px; }
+  .hint { font-size: 12px; color: #71717a; margin-top: 6px; }
+  .sub { border-top: 1px solid #f0f0f2; margin: 6px 0 16px; padding-top: 16px; }
+  .sub-title { font-size: 13px; font-weight: 700; color: #18181b; margin-bottom: 12px; display: flex; align-items: center; gap: 7px; }
+  .num-in { width: 56px; height: 32px; border: 1px solid #e4e4e7; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 600; font-family: inherit; }
+  .bar-save { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; margin-left: auto; }
+  .link-act { background: none; border: none; padding: 0 6px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: #71717a; cursor: pointer; white-space: nowrap; }
+  .link-act:hover { color: #3f3f46; text-decoration: underline; }
+  .settings { max-width: 680px; }
+  .s-h1 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+  .s-h2 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; margin: 26px 0 10px; color: #27272a; }
+  .seg { display: flex; gap: 8px; }
+  .seg > span { flex: 1; height: 40px; border-radius: 9px; border: 1.5px solid #e4e4e7; background: #fff; color: #52525b; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .seg > span.on { border-color: #3b82f6; background: #eff4ff; color: #3b82f6; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-restore" viewBox="0 0 24 24"><path d="M7 17.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8a4.5 4.5 0 0 1 .4 9h-1"/><path d="M12 11v9m0 0-3-3m3 3 3-3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5"/></symbol>
+</svg>
+<div class="wrap">
+  <h1>Download collected files — mockup v4</h1>
+  <p class="lead">One icon per action throughout: <b>Restore</b> <svg class="ic" style="vertical-align:-3px"><use href="#i-restore"/></svg> and
+    <b>Download</b> <svg class="ic" style="vertical-align:-3px"><use href="#i-download"/></svg>. Changes from v3 are marked <span class="chg">CHANGED</span> and outlined.</p>
+
+  <!-- ① Files tab -->
+  <div class="step"><div class="num">1</div><div><h2>Files tab</h2>
+    <p>Download and Restore are both primary (blue) actions, each with its icon.</p></div></div>
+  <div class="collected">
+    <svg class="ic ic-lg" style="color:#3b82f6"><use href="#i-check"/></svg>
+    <span><b>3</b> files collected · 1.4 GB</span>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-outline">Clear</button>
+      <button class="btn btn-primary"><svg class="ic"><use href="#i-download"/></svg>Download</button>
+      <button class="btn btn-primary"><svg class="ic"><use href="#i-restore"/></svg>Restore</button>
+    </div>
+  </div>
+
+  <!-- ② Drawers -->
+  <div class="step"><div class="num">2</div><div><h2>Drawers</h2>
+    <p>Same icon in the header, the target card and the start button.</p></div></div>
+  <div class="row" style="grid-template-columns:1fr 1fr">
+    <div>
+      <div class="cap">Restore</div>
+      <div class="drawer">
+        <div class="d-head"><div class="d-ic"><svg class="ic ic-lg"><use href="#i-restore"/></svg></div><div style="font-size:15.5px;font-weight:600">Restore · Photos</div></div>
+        <div style="padding:20px">
+          <div class="target"><svg class="ic ic-lg"><use href="#i-restore"/></svg><div><div style="font-weight:600">3 collected files · 1.4 GB</div><div style="font-size:12px" class="muted">Latest snapshot</div></div></div>
+          <div class="opt">Overwrite existing files <span>off · repository</span></div>
+          <div class="opt">Skip pointer files <span>on · global</span></div>
+          <div class="note">Archive-tier chunks require rehydration; you'll be asked to approve the cost before any download begins.</div>
+        </div>
+        <div class="d-foot"><button class="btn btn-outline">Close</button><button class="btn btn-primary"><svg class="ic"><use href="#i-restore"/></svg>Start restore</button></div>
+      </div>
+    </div>
+    <div>
+      <div class="cap">Download</div>
+      <div class="drawer">
+        <div class="d-head"><div class="d-ic"><svg class="ic ic-lg"><use href="#i-download"/></svg></div><div style="font-size:15.5px;font-weight:600">Download · Photos</div></div>
+        <div style="padding:20px">
+          <div class="target"><svg class="ic ic-lg"><use href="#i-download"/></svg><div><div style="font-weight:600">3 collected files · 1.4 GB</div><div style="font-size:12px" class="muted">Latest snapshot</div></div></div>
+          <div class="fld"><div>You'll receive</div><div class="ro">Photos-2026-11-15.zip</div></div>
+          <div class="note">Archive-tier chunks require rehydration; you'll be asked to approve the cost before any download begins.</div>
+        </div>
+        <div class="d-foot"><button class="btn btn-outline">Close</button><button class="btn btn-primary"><svg class="ic"><use href="#i-download"/></svg>Start download</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ Cost -->
+  <div class="step"><div class="num">3</div><div><h2>Cost approval — same modal as Restore</h2>
+    <p>Egress and read operations are always billed, so this always appears.</p></div></div>
+  <div class="card" style="max-width:480px">
+    <div style="padding:20px 22px">
+      <div style="display:flex;align-items:center;gap:11px">
+        <div style="width:36px;height:36px;border-radius:10px;background:#fffbeb;color:#b45309;display:flex;align-items:center;justify-content:center;font-weight:700">$</div>
+        <div style="font-size:15.5px;font-weight:700">Confirm download cost</div>
+      </div>
+      <div style="font-size:13px;color:#52525b;line-height:1.6;margin-top:12px">1 of 3 chunks (1.2 GB) is in Archive tier and needs rehydration. The other 2 files can be downloaded right away.</div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <div style="flex:1;border-radius:10px;padding:11px;border:2px solid #7c3aed;background:#f5f3ff"><div style="font-size:12.5px;font-weight:700;color:#6d28d9">Standard · €0.14</div><div style="font-size:11.5px;color:#7c3aed">up to 15 h wait</div></div>
+        <div style="flex:1;border-radius:10px;padding:11px;border:1px solid #e4e4e7"><div style="font-size:12.5px;font-weight:700">High priority · €0.41</div><div style="font-size:11.5px" class="muted">up to 1 h</div></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid #f0f0f2;background:#fafafb">
+      <button class="btn btn-ghost">Cancel download</button>
+      <button class="btn btn-violet">Rehydrate &amp; download</button>
+    </div>
+  </div>
+
+  <!-- ④ Partial + rest -->
+  <div class="step"><div class="num">4</div><div><h2>Get what's ready now, the rest later <span class="chg">CHANGED</span></h2>
+    <p>Shown at the job page's real width. The actions sit inside the green card in both states, on one line; <b>Clean up now</b> is a plain text action without an icon.</p></div></div>
+  <div style="max-width:1020px;display:flex;flex-direction:column;gap:16px">
+    <div>
+      <div class="cap">a · While rehydrating</div>
+      <div class="card" style="padding:22px 26px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:18px;font-weight:700">Download · Photos</div>
+          <span class="badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a"><svg class="ic" style="width:12px;height:12px"><use href="#i-moon"/></svg>Rehydrating</span>
+          <div style="margin-left:auto;font-size:20px;font-weight:700;color:#b45309">~11 h</div>
+        </div>
+        <div class="bar" style="margin-top:14px"><div style="width:62%;background:#c4b5fd"></div><div style="width:2%;background:#7c3aed"></div></div>
+        <div class="ready">
+          <div class="dl-ic"><svg class="ic ic-lg"><use href="#i-download"/></svg></div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:13.5px;font-weight:600;color:#14532d">2 of 3 files ready · 20.5 MB</div>
+            <div style="font-size:12px;color:#15803d;margin-top:2px">1 file is still being rehydrated</div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-sm btn-violet"><svg class="ic"><use href="#i-download"/></svg>Download ready files</button>
+          </div>
+        </div>
+        <div class="wait">
+          <svg class="ic ic-lg" style="color:#b45309"><use href="#i-moon"/></svg>
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:13px;font-weight:600;color:#92400e">1 chunk is being moved out of Archive tier (~15 h)</div>
+            <div style="font-size:12px;color:#a16207;margin-top:2px">Arius checks periodically and prepares the rest by itself. You can close this page.</div>
+          </div>
+        </div>
+        <div class="files">
+          <div><span>File</span><span>Size</span><span>Status</span></div>
+          <div><span>IMG_0042.HEIC</span><span>18.4 MB</span><span style="color:#15803d">✓ Downloaded</span></div>
+          <div><span>passport-scan.pdf</span><span>2.1 MB</span><span style="color:#15803d">✓ Downloaded</span></div>
+          <div><span>Holiday 2019.mov</span><span>1.2 GB</span><span style="color:#b45309">Rehydrating</span></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="cap">b · Completed</div>
+      <div class="card" style="padding:22px 26px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:18px;font-weight:700">Download · Photos</div>
+          <span class="badge" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0"><svg class="ic" style="width:12px;height:12px"><use href="#i-check"/></svg>Completed</span>
+        </div>
+        <div class="bar" style="margin-top:14px;background:#7c3aed"></div>
+        <div class="ready hl">
+          <div class="dl-ic"><svg class="ic ic-lg"><use href="#i-download"/></svg></div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:13.5px;font-weight:600;color:#14532d">All 3 files ready · 1.4 GB</div>
+            <div style="font-size:12px;color:#15803d;margin-top:2px">Kept on the server until <b>22 Nov</b>, then cleaned up</div>
+          </div>
+          <div class="actions">
+            <button class="link-act">Clean up now</button>
+            <button class="btn btn-sm btn-violet-o"><svg class="ic"><use href="#i-download"/></svg>Download all (3 files)</button>
+            <button class="btn btn-sm btn-violet"><svg class="ic"><use href="#i-download"/></svg>Download remaining (1 file)</button>
+          </div>
+        </div>
+        <div class="files">
+          <div><span>File</span><span>Size</span><span>Status</span></div>
+          <div><span>IMG_0042.HEIC</span><span>18.4 MB</span><span style="color:#15803d">✓ Downloaded</span></div>
+          <div><span>passport-scan.pdf</span><span>2.1 MB</span><span style="color:#15803d">✓ Downloaded</span></div>
+          <div><span>Holiday 2019.mov</span><span>1.2 GB</span><span style="color:#6d28d9">● Ready</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row" style="grid-template-columns:1fr 1fr;margin-top:14px;max-width:1020px">
+    <div><div class="cap">Pill — while rehydrating</div>
+      <div class="pill"><span style="width:30px;height:30px;border-radius:999px;background:#b45309;display:flex;align-items:center;justify-content:center"><svg class="ic" style="width:14px;height:14px"><use href="#i-moon"/></svg></span>
+        <div style="line-height:1.35"><div style="font-size:12.5px;font-weight:600">Rehydrating · 2 of 3 ready</div><div style="font-size:11px;color:#a1a1aa">~11 h for the rest</div></div>
+        <a><svg class="ic" style="width:13px;height:13px"><use href="#i-download"/></svg>Download ready</a><a style="color:#a1a1aa">View job ›</a></div></div>
+    <div><div class="cap">Pill — completed</div>
+      <div class="pill"><span style="width:30px;height:30px;border-radius:999px;background:#22c55e;display:flex;align-items:center;justify-content:center"><svg class="ic" style="width:14px;height:14px"><use href="#i-check"/></svg></span>
+        <div style="line-height:1.35"><div style="font-size:12.5px;font-weight:600">Download ready</div><div style="font-size:11px;color:#a1a1aa">1 remaining file · 1.2 GB</div></div>
+        <a><svg class="ic" style="width:13px;height:13px"><use href="#i-download"/></svg>Download</a><a style="color:#a1a1aa">View job ›</a></div></div>
+  </div>
+  <div class="callout" style="max-width:1020px"><b>Names:</b> <code>Photos-2026-11-15.zip</code> for all files, <code>Photos-2026-11-15 (2 of 3).zip</code> for a partial download,
+    <code>Photos-2026-11-15 (remaining).zip</code> for the rest. A single file downloads under its own name. If nothing needs rehydration,
+    only state <b>b</b> appears, with a single <b>Download</b> button.</div>
+
+  <!-- ⑤ Settings -->
+  <div class="step"><div class="num">5</div><div><h2>Settings page, regrouped by Archive and Restore <span class="chg">CHANGED</span></h2>
+    <p>The defaults keep their existing fields and source pills. <b>Temporary files</b> is a setting of its own (not a per-repository default), so it has no pill.</p></div></div>
+  <div class="settings">
+    <h1 class="s-h1">Settings</h1>
+
+    <h2 class="s-h2">Archive</h2>
+    <div class="card def-card">
+      <div class="def-title">Defaults</div>
+      <div class="def-desc">Used when archiving, scheduled runs included. A repository can set its own in its Properties, and any run can change them.</div>
+      <div class="def-field">
+        <div class="def-label"><span>Upload tier</span><span class="src">Factory default</span></div>
+        <div class="seg"><span>Hot</span><span class="on">Cool</span><span>Cold</span><span>Archive</span></div>
+        <div class="hint">Instant reads · lower storage cost · 30-day minimum</div>
+      </div>
+      <div class="def-field">
+        <div class="def-label"><span>On disk after archive</span><span class="src">Factory default</span></div>
+        <div class="seg"><span class="on">Keep files only</span><span>Keep files + pointers</span><span>Replace with pointers</span></div>
+        <div class="hint">Local files stay as they are.</div>
+      </div>
+      <div class="def-field" style="margin-bottom:0">
+        <div class="def-label"><span>Fast hash</span><span class="src">Factory default</span></div>
+        <div class="sw-row"><span class="sw"></span>Skip re-reading unchanged files</div>
+        <div class="hint">Every file is fully re-read and hashed. Slower, but the safest.</div>
+      </div>
+    </div>
+
+    <h2 class="s-h2">Restore</h2>
+    <div class="card def-card">
+      <div class="def-title">Defaults</div>
+      <div class="def-desc">Used when restoring. A repository can set its own in its Properties, and any run can change them.</div>
+      <div class="def-field">
+        <div class="def-label"><span>Overwrite existing files</span><span class="src">Factory default</span></div>
+        <div class="sw-row"><span class="sw"></span>Replace local files that differ from the snapshot</div>
+        <div class="hint">Local files that already exist are left untouched.</div>
+      </div>
+      <div class="def-field" style="margin-bottom:0">
+        <div class="def-label"><span>Skip pointer files</span><span class="src">Factory default</span></div>
+        <div class="sw-row"><span class="sw on"></span>Don't write .pointer.arius files</div>
+        <div class="hint">Only the restored files are written.</div>
+      </div>
+    </div>
+
+    <div class="card def-card hl" style="margin-top:14px">
+      <div class="def-title">Temporary files</div>
+      <div class="def-desc">Downloading collected files saves them in a temporary location on the server before your browser downloads them.</div>
+      <div class="def-field">
+        <div class="sw-row"><span class="sw on"></span>Clean up downloaded files after <input class="num-in" value="7"> days</div>
+        <div class="hint">Off keeps them on the server until you clean them up.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;background:#fafafb;border:1px solid #f0f0f2;border-radius:10px;padding:12px 14px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:#3f3f46">Currently on the server</div>
+          <div style="font-size:12.5px;color:#71717a;margin-top:2px">4 downloads · 3.8 GB</div>
+        </div>
+        <button class="btn btn-sm btn-danger-o"><svg class="ic"><use href="#i-trash"/></svg>Clean up all now</button>
+      </div>
+    </div>
+
+    <div class="bar-save">
+      <button class="btn btn-outline">Discard</button>
+      <button class="btn btn-primary"><svg class="ic"><use href="#i-check"/></svg>Save settings</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
