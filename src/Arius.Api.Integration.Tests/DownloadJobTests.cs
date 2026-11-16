@@ -1,0 +1,123 @@
+using Arius.Api.AppData;
+using Arius.Api.Downloads;
+using Arius.Api.FakeTestHost;
+using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Jobs;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Cost;
+using Arius.Core.Shared.FileSystem;
+using Arius.Core.Shared.Storage;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Arius.Api.Integration.Tests;
+
+public class DownloadJobTests
+{
+    [Test]
+    public async Task A_download_restores_only_into_its_staging_folder_with_fixed_options()
+    {
+        await using var factory = new AriusApiFactory();
+        var localFolder = Path.Combine(Path.GetTempPath(), $"arius-itest-dst-{Guid.NewGuid():N}");
+        var repoId = factory.SeedRepository(localPath: localFolder);
+
+        var scenario = CanonicalScenarios.OnlineDownload();
+        factory.Scenarios.SetRestore(repoId, scenario);
+
+        var runner = factory.Services.GetRequiredService<JobRunner>();
+        var approvals = factory.Services.GetRequiredService<RestoreApprovalRegistry>();
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        var staging = factory.Services.GetRequiredService<DownloadStaging>();
+        var jobId = Guid.NewGuid().ToString();
+
+        var run = runner.RunDownloadAsync(repoId, jobId, "v1", [new DownloadFile("photos/a.jpg", 1000), new DownloadFile("docs/b.txt", 500)]);
+
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        approvals.Resolve(jobId, RehydratePriority.Standard);
+        await run;
+
+        var options = scenario.Received.Single().Options;
+        await Assert.That(options.RootDirectory).IsEqualTo(staging.PathFor(jobId));
+        await Assert.That(options.Overwrite).IsFalse();
+        await Assert.That(options.NoPointers).IsTrue();
+        await Assert.That(options.Version).IsEqualTo("v1");
+        await Assert.That(options.TargetPaths.SequenceEqual([RelativePath.Parse("photos/a.jpg"), RelativePath.Parse("docs/b.txt")])).IsTrue();
+
+        var job = db.GetJob(jobId)!;
+        await Assert.That(job.Kind).IsEqualTo("download");
+        await Assert.That(job.Status).IsEqualTo("completed");
+        await Assert.That(db.ListDownloadFiles(jobId).All(f => f.Ready)).IsTrue();
+        await Assert.That(File.Exists(Path.Combine(staging.PathFor(jobId), "photos", "a.jpg"))).IsTrue();
+        await Assert.That(File.Exists(Path.Combine(staging.PathFor(jobId), "docs", "b.txt"))).IsTrue();
+        await Assert.That(!Directory.Exists(localFolder) || !Directory.EnumerateFiles(localFolder, "*", SearchOption.AllDirectories).Any()).IsTrue();
+    }
+
+    [Test]
+    public async Task Ready_files_survive_a_resume_and_unready_staged_files_are_pruned_first()
+    {
+        await using var factory = new AriusApiFactory();
+        var repoId = factory.SeedRepository();
+
+        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.RehydratingDownloadStaysPending());
+
+        var runner = factory.Services.GetRequiredService<JobRunner>();
+        var approvals = factory.Services.GetRequiredService<RestoreApprovalRegistry>();
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        var staging = factory.Services.GetRequiredService<DownloadStaging>();
+        var jobId = Guid.NewGuid().ToString();
+
+        var run = runner.RunDownloadAsync(repoId, jobId, "v1", [new DownloadFile("photos/a.jpg", 1000), new DownloadFile("docs/b.txt", 500)]);
+
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        approvals.Resolve(jobId, RehydratePriority.Standard);
+        await run;
+
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("rehydrating");
+        await Assert.That(db.ListDownloadFiles(jobId).Single(f => f.Path == "photos/a.jpg").Ready).IsTrue();
+        await Assert.That(db.ListDownloadFiles(jobId).Single(f => f.Path == "docs/b.txt").Ready).IsFalse();
+
+        var strayFile = Path.Combine(staging.PathFor(jobId), "docs", "b.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(strayFile)!);
+        await File.WriteAllTextAsync(strayFile, "half");
+
+        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.RehydratingDownloadStaysPending() with
+        {
+            PostApproveEvents = [],
+            Result = new RestoreResult { Success = true, FilesRestored = 0, FilesSkipped = 0, ChunksPendingRehydration = 1 },
+        });
+        await runner.ResumeRestoreAsync(jobId);
+
+        await Assert.That(File.Exists(strayFile)).IsFalse();
+        await Assert.That(File.Exists(Path.Combine(staging.PathFor(jobId), "photos", "a.jpg"))).IsTrue();
+        await Assert.That(db.ListDownloadFiles(jobId).Single(f => f.Path == "photos/a.jpg").Ready).IsTrue();
+    }
+
+    [Test]
+    [Arguments(null, "a", "Choose a snapshot to download from.")]
+    [Arguments("v1", null, "Collect at least one file to download.")]
+    [Arguments("v1", "../x", "'../x' is not a valid repository path.")]
+    [Arguments("v1", "", "'' is not a valid repository path.")]
+    public async Task StartDownload_rejects_a_missing_version_no_files_and_a_path_outside_the_repository(string? version, string? path, string expectedMessage)
+    {
+        await using var factory = new AriusApiFactory();
+        var repoId = factory.SeedRepository();
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+
+        var handler = factory.Server.CreateHandler();
+        await using var conn = new HubConnectionBuilder()
+            .WithUrl("http://localhost/hubs/arius", o =>
+            {
+                o.HttpMessageHandlerFactory = _ => handler;
+                o.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
+            })
+            .Build();
+        await conn.StartAsync();
+
+        Contracts.DownloadFileRequest[] files = path is null ? [] : [new Contracts.DownloadFileRequest(path, 1)];
+        var ex = await Assert.ThrowsAsync<HubException>(() => conn.InvokeAsync<string>("StartDownload", repoId, version, files));
+
+        await Assert.That(ex!.Message).Contains(expectedMessage);
+        await Assert.That(db.ListJobs().Count).IsEqualTo(0);
+    }
+}

@@ -16,13 +16,16 @@ public sealed record ArchiveScenario(IReadOnlyList<INotification> Events, Archiv
 /// invoke the run's ConfirmRehydration callback with it (declined/timed-out ⇒ stop, return <paramref name="Result"/>);
 /// otherwise publish <paramref name="PostApproveEvents"/> and return <paramref name="Result"/>. When
 /// <paramref name="Gated"/> the handler holds after the post-approve events until <see cref="ScenarioGate"/> releases.
+/// When <paramref name="WritesFiles"/> the handler writes each restored file under the command's root directory
+/// before publishing its <see cref="FileRestoredEvent"/> (what a download job stages).
 /// </summary>
 public sealed record RestoreScenario(
     IReadOnlyList<INotification> PreCostEvents,
     RestoreCostEstimate? CostPrompt,
     IReadOnlyList<INotification> PostApproveEvents,
     RestoreResult Result,
-    bool Gated = false)
+    bool Gated = false,
+    bool WritesFiles = false)
 {
     /// <summary>Every command the scripted handler received, in order, so a test can assert what the host sent Core.</summary>
     public ConcurrentQueue<RestoreCommand> Received { get; } = new();

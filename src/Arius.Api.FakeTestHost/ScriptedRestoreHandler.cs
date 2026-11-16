@@ -13,7 +13,7 @@ public sealed class ScriptedRestoreHandler(IPublisher publisher, RestoreScenario
         scenario.Received.Enqueue(command);
 
         foreach (var evt in scenario.PreCostEvents)
-            await publisher.Publish(evt, cancellationToken);
+            await PublishAsync(evt, cancellationToken);
 
         if (scenario.CostPrompt is not null && command.Options.ConfirmRehydration is not null)
         {
@@ -23,10 +23,22 @@ public sealed class ScriptedRestoreHandler(IPublisher publisher, RestoreScenario
         }
 
         foreach (var evt in scenario.PostApproveEvents)
-            await publisher.Publish(evt, cancellationToken);
+            await PublishAsync(evt, cancellationToken);
         if (scenario.Gated)
             await gate.WaitForRelease(ctx.RepositoryId, cancellationToken);
 
         return scenario.Result;
+
+        async ValueTask PublishAsync(INotification evt, CancellationToken ct)
+        {
+            if (scenario.WritesFiles && evt is FileRestoredEvent restored)
+            {
+                var path = Path.Combine(command.Options.RootDirectory, restored.RelativePath.ToString());
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                await File.WriteAllTextAsync(path, $"scripted:{restored.RelativePath}", ct);
+            }
+
+            await publisher.Publish(evt, ct);
+        }
     }
 }
