@@ -68,8 +68,7 @@ test('settings saves the download clean-up period and cleans up all now', async 
   await page.reload();
   await expect(page.getByTestId('cleanup-days')).toHaveValue('3');
 
-  // Staging folders of earlier specs (the db reset doesn't remove them) count too, so only assert there is something to clean up.
-  await expect(page.getByTestId('download-usage')).not.toContainText('0 downloads');
+  await expect(page.getByTestId('download-usage')).toHaveText(/^1 download /);
   await page.getByTestId('cleanup-all').click();
   await expect(page.getByTestId('download-usage')).toContainText('0 downloads');
 });
