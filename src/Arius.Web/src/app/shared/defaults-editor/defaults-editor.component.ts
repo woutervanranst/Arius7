@@ -43,7 +43,7 @@ const COPY = {
     <div class="ar-bar">
       @if (anyDirty()) { <span class="ar-dirty">Unsaved changes</span> }
       <button class="ar-btn-outline" data-testid="defaults-discard" [disabled]="!anyDirty()" (click)="discard()">Discard</button>
-      <button class="ar-btn-primary" data-testid="defaults-save" [disabled]="!anyDirty()" (click)="save.emit(draft())"><i class="ki-filled ki-check"></i>{{ saveLabel() }}</button>
+      <button class="ar-btn-primary" data-testid="defaults-save" [disabled]="!anyDirty() || saveBlocked()" (click)="save.emit(draft())"><i class="ki-filled ki-check"></i>{{ saveLabel() }}</button>
     </div>
   `,
   styles: [`
@@ -65,6 +65,8 @@ export class DefaultsEditorComponent {
 
   /** The host has edits of its own (projected via `<ng-content>`) that Save / Discard must cover. */
   readonly extraDirty = input(false);
+  /** The host's own edits are invalid: Save stays disabled. */
+  readonly saveBlocked = input(false);
 
   readonly save = output<SetValues>();
   readonly discarded = output<void>();

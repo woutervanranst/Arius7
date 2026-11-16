@@ -1,7 +1,15 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { ApiService } from '../../core/api/api.service';
 import { DownloadSettingsDto, DownloadUsageDto } from '../../core/api/api-models';
 import { formatBytes } from '../../shared/format';
+
+const MIN_DAYS = 1;
+const MAX_DAYS = 3650;
+
+function parseDays(text: string): number | null {
+  const days = /^\d+$/.test(text.trim()) ? Number(text) : NaN;
+  return days >= MIN_DAYS && days <= MAX_DAYS ? days : null;
+}
 
 /**
  * Settings card for the server-wide clean-up of downloaded files. The clean-up period is an edit the host saves
@@ -18,9 +26,10 @@ import { formatBytes } from '../../shared/format';
       <label class="ar-switch-row">
         <input type="checkbox" role="switch" class="ar-switch" data-testid="cleanup-toggle" [checked]="value().cleanupEnabled" (change)="toggle($event)" />
         Clean up downloaded files after
-        <input type="number" class="ar-num" data-testid="cleanup-days" min="1" [value]="value().cleanupDays" [disabled]="!value().cleanupEnabled" (input)="setDays($event)" />
+        <input type="number" class="ar-num" data-testid="cleanup-days" min="1" max="3650" [value]="text()" [disabled]="!value().cleanupEnabled" (input)="setDays($event)" />
         days
       </label>
+      @if (invalid()) { <div class="ar-error" data-testid="cleanup-days-error">Enter a number of days from 1 to 3650.</div> }
       <div class="ar-hint">Off keeps them on the server until you clean them up.</div>
       <div class="ar-usage">
         <div class="ar-usage-text">
@@ -45,6 +54,7 @@ import { formatBytes } from '../../shared/format';
     .ar-switch:checked::after { transform:translateX(14px) }
     .ar-num { width:56px;height:32px;border:1px solid #e4e4e7;border-radius:8px;text-align:center;font-size:13px;font-weight:600;font-family:inherit }
     .ar-num:disabled { background:#fafafa;color:#a1a1aa }
+    .ar-error { font-size:12px;color:#dc2626;margin-top:6px }
     .ar-hint { font-size:12px;color:#71717a;margin:6px 0 16px }
     .ar-usage { display:flex;align-items:center;gap:14px;background:#fafafb;border:1px solid #f0f0f2;border-radius:10px;padding:12px 14px }
     .ar-usage-text { flex:1 }
@@ -58,7 +68,16 @@ export class TemporaryFilesCardComponent {
   private readonly api = inject(ApiService);
 
   readonly value = input.required<DownloadSettingsDto>();
+  /** Emits only valid settings; a days field holding anything else is reported through `validChange` instead. */
   readonly changed = output<DownloadSettingsDto>();
+  readonly validChange = output<boolean>();
+
+  /** What the days field holds; follows `value` except that an in-progress edit it already agrees with is kept as typed. */
+  protected readonly text = linkedSignal<DownloadSettingsDto, string>({
+    source: this.value,
+    computation: (v, previous) => previous && parseDays(previous.value) === v.cleanupDays ? previous.value : String(v.cleanupDays),
+  });
+  protected readonly invalid = computed(() => parseDays(this.text()) === null);
 
   protected readonly usage = signal<DownloadUsageDto | null>(null);
 
@@ -75,7 +94,11 @@ export class TemporaryFilesCardComponent {
   }
 
   protected setDays(event: Event): void {
-    this.changed.emit({ ...this.value(), cleanupDays: Number((event.target as HTMLInputElement).value) });
+    const text = (event.target as HTMLInputElement).value;
+    this.text.set(text);
+    const days = parseDays(text);
+    this.validChange.emit(days !== null);
+    if (days !== null) this.changed.emit({ ...this.value(), cleanupDays: days });
   }
 
   protected cleanUpAll(): void {
