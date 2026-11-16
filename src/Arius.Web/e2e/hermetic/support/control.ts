@@ -15,5 +15,10 @@ export class Control {
     await this.request.post('/api/testing/scenario', { data: { repoId, name, gated } });
   }
 
+  async startDownload(repoId: number, files: { path: string; size: number }[], version = 'v1'): Promise<string> {
+    const res = await this.request.post('/api/testing/start-download', { data: { repoId, version, files } });
+    return (await res.json()).jobId as string;
+  }
+
   async release(repoId: number): Promise<void> { await this.request.post(`/api/testing/release/${repoId}`); }
 }
