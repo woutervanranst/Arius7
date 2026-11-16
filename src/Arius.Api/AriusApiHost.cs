@@ -88,6 +88,7 @@ public static class AriusApiHost
         api.MapDefaultsEndpoints();
         api.MapBrowseEndpoints();
         api.MapJobEndpoints();
+        api.MapDownloadEndpoints();
         api.MapFilesystemEndpoints();
         app.MapHub<JobsHub>("/hubs/arius");
 
