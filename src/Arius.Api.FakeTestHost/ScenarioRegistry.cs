@@ -22,7 +22,11 @@ public sealed record RestoreScenario(
     RestoreCostEstimate? CostPrompt,
     IReadOnlyList<INotification> PostApproveEvents,
     RestoreResult Result,
-    bool Gated = false);
+    bool Gated = false)
+{
+    /// <summary>Every command the scripted handler received, in order, so a test can assert what the host sent Core.</summary>
+    public ConcurrentQueue<RestoreCommand> Received { get; } = new();
+}
 
 /// <summary>Holds the next scripted scenario for each repository. Set by tests, taken by the scripted handlers.</summary>
 public sealed class ScenarioRegistry

@@ -77,7 +77,7 @@ public class RestoreCostHandshakeTests
         var dest = Path.Combine(Path.GetTempPath(), $"arius-itest-dst-{Guid.NewGuid():N}");
         var repoId = factory.SeedRepository(localPath: dest);
 
-        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.RehydratingRestore() with
+        var scenario = CanonicalScenarios.RehydratingRestore() with
         {
             PostApproveEvents =
             [
@@ -85,7 +85,8 @@ public class RestoreCostHandshakeTests
                 new FileRestoredEvent(RelativePath.Parse("docs/b.txt"), 1000),
             ],
             Result = new RestoreResult { Success = true, FilesRestored = 2, FilesSkipped = 0, ChunksPendingRehydration = 0 },
-        });
+        };
+        factory.Scenarios.SetRestore(repoId, scenario);
 
         var runner = factory.Services.GetRequiredService<JobRunner>();
         var approvals = factory.Services.GetRequiredService<RestoreApprovalRegistry>();
@@ -101,6 +102,8 @@ public class RestoreCostHandshakeTests
         await run;
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
         // One restore over both targets: each file is counted once, not once per target.
+        await Assert.That(scenario.Received.Count).IsEqualTo(1);
+        await Assert.That(scenario.Received.Single().Options.TargetPaths.SequenceEqual([RelativePath.Parse("photos"), RelativePath.Parse("docs/b.txt")])).IsTrue();
         await Assert.That(db.GetJob(jobId)!.Outcome!.Contains("\"filesRestored\":2")).IsTrue();
     }
 }
