@@ -30,7 +30,7 @@ public sealed record RepositoryConnection(
 public sealed record JobRecord(
     string          Id,
     long            RepositoryId,
-    string          Kind,        // archive | restore
+    string          Kind,        // archive | restore | download
     string          Trigger,     // one-off | schedule
     string          Status,      // non-terminal: running | awaiting-cost | rehydrating — terminal: completed | failed | cancelled | interrupted
     double          Pct,
@@ -39,6 +39,15 @@ public sealed record JobRecord(
     DateTimeOffset? FinishedAt,
     string?         StateJson = null,   // serialized live JobSnapshot, refreshed while the job runs
     string?         Outcome = null);    // serialized terminal JobOutcome, written on completion
+
+/// <summary>One file collected by a download job: repository-relative <see cref="Path"/>, whether it is staged on the server (<see cref="Ready"/>) and whether the browser has fetched it (<see cref="Downloaded"/>).</summary>
+public sealed record DownloadFile(string Path, long Size, bool Ready = false, bool Downloaded = false);
+
+/// <summary>Server-wide clean-up of downloaded files: whether it runs and how many days after a download job finished.</summary>
+public sealed record DownloadSettings(bool CleanupEnabled, int CleanupDays)
+{
+    public static readonly DownloadSettings Default = new(true, 7);
+}
 
 /// <summary>A cron schedule that fires archive jobs for a repository.</summary>
 public sealed record ScheduleRecord(
