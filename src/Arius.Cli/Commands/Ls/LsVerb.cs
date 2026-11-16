@@ -118,10 +118,7 @@ internal static class LsVerb
                 {
                     try
                     {
-                        var normalizedPrefix = prefix.TrimEnd('/', '\\');
-                        parsedPrefix = normalizedPrefix.Length == 0
-                            ? RelativePath.Root
-                            : RelativePath.Parse(normalizedPrefix);
+                        parsedPrefix = CliBuilder.ParseRepositoryPath(prefix);
                     }
                     catch (FormatException ex)
                     {
