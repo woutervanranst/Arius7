@@ -281,4 +281,38 @@ describe('JobPillStore download states', () => {
     progress.next(snap({ jobId: 'd1', filesRestored: 3 }));
     expect(store.download()).toMatchObject({ total: 3, ready: 3 });
   });
+
+  it('downloading from a download-ready pill hides it without remembering a dismissal', () => {
+    vi.useFakeTimers();
+    const ls = stubLocalStorage();
+    try {
+      const { store } = makeStore({ getPendingDownload: vi.fn().mockReturnValue(of(pending())) });
+      store.discover(11);
+      store.markDownloaded();
+      expect(store.visible()).toBe(true);        // deferred so the clicked link's default download still runs
+      vi.advanceTimersByTime(0);
+      expect(store.visible()).toBe(false);
+      expect(ls.size).toBe(0);
+    } finally { vi.useRealTimers(); vi.unstubAllGlobals(); }
+  });
+
+  it('downloading from a rehydrating pill treats the ready files as downloaded until more become ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const files = [file('a', true, false, 100), file('b', true, false, 50), file('c', false)];
+      const getDownload = vi.fn().mockReturnValue(of({ files, cleanedUp: false, cleanupAt: null }));
+      const { store, progress } = makeStore({ getDownload });
+      store.show('d1', 'download');
+      expect(store.download()).toMatchObject({ ready: 2, remaining: 2, remainingBytes: 150 });
+      store.markDownloaded();
+      expect(store.download()!.remaining).toBe(2);
+      vi.advanceTimersByTime(0);
+      expect(store.download()).toMatchObject({ ready: 2, downloaded: 2, remaining: 0, remainingBytes: 0 });
+      expect(store.visible()).toBe(true);
+
+      getDownload.mockReturnValue(of({ files: [...files.slice(0, 2).map(f => ({ ...f, downloaded: true })), file('c', true, false, 70)], cleanedUp: false, cleanupAt: null }));
+      progress.next(snap({ jobId: 'd1', filesRestored: 3 }));
+      expect(store.download()).toMatchObject({ ready: 3, remaining: 1, remainingBytes: 70 });
+    } finally { vi.useRealTimers(); }
+  });
 });
