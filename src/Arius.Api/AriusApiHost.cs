@@ -37,6 +37,7 @@ public static class AriusApiHost
         builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
         builder.Services.AddSingleton(new AppDatabase(dbPath));
         builder.Services.AddSingleton<SecretProtector>();
+        builder.Services.AddSingleton(new Arius.Api.Downloads.DownloadStaging(Path.Combine(Path.GetDirectoryName(dbPath)!, "downloads")));
         builder.Services.AddAzureBlobStorage();
         builder.Services.TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
         builder.Services.AddSingleton(sp => new RepositoryProviderRegistry(
