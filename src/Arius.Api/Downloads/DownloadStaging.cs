@@ -48,11 +48,23 @@ public sealed class DownloadStaging(string root)
             ? Directory.EnumerateDirectories(root).Select(d => Path.GetFileName(d)).ToList()
             : [];
 
+    /// <summary>Total size of the job folder's files; files (or the folder) deleted meanwhile by a concurrent clean-up count as 0.</summary>
     public long SizeOf(string jobId)
     {
         var folder = PathFor(jobId);
-        return Directory.Exists(folder)
-            ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)
-            : 0;
+        if (!Directory.Exists(folder))
+            return 0;
+
+        long total = 0;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+            {
+                try { total += new FileInfo(file).Length; }
+                catch (FileNotFoundException) { }
+            }
+        }
+        catch (DirectoryNotFoundException) { }
+        return total;
     }
 }
