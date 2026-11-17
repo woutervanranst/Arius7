@@ -160,10 +160,20 @@ public sealed class JobRunner(
             FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
             return;
         }
-        sink.FileRestored = path => database.MarkDownloadFileReady(jobId, path);
+        var anyReady = false;
+        sink.FileRestored = path => { database.MarkDownloadFileReady(jobId, path); anyReady = true; };
 
         await RunRestoreJobAsync(sink, repositoryId, jobId, startedAt, version, files.Select(f => f.Path).ToArray(),
             staging.PathFor(jobId), overwrite: false, noPointers: true, "Download");
+
+        // A first pass that ended with nothing ready (declined at the cost prompt, cancelled, failed) has nothing to
+        // offer: drop its staging folder now instead of keeping it until the clean-up period. A parked (rehydrating)
+        // job is not terminal and keeps its folder; later exits are left to DownloadCleaner.
+        if (!anyReady && database.GetJob(jobId) is { } job && JobStatuses.Terminal.Contains(job.Status))
+        {
+            try { staging.Delete(jobId); }
+            catch (Exception ex) { logger.LogWarning(ex, "Could not remove the staging folder of download {JobId}", jobId); }
+        }
     }
 
     // Race-proof backstop for the cooperative HasActiveJob check (JobsHub/SchedulerService): the

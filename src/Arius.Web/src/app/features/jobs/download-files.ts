@@ -53,7 +53,7 @@ export function downloadActions(s: DownloadSummary, finished: boolean): Download
 }
 
 export function fileStatus(f: DownloadFileDto, jobStatus: string, cleanedUp: boolean): FileStatus {
-  if (cleanedUp) return 'Cleaned up';
+  if (cleanedUp && f.ready) return 'Cleaned up';
   if (f.downloaded) return 'Downloaded';
   if (f.ready) return 'Ready';
   if (jobStatus === 'rehydrating') return 'Rehydrating';
@@ -61,6 +61,7 @@ export function fileStatus(f: DownloadFileDto, jobStatus: string, cleanedUp: boo
 }
 
 export function readyHeadline(s: DownloadSummary, finished: boolean): string {
+  if (finished && s.ready === 0) return 'No files prepared';
   const size = formatBytes(s.readyBytes);
   return finished && s.ready === s.total ? `All ${files(s.total)} ready · ${size}` : `${s.ready} of ${files(s.total)} ready · ${size}`;
 }
@@ -68,7 +69,7 @@ export function readyHeadline(s: DownloadSummary, finished: boolean): string {
 /** Cleanup date as "d MMM" (e.g. "22 Nov"). */
 export function readySubline(s: DownloadSummary, status: string, cleanupAt: string | null): string {
   if (status === 'rehydrating' && s.pending > 0) return `${files(s.pending)} still being rehydrated`;
-  if (isNonTerminal(status)) return '';
+  if (isNonTerminal(status) || s.ready === 0) return '';
   if (!cleanupAt) return 'Kept on the server until you clean them up';
   const d = new Date(cleanupAt);
   const date = `${d.getDate()} ${MONTHS[d.getMonth()]}`;

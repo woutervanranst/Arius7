@@ -73,6 +73,28 @@ public class DownloadJobTests
     }
 
     [Test]
+    public async Task A_download_declined_at_the_cost_prompt_leaves_no_staging_folder()
+    {
+        await using var factory = new AriusApiFactory();
+        var repoId = factory.SeedRepository();
+        factory.Scenarios.SetRestore(repoId, CanonicalScenarios.OnlineDownload());
+
+        var approvals = factory.Services.GetRequiredService<RestoreApprovalRegistry>();
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        var staging = factory.Services.GetRequiredService<DownloadStaging>();
+        var jobId = Guid.NewGuid().ToString();
+
+        var run = factory.Services.GetRequiredService<JobRunner>()
+            .RunDownloadAsync(repoId, jobId, "v1", [new DownloadFile("photos/a.jpg", 1000)]);
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        approvals.Resolve(jobId, null);
+        await run;
+
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("cancelled");
+        await Assert.That(staging.Exists(jobId)).IsFalse();
+    }
+
+    [Test]
     public async Task Ready_files_survive_a_resume_and_unready_staged_files_are_pruned_first()
     {
         await using var factory = new AriusApiFactory();
