@@ -1,5 +1,5 @@
 import { archiveBarLayers, restoreBarLayers, phaseSentence, resolveRehydrationWindowHours,
-  formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, lastCheckedLabel, chunksInArchive, statusMeta,
+  formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, lastCheckedLabel, rehydrationNote, chunksInArchive, statusMeta,
   toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from './job-format';
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 
@@ -121,6 +121,15 @@ describe('lastCheckedLabel', () => {
   });
 });
 
+describe('rehydrationNote', () => {
+  it('names the priority and the window', () => expect(rehydrationNote('High', 1)).toBe('High priority, ~1 h'));
+  it('shows what is known', () => {
+    expect(rehydrationNote('Standard', null)).toBe('Standard priority');
+    expect(rehydrationNote(null, 15)).toBe('~15 h');
+    expect(rehydrationNote(null, null)).toBe('');
+  });
+});
+
 describe('statusMeta', () => {
   it('maps each known status to its own label', () => {
     expect(statusMeta('running').label).toBe('Running');
@@ -143,7 +152,7 @@ describe('statusMeta', () => {
 
 describe('resolveRehydrationWindowHours', () => {
   const cost = (p: Partial<CostEstimateMsg>): CostEstimateMsg => ({ jobId: 'j', chunksAvailable: 0, chunksNeedingRehydration: 0, bytesNeedingRehydration: 0, downloadBytes: 0, totalStandard: 0, totalHigh: 0, standardWaitHours: 15, highWaitHours: 1, ...p });
-  const resume = (p: Partial<ResumeInfo>): ResumeInfo => ({ autoResume: true, rehydrationStartedAt: '2026-01-01T00:00:00Z', rehydrationWindowHours: 15, lastCheckedAt: '2026-01-01T00:00:00Z', ...p });
+  const resume = (p: Partial<ResumeInfo>): ResumeInfo => ({ autoResume: true, priority: 'Standard', rehydrationStartedAt: '2026-01-01T00:00:00Z', rehydrationWindowHours: 15, lastCheckedAt: '2026-01-01T00:00:00Z', ...p });
 
   it('prefers the live cost estimate when present (priority-aware)', () => {
     expect(resolveRehydrationWindowHours(cost({ highWaitHours: 1 }), null, 'high')).toBe(1);

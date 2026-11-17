@@ -45,7 +45,7 @@ test('a rehydrating download offers the ready file now', async ({ page, request,
   expect((await download).suggestedFilename()).toBe('a.jpg');
   await expect(page.getByTestId('download-file-row').filter({ hasText: 'photos/a.jpg' })).toContainText('Downloaded');
   await expect(page.getByText('copies each file to a temporary folder on the server')).toBeVisible();
-  await expect(page.getByText(/282 chunks are being moved out of Archive tier/)).toBeVisible();
+  await expect(page.getByText(/282 chunks are being rehydrated \(Standard priority, ~\d+ h\)/)).toBeVisible();
   await expect(page.getByTestId('autoresume-toggle')).toHaveCount(0);   // nothing to pause: files only go to the server
 
   // "Check now" re-checks Azure at once and shows when it last did.

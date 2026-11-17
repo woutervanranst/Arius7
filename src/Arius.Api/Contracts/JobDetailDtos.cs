@@ -16,13 +16,14 @@ public sealed record CostEstimateDto(
     double HighWaitHours);
 
 /// <summary>The parked-restore resume facts a reattaching client needs: whether auto-resume is on, the rehydration
-/// SLA window ("≈ hydrated by" = RehydrationStartedAt + RehydrationWindowHours), and when Azure was last checked
-/// (the initial run or the latest re-drive). Null for jobs with no restore-resume state.</summary>
-public sealed record ResumeInfo(bool AutoResume, System.DateTimeOffset RehydrationStartedAt, double RehydrationWindowHours, System.DateTimeOffset LastCheckedAt)
+/// priority ("Standard" | "High") and SLA window ("≈ hydrated by" = RehydrationStartedAt + RehydrationWindowHours),
+/// and when Azure was last checked (the initial run or the latest re-drive). Null for jobs with no restore-resume
+/// state.</summary>
+public sealed record ResumeInfo(bool AutoResume, string Priority, System.DateTimeOffset RehydrationStartedAt, double RehydrationWindowHours, System.DateTimeOffset LastCheckedAt)
 {
     /// <summary>Maps the persisted restore-resume state to the wire DTO (null-safe). Shared by JobsHub + JobEndpoints.</summary>
     public static ResumeInfo? From(Arius.Api.Jobs.RestoreResumeState? r) =>
-        r is null ? null : new ResumeInfo(r.AutoResume, r.RehydrationStartedAt, r.RehydrationWindow.TotalHours, r.LastRunAt);
+        r is null ? null : new ResumeInfo(r.AutoResume, r.Priority, r.RehydrationStartedAt, r.RehydrationWindow.TotalHours, r.LastRunAt);
 }
 
 /// <summary>Snapshot-on-attach payload: the job's current status, its absolute progress snapshot,

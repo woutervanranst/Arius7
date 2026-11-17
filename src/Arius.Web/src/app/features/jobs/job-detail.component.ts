@@ -7,7 +7,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, lastCheckedLabel, chunksInArchive, clockTime, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours, toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, lastCheckedLabel, rehydrationNote, chunksInArchive, clockTime, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours, toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from '../../shared/job-format';
 import { DownloadFilesCardComponent } from './download-files-card.component';
 import { Subscription } from 'rxjs';
 
@@ -110,7 +110,7 @@ const CHECK_TIMEOUT_MS = 30_000;
               <i class="ki-filled ki-moon" style="font-size:20px;color:#b45309"></i>
               <div style="flex:1;min-width:220px">
                 <div style="font-size:13.5px;font-weight:600;color:#92400e">
-                  {{ formatCount(archiveChunks()) }} {{ archiveChunks() === 1 ? 'chunk is' : 'chunks are' }} being moved out of Archive tier by Azure@if (rehydrateWindowHours() != null) { (~{{ rehydrateWindowHours() }} h)}
+                  {{ formatCount(archiveChunks()) }} {{ archiveChunks() === 1 ? 'chunk is' : 'chunks are' }} being rehydrated@if (waitNote()) { ({{ waitNote() }})}
                 </div>
                 <div style="font-size:12.5px;color:#a16207;margin-top:2px">
                   @if (isDownload()) { Arius checks Azure periodically and copies each file to a temporary folder on the server as soon as it is available. You can close this page. }
@@ -398,6 +398,9 @@ export class JobDetailComponent implements OnDestroy {
   });
   protected readonly rehydrateWindowHours = computed<number | null>(() =>
     resolveRehydrationWindowHours(this.cost(), this.resume(), this.priority()));
+  /** From the persisted resume only, so the priority and the hours always describe the same approval. */
+  protected readonly waitNote = computed(() =>
+    rehydrationNote(this.resume()?.priority ?? null, this.resume()?.rehydrationWindowHours ?? null));
   protected readonly hydratedBy = computed(() => {
     const w = this.rehydrateWindowHours();
     // Anchor the ETA to when rehydration actually started (set on the resume when cost is approved), NOT the job's
