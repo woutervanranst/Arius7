@@ -152,6 +152,8 @@ export interface JobOutcome {
  *  job past cost-approval still renders them. */
 export interface ResumeInfo {
   autoResume: boolean;
+  /** The rehydration priority approved at the cost prompt. */
+  priority: 'Standard' | 'High';
   rehydrationStartedAt: string;
   rehydrationWindowHours: number;
   /** When Azure was last checked: the initial run or the latest re-drive (scheduled or "Check now"). */

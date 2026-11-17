@@ -58,6 +58,11 @@ export function chunksInArchive(s: Pick<JobSnapshot, 'chunksNeedingRehydration' 
   return (s?.chunksNeedingRehydration ?? 0) + (s?.chunksPending ?? 0);
 }
 
+/** The wait card's parenthetical, e.g. "High priority, ~1 h"; either part is left out while unknown. */
+export function rehydrationNote(priority: ResumeInfo['priority'] | null, windowHours: number | null): string {
+  return [priority && `${priority} priority`, windowHours != null && `~${windowHours} h`].filter(Boolean).join(', ');
+}
+
 /** The rehydration SLA window (hours) for the "≈ hydrated by" ETA: the live cost estimate when present
  *  (priority-aware), else the persisted resume window (so a rehydrating job past cost-approval still shows
  *  an ETA), else null. */
