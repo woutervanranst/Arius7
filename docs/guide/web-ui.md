@@ -285,8 +285,10 @@ same cost approval, same rehydration handling — and never touches the reposito
    download (**Confirm download cost**, **Cancel download**, **Download** or **Rehydrate &
    download**). It covers every collected file at once.
 3. Arius prepares the files on the server. Files in the Hot, Cool and Cold tiers are ready right
-   away. Files in the Archive tier are rehydrated first, which takes hours; Arius checks periodically
-   and prepares them by itself, so you can close the page.
+   away. Files in the Archive tier are rehydrated first, which takes hours; Arius checks Azure
+   periodically and copies each file to a temporary folder on the server as soon as it is available,
+   so you can close the page. **Check now** checks right away instead of waiting for the next check;
+   the page shows when Arius last checked.
 4. The job page's files card shows how many files are ready, with a table of every file and its status
    (**Rehydrating**, **Ready**, **Downloaded**) and the download buttons:
 

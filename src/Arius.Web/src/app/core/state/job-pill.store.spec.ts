@@ -272,7 +272,7 @@ describe('JobPillStore download states', () => {
     const files = [file('a', true), file('b', true), file('c', false)];
     const state: JobAttachState = {
       status: 'rehydrating', snapshot: snap({ jobId: 'd1', filesRestored: 2 }), cost: null, warningCount: 0,
-      resume: { autoResume: true, rehydrationStartedAt: '2026-11-16T10:00:00Z', rehydrationWindowHours: 15 },
+      resume: { autoResume: true, rehydrationStartedAt: '2026-11-16T10:00:00Z', rehydrationWindowHours: 15, lastCheckedAt: '2026-11-16T10:00:00Z' },
     };
     const { store, progress, api } = makeStore(
       { getDownload: vi.fn().mockReturnValue(of({ files, cleanedUp: false, cleanupAt: null })) },

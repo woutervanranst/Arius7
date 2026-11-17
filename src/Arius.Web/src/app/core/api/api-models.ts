@@ -154,6 +154,8 @@ export interface ResumeInfo {
   autoResume: boolean;
   rehydrationStartedAt: string;
   rehydrationWindowHours: number;
+  /** When Azure was last checked: the initial run or the latest re-drive (scheduled or "Check now"). */
+  lastCheckedAt: string;
 }
 
 export interface JobAttachState {
