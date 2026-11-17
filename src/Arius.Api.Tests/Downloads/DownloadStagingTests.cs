@@ -48,6 +48,14 @@ public sealed class DownloadStagingTests
     }
 
     [Test]
+    public async Task Delete_of_an_already_removed_job_folder_succeeds()
+    {
+        var (staging, _) = Create();
+
+        Should.NotThrow(() => staging.Delete(Guid.NewGuid().ToString()));
+    }
+
+    [Test]
     public async Task Delete_ListJobIds_and_SizeOf_reflect_the_folders_on_disk()
     {
         var (staging, root) = Create();

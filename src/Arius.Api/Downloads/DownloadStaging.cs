@@ -36,11 +36,11 @@ public sealed class DownloadStaging(string root)
         }
     }
 
+    /// <summary>Removes the job folder; already gone (e.g. removed meanwhile by a concurrent clean-up) is success.</summary>
     public void Delete(string jobId)
     {
-        var folder = PathFor(jobId);
-        if (Directory.Exists(folder))
-            Directory.Delete(folder, recursive: true);
+        try { Directory.Delete(PathFor(jobId), recursive: true); }
+        catch (DirectoryNotFoundException) { }
     }
 
     /// <summary>Names of the job staging folders under the root; only GUID-named folders count, so a foreign folder
