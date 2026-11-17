@@ -94,5 +94,6 @@ test('a download cancelled at the cost prompt shows no summary and nothing to cl
   await expect(page.getByTestId('download-file-row').first()).toContainText('Not prepared');
   await expect(page.getByTestId('download-summary')).toHaveCount(0);
   await expect(page.getByTestId('download-cleanup')).toHaveCount(0);
-  expect((await (await request.get('/api/downloads/usage')).json()).downloads).toBe(0);
+  // The job row turns cancelled before its staging folder is removed.
+  await expect.poll(async () => (await (await request.get('/api/downloads/usage')).json()).downloads).toBe(0);
 });
