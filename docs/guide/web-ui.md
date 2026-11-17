@@ -323,7 +323,8 @@ until *date*, then cleaned up". By default they are deleted 7 days after the dow
 - **Currently on the server** shows how many downloads are stored and how much space they use, with
   **Clean up all now** to delete every finished download's files immediately.
 - On a job page, **Clean up now** deletes that download's files. The job stays in the Jobs list; its
-  page shows the files as cleaned up.
+  page shows the files as cleaned up. A download that ends before any file is ready (for example,
+  cancelled at the cost confirmation) keeps nothing on the server.
 
 Files of a download that is still running, waiting for cost approval, or rehydrating are never
 cleaned up, and deleting a repository deletes its downloaded files. **Clean up now** and **Clean up

@@ -63,6 +63,10 @@ describe('fileStatus', () => {
     expect(fileStatus(file({ ready: false }), 'interrupted', false)).toBe('Not prepared');
     expect(fileStatus(file({ downloaded: true }), 'completed', true)).toBe('Cleaned up');
   });
+
+  it('keeps "Not prepared" for a file that never became ready, even once the folder is gone', () => {
+    expect(fileStatus(file({ ready: false }), 'cancelled', true)).toBe('Not prepared');
+  });
 });
 
 describe('readyHeadline', () => {
@@ -76,6 +80,11 @@ describe('readyHeadline', () => {
   it('uses the singular "file" for a single file', () => {
     expect(readyHeadline(summarize([file({ size: 1e6 })]), true)).toBe('All 1 file ready · 1.0 MB');
     expect(readyHeadline(summarize([file({ size: 1e6 })]), false)).toBe('1 of 1 file ready · 1.0 MB');
+  });
+
+  it('says "No files prepared" for a finished download where nothing became ready', () => {
+    expect(readyHeadline(summarize([file({ ready: false }), file({ ready: false })]), true)).toBe('No files prepared');
+    expect(readyHeadline(summarize([file({ ready: false })]), false)).toBe('0 of 1 file ready · 0 B');
   });
 
   it('keeps the "n of m" wording for a finished download with files that never became ready', () => {
@@ -100,6 +109,10 @@ describe('readySubline', () => {
 
   it('says files are kept until cleaned up when no clean-up date is set', () => {
     expect(readySubline(none, 'completed', null)).toBe('Kept on the server until you clean them up');
+  });
+
+  it('is empty for a finished download where nothing became ready (nothing is kept)', () => {
+    expect(readySubline(summarize([file({ ready: false })]), 'cancelled', new Date(2026, 10, 22, 12).toISOString())).toBe('');
   });
 
   it('is empty while the job runs without waiting on rehydration', () => {

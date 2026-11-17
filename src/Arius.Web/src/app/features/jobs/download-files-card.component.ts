@@ -25,7 +25,7 @@ const RELOAD_THROTTLE_MS = 1000;
             <i class="ki-filled ki-exit-down" style="font-size:19px"></i>
           </div>
           <div style="flex:1;min-width:180px">
-            @if (cleanedUp()) {
+            @if (cleanedUp() && hasReady()) {
               <div style="font-size:13.5px;font-weight:600;color:#14532d">Files cleaned up</div>
             } @else {
               <div style="font-size:13.5px;font-weight:600;color:#14532d">{{ headline() }}</div>
@@ -34,7 +34,7 @@ const RELOAD_THROTTLE_MS = 1000;
           </div>
           @if (!cleanedUp()) {
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-left:auto">
-              @if (finished()) {
+              @if (finished() && hasReady()) {
                 <button data-testid="download-cleanup" type="button" (click)="cleanUp()"
                         style="background:none;border:none;padding:0 6px;font-size:12.5px;font-weight:600;color:#71717a;cursor:pointer;white-space:nowrap">Clean up now</button>
               }
@@ -86,6 +86,8 @@ export class DownloadFilesCardComponent implements OnDestroy {
 
   protected readonly finished = computed(() => !isNonTerminal(this.status()));
   private readonly summary = computed(() => summarize(this.files()));
+  /** Nothing ever became ready (e.g. cancelled at the cost prompt): there is nothing to download or clean up. */
+  protected readonly hasReady = computed(() => this.summary().ready > 0);
   protected readonly headline = computed(() => readyHeadline(this.summary(), this.finished()));
   protected readonly subline = computed(() => readySubline(this.summary(), this.status(), this.cleanupAt()));
   protected readonly actions = computed(() => downloadActions(this.summary(), this.finished()));
