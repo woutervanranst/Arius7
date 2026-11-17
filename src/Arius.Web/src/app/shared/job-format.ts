@@ -38,7 +38,24 @@ export function throughputRow(rate: number | null | undefined, producedBytes: nu
 export function hydratedByLabel(startedAtIso: string | null, windowHours: number): string {
   if (!startedAtIso) return '';
   const done = new Date(new Date(startedAtIso).getTime() + windowHours * 3600_000);
-  return `≈ hydrated by ${done.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+  return `≈ hydrated by ${clockTime(done)}`;
+}
+
+/** Wall-clock "HH:MM" (24 h) for ETAs and check times. */
+export function clockTime(d: Date): string {
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** "Last checked 08:13" for the rehydration wait card; empty without a time. */
+export function lastCheckedLabel(checkedAtIso: string | null): string {
+  if (!checkedAtIso) return '';
+  return `Last checked ${clockTime(new Date(checkedAtIso))}`;
+}
+
+/** Chunks still waiting on Azure: not yet requested plus being rehydrated. Once rehydration is requested Core
+ *  reports the chunks as pending, not as needing rehydration, so neither count alone is the number in Archive. */
+export function chunksInArchive(s: Pick<JobSnapshot, 'chunksNeedingRehydration' | 'chunksPending'> | null | undefined): number {
+  return (s?.chunksNeedingRehydration ?? 0) + (s?.chunksPending ?? 0);
 }
 
 /** The rehydration SLA window (hours) for the "≈ hydrated by" ETA: the live cost estimate when present
@@ -106,7 +123,8 @@ export function jobKindIcon(kind: JobKind): 'ki-cloud-add' | 'ki-cloud-download'
 export function phaseSentence(s: JobSnapshot, kind: string): string {
   const gb = (n: number) => (n / 1e9).toFixed(2) + ' GB';
   if (isRestoreFamily(toJobKind(kind))) {
-    if (s.chunksNeedingRehydration > 0 && s.bytesRestored === 0) return `Rehydrating — ${s.chunksNeedingRehydration} chunks from Archive tier`;
+    const archive = chunksInArchive(s);
+    if (archive > 0 && s.bytesRestored === 0) return `Rehydrating — ${archive} ${archive === 1 ? 'chunk' : 'chunks'} from Archive tier`;
     return `Restoring — ${s.filesRestored} of ${s.restoreTotalFiles} files`;
   }
   // Phase-driven (authoritative), no longer the bytes ≥ total heuristic.

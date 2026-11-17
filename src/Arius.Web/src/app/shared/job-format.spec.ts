@@ -1,5 +1,5 @@
 import { archiveBarLayers, restoreBarLayers, phaseSentence, resolveRehydrationWindowHours,
-  formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta,
+  formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, lastCheckedLabel, chunksInArchive, statusMeta,
   toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from './job-format';
 import { CostEstimateMsg, JobSnapshot, ResumeInfo } from '../core/api/api-models';
 
@@ -44,6 +44,8 @@ describe('phaseSentence', () => {
   });
   it('reports rehydration for a restore whose archive-tier chunks have not started downloading', () => {
     expect(phaseSentence(snap({ chunksNeedingRehydration: 5, bytesRestored: 0 }), 'restore')).toBe('Rehydrating — 5 chunks from Archive tier');
+    // Once rehydration is requested the chunks are reported as pending, not as needing rehydration.
+    expect(phaseSentence(snap({ chunksNeedingRehydration: 0, chunksPending: 1, bytesRestored: 0 }), 'restore')).toBe('Rehydrating — 1 chunk from Archive tier');
   });
   it('reports the restored-file progress once a restore is downloading', () => {
     expect(phaseSentence(snap({ chunksNeedingRehydration: 5, bytesRestored: 10, filesRestored: 2, restoreTotalFiles: 7 }), 'restore'))
@@ -104,6 +106,21 @@ describe('hydratedByLabel', () => {
   });
 });
 
+describe('chunksInArchive', () => {
+  it('counts chunks still waiting on Azure: not yet requested plus being rehydrated', () => {
+    expect(chunksInArchive(snap({ chunksNeedingRehydration: 0, chunksPending: 1 }))).toBe(1);   // after the request: pending only
+    expect(chunksInArchive(snap({ chunksNeedingRehydration: 282, chunksPending: 0 }))).toBe(282);
+    expect(chunksInArchive(null)).toBe(0);
+  });
+});
+
+describe('lastCheckedLabel', () => {
+  it('is empty without a check time', () => expect(lastCheckedLabel(null)).toBe(''));
+  it('formats the last check as a wall-clock time', () => {
+    expect(lastCheckedLabel('2026-01-01T08:13:00Z')).toMatch(/^Last checked \d{2}:\d{2}$/);   // exact time is TZ-dependent
+  });
+});
+
 describe('statusMeta', () => {
   it('maps each known status to its own label', () => {
     expect(statusMeta('running').label).toBe('Running');
@@ -126,7 +143,7 @@ describe('statusMeta', () => {
 
 describe('resolveRehydrationWindowHours', () => {
   const cost = (p: Partial<CostEstimateMsg>): CostEstimateMsg => ({ jobId: 'j', chunksAvailable: 0, chunksNeedingRehydration: 0, bytesNeedingRehydration: 0, downloadBytes: 0, totalStandard: 0, totalHigh: 0, standardWaitHours: 15, highWaitHours: 1, ...p });
-  const resume = (p: Partial<ResumeInfo>): ResumeInfo => ({ autoResume: true, rehydrationStartedAt: '2026-01-01T00:00:00Z', rehydrationWindowHours: 15, ...p });
+  const resume = (p: Partial<ResumeInfo>): ResumeInfo => ({ autoResume: true, rehydrationStartedAt: '2026-01-01T00:00:00Z', rehydrationWindowHours: 15, lastCheckedAt: '2026-01-01T00:00:00Z', ...p });
 
   it('prefers the live cost estimate when present (priority-aware)', () => {
     expect(resolveRehydrationWindowHours(cost({ highWaitHours: 1 }), null, 'high')).toBe(1);

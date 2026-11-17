@@ -53,6 +53,9 @@ public class ReattachScenarioTests
         await Assert.That(detail.GetProperty("cost").GetProperty("totalHigh").GetDouble()).IsEqualTo(4.31);
         await Assert.That(detail.GetProperty("resume").GetProperty("autoResume").GetBoolean()).IsTrue();
         await Assert.That(detail.GetProperty("resume").GetProperty("rehydrationWindowHours").GetDouble()).IsEqualTo(15d);
+        // When Arius last checked Azure: the job page shows it so "Check now" visibly does something.
+        await Assert.That(detail.GetProperty("resume").GetProperty("lastCheckedAt").GetDateTimeOffset())
+            .IsEqualTo(detail.GetProperty("resume").GetProperty("rehydrationStartedAt").GetDateTimeOffset());
 
         // Clean up the parked run's blocked task.
         factory.Services.GetRequiredService<RestoreApprovalRegistry>().Resolve(jobId, null);

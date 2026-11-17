@@ -7,7 +7,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { JobSnapshot, CostEstimateMsg, JobDetailDto, JobOutcome, ResumeInfo, isNonTerminal } from '../../core/api/api-models';
 import { LayeredBarComponent } from '../../shared/layered-bar/layered-bar.component';
 import { formatBytes, formatCount, formatCurrency } from '../../shared/format';
-import { formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours, toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from '../../shared/job-format';
+import { formatEta, formatDuration, formatThroughput, throughputRow, hydratedByLabel, lastCheckedLabel, chunksInArchive, clockTime, statusMeta, phaseSentence, phaseAtLeast, archiveBarLayers, restoreBarLayers, resolveRehydrationWindowHours, toJobKind, isRestoreFamily, jobKindLabel, jobKindIcon } from '../../shared/job-format';
 import { DownloadFilesCardComponent } from './download-files-card.component';
 import { Subscription } from 'rxjs';
 
@@ -23,6 +23,9 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
  * automatic (RealtimeService). The layered bar reads byte fields; the cost modal renders from a
  * live `CostEstimate` push (captured per jobId — no replay on reload); warnings load lazily.
  */
+/** How long "Checking…" waits for the re-drive to report back before re-reading the job anyway. */
+const CHECK_TIMEOUT_MS = 30_000;
+
 @Component({
   selector: 'arius-job-detail',
   standalone: true,
@@ -107,25 +110,30 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               <i class="ki-filled ki-moon" style="font-size:20px;color:#b45309"></i>
               <div style="flex:1;min-width:220px">
                 <div style="font-size:13.5px;font-weight:600;color:#92400e">
-                  {{ formatCount(snap()?.chunksNeedingRehydration) }} chunks are being moved out of Archive tier by Azure@if (rehydrateWindowHours() != null) { (~{{ rehydrateWindowHours() }} h)}
+                  {{ formatCount(archiveChunks()) }} {{ archiveChunks() === 1 ? 'chunk is' : 'chunks are' }} being moved out of Archive tier by Azure@if (rehydrateWindowHours() != null) { (~{{ rehydrateWindowHours() }} h)}
                 </div>
                 <div style="font-size:12.5px;color:#a16207;margin-top:2px">
-                  @if (isDownload()) { Arius checks periodically and prepares the rest by itself. You can close this page. }
+                  @if (isDownload()) { Arius checks Azure periodically and copies each file to a temporary folder on the server as soon as it is available. You can close this page. }
                   @else { Status is checked periodically — often at first for High priority, backed off for Standard. You can close this page. }
                   @if (hydratedBy()) { &middot; {{ hydratedBy() }} }
+                  @if (lastChecked()) { &middot; {{ lastChecked() }} }
                 </div>
               </div>
-              <label style="display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:#92400e;cursor:pointer">
-                <button data-testid="autoresume-toggle" type="button" (click)="toggleAutoResume()" [attr.aria-pressed]="autoResume()"
-                        style="width:34px;height:20px;border-radius:999px;position:relative;flex-shrink:0;border:none;padding:0"
-                        [style.background]="autoResume() ? '#b45309' : '#d4d4d8'">
-                  <span style="position:absolute;top:2px;width:16px;height:16px;border-radius:999px;background:#fff;transition:left .15s,right .15s"
-                        [style.left]="autoResume() ? 'auto' : '2px'" [style.right]="autoResume() ? '2px' : 'auto'"></span>
-                </button>
-                {{ isDownload() ? 'Automatically prepare files as chunks become available' : 'Automatically restore as chunks become available' }}
-              </label>
-              <button data-testid="restore-now" type="button" (click)="resumeNow()"
-                      style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:600;background:#7c3aed;color:#fff;border:none">{{ isDownload() ? 'Prepare now' : 'Restore now' }}</button>
+              <!-- A download only writes to the server's temporary folder, so there is nothing to hold back: no toggle. -->
+              @if (!isDownload()) {
+                <label style="display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:#92400e;cursor:pointer">
+                  <button data-testid="autoresume-toggle" type="button" (click)="toggleAutoResume()" [attr.aria-pressed]="autoResume()"
+                          style="width:34px;height:20px;border-radius:999px;position:relative;flex-shrink:0;border:none;padding:0"
+                          [style.background]="autoResume() ? '#b45309' : '#d4d4d8'">
+                    <span style="position:absolute;top:2px;width:16px;height:16px;border-radius:999px;background:#fff;transition:left .15s,right .15s"
+                          [style.left]="autoResume() ? 'auto' : '2px'" [style.right]="autoResume() ? '2px' : 'auto'"></span>
+                  </button>
+                  Automatically restore as chunks become available
+                </label>
+              }
+              <button [attr.data-testid]="isDownload() ? 'check-now' : 'restore-now'" type="button" (click)="resumeNow()" [disabled]="checking()"
+                      style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:600;background:#7c3aed;color:#fff;border:none"
+                      [style.opacity]="checking() ? .6 : 1">{{ checkLabel() }}</button>
             </div>
           }
 
@@ -157,8 +165,8 @@ interface Stage { label: string; sub: string; state: 'done' | 'running' | 'pendi
               </div>
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
                 <div style="font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.03em">Rehydrating</div>
-                <div style="font-size:19px;font-weight:700;color:#18181b;margin-top:3px">{{ formatCount(snap()?.chunksNeedingRehydration) }}</div>
-                <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">{{ formatCount(snap()?.chunksPending) }} pending</div>
+                <div style="font-size:19px;font-weight:700;color:#18181b;margin-top:3px">{{ formatCount(archiveChunks()) }}</div>
+                <div style="font-size:11.5px;color:#a1a1aa;margin-top:1px">chunks in Archive tier</div>
               </div>
             } @else {
               <div style="background:#fafafb;border:1px solid #f0f0f2;border-radius:11px;padding:13px 15px">
@@ -335,7 +343,17 @@ export class JobDetailComponent implements OnDestroy {
    *  choice and the confirm button reads "Restore" rather than "Rehydrate & restore". */
   protected readonly needsRehydration = computed(() => (this.cost()?.chunksNeedingRehydration ?? 0) > 0);
   protected readonly autoResume = signal(true);
+  /** A "Check now" / "Restore now" re-drive was requested; cleared when the job parks again or finishes, or after
+   *  CHECK_TIMEOUT_MS if the server never re-drove it (the hub call is fire-and-forget). */
+  protected readonly checking = signal(false);
+  private checkTimeout: ReturnType<typeof setTimeout> | undefined;
+  protected readonly checkLabel = computed(() => {
+    if (this.checking()) return 'Checking…';
+    return this.isDownload() ? 'Check now' : 'Restore now';
+  });
+  protected readonly archiveChunks = computed(() => chunksInArchive(this.snap()));
   protected readonly resume = signal<ResumeInfo | null>(null);
+  protected readonly lastChecked = computed(() => lastCheckedLabel(this.resume()?.lastCheckedAt ?? null));
   private subs: Subscription[] = [];
   private currentId = '';
 
@@ -375,7 +393,7 @@ export class JobDetailComponent implements OnDestroy {
     if (s?.phase === 'snapshot') return 'Finishing up';   // uploads drained; only metadata finalize remains
     const eta = s?.etaSeconds;
     if (eta == null) return 'estimating…';
-    const clock = new Date(Date.now() + eta * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const clock = clockTime(new Date(Date.now() + eta * 1000));
     return s?.etaIsProvisional ? `${clock} (est.)` : clock;
   });
   protected readonly rehydrateWindowHours = computed<number | null>(() =>
@@ -445,7 +463,7 @@ export class JobDetailComponent implements OnDestroy {
     const downloadDone = s.restoreTotalBytes > 0 && s.bytesRestored >= s.restoreTotalBytes;
     return [
       { label: 'Plan', sub: `${formatCount(total)} chunks · ${formatBytes(s.restoreTotalBytes)}`, state: done || planDone ? 'done' : 'running' },
-      { label: 'Confirm cost', sub: st === 'awaiting-cost' ? 'waiting for approval' : `${formatCount(s.chunksNeedingRehydration)} chunks need rehydration`, state: st === 'awaiting-cost' ? 'running' : costDone ? 'done' : 'pending' },
+      { label: 'Confirm cost', sub: st === 'awaiting-cost' ? 'waiting for approval' : `${formatCount(chunksInArchive(s))} ${chunksInArchive(s) === 1 ? 'chunk needs' : 'chunks need'} rehydration`, state: st === 'awaiting-cost' ? 'running' : costDone ? 'done' : 'pending' },
       { label: 'Rehydrate', sub: `${formatCount(this.readyChunks())} ready · ${formatCount(s.chunksPending)} pending`, state: done || rehydrateDone ? 'done' : (st === 'rehydrating' || s.chunksPending > 0 ? 'running' : 'pending') },
       { label: 'Download', sub: `${formatBytes(s.bytesRestored)} of ${formatBytes(s.restoreTotalBytes)}`, state: done || downloadDone ? 'done' : (phaseAtLeast(s.phase, 'download') || s.bytesRestored > 0 ? 'running' : 'pending') },
       { label: 'Verify', sub: 'hash check + pointer cleanup', state: done ? 'done' : 'pending' },
@@ -459,24 +477,29 @@ export class JobDetailComponent implements OnDestroy {
 
   attach(id: string): void {
     if (id === this.currentId) return;
-    this.teardown(); this.currentId = id; this.costResolved.set(false); this.loadError.set(false);
+    this.teardown(); this.currentId = id; this.costResolved.set(false); this.loadError.set(false); this.checking.set(false);
     this.api.getJob(id).subscribe({
       next: d => {
         if (this.currentId !== id) return;   // a newer attach won the race
         this.detail.set(d); this.status.set(d.status); if (d.snapshot) this.snap.set(d.snapshot);
         if (d.cost) this.cost.set(d.cost);
-        if (d.resume) { this.resume.set(d.resume); this.autoResume.set(d.resume.autoResume); }
+        if (d.resume) this.applyResume(d.resume);
       },
       error: () => { if (this.currentId === id) this.loadError.set(true); },   // stop hanging on "Loading job…"
     });
     this.realtime.attachToJob(id).then(st => { if (st && this.currentId === id) {
       this.snap.set(st.snapshot); this.status.set(st.status);
       if (st.cost) this.cost.set(st.cost);
-      if (st.resume) { this.resume.set(st.resume); this.autoResume.set(st.resume.autoResume); }
+      if (st.resume) this.applyResume(st.resume);
     } }).catch(() => { if (this.currentId === id) this.notify.error('Live updates are unavailable — showing the last known state.'); });
-    this.subs.push(this.realtime.jobProgress(id).subscribe(s => { this.snap.set(s); if (s.status) this.status.set(s.status); }));
+    this.subs.push(this.realtime.jobProgress(id).subscribe(s => {
+      this.snap.set(s); if (s.status) this.status.set(s.status);
+      // Only a park sends a 'rehydrating' snapshot (no reporter runs while parked): a run, scheduled or "Check now",
+      // just ended, so reload the resume facts for the new "Last checked".
+      if (s.status === 'rehydrating') { this.checking.set(false); this.reloadResume(id); }
+    }));
     this.subs.push(this.realtime.jobCost(id).subscribe(c => this.cost.set(c)));
-    this.subs.push(this.realtime.jobDone(id).subscribe(d => { this.status.set(d.status); this.cost.set(null); this.api.getJob(id).subscribe(x => this.detail.set(x)); }));
+    this.subs.push(this.realtime.jobDone(id).subscribe(d => { this.status.set(d.status); this.cost.set(null); this.checking.set(false); this.api.getJob(id).subscribe(x => this.detail.set(x)); }));
   }
 
   protected phaseSentence = phaseSentence;
@@ -511,8 +534,26 @@ export class JobDetailComponent implements OnDestroy {
     const on = !this.autoResume(); this.autoResume.set(on);
     this.realtime.setAutoResume(this.currentId, on).catch(() => { this.autoResume.set(!on); this.notify.error("Couldn't update auto-resume — try again."); });   // revert the toggle if the invoke failed
   }
-  protected resumeNow(): void { this.realtime.resumeRestore(this.currentId).catch(() => this.notify.error("Couldn't resume the restore — try again.")); }
+  protected resumeNow(): void {
+    const id = this.currentId;
+    this.checking.set(true);
+    clearTimeout(this.checkTimeout);
+    this.checkTimeout = setTimeout(() => { if (this.currentId === id) this.reloadResume(id); }, CHECK_TIMEOUT_MS);
+    this.realtime.resumeRestore(id).catch(() => {
+      this.checking.set(false);
+      this.notify.error(this.isDownload() ? "Couldn't check now — try again." : "Couldn't resume the restore — try again.");
+    });
+  }
+
+  private applyResume(r: ResumeInfo): void { this.resume.set(r); this.autoResume.set(r.autoResume); }
+
+  private reloadResume(id: string): void {
+    this.api.getJob(id).subscribe({
+      next: d => { if (this.currentId !== id) return; if (d.resume) this.applyResume(d.resume); this.checking.set(false); },
+      error: () => { if (this.currentId === id) this.checking.set(false); },
+    });
+  }
 
   ngOnDestroy(): void { if (this.currentId) void this.realtime.detachFromJob(this.currentId); this.teardown(); }
-  private teardown(): void { this.subs.forEach(s => s.unsubscribe()); this.subs = []; }
+  private teardown(): void { this.subs.forEach(s => s.unsubscribe()); this.subs = []; clearTimeout(this.checkTimeout); }
 }
