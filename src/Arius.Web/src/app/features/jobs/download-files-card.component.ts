@@ -20,38 +20,40 @@ const RELOAD_THROTTLE_MS = 1000;
   template: `
     @if (files().length > 0) {
       <div data-testid="download-card" style="margin-top:20px">
-        <div style="display:flex;align-items:center;gap:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 18px;flex-wrap:wrap">
-          <div style="width:38px;height:38px;border-radius:10px;background:#dcfce7;color:#15803d;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <i class="ki-filled ki-exit-down" style="font-size:19px"></i>
-          </div>
-          <div style="flex:1;min-width:180px">
-            @if (cleanedUp() && hasReady()) {
-              <div style="font-size:13.5px;font-weight:600;color:#14532d">Files cleaned up</div>
-            } @else {
-              <div style="font-size:13.5px;font-weight:600;color:#14532d">{{ headline() }}</div>
-              @if (subline()) { <div style="font-size:12px;color:#15803d;margin-top:2px">{{ subline() }}</div> }
-            }
-          </div>
-          @if (!cleanedUp()) {
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-left:auto">
-              @if (finished() && hasReady()) {
-                <button data-testid="download-cleanup" type="button" (click)="cleanUp()"
-                        style="background:none;border:none;padding:0 6px;font-size:12.5px;font-weight:600;color:#71717a;cursor:pointer;white-space:nowrap">Clean up now</button>
-              }
-              @for (a of actions(); track a.testid) {
-                <a [href]="url(a)" download [attr.data-testid]="a.testid" (click)="markDownloaded(a)"
-                   style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:9px;font-size:12.5px;font-weight:600;text-decoration:none;white-space:nowrap;cursor:pointer"
-                   [style.background]="a.primary ? '#7c3aed' : '#fff'"
-                   [style.color]="a.primary ? '#fff' : '#6d28d9'"
-                   [style.border]="a.primary ? '1px solid #7c3aed' : '1px solid #ddd6fe'">
-                  <i class="ki-filled ki-exit-down" style="font-size:14px"></i>{{ a.label }}
-                </a>
+        @if (showSummary()) {
+          <div data-testid="download-summary" style="display:flex;align-items:center;gap:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 18px;flex-wrap:wrap;margin-bottom:12px">
+            <div style="width:38px;height:38px;border-radius:10px;background:#dcfce7;color:#15803d;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="ki-filled ki-exit-down" style="font-size:19px"></i>
+            </div>
+            <div style="flex:1;min-width:180px">
+              @if (cleanedUp()) {
+                <div style="font-size:13.5px;font-weight:600;color:#14532d">Files cleaned up</div>
+              } @else {
+                <div style="font-size:13.5px;font-weight:600;color:#14532d">{{ headline() }}</div>
+                @if (subline()) { <div style="font-size:12px;color:#15803d;margin-top:2px">{{ subline() }}</div> }
               }
             </div>
-          }
-        </div>
+            @if (!cleanedUp()) {
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-left:auto">
+                @if (finished()) {
+                  <button data-testid="download-cleanup" type="button" (click)="cleanUp()"
+                          style="background:none;border:none;padding:0 6px;font-size:12.5px;font-weight:600;color:#71717a;cursor:pointer;white-space:nowrap">Clean up now</button>
+                }
+                @for (a of actions(); track a.testid) {
+                  <a [href]="url(a)" download [attr.data-testid]="a.testid" (click)="markDownloaded(a)"
+                     style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:9px;font-size:12.5px;font-weight:600;text-decoration:none;white-space:nowrap;cursor:pointer"
+                     [style.background]="a.primary ? '#7c3aed' : '#fff'"
+                     [style.color]="a.primary ? '#fff' : '#6d28d9'"
+                     [style.border]="a.primary ? '1px solid #7c3aed' : '1px solid #ddd6fe'">
+                    <i class="ki-filled ki-exit-down" style="font-size:14px"></i>{{ a.label }}
+                  </a>
+                }
+              </div>
+            }
+          </div>
+        }
 
-        <div style="margin-top:12px;border:1px solid #ececef;border-radius:11px;overflow:hidden;font-size:12.5px">
+        <div style="border:1px solid #ececef;border-radius:11px;overflow:hidden;font-size:12.5px">
           <div style="display:grid;grid-template-columns:1fr 90px 120px;padding:8px 14px;background:#fafafb;font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#a1a1aa">
             <span>File</span><span>Size</span><span>Status</span>
           </div>
@@ -86,8 +88,8 @@ export class DownloadFilesCardComponent implements OnDestroy {
 
   protected readonly finished = computed(() => !isNonTerminal(this.status()));
   private readonly summary = computed(() => summarize(this.files()));
-  /** Nothing ever became ready (e.g. cancelled at the cost prompt): there is nothing to download or clean up. */
-  protected readonly hasReady = computed(() => this.summary().ready > 0);
+  /** Hidden for a finished job where nothing ever became ready (e.g. cancelled at the cost prompt): there is nothing to offer. */
+  protected readonly showSummary = computed(() => !this.finished() || this.summary().ready > 0);
   protected readonly headline = computed(() => readyHeadline(this.summary(), this.finished()));
   protected readonly subline = computed(() => readySubline(this.summary(), this.status(), this.cleanupAt()));
   protected readonly actions = computed(() => downloadActions(this.summary(), this.finished()));
