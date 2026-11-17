@@ -69,7 +69,9 @@ test('settings saves the download clean-up period and cleans up all now', async 
 
   await page.getByTestId('cleanup-days').fill('3');
   await expect(page.getByTestId('defaults-save')).toBeEnabled();
+  const saved = page.waitForResponse(r => r.url().endsWith('/api/settings/downloads') && r.request().method() === 'PUT');
   await page.getByTestId('defaults-save').click();
+  expect((await saved).ok()).toBe(true);
 
   await page.reload();
   await expect(page.getByTestId('cleanup-days')).toHaveValue('3');
