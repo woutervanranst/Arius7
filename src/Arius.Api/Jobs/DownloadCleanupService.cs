@@ -4,7 +4,7 @@ namespace Arius.Api.Jobs;
 
 /// <summary>
 /// Hourly sweep that deletes download staging folders once their clean-up period has passed
-/// (see <see cref="DownloadCleaner.CleanUpExpired"/>). Mirrors <see cref="StaleApprovalSweepService"/>.
+/// (see <see cref="DownloadCleaner.CleanUpExpired"/>).
 /// </summary>
 internal sealed class DownloadCleanupService(IServiceProvider services, ILogger<DownloadCleanupService> logger) : BackgroundService
 {

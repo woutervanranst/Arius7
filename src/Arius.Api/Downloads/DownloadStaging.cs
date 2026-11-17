@@ -2,7 +2,7 @@ namespace Arius.Api.Downloads;
 
 /// <summary>
 /// The per-job staging folders (<c>{root}/{jobId}</c>) that a download job restores into and the browser then
-/// downloads from. Public because <c>JobRunner</c>'s public constructor takes it.
+/// downloads from.
 /// </summary>
 public sealed class DownloadStaging(string root)
 {
