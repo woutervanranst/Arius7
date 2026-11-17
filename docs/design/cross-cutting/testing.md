@@ -247,7 +247,7 @@ The harness is consumed two ways, both wired through the same `AriusApiHost.AddA
 
 `Arius.Web` splits unit and browser coverage across two runners, both under `src/Arius.Web`:
 
-- **Vitest** (`vitest.config.ts`, `globals: true`, `environment: 'node'`) runs pure-function and store specs matching `src/app/**/*.spec.ts` — `job-format.spec.ts`, `drawer.store.spec.ts`, `job-pill.store.spec.ts`, `realtime.service.spec.ts` — with `v8` coverage uploaded to Codecov under the `web` flag. It replaced the deprecated Karma/Jasmine runner and deliberately does **not** render Angular components (that would need `@analogjs/vitest-angular`); component rendering is Playwright's job.
+- **Vitest** (`vitest.config.mts`, `globals: true`, `environment: 'node'`) runs pure-function and store specs matching `src/app/**/*.spec.ts` — `job-format.spec.ts`, `drawer.store.spec.ts`, `job-pill.store.spec.ts`, `realtime.service.spec.ts` — with `v8` coverage uploaded to Codecov under the `web` flag. It replaced the deprecated Karma/Jasmine runner and deliberately does **not** render Angular components (that would need `@analogjs/vitest-angular`); component rendering is Playwright's job.
 - **Playwright** runs two independent suites from the same `e2e/` root:
 
 | Suite | Config | Backend | CI gate |
