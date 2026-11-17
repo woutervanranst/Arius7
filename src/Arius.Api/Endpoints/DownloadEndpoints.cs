@@ -45,7 +45,7 @@ internal static class DownloadEndpoints
 
                 // A 416 (range past the end) transfers nothing, so only 200/206 can count.
                 if (http.Response.StatusCode is StatusCodes.Status200OK or StatusCodes.Status206PartialContent
-                    && CountsAsDownloaded(http.RequestAborted.IsCancellationRequested, http.Request.GetTypedHeaders().Range, new FileInfo(path).Length))
+                    && CountsAsDownloaded(http.RequestAborted.IsCancellationRequested, http.Response.GetTypedHeaders().ContentRange, new FileInfo(path).Length))
                     db.MarkDownloadFilesDownloaded(id, [file.Path]);
                 return Results.Empty;
             }
@@ -130,10 +130,10 @@ internal static class DownloadEndpoints
         });
     }
 
-    /// <summary>Whether a finished transfer counts as the file being downloaded: never when aborted; a ranged request only
-    /// when some range reaches the last byte.</summary>
-    internal static bool CountsAsDownloaded(bool aborted, RangeHeaderValue? range, long length) =>
-        !aborted && (range is null || range.Ranges.Any(r => r.To is null || r.To >= length - 1));
+    /// <summary>Whether a finished transfer counts as the file being downloaded: never when aborted; judged by the range
+    /// actually <em>served</em> (<c>null</c> = the whole file), since the request's range can be a suffix or be ignored.</summary>
+    internal static bool CountsAsDownloaded(bool aborted, ContentRangeHeaderValue? served, long length) =>
+        !aborted && (served is null || served.To >= length - 1);
 
     private static DownloadUsageDto Usage(DownloadStaging staging)
     {
