@@ -73,7 +73,7 @@ test('settings saves the download clean-up period and cleans up all now', async 
   await expect(page.getByTestId('download-usage')).toContainText('0 downloads');
 });
 
-test('a download cancelled at the cost prompt offers nothing to download or clean up', async ({ page, request, control }) => {
+test('a download cancelled at the cost prompt shows no summary and nothing to clean up', async ({ page, request, control }) => {
   const repoId = await control.seedRepo({ alias: 'dl-declined' });
   await control.scenario(repoId, 'onlineDownload');
   const jobId = await control.startDownload(repoId, files);
@@ -83,8 +83,8 @@ test('a download cancelled at the cost prompt offers nothing to download or clea
   await page.getByTestId('cost-decline').click();
   await expect.poll(async () => (await (await request.get(`/api/jobs/${jobId}`)).json()).status).toBe('cancelled');
 
-  await expect(page.getByTestId('download-card')).toContainText('No files prepared');
-  await expect(page.getByTestId('download-cleanup')).toHaveCount(0);
   await expect(page.getByTestId('download-file-row').first()).toContainText('Not prepared');
+  await expect(page.getByTestId('download-summary')).toHaveCount(0);
+  await expect(page.getByTestId('download-cleanup')).toHaveCount(0);
   expect((await (await request.get('/api/downloads/usage')).json()).downloads).toBe(0);
 });
