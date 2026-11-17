@@ -291,6 +291,11 @@ export interface DownloadSettingsDto {
   cleanupDays: number;
 }
 
+/** Settings › Restore › Cost: an online-tier restore estimated below this many EUR starts without asking; 0 always asks. */
+export interface CostSettingsDto {
+  autoAcceptBelow: number;
+}
+
 /** GET /api/downloads/usage and POST /api/downloads/cleanup: staged downloads on the server. */
 export interface DownloadUsageDto {
   downloads: number;

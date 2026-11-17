@@ -54,6 +54,25 @@ public class DownloadJobTests
     }
 
     [Test]
+    public async Task An_online_download_below_the_auto_accept_limit_stages_its_files_without_asking()
+    {
+        await using var factory = new AriusApiFactory();
+        var repoId = factory.SeedRepository();
+        var online = CanonicalScenarios.OnlineDownload();
+        factory.Scenarios.SetRestore(repoId, online with { CostPrompt = online.CostPrompt! with { TotalStandard = 0.005, TotalHigh = 0.005 } });
+
+        var db = factory.Services.GetRequiredService<AppDatabase>();
+        var jobId = Guid.NewGuid().ToString();
+
+        await factory.Services.GetRequiredService<JobRunner>()
+            .RunDownloadAsync(repoId, jobId, "v1", [new DownloadFile("photos/a.jpg", 1000), new DownloadFile("docs/b.txt", 500)])
+            .WaitAsync(TimeSpan.FromSeconds(10));   // asking would park the run at awaiting-cost
+
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
+        await Assert.That(db.ListDownloadFiles(jobId).All(f => f.Ready)).IsTrue();
+    }
+
+    [Test]
     public async Task Ready_files_survive_a_resume_and_unready_staged_files_are_pruned_first()
     {
         await using var factory = new AriusApiFactory();

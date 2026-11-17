@@ -264,7 +264,10 @@ The modal adapts to what's being restored:
 
 Click **Approve & restore** to proceed, or **Decline** to cancel. Closing the drawer (or losing the
 connection — e.g. closing the tab) while the modal is up also declines and cancels the restore. A
-genuinely free restore skips the modal entirely.
+genuinely free restore skips the modal entirely, and so does an online restore (every file in Hot,
+Cool or Cold) estimated below the limit set in **Settings › Restore › Cost** — *If all files are in an
+online tier (Hot/Cool/Cold), auto-accept costs below … EUR* (default 0.01; 0 always asks). A restore
+that needs rehydration always asks, so you can choose the priority. Downloads follow the same rule.
 
 ---
 
@@ -326,7 +329,8 @@ Files of a download that is still running, waiting for cost approval, or rehydra
 cleaned up, and deleting a repository deletes its downloaded files. **Clean up now** and **Clean up
 all now** act immediately; the switch and the number of days are saved with **Save settings**, together
 with the defaults. The Settings page is grouped into **Archive** and **Restore** sections, with
-**Temporary files** under **Restore**. The space is on the server's data volume (see the
+**Cost** (the auto-accept limit for online restores, see
+[the restore cost confirmation](#the-restore-cost-confirmation)) and **Temporary files** under **Restore**. The space is on the server's data volume (see the
 [deployment guide](./deployment.md#1-the-data-volume-keep-this-safe)).
 
 ---

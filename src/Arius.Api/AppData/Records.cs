@@ -49,6 +49,13 @@ public sealed record DownloadSettings(bool CleanupEnabled, int CleanupDays)
     public static readonly DownloadSettings Default = new(true, 7);
 }
 
+/// <summary>Server-wide cost confirmation: a restore or download with every chunk in an online tier and an
+/// estimated cost (EUR) below <see cref="AutoAcceptBelow"/> starts without asking; 0 always asks.</summary>
+public sealed record CostSettings(decimal AutoAcceptBelow)
+{
+    public static readonly CostSettings Default = new(0.01m);
+}
+
 /// <summary>A cron schedule that fires archive jobs for a repository.</summary>
 public sealed record ScheduleRecord(
     long            Id,

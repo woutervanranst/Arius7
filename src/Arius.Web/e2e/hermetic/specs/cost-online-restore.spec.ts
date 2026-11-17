@@ -65,3 +65,38 @@ test('the awaiting-cost banner clears after approving and does not linger', asyn
 
   await control.release(repoId);   // let the gated run finish so teardown is clean
 });
+
+test('an online restore below the Settings › Cost limit starts without asking', async ({ page, request, control }) => {
+  const repoId = await control.seedRepo({ alias: 'online-auto' });
+  await control.scenario(repoId, 'onlineRestore');   // estimated at €0.30, nothing to rehydrate
+
+  await page.goto('/settings');
+  await expect(page.getByTestId('cost-auto-accept')).toHaveValue('0.01');
+  await page.getByTestId('cost-auto-accept').fill('1');
+  await page.getByTestId('defaults-save').click();
+  await expect.poll(async () => (await (await request.get('/api/settings/cost')).json()).autoAcceptBelow).toBe(1);
+
+  await page.goto(`/repos/${repoId}`);
+  await page.getByTestId('btn-restore').click();
+  await page.getByTestId('drawer-start').click();
+
+  // Asking would park the job at awaiting-cost; it runs straight through instead.
+  let restoreId: string | undefined;
+  await expect.poll(async () => {
+    const jobs = await (await request.get(`/api/jobs?repositoryId=${repoId}`)).json();
+    const r = jobs.find((j: { kind: string }) => j.kind === 'restore');
+    restoreId = r?.id;
+    return r?.status;
+  }).toBe('completed');
+
+  await page.goto(`/jobs/${restoreId}`);
+  await expect(page.getByTestId('cost-modal')).toHaveCount(0);
+});
+
+test('an invalid Settings › Cost amount shows an error and blocks Save', async ({ page }) => {
+  await page.goto('/settings');
+  await page.getByTestId('cost-auto-accept').fill('-1');
+
+  await expect(page.getByTestId('cost-auto-accept-error')).toBeVisible();
+  await expect(page.getByTestId('defaults-save')).toBeDisabled();
+});
