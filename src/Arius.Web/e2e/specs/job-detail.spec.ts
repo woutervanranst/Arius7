@@ -33,6 +33,8 @@ test('restore cost modal + approve flow lives on the job page @write', async ({ 
       return jobs.find((j: { kind: string }) => j.kind === 'archive')?.status;
     }, { timeout: 180_000 }).toBe('completed');
 
+    // A tiny Hot-tier restore costs less than the default auto-accept limit and would skip the prompt this test exercises.
+    await request.put('/api/settings/cost', { data: { autoAcceptBelow: 0 } });
     // 2) clear localPath so the restore writes to a fresh temp dir (the file must actually be restored)
     await request.patch(`/api/repos/${created.id}`, { data: { localPath: '' } });
 

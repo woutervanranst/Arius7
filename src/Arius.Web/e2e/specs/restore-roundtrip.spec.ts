@@ -49,6 +49,8 @@ test('restore writes files to an empty destination, and skips them when already 
     await waitForJobStatus(archiveId, 'completed');
 
     // ── Scenario A: empty destination → the files are actually restored ──────
+    // A tiny Hot-tier restore costs less than the default auto-accept limit and would skip the prompt this test exercises.
+    await request.put('/api/settings/cost', { data: { autoAcceptBelow: 0 } });
     await request.patch(`/api/repos/${created.id}`, { data: { localPath: '' } });
     await page.goto(`/repos/${created.id}/files`);
     await page.getByTestId('btn-restore').click();
