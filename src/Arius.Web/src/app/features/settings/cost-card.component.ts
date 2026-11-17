@@ -13,9 +13,10 @@ import { MAX_AMOUNT, parseAmount } from './cost-amount';
       <label class="ar-row">
         If all files are in an online tier (Hot/Cool/Cold), auto-accept costs below
         <input type="number" class="ar-num" data-testid="cost-auto-accept" min="0" [max]="max" step="0.01" [value]="text()" (input)="setAmount($event)" />
-        EUR <span class="ar-nowrap">(0 = always ask)</span>
+        EUR
       </label>
       @if (invalid()) { <div class="ar-error" data-testid="cost-auto-accept-error">Enter an amount from 0 to {{ max }} EUR, to the cent.</div> }
+      <div class="ar-hint">Set to 0 to always ask.</div>
     </div>
   `,
   styles: [`
@@ -23,7 +24,7 @@ import { MAX_AMOUNT, parseAmount } from './cost-amount';
     .ar-cost-card { padding:20px 24px;margin-top:18px }
     .ar-title { font-size:15.5px;font-weight:600;color:#18181b;margin-bottom:14px }
     .ar-row { display:block;font-size:13.5px;line-height:36px;color:#3f3f46 }
-    .ar-nowrap { white-space:nowrap }
+    .ar-hint { font-size:12px;color:#71717a;margin-top:6px }
     .ar-num { width:72px;height:32px;margin:0 6px;vertical-align:middle;border:1px solid #e4e4e7;border-radius:8px;text-align:center;font-size:13px;font-weight:600;font-family:inherit }
     .ar-error { font-size:12px;color:#dc2626;margin-top:6px }
   `],
