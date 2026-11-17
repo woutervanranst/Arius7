@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import { AccountDto, CreateRepositoryRequest, DownloadSettingsDto, DownloadStateDto, DownloadUsageDto, FsListDto, GlobalDefaultsDto, JobDetailDto, JobDto, JobWarningsDto, PendingDownloadDto, RepositoryDefaultsDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
+import { AccountDto, CostSettingsDto, CreateRepositoryRequest, DownloadSettingsDto, DownloadStateDto, DownloadUsageDto, FsListDto, GlobalDefaultsDto, JobDetailDto, JobDto, JobWarningsDto, PendingDownloadDto, RepositoryDefaultsDto, RepositoryDto, ScheduleDto, SnapshotDto, StatisticsDto } from './api-models';
 import { SetValues } from '../defaults/defaults';
 
 /** Link target for fetching a download job's staged files; used as a plain link, never fetched by JS. */
@@ -112,6 +112,14 @@ export class ApiService {
 
   putDownloadSettings(settings: DownloadSettingsDto): Observable<DownloadSettingsDto> {
     return this.http.put<DownloadSettingsDto>('/api/settings/downloads', settings);
+  }
+
+  getCostSettings(): Observable<CostSettingsDto> {
+    return this.http.get<CostSettingsDto>('/api/settings/cost');
+  }
+
+  putCostSettings(settings: CostSettingsDto): Observable<CostSettingsDto> {
+    return this.http.put<CostSettingsDto>('/api/settings/cost', settings);
   }
 
   getDownloadUsage(): Observable<DownloadUsageDto> {

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using Arius.Api.AppData;
 using Arius.Api.Composition;
@@ -220,6 +221,17 @@ public sealed class JobRunner(
                 confirmRehydration: async (estimate, ct) =>
                 {
                     lastEstimate = estimate;
+
+                    // With every chunk online there is no priority to pick, so a cost below the limit needs no approval;
+                    // anything that rehydrates still asks.
+                    if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0
+                        && estimate.TotalStandard < (double)database.GetCostSettings().AutoAcceptBelow)
+                    {
+                        sink.Log(string.Create(CultureInfo.InvariantCulture,
+                            $"Estimated cost €{estimate.TotalStandard:0.0000} is below the auto-accept limit — continuing without approval."));
+                        return RehydratePriority.Standard;
+                    }
+
                     sink.Log(estimate.ChunksNeedingRehydration > 0
                         ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
                         : "Estimated restore cost — awaiting approval", "warn");

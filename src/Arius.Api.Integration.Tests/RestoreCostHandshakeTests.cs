@@ -106,4 +106,67 @@ public class RestoreCostHandshakeTests
         await Assert.That(scenario.Received.Single().Options.TargetPaths.SequenceEqual([RelativePath.Parse("photos"), RelativePath.Parse("docs/b.txt")])).IsTrue();
         await Assert.That(db.GetJob(jobId)!.Outcome!.Contains("\"filesRestored\":2")).IsTrue();
     }
+
+    [Test]
+    public async Task An_online_restore_below_the_auto_accept_limit_runs_without_asking()
+    {
+        await using var factory = new AriusApiFactory();
+        var (db, jobId, run) = StartRestore(factory, OnlineRestoreCosting(0.005));
+
+        await run.WaitAsync(TimeSpan.FromSeconds(10));   // asking would park the run at awaiting-cost
+
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
+    }
+
+    [Test]
+    public async Task An_online_restore_at_or_above_the_auto_accept_limit_asks()
+    {
+        await using var factory = new AriusApiFactory();
+        factory.Services.GetRequiredService<AppDatabase>().SaveCostSettings(new CostSettings(0.30m));
+
+        await AssertAsksForCost(factory, OnlineRestoreCosting(0.30));
+    }
+
+    [Test]
+    public async Task A_zero_auto_accept_limit_always_asks()
+    {
+        await using var factory = new AriusApiFactory();
+        factory.Services.GetRequiredService<AppDatabase>().SaveCostSettings(new CostSettings(0m));
+
+        await AssertAsksForCost(factory, OnlineRestoreCosting(0.005));
+    }
+
+    [Test]
+    public async Task A_restore_needing_rehydration_asks_even_below_the_auto_accept_limit()
+    {
+        await using var factory = new AriusApiFactory();
+        var rehydrating = CanonicalScenarios.RehydratingRestore();
+
+        await AssertAsksForCost(factory, rehydrating with { CostPrompt = rehydrating.CostPrompt! with { TotalStandard = 0.005, TotalHigh = 0.009 } });
+    }
+
+    private static RestoreScenario OnlineRestoreCosting(double total)
+    {
+        var online = CanonicalScenarios.OnlineRestore();
+        return online with { CostPrompt = online.CostPrompt! with { TotalStandard = total, TotalHigh = total } };
+    }
+
+    private static (AppDatabase Db, string JobId, Task Run) StartRestore(AriusApiFactory factory, RestoreScenario scenario)
+    {
+        var repoId = factory.SeedRepository(localPath: Path.Combine(Path.GetTempPath(), $"arius-itest-dst-{Guid.NewGuid():N}"));
+        factory.Scenarios.SetRestore(repoId, scenario);
+        var jobId = Guid.NewGuid().ToString();
+        var run = factory.Services.GetRequiredService<JobRunner>().RunRestoreAsync(repoId, jobId, connectionId: "test", version: null,
+            targetPaths: [], overwrite: false, noPointers: false);
+        return (factory.Services.GetRequiredService<AppDatabase>(), jobId, run);
+    }
+
+    private static async Task AssertAsksForCost(AriusApiFactory factory, RestoreScenario scenario)
+    {
+        var (db, jobId, run) = StartRestore(factory, scenario);
+
+        await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
+        factory.Services.GetRequiredService<RestoreApprovalRegistry>().Resolve(jobId, null);
+        await run;
+    }
 }
