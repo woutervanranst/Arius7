@@ -48,7 +48,6 @@ test('a rehydrating download offers the ready file now', async ({ page, request,
   await expect(page.getByText(/282 chunks are being rehydrated \(Standard priority, ~\d+ h\)/)).toBeVisible();
   await expect(page.getByTestId('autoresume-toggle')).toHaveCount(0);   // nothing to pause: files only go to the server
 
-  // "Check now" re-checks Azure at once and shows when it last did.
   await page.getByTestId('check-now').click();
   await expect(page.getByTestId('check-now')).toHaveText('Check now');
   await expect(page.getByText(/Last checked \d{2}:\d{2}/)).toBeVisible();

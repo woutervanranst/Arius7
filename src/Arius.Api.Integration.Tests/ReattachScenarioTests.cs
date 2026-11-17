@@ -54,7 +54,6 @@ public class ReattachScenarioTests
         await Assert.That(detail.GetProperty("resume").GetProperty("autoResume").GetBoolean()).IsTrue();
         await Assert.That(detail.GetProperty("resume").GetProperty("rehydrationWindowHours").GetDouble()).IsEqualTo(15d);
         await Assert.That(detail.GetProperty("resume").GetProperty("priority").GetString()).IsEqualTo("Standard");
-        // When Arius last checked Azure: the job page shows it so "Check now" visibly does something.
         await Assert.That(detail.GetProperty("resume").GetProperty("lastCheckedAt").GetDateTimeOffset())
             .IsEqualTo(detail.GetProperty("resume").GetProperty("rehydrationStartedAt").GetDateTimeOffset());
 

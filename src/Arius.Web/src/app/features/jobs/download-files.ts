@@ -39,7 +39,7 @@ export function summarize(list: DownloadFileDto[]): DownloadSummary {
   return s;
 }
 
-/** The download links the card offers, left to right (see the design's "Ready, downloaded, remaining" table). */
+/** The download links the card offers,, left to right. */
 export function downloadActions(s: DownloadSummary, finished: boolean): DownloadAction[] {
   if (s.ready === 0) return [];
   if (s.downloaded === 0)
@@ -65,7 +65,7 @@ export function readyHeadline(s: DownloadSummary, finished: boolean): string {
   return finished && s.ready === s.total ? `All ${files(s.total)} ready · ${size}` : `${s.ready} of ${files(s.total)} ready · ${size}`;
 }
 
-/** Cleanup date as "d MMM" (e.g. "22 Nov"). */
+/** The card's second line: rehydration progress while parked, otherwise when the staged files are cleaned up ("d MMM"). */
 export function readySubline(s: DownloadSummary, status: string, cleanupAt: string | null): string {
   if (status === 'rehydrating' && s.pending > 0) return `${files(s.pending)} still being rehydrated`;
   if (isNonTerminal(status)) return '';
