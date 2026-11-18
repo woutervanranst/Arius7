@@ -1,6 +1,7 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ContainerNamesQuery;
+using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
@@ -205,6 +206,10 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IStorageCostEstimator>()));
 
+        services.AddSingleton<IQueryHandler<LatestSnapshotVersionQuery, string?>>(sp =>
+            new LatestSnapshotVersionQueryHandler(
+                sp.GetRequiredService<ISnapshotService>()));
+
         return services;
     }
 
@@ -232,6 +237,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>, RepositoryRequiredStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>();
         services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>, RepositoryRequiredQueryHandler<StatisticsQuery, RepositoryStatistics>>();
         services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>, RepositoryRequiredQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
+        services.AddSingleton<IQueryHandler<LatestSnapshotVersionQuery, string?>, RepositoryRequiredQueryHandler<LatestSnapshotVersionQuery, string?>>();
 
         return services;
     }

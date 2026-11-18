@@ -3,6 +3,7 @@ using Arius.Api.Shared.Composition;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ContainerNamesQuery;
+using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
@@ -72,6 +73,7 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
         services.AddSingleton<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>, NotConfiguredStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
         services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>, NotConfiguredQueryHandler<StatisticsQuery, RepositoryStatistics>>();
         services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>, NotConfiguredQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
+        services.AddSingleton<IQueryHandler<LatestSnapshotVersionQuery, string?>, NotConfiguredQueryHandler<LatestSnapshotVersionQuery, string?>>();
         // ContainerNamesQueryHandler(IServiceProvider) needs no Core services, so its real (AddMediator-
         // registered) handler resolves fine as-is — no stand-in required.
     }

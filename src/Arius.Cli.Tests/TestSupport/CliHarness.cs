@@ -4,6 +4,7 @@ using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.SnapshotDiffQuery;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
@@ -128,6 +129,7 @@ internal sealed class CliHarness
             services.AddSingleton(snapshotDiffHandler);
             services.AddSingleton(statsHandler);
             services.AddSingleton(storageInfoHandler);
+            services.AddSingleton(Substitute.For<IQueryHandler<LatestSnapshotVersionQuery, string?>>());
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
     }

@@ -3,8 +3,8 @@ using Arius.Api.Features.Repositories;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
 using Arius.Api.Shared.Jobs;
+using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.StatisticsQuery;
-using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
 
@@ -20,8 +20,8 @@ internal static class GetStatistics
     // a pure function of its snapshot set, so a cache HIT is served straight from the local database
     // with NO blob-storage access — that is what makes a warm load fast. The cache is invalidated
     // explicitly when the snapshot set can have changed: after an archive (JobRunner) and on a
-    // properties change / delete (UpdateRepository / DeleteRepository). Only on a MISS do we touch storage: list the
-    // snapshot blobs once to stamp the entry's fingerprint (the latest snapshot version, for
+    // properties change / delete (UpdateRepository / DeleteRepository). Only on a MISS do we touch storage: ask Core for
+    // the latest snapshot version once to stamp the entry's fingerprint (the latest snapshot version, for
     // provenance + pruning prior generations) and run the real computation.
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/repos/{id:long}/stats", async (long id, string? version, bool? full, AppDatabase database, RepositoryProviderRegistry registry, CancellationToken ct) =>
@@ -49,9 +49,7 @@ internal static class GetStatistics
 
             // Miss: derive the fingerprint cheaply (latest blob name only — not SnapshotsListQuery, which
             // resolves every manifest), compute, and store.
-            var snapshotService = provider.GetRequiredService<ISnapshotService>();
-            var snapshotBlobs   = await snapshotService.ListBlobNamesAsync(ct);
-            var fingerprint     = snapshotBlobs.Count == 0 ? string.Empty : snapshotService.GetVersion(snapshotBlobs[^1]);
+            var fingerprint = await mediator.Send(new LatestSnapshotVersionQuery(), ct) ?? string.Empty;
 
             var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag), ct);
             var dto = new StatisticsDto(
