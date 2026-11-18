@@ -1,6 +1,6 @@
-using Arius.Api.Downloads;
+using Arius.Api.Shared.Downloads;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary><c>POST /downloads/cleanup</c> — cleans up every finished download and returns the remaining usage.</summary>
 internal static class CleanupDownloads

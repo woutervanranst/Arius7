@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Arius.Api.Downloads;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary>Names the ZIP a browser download is served as.</summary>
 internal static class DownloadNaming

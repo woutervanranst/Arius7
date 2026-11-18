@@ -1,6 +1,6 @@
 using System.Net;
-using Arius.Api.AppData;
 using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Shared.AppData;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests;

@@ -1,6 +1,6 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Schedules;
 
 /// <summary><c>GET /repos/{id}/schedules</c></summary>
 internal static class ListSchedules

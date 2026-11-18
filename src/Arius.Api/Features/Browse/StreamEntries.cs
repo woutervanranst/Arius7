@@ -1,13 +1,12 @@
 using System.Runtime.CompilerServices;
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
 using Mediator;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Browse;
 
 /// <summary>
 /// Hub <c>StreamEntries</c> — streams the immediate children (directories + files) of a folder in a snapshot,

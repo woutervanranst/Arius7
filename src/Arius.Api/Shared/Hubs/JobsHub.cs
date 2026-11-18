@@ -1,11 +1,16 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
-using Arius.Api.Jobs;
+using Arius.Api.Features.Accounts;
+using Arius.Api.Features.Archive;
+using Arius.Api.Features.Browse;
+using Arius.Api.Features.Downloads;
+using Arius.Api.Features.Jobs;
+using Arius.Api.Features.Restore;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.Storage;
 using Microsoft.AspNetCore.SignalR;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Shared.Hubs;
 
 /// <summary>
 /// The single Arius realtime hub: repository entry streaming (file browser + time-travel) and the
@@ -24,51 +29,51 @@ public sealed class JobsHub(
     // ── Accounts ──────────────────────────────────────────────────────────────
 
     public IAsyncEnumerable<string> StreamContainers(long accountId, string? accountName, string? accountKey, CancellationToken cancellationToken)
-        => Hubs.StreamContainers.HandleAsync(database, secrets, blobServiceFactory, accountId, accountName, accountKey, cancellationToken);
+        => Features.Accounts.StreamContainers.HandleAsync(database, secrets, blobServiceFactory, accountId, accountName, accountKey, cancellationToken);
 
     // ── Browse ────────────────────────────────────────────────────────────────
 
     public IAsyncEnumerable<EntryDto> StreamEntries(long repositoryId, string? version, string? prefix, string? filter, bool includeLocal, CancellationToken cancellationToken)
-        => Hubs.StreamEntries.HandleAsync(database, registry, repositoryId, version, prefix, filter, includeLocal, cancellationToken);
+        => Features.Browse.StreamEntries.HandleAsync(database, registry, repositoryId, version, prefix, filter, includeLocal, cancellationToken);
 
     public IAsyncEnumerable<SearchHitDto> SearchAll(string query, CancellationToken cancellationToken)
-        => Hubs.SearchAll.HandleAsync(database, registry, query, cancellationToken);
+        => Features.Browse.SearchAll.HandleAsync(database, registry, query, cancellationToken);
 
     // ── Archive ───────────────────────────────────────────────────────────────
 
     public Task<string> StartArchive(long repositoryId, string tier, bool removeLocal, bool writePointers, bool fastHash)
-        => Hubs.StartArchive.HandleAsync(this, database, jobRunner, repositoryId, tier, removeLocal, writePointers, fastHash);
+        => Features.Archive.StartArchive.HandleAsync(this, database, jobRunner, repositoryId, tier, removeLocal, writePointers, fastHash);
 
     // ── Restore ───────────────────────────────────────────────────────────────
 
     public Task<string> StartRestore(long repositoryId, string? version, string[]? targetPaths, bool overwrite, bool noPointers)
-        => Hubs.StartRestore.HandleAsync(this, database, jobRunner, repositoryId, version, targetPaths, overwrite, noPointers);
+        => Features.Restore.StartRestore.HandleAsync(this, database, jobRunner, repositoryId, version, targetPaths, overwrite, noPointers);
 
     public Task ApproveRestore(string jobId, string? priority)
-        => Hubs.ApproveRestore.HandleAsync(approvals, jobId, priority);
+        => Features.Restore.ApproveRestore.HandleAsync(approvals, jobId, priority);
 
     public Task DeclineRestore(string jobId)
-        => Hubs.DeclineRestore.HandleAsync(approvals, jobRunner, jobId);
+        => Features.Restore.DeclineRestore.HandleAsync(approvals, jobRunner, jobId);
 
     public Task SetAutoResume(string jobId, bool autoResume)
-        => Hubs.SetAutoResume.HandleAsync(database, jobRunner, jobId, autoResume);
+        => Features.Restore.SetAutoResume.HandleAsync(database, jobRunner, jobId, autoResume);
 
     public Task ResumeRestore(string jobId)
-        => Hubs.ResumeRestore.HandleAsync(jobRunner, jobId);
+        => Features.Restore.ResumeRestore.HandleAsync(jobRunner, jobId);
 
     // ── Downloads ─────────────────────────────────────────────────────────────
 
     public Task<string> StartDownload(long repositoryId, string? version, DownloadFileRequest[]? files)
-        => Hubs.StartDownload.HandleAsync(this, database, jobRunner, repositoryId, version, files);
+        => Features.Downloads.StartDownload.HandleAsync(this, database, jobRunner, repositoryId, version, files);
 
     // ── Jobs ──────────────────────────────────────────────────────────────────
 
     public Task<JobAttachState?> AttachToJob(string jobId)
-        => Hubs.AttachToJob.HandleAsync(this, database, jobStates, jobId);
+        => Features.Jobs.AttachToJob.HandleAsync(this, database, jobStates, jobId);
 
     public Task DetachFromJob(string jobId)
-        => Hubs.DetachFromJob.HandleAsync(this, jobId);
+        => Features.Jobs.DetachFromJob.HandleAsync(this, jobId);
 
     public Task CancelJob(string jobId)
-        => Hubs.CancelJob.HandleAsync(approvals, jobStates, jobRunner, jobId);
+        => Features.Jobs.CancelJob.HandleAsync(approvals, jobStates, jobRunner, jobId);
 }

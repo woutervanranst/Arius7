@@ -1,7 +1,6 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Schedules;
 
 /// <summary><c>POST /repos/{id}/schedules</c></summary>
 internal static class CreateSchedule

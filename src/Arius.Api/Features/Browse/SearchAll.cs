@@ -1,11 +1,10 @@
 using System.Runtime.CompilerServices;
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Arius.Core.Features.ListQuery;
 using Mediator;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Browse;
 
 /// <summary>
 /// Hub <c>SearchAll</c> — streams cross-repository search hits: runs a recursive filename filter across every

@@ -1,6 +1,7 @@
-using Arius.Api.Downloads;
+using Arius.Api.Shared.Hosting;
 
-namespace Arius.Api.Jobs;
+
+namespace Arius.Api.Features.Downloads;
 
 /// <summary>
 /// Hourly sweep that deletes download staging folders once their clean-up period has passed

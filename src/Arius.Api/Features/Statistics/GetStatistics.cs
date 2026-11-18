@@ -1,13 +1,14 @@
 using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
+using Arius.Api.Features.Repositories;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 using Mediator;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Statistics;
 
 /// <summary><c>GET /repos/{id}/stats</c> — repository statistics.</summary>
 internal static class GetStatistics

@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Repositories;
 
 /// <summary>A repository as shown to the client. Secrets (key, passphrase) are never returned.</summary>
 public sealed record RepositoryDto(

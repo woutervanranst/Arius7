@@ -1,4 +1,4 @@
-using Arius.Api.Composition;
+using Arius.Api.Shared.Composition;
 using Microsoft.Extensions.Logging;
 using Serilog.Events;
 

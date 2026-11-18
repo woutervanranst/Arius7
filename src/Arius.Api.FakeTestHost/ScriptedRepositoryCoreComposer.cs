@@ -1,5 +1,5 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;

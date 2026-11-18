@@ -1,10 +1,10 @@
-using Arius.Api.AppData;
-using Arius.Api.Jobs;
-using Arius.Core;
-using Arius.Core.Shared;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Shared;
+using Arius.Core;
 
-namespace Arius.Api.Composition;
+namespace Arius.Api.Shared.Composition;
 
 /// <summary>
 /// Builds and caches per-repository service providers. Each provider has its own

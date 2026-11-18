@@ -1,4 +1,4 @@
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Jobs;
 
 internal static class JobFormat
 {

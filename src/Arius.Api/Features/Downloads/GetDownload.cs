@@ -1,8 +1,7 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Downloads;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary><c>GET /jobs/{id}/download</c> — a download job's files and clean-up state.</summary>
 internal static class GetDownload

@@ -1,4 +1,4 @@
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Jobs;
 
 /// <summary>The serialized shape of the <c>jobs.state_json</c> column: the last-known progress snapshot, the
 /// verbatim warnings tail, and (restore only) the parameters needed to re-drive a parked/rehydrating job with
@@ -11,7 +11,7 @@ public sealed record PersistedJobState
     public          RestoreResumeState?        Resume   { get; init; }
     /// <summary>The cost estimate shown at the modal, persisted so "Review cost ›" can re-render it after the
     /// live one-shot CostEstimate message is gone (reattach to an awaiting-cost job). Null for non-cost jobs.</summary>
-    public          Arius.Api.Contracts.CostEstimateDto? Cost { get; init; }
+    public          Arius.Api.Shared.Jobs.CostEstimateDto? Cost { get; init; }
 }
 
 /// <summary>Everything the poller / approval fallback needs to re-run a restore with the original intent — no

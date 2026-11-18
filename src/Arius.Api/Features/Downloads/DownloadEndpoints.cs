@@ -1,9 +1,8 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Downloads;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
 using Microsoft.Net.Http.Headers;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary>A download job's files and serving them from its staging folder (one file as itself, several as one ZIP).</summary>
 internal static class DownloadEndpoints

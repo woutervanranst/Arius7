@@ -1,5 +1,5 @@
-using Arius.Api.AppData;
-using Arius.Api.Jobs;
+using Arius.Api.Features.Schedules;
+using Arius.Api.Shared.AppData;
 using Shouldly;
 
 namespace Arius.Api.Tests.Jobs;

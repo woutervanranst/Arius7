@@ -1,8 +1,21 @@
 using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Endpoints;
-using Arius.Api.Hubs;
+using Arius.Api.Features.Accounts;
+using Arius.Api.Features.Cost;
+using Arius.Api.Features.Defaults;
+using Arius.Api.Features.Downloads;
+using Arius.Api.Features.Filesystem;
+using Arius.Api.Features.Health;
+using Arius.Api.Features.Jobs;
+using Arius.Api.Features.Repositories;
+using Arius.Api.Features.Restore;
+using Arius.Api.Features.Schedules;
+using Arius.Api.Features.Snapshots;
+using Arius.Api.Features.Statistics;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Hubs;
+using Arius.Api.Shared.Jobs;
 using Arius.AzureBlob;
 using Arius.Core.Shared;
 using Microsoft.AspNetCore.DataProtection;
@@ -37,7 +50,7 @@ public static class AriusApiHost
         builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
         builder.Services.AddSingleton(new AppDatabase(dbPath));
         builder.Services.AddSingleton<SecretProtector>();
-        builder.Services.AddSingleton(new Arius.Api.Downloads.DownloadStaging(Path.Combine(Path.GetDirectoryName(dbPath)!, "downloads")));
+        builder.Services.AddSingleton(new DownloadStaging(Path.Combine(Path.GetDirectoryName(dbPath)!, "downloads")));
         builder.Services.AddAzureBlobStorage();
         builder.Services.TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
         builder.Services.AddSingleton(sp => new RepositoryProviderRegistry(
@@ -45,14 +58,14 @@ public static class AriusApiHost
             sp.GetRequiredService<SecretProtector>(),
             sp.GetRequiredService<IRepositoryCoreComposer>(),
             sp.GetRequiredService<ILoggerFactory>()));
-        builder.Services.AddSingleton<Arius.Api.Downloads.DownloadCleaner>();
-        builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
-        builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
-        builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.RehydrationPollingService>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.StaleApprovalSweepService>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.DownloadCleanupService>();
+        builder.Services.AddSingleton<DownloadCleaner>();
+        builder.Services.AddSingleton<RestoreApprovalRegistry>();
+        builder.Services.AddSingleton<JobStateRegistry>();
+        builder.Services.AddSingleton<JobRunner>();
+        builder.Services.AddHostedService<SchedulerService>();
+        builder.Services.AddHostedService<RehydrationPollingService>();
+        builder.Services.AddHostedService<StaleApprovalSweepService>();
+        builder.Services.AddHostedService<DownloadCleanupService>();
 
         builder.Services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);

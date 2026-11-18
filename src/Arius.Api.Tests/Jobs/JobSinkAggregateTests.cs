@@ -1,5 +1,6 @@
-using Arius.Api.Hubs;
-using Arius.Api.Jobs;
+using Arius.Api.Features.Archive;
+using Arius.Api.Features.Restore;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.FileSystem;

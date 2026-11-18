@@ -1,10 +1,10 @@
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
+using Arius.Api.Features.Repositories;
+using Arius.Api.Shared.Composition;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Shared.Storage;
 using Mediator;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Snapshots;
 
 /// <summary><c>GET /repos/{id}/snapshots</c> — the repository's snapshots (time-travel).</summary>
 internal static class ListSnapshots

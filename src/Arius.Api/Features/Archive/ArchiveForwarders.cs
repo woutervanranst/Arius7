@@ -1,8 +1,8 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.ArchiveCommand;
 using Mediator;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Archive;
 
 // Each forwarder folds one Arius.Core archive event into the job's JobSink byte aggregate.
 

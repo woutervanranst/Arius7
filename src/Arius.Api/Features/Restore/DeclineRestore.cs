@@ -1,6 +1,6 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Restore;
 
 /// <summary>Hub <c>DeclineRestore</c> — declines the restore cost modal (equivalent to answering "cancel").
 /// Resolves a live wait, or marks a parked job cancelled.</summary>

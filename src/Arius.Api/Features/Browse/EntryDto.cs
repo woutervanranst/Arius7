@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Browse;
 
 /// <summary>A repository entry (file or directory) streamed to the file browser.</summary>
 public sealed record EntryDto(

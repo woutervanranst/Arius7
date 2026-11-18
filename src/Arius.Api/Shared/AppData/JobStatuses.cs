@@ -1,4 +1,4 @@
-namespace Arius.Api.AppData;
+namespace Arius.Api.Shared.AppData;
 
 /// <summary>The single source of truth for job status sets. Terminal = a finished row that must never be
 /// re-transitioned; non-terminal = an active row the single-active-job guard counts. Kept here so the SQL

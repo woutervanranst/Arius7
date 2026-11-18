@@ -1,8 +1,8 @@
-using Arius.Api.AppData;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 using Microsoft.AspNetCore.SignalR;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Restore;
 
 /// <summary>Hub <c>StartRestore</c> — starts a restore (empty targetPaths = whole repository).</summary>
 internal static class StartRestore

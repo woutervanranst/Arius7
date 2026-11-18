@@ -1,7 +1,7 @@
 using System.Text.Json;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary>A job's current view resolved from the single source of truth: the live <see cref="JobSink"/> if the
 /// run is executing, else the persisted <c>state_json</c>, else empty. <see cref="Snapshot"/> is null only when

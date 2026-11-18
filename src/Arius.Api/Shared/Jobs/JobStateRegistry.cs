@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Jobs;
 
 /// <summary>Singleton map of live jobs: <c>jobId → JobSink</c>. Lets code outside a job's own service provider
 /// (the hub's snapshot-on-attach, REST reads, the rehydration poller) reach a running job's live state. A job

@@ -1,6 +1,6 @@
-using Arius.Api.Downloads;
+using Arius.Api.Shared.Downloads;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary><c>GET /downloads/usage</c> — staging folders on the server disk and their total size.</summary>
 internal static class GetDownloadsUsage

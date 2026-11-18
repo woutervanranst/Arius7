@@ -1,6 +1,9 @@
-using Arius.Api.AppData;
+using Arius.Api.Features.Schedules;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Features.Restore;
 
 /// <summary>
 /// Auto-cancels restores abandoned at the cost prompt. Wakes hourly and declines any <c>awaiting-cost</c> job

@@ -1,6 +1,6 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Cost;
 
 /// <summary><c>GET /settings/cost</c></summary>
 internal static class GetCostSettings

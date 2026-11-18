@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary>One collected file of a download job: whether it is staged on the server and whether the browser has fetched it.</summary>
 public sealed record DownloadFileDto(string Path, long Size, bool Ready, bool Downloaded);

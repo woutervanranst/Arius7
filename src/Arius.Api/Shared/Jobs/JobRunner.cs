@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
-using Arius.Api.Downloads;
-using Arius.Api.Hubs;
+using Arius.Api.Features.Downloads;
+using Arius.Api.Features.Jobs;
+using Arius.Api.Features.Schedules;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Hubs;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Cost;
@@ -15,7 +17,7 @@ using Mediator;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Jobs;
 
 /// <summary>
 /// Runs archive/restore commands in a fresh per-job service provider, forwarding Arius.Core events to

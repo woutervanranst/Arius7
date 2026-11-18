@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 using Arius.Api.FakeTestHost;
+using Arius.Api.Features.Archive;
 using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Hashes;
@@ -42,7 +44,7 @@ public class ArchiveHubTests
             .Build();
 
         // JobSink.Done sends a SINGLE argument — an anonymous object { jobId, status, summary, outcome } —
-        // not four positional args (see src/Arius.Api/Jobs/JobSink.cs `Group?.SendAsync("Done", new {...})`).
+        // not four positional args (see src/Arius.Api/Shared/Jobs/JobSink.cs `Group?.SendAsync("Done", new {...})`).
         // The hub's JSON protocol is configured with camelCase property naming (Program.cs `AddJsonProtocol`),
         // hence the explicit JsonPropertyName mapping below (belt-and-braces vs. relying on the client's
         // default case-insensitive matching).
@@ -57,7 +59,7 @@ public class ArchiveHubTests
         await Assert.That(jobId).IsNotNull();
     }
 
-    /// <summary>Mirrors the anonymous object <see cref="Arius.Api.Jobs.JobSink.Done"/> sends over the hub.</summary>
+    /// <summary>Mirrors the anonymous object <see cref="Arius.Api.Shared.Jobs.JobSink.Done"/> sends over the hub.</summary>
     private sealed record DoneMessage(
         [property: JsonPropertyName("jobId")] string? JobId,
         [property: JsonPropertyName("status")] string Status,

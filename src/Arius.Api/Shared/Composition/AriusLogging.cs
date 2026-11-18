@@ -4,7 +4,7 @@ using Serilog.Events;
 using Serilog.Templates;
 using Arius.Core.Shared;
 
-namespace Arius.Api.Composition;
+namespace Arius.Api.Shared.Composition;
 
 /// <summary>
 /// Logging composition for the API. Two kinds of logger, both in the shared CLI line format

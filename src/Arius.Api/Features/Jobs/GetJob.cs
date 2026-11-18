@@ -1,8 +1,7 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary><c>GET /jobs/{id}</c> — one job with its progress snapshot.</summary>
 internal static class GetJob

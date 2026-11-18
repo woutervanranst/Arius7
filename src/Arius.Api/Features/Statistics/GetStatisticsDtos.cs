@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Statistics;
 
 public sealed record StatisticsDto(
     long Files,

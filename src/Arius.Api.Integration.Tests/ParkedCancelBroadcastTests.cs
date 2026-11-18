@@ -1,6 +1,6 @@
-using Arius.Api.AppData;
 using Arius.Api.Integration.Tests.Harness;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests;

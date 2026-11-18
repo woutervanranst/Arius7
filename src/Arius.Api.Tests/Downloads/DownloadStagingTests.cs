@@ -1,4 +1,4 @@
-using Arius.Api.Downloads;
+using Arius.Api.Shared.Downloads;
 using Shouldly;
 
 namespace Arius.Api.Tests.Downloads;

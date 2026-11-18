@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Shared.Jobs;
 
 /// <summary>The cost-modal payload pushed on the <c>CostEstimate</c> message and returned by snapshot-on-attach
 /// for an <c>awaiting-cost</c> job. jobId-tagged so a client attached to several jobs routes it.

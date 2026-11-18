@@ -1,9 +1,8 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Jobs;
-using Arius.Core;
-using Arius.Core.Shared;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Arius.Core.Shared.Storage;
+using Arius.Core.Shared;
+using Arius.Core;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;

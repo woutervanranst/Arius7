@@ -1,3 +1,4 @@
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.RestoreCommand;
 using Mediator;
 

@@ -1,4 +1,4 @@
-namespace Arius.Api.AppData;
+namespace Arius.Api.Shared.AppData;
 
 /// <summary>
 /// The defaults hierarchy for the five archive/restore options: factory, then global settings, then repository
