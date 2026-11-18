@@ -84,15 +84,17 @@ public static class AriusApiHost
             return await next(ctx);
         });
 
-        api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+        GetHealth.Map(api);
         api.MapAccountEndpoints();
         api.MapRepositoryEndpoints();
         api.MapDefaultsEndpoints();
-        api.MapBrowseEndpoints();
+        ListSnapshots.Map(api);
+        GetStatistics.Map(api);
         api.MapJobEndpoints();
+        api.MapScheduleEndpoints();
         api.MapDownloadEndpoints();
         api.MapCostSettingsEndpoints();
-        api.MapFilesystemEndpoints();
+        ListFilesystem.Map(api);
         app.MapHub<JobsHub>("/hubs/arius");
 
         // Development-only API docs: raw document at /openapi/v1.json, Scalar UI at /scalar.

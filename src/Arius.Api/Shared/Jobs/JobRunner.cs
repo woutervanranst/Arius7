@@ -1,0 +1,531 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text.Json;
+using Arius.Api.AppData;
+using Arius.Api.Composition;
+using Arius.Api.Contracts;
+using Arius.Api.Downloads;
+using Arius.Api.Hubs;
+using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Shared.Cost;
+using Arius.Core.Shared.FileSystem;
+using Arius.Core.Shared.Storage;
+using Mediator;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Data.Sqlite;
+
+namespace Arius.Api.Jobs;
+
+/// <summary>
+/// Runs archive/restore commands in a fresh per-job service provider, forwarding Arius.Core events to
+/// the job's SignalR group and handling the restore cost-approval handshake. Writers are serialized
+/// per repository so two mutating jobs never share a repo's on-disk state.
+/// </summary>
+public sealed class JobRunner(
+    RepositoryProviderRegistry registry,
+    AppDatabase database,
+    IHubContext<JobsHub> hub,
+    RestoreApprovalRegistry approvals,
+    JobStateRegistry jobStates,
+    DownloadStaging staging,
+    ILogger<JobRunner> logger)
+{
+    private readonly ConcurrentDictionary<long, SemaphoreSlim> _repoLocks = new();
+
+    private SemaphoreSlim LockFor(long repositoryId) => _repoLocks.GetOrAdd(repositoryId, _ => new SemaphoreSlim(1, 1));
+
+    public async Task RunArchiveAsync(long repositoryId, string jobId, string tier, bool removeLocal, bool writePointers, bool fastHash = false, string trigger = "one-off")
+    {
+        var sink = new JobSink(jobId, hub);
+        var startedAt = DateTimeOffset.UtcNow;
+        var repo = database.GetRepository(repositoryId);
+        if (repo is null) { sink.Done("failed", "Repository not found."); return; }
+        // Race-proof backstop for the cooperative HasActiveJob check (the Start* hub features / SchedulerService): the
+        // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
+        // Only the unique-constraint violation (SQLITE_CONSTRAINT_UNIQUE) means "already running" —
+        // any other SqliteException (disk full, corruption, …) gets its own message logged instead of
+        // being masked.
+        try { database.InsertJob(jobId, repositoryId, "archive", trigger, "running"); }
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
+        {
+            sink.Done("failed", "A job is already running for this repository.");
+            return;
+        }
+        catch (SqliteException ex)
+        {
+            logger.LogError(ex, "Archive job {JobId} failed to start", jobId);
+            sink.Done("failed", ex.Message);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(repo.LocalPath))
+        {
+            sink.Log("No local folder configured for this repository — set one in Properties.", "warn");
+            FailOrCancel(sink, jobId, "failed", "No source folder configured.", "No source folder configured.");
+            return;
+        }
+
+        jobStates.Register(jobId, sink);
+        // Before StartReporting, so [ETA] tracing also covers the provider-build phase.
+        registry.AttachJobDiagnostics(sink, repositoryId);
+        sink.StartReporting();
+        sink.SetPhase("scan");   // archive's first milestone; hash-route/upload/snapshot advance from Core events
+
+        var gate = LockFor(repositoryId);
+        await gate.WaitAsync();
+        ServiceProvider? provider = null;
+        try
+        {
+            provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadWrite, sink, sink.Cts.Token);
+            var mediator = provider.GetRequiredService<IMediator>();
+
+            var uploadTier = Enum.TryParse<BlobTier>(tier, ignoreCase: true, out var bt) ? bt : BlobTier.Archive;
+
+            var result = await mediator.Send(new ArchiveCommand(new ArchiveCommandOptions
+            {
+                RootDirectory = repo.LocalPath!,
+                UploadTier    = uploadTier,
+                RemoveLocal   = removeLocal,
+                WritePointers = writePointers,
+                FastHash      = fastHash,
+                // Stream per-chunk upload progress into the sink so uploadedBytes (and thus rate/ETA) advances
+                // continuously as each chunk/tar uploads, instead of only jumping when it completes — this is the
+                // same Core ProgressStream hook the CLI uses.
+                CreateUploadProgress = (chunkHash, size) => new Progress<long>(cumulative => sink.ReportUploadStreamed(chunkHash, cumulative)),
+            }), sink.Cts.Token);
+
+            if (result.Success)
+            {
+                var summary = $"Archive complete · {result.FilesUploaded} uploaded · {result.FilesDeduped} deduped · {JobFormat.Bytes(result.IncrementalStoredSize)} stored ({JobFormat.Bytes(result.IncrementalSize)} uncompressed) · {JobFormat.Bytes(result.OriginalSize)} original";
+                CompleteAndBroadcast(sink, jobId, summary, startedAt, result.SnapshotTime.ToString("O"));
+            }
+            else
+            {
+                FailOrCancel(sink, jobId, "failed", result.ErrorMessage, result.ErrorMessage ?? "Archive failed.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("Archive job {JobId} cancelled", jobId);
+            FailOrCancel(sink, jobId, "cancelled", "Cancelled.", "Cancelled.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Archive job {JobId} failed", jobId);
+            sink.Log(ex.Message, "warn");
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
+        }
+        finally
+        {
+            if (provider is not null) await provider.DisposeAsync();
+            registry.Evict(repositoryId);            // snapshot may have changed → rebuild read caches
+            database.ClearStatisticsCache(repositoryId); // …and discard memoized statistics for the old snapshot set
+            sink.StopReporting();
+            jobStates.Remove(jobId);
+            sink.Cts.Dispose();
+            gate.Release();
+        }
+    }
+
+    public async Task RunRestoreAsync(long repositoryId, string jobId, string connectionId, string? version, IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers)
+    {
+        var sink = new JobSink(jobId, hub);
+        var startedAt = DateTimeOffset.UtcNow;
+        var repo = database.GetRepository(repositoryId);
+        if (repo is null) { sink.Done("failed", "Repository not found."); return; }
+        if (!TryInsertRestoreJob(sink, repositoryId, jobId, "restore", "Restore")) return;
+
+        var destination = string.IsNullOrWhiteSpace(repo.LocalPath)
+            ? Path.Combine(Path.GetTempPath(), "arius-restore", repositoryId.ToString())
+            : repo.LocalPath!;
+
+        await RunRestoreJobAsync(sink, repositoryId, jobId, startedAt, version, targetPaths, destination, overwrite, noPointers, "Restore");
+    }
+
+    /// <summary>Runs a download job: a restore of exactly <paramref name="files"/> from the pinned snapshot
+    /// <paramref name="version"/> into this job's staging folder (never the repository's local folder), with
+    /// <c>Overwrite = false</c> and <c>NoPointers = true</c>. Each restored file is marked ready as it lands.</summary>
+    public async Task RunDownloadAsync(long repositoryId, string jobId, string version, IReadOnlyList<DownloadFile> files)
+    {
+        var sink = new JobSink(jobId, hub);
+        var startedAt = DateTimeOffset.UtcNow;
+        if (database.GetRepository(repositoryId) is null) { sink.Done("failed", "Repository not found."); return; }
+        if (!TryInsertRestoreJob(sink, repositoryId, jobId, "download", "Download")) return;
+
+        try { database.InsertDownloadFiles(jobId, files); }
+        catch (Exception ex)
+        {
+            // The job row is already inserted as running: terminalize it, or it would block the repository until restart.
+            logger.LogError(ex, "Download job {JobId} failed to record its files", jobId);
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
+            return;
+        }
+        var anyReady = false;
+        sink.FileRestored = path => { database.MarkDownloadFileReady(jobId, path); anyReady = true; };
+
+        await RunRestoreJobAsync(sink, repositoryId, jobId, startedAt, version, files.Select(f => f.Path).ToArray(),
+            staging.PathFor(jobId), overwrite: false, noPointers: true, "Download");
+
+        // A first pass that ended with nothing ready (declined at the cost prompt, cancelled, failed) has nothing to
+        // offer: drop its staging folder now instead of keeping it until the clean-up period. A parked (rehydrating)
+        // job is not terminal and keeps its folder; later exits are left to DownloadCleaner.
+        if (!anyReady && database.GetJob(jobId) is { } job && JobStatuses.Terminal.Contains(job.Status))
+        {
+            try { staging.Delete(jobId); }
+            catch (Exception ex) { logger.LogWarning(ex, "Could not remove the staging folder of download {JobId}", jobId); }
+        }
+    }
+
+    // Race-proof backstop for the cooperative HasActiveJob check (the Start* hub features / SchedulerService): the
+    // ux_jobs_one_active_per_repo unique index rejects a second concurrent insert for this repo.
+    // Only the unique-constraint violation (SQLITE_CONSTRAINT_UNIQUE) means "already running" —
+    // any other SqliteException (disk full, corruption, …) gets its own message logged instead of
+    // being masked.
+    private bool TryInsertRestoreJob(JobSink sink, long repositoryId, string jobId, string kind, string noun)
+    {
+        try { database.InsertJob(jobId, repositoryId, kind, "one-off", "running"); }
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == 2067)
+        {
+            sink.Done("failed", "A job is already running for this repository.");
+            return false;
+        }
+        catch (SqliteException ex)
+        {
+            logger.LogError(ex, "{Noun} job {JobId} failed to start", noun, jobId);
+            sink.Done("failed", ex.Message);
+            return false;
+        }
+        return true;
+    }
+
+    private async Task RunRestoreJobAsync(JobSink sink, long repositoryId, string jobId, DateTimeOffset startedAt, string? version,
+        IReadOnlyList<string> targetPaths, string destination, bool overwrite, bool noPointers, string noun)
+    {
+        jobStates.Register(jobId, sink);
+        // Before StartReporting, so [ETA] tracing also covers the provider-build phase.
+        registry.AttachJobDiagnostics(sink, repositoryId);
+        sink.StartReporting();
+
+        var gate = LockFor(repositoryId);
+        await gate.WaitAsync();
+        ServiceProvider? provider = null;
+        try
+        {
+            // Inside the try (not before it): a bad LocalPath/permissions error here is handled by
+            // the catch below (marks the job "failed" + emits Done) instead of escaping this
+            // fire-and-forget task and leaving the row stuck "running" — which would block all future
+            // jobs for this repo under the single-active-job guard.
+            Directory.CreateDirectory(destination);
+
+            provider = await registry.CreateJobProviderAsync(repositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
+            // Cost-approval outcome for this run (set inside the ConfirmRehydration callback). The happy path is
+            // in-run: the user answers and the chosen priority feeds back into THIS run — the wait is unbounded
+            // (held by the still-live run) until answered or the run's token is cancelled. On decline the run is
+            // cancelled.
+            RehydratePriority? runApprovedPriority = null;
+            var costDeclined = false;
+            RestoreCostEstimate? lastEstimate = null;
+
+            var (pending, success, error) = await RunRestoreOnceAsync(
+                provider, sink, jobId, destination, version, targetPaths, overwrite, noPointers,
+                confirmRehydration: async (estimate, ct) =>
+                {
+                    lastEstimate = estimate;
+
+                    // With every chunk online there is no priority to pick, so a cost below the limit needs no approval;
+                    // anything that rehydrates still asks.
+                    if (estimate.ChunksNeedingRehydration == 0 && estimate.ChunksPendingRehydration == 0
+                        && estimate.TotalStandard < (double)database.GetCostSettings().AutoAcceptBelow)
+                    {
+                        sink.Log(string.Create(CultureInfo.InvariantCulture,
+                            $"Estimated cost €{estimate.TotalStandard:0.0000} is below the auto-accept limit — continuing without approval."));
+                        return RehydratePriority.Standard;
+                    }
+
+                    sink.Log(estimate.ChunksNeedingRehydration > 0
+                        ? "⚠ archive-tier chunks need rehydration — awaiting cost approval"
+                        : "Estimated restore cost — awaiting approval", "warn");
+                    var costDto = new CostEstimateDto(
+                        JobId: jobId,
+                        ChunksAvailable:          estimate.ChunksAvailable + estimate.ChunksAlreadyRehydrated,
+                        ChunksNeedingRehydration: estimate.ChunksNeedingRehydration,
+                        BytesNeedingRehydration:  estimate.BytesNeedingRehydration,
+                        DownloadBytes:            estimate.DownloadBytes,
+                        TotalStandard:            estimate.TotalStandard,
+                        TotalHigh:                estimate.TotalHigh,
+                        StandardWaitHours:        estimate.StandardWait.TotalHours,
+                        HighWaitHours:            estimate.HighWait.TotalHours);
+                    // Arm the approval waiter BEFORE telling the client it may answer (sink.Cost below): an
+                    // approve/decline that races in ahead of RegisterAsync's await is then captured by this
+                    // pre-created waiter instead of being dropped as "no pending approval".
+                    approvals.Prime(jobId);
+                    sink.Cost(costDto);
+                    // Retained on the sink (not yet persisted) so a reattach while this run is still LIVE but
+                    // blocked on the approval wait below can render the same cost + resume defaults via
+                    // AttachToJob/GET's live-sink branch — jobStates keeps this sink registered
+                    // until RunRestoreAsync itself returns, which does not happen until the wait resolves.
+                    sink.SetPendingResume(ResumeParamsFor(estimate, version, targetPaths, destination, overwrite,
+                        noPointers, priority: "Standard", autoResume: true, startedAt: DateTimeOffset.UtcNow));
+
+                    database.SetJobStatus(jobId, "awaiting-cost", "Awaiting cost approval");
+                    sink.SetStatus("awaiting-cost");
+                    sink.SetPhase("confirm-cost");
+
+                    var priority = await approvals.RegisterAsync(jobId, ct);
+                    if (priority is not null)
+                    {
+                        sink.ClearPending();   // leaving the prompt — a later reattach is mid-restore, not awaiting one
+                        runApprovedPriority = priority;
+                        database.SetJobStatus(jobId, "running");
+                        sink.SetStatus("running");
+                        return priority;
+                    }
+
+                    costDeclined = true;
+                    sink.Log($"{noun} declined.", "warn");
+                    return null;   // Core exits with ChunksPendingRehydration = the still-needed count
+                });
+
+            if (!success)
+            {
+                FailOrCancel(sink, jobId, "failed", error, error ?? $"{noun} failed.");
+                return;
+            }
+
+            if (costDeclined)
+            {
+                FailOrCancel(sink, jobId, "cancelled", $"{noun} declined at cost approval.", $"{noun} declined.");
+                return;
+            }
+            // Some chunks still rehydrating — do NOT mark completed. Park as `rehydrating`
+            // with resume params so the poller re-drives the SAME jobId until every chunk is available.
+            if (pending > 0)
+            {
+                var priority = runApprovedPriority?.ToString() ?? "Standard";
+                var resume = ResumeParamsFor(lastEstimate, version, targetPaths, destination, overwrite, noPointers,
+                                             priority, autoResume: true, startedAt: DateTimeOffset.UtcNow);
+                resume = sink.WithLiveRehydrationCounts(resume);
+                database.SetJobStatus(jobId, "rehydrating", $"{pending} chunk(s) rehydrating");
+                sink.SetStatus("rehydrating");
+                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume)));
+                sink.Log($"{pending} chunk(s) rehydrating — will auto-resume", "warn");
+                // Non-terminal: no Done. The poller re-drives on its cadence; the finally releases the gate.
+                return;
+            }
+
+            CompleteAndBroadcast(sink, jobId, $"{noun} complete.", startedAt, snapshotTimestamp: null);
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("{Noun} job {JobId} cancelled", noun, jobId);
+            FailOrCancel(sink, jobId, "cancelled", "Cancelled.", "Cancelled.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "{Noun} job {JobId} failed", noun, jobId);
+            sink.Log(ex.Message, "warn");
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
+        }
+        finally
+        {
+            if (provider is not null) await provider.DisposeAsync();
+            sink.StopReporting();
+            jobStates.Remove(jobId);
+            sink.Cts.Dispose();
+            gate.Release();
+        }
+    }
+
+    /// <summary>Runs one restore command over all target paths (empty = whole repository) with the supplied cost
+    /// callback. Returns (pending, success, error). Shared by the initial run and <see cref="ResumeRestoreAsync"/>.
+    /// The caller owns status bookkeeping + persistence.</summary>
+    private async Task<(int Pending, bool Success, string? Error)> RunRestoreOnceAsync(
+        ServiceProvider provider, JobSink sink, string jobId, string destination, string? version,
+        IReadOnlyList<string> targetPaths, bool overwrite, bool noPointers,
+        Func<RestoreCostEstimate, CancellationToken, Task<RehydratePriority?>> confirmRehydration)
+    {
+        var mediator = provider.GetRequiredService<IMediator>();
+        var result = await mediator.Send(new RestoreCommand(new RestoreOptions
+        {
+            RootDirectory      = destination,
+            Version            = version,
+            TargetPaths        = targetPaths.Select(RelativePath.Parse).ToArray(),
+            Overwrite          = overwrite,
+            NoPointers         = noPointers,
+            ConfirmRehydration = confirmRehydration,
+            // Large files report download progress as they stream, so bytesRestored (and the rate/ETA derived from it)
+            // advances continuously. Files in a tar chunk report per file, which avoids counting the tar's bytes twice.
+            CreateLargeFileDownloadProgress = (relativePath, size) => new Progress<long>(c => sink.ReportRestoreStreamed(relativePath.ToString(), c)),
+        }), sink.Cts.Token);
+
+        return result.Success
+            ? (result.ChunksPendingRehydration, true, null)
+            : (0, false, result.ErrorMessage);
+    }
+
+    /// <summary>Re-drives a parked/rehydrating restore with the SAME jobId, non-prompting (honors the persisted
+    /// priority — no re-charge, no connection). Loads resume params from state_json, flips the row to running for
+    /// the (short) re-run, then back to rehydrating (still pending) or completed. Exempt from the single-active-job
+    /// guard: it UPDATEs the existing row, never InsertJob.</summary>
+    public async Task ResumeRestoreAsync(string jobId)
+    {
+        var job = database.GetJob(jobId);
+        // Only a still-parked job may be resumed — a cancel/complete that committed between the poller's row
+        // read and this call must not resurrect a terminal job to running.
+        if (job is not null && job.Status is not ("rehydrating" or "awaiting-cost")) return;
+        if (job is null || job.StateJson is null) return;
+        PersistedJobState? persisted;
+        try { persisted = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson); }
+        catch (JsonException) { return; }
+        if (persisted?.Resume is null) return;
+        var resume = persisted.Resume;
+
+        var repo = database.GetRepository(job.RepositoryId);
+        if (repo is null) return;
+
+        var sink = new JobSink(jobId, hub);
+        var registered = false;
+        var noun = job.Kind == "download" ? "Download" : "Restore";
+
+        var gate = LockFor(job.RepositoryId);
+        await gate.WaitAsync();
+        ServiceProvider? provider = null;
+        try
+        {
+            // Re-check under the gate: a cancel/complete may have committed between the pre-gate status guard
+            // and here. Bail (the finally releases the gate; nothing has been registered yet) rather than
+            // resurrect a job that is no longer parked. Shrinks the resurrection window to two adjacent statements.
+            var underGate = database.GetJob(jobId);
+            if (underGate is null || underGate.Status is not ("rehydrating" or "awaiting-cost")) return;
+
+            // Register only once we hold the gate and have decided to run: concurrent resumes serialize here, so
+            // the registry never holds a sink whose run isn't the current gate holder.
+            jobStates.Register(jobId, sink);
+            registered = true;   // set before StartReporting so a throw there still triggers finally teardown
+            // Before StartReporting, so [ETA] tracing also covers the provider-build phase.
+            registry.AttachJobDiagnostics(sink, job.RepositoryId);
+            sink.StartReporting();
+
+            // Guarded flip to running: only resurrect a row that is STILL parked. A cancel that committed in the
+            // window between the under-gate re-check and here terminalized the row (CancelParked); the guarded
+            // UPDATE then matches nothing and we bail (finally releases the gate + removes the sink) instead of
+            // running a cancelled restore to completion. Registration above already routes an in-[register,flip)
+            // cancel through CancelLive (token trip), so the two paths together close the resurrection window.
+            if (!database.TryResumeToRunning(jobId, $"Resuming {noun.ToLowerInvariant()}…")) return;
+            sink.SetStatus("running");
+            provider = await registry.CreateJobProviderAsync(job.RepositoryId, PreflightMode.ReadOnly, sink, sink.Cts.Token);
+
+            // A download restores into its staging folder (where PruneUnready works), not whatever destination was persisted.
+            var destination = resume.Destination;
+            if (job.Kind == "download")
+            {
+                destination = staging.PathFor(jobId);
+                // Files restored by an earlier pass are the only ones that are complete; anything else under the
+                // staging folder is a partial write the next pass overwrites (Overwrite is false, so remove it first).
+                var files = database.ListDownloadFiles(jobId);
+                staging.PruneUnready(jobId, files.Where(f => f.Ready).Select(f => f.Path).ToHashSet());
+                sink.FileRestored = path => database.MarkDownloadFileReady(jobId, path);
+            }
+
+            var persistedPriority = resume.Priority == "High" ? RehydratePriority.High : RehydratePriority.Standard;
+            var (pending, success, error) = await RunRestoreOnceAsync(
+                provider, sink, jobId, destination, resume.Version, resume.TargetPaths,
+                resume.Overwrite, resume.NoPointers,
+                confirmRehydration: (_, _) => Task.FromResult<RehydratePriority?>(persistedPriority));
+
+            if (!success)
+            {
+                FailOrCancel(sink, jobId, "failed", error, error ?? $"{noun} failed.");
+                return;
+            }
+            if (pending > 0)
+            {
+                var next = resume with { LastRunAt = DateTimeOffset.UtcNow };
+                next = sink.WithLiveRehydrationCounts(next);
+                database.SetJobStatus(jobId, "rehydrating", $"{pending} chunk(s) rehydrating");
+                sink.SetStatus("rehydrating");
+                database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, next)));
+                return;
+            }
+            CompleteAndBroadcast(sink, jobId, $"{noun} complete.", job.StartedAt ?? resume.RehydrationStartedAt, null);
+        }
+        catch (OperationCanceledException)
+        {
+            FailOrCancel(sink, jobId, "cancelled", "Cancelled.", "Cancelled.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "{Noun} resume {JobId} failed", noun, jobId);
+            FailOrCancel(sink, jobId, "failed", ex.Message, ex.Message);
+        }
+        finally
+        {
+            if (provider is not null) await provider.DisposeAsync();
+            if (registered) { sink.StopReporting(); jobStates.Remove(jobId); }
+            sink.Cts.Dispose();
+            gate.Release();
+        }
+    }
+
+    /// <summary>Cancels a job that has no live run to observe a token-cancel (a rehydrating job between poller ticks,
+    /// or an awaiting-cost row swept as abandoned). Marks it <c>cancelled</c> in the DB AND broadcasts the terminal
+    /// <c>Done</c> to its SignalR group so attached clients finalize immediately. A fresh <see cref="JobSink"/> reuses the exact Done wire shape.</summary>
+    public void CancelParked(string jobId, string summary = "Cancelled.")
+    {
+        // Only broadcast the terminal Done if our guarded cancel actually applied. If the rehydration poller won
+        // the race and already completed the job, CompleteJob no-ops (row stays terminal) and we must NOT tell the
+        // client it was cancelled.
+        if (database.CompleteJob(jobId, "cancelled", 0, summary))
+            new JobSink(jobId, hub).Done("cancelled", summary);
+    }
+
+    /// <summary>Marks a job <c>completed</c> and — only if that guarded write actually applied (a concurrent
+    /// cancel/sweep did not win the race) — persists final state + outcome, emits the final snapshot, and
+    /// broadcasts the terminal <c>Done</c>. Skipping all of it on a lost race keeps the client's terminal message
+    /// and the persisted outcome from contradicting a row another writer already terminalized.</summary>
+    private void CompleteAndBroadcast(JobSink sink, string jobId, string summary, DateTimeOffset startedAt, string? snapshotTimestamp)
+    {
+        if (!database.CompleteJob(jobId, "completed", 100, summary)) return;   // lost the race — another writer terminalized it
+        database.SaveJobState(jobId, JsonSerializer.Serialize(sink.BuildPersistedState(DateTimeOffset.UtcNow, resume: null)));
+        // camelCase to match the API/SignalR JSON contract. This string is passed through to the client
+        // verbatim (GET /jobs and the SignalR Done below) and parsed there as a JobOutcome; default
+        // options emit PascalCase, so outcome.filesRestored / outcome.durationSeconds / … read as
+        // undefined on the client.
+        var outcomeJson = JsonSerializer.Serialize(sink.BuildOutcome(startedAt, DateTimeOffset.UtcNow, snapshotTimestamp), JsonSerializerOptions.Web);
+        database.SetJobOutcome(jobId, outcomeJson);
+        sink.EmitNow();                       // final absolute progress (100%) before the terminal message
+        sink.Done("completed", summary, outcomeJson);
+    }
+
+    /// <summary>Writes a terminal <c>failed</c>/<c>cancelled</c> status and broadcasts the matching <c>Done</c> only
+    /// if the guarded write applied — never announce a terminal state the DB rejected because another writer got
+    /// there first.</summary>
+    private void FailOrCancel(JobSink sink, string jobId, string status, string? detail, string doneMessage)
+    {
+        if (database.CompleteJob(jobId, status, 0, detail))
+            sink.Done(status, doneMessage);
+    }
+
+    private static RestoreResumeState ResumeParamsFor(
+        Arius.Core.Shared.Cost.RestoreCostEstimate? estimate,
+        string? version, IReadOnlyList<string> targetPaths, string destination,
+        bool overwrite, bool noPointers, string priority, bool autoResume, DateTimeOffset startedAt)
+    {
+        var window = priority == "High"
+            ? estimate?.HighWait     ?? TimeSpan.FromHours(1)
+            : estimate?.StandardWait ?? TimeSpan.FromHours(15);
+        return new RestoreResumeState
+        {
+            Version              = version,
+            TargetPaths          = targetPaths,
+            Destination          = destination,
+            Overwrite            = overwrite,
+            NoPointers           = noPointers,
+            Priority             = priority,
+            AutoResume           = autoResume,
+            RehydrationStartedAt = startedAt,
+            LastRunAt            = startedAt,
+            RehydrationWindow    = window,
+        };
+    }
+}
