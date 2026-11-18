@@ -28,6 +28,8 @@ public class RepositoryProviderRegistryRemovalTests
             Entered.TrySetResult();
             await Release.Task;
         }
+
+        public void ComposeWithoutRepository(IServiceCollection services) { }
     }
 
     [Test]

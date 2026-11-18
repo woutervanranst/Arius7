@@ -15,4 +15,7 @@ namespace Arius.Api.Shared.Composition;
 public interface IRepositoryCoreComposer
 {
     Task ComposeAsync(IServiceCollection services, RepositoryConnection connection, PreflightMode mode, CancellationToken cancellationToken);
+
+    /// <summary>Registers the Core handlers that need no repository (listing an account's containers).</summary>
+    void ComposeWithoutRepository(IServiceCollection services);
 }

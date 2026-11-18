@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using Arius.Api.Shared.AppData;
-using Arius.Core.Shared.Storage;
+using Arius.Api.Shared.Composition;
+using Arius.Core.Features.ContainerNamesQuery;
+using Mediator;
 
 namespace Arius.Api.Features.Accounts;
 
@@ -13,7 +15,7 @@ internal static class StreamContainers
     public static async IAsyncEnumerable<string> HandleAsync(
         AppDatabase database,
         SecretProtector secrets,
-        IBlobServiceFactory blobServiceFactory,
+        RepositoryProviderRegistry registry,
         long accountId,
         string? accountName,
         string? accountKey,
@@ -34,8 +36,8 @@ internal static class StreamContainers
             key = accountKey;
         }
 
-        var blobService = await blobServiceFactory.CreateAsync(name, key, cancellationToken).ConfigureAwait(false);
-        await foreach (var container in blobService.GetContainerNamesAsync(cancellationToken).ConfigureAwait(false))
+        var mediator = registry.GetRepositoryLessProvider().GetRequiredService<IMediator>();
+        await foreach (var container in mediator.CreateStream(new ContainerNamesQuery(name, key), cancellationToken).ConfigureAwait(false))
             yield return container;
     }
 }
