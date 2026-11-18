@@ -1,6 +1,6 @@
 # Logging
 
-> **Code:** `src/Arius.Core/Shared/AriusLogConfig.cs` (the cross-host level + line-format contract), `src/Arius.Cli/CliBuilder.cs` (CLI audit setup), `src/Arius.Api/Composition/AriusLogging.cs` + `RepositoryProviderRegistry.cs` (web root + per-repo loggers), `src/Arius.Core/Features/*/...Handler.cs` (pipeline logs) · **Decisions:** [ADR-0007](../../decisions/adr-0007-separate-phase-and-detail-logging-in-pipeline-handlers.md) · **Terms:** [content hash](../../glossary.md#content-hash), [chunk index](../../glossary.md#chunk-index), [snapshot](../../glossary.md#snapshot)
+> **Code:** `src/Arius.Core/Shared/AriusLogConfig.cs` (the cross-host level + line-format contract), `src/Arius.Cli/CliBuilder.cs` (CLI audit setup), `src/Arius.Api/Shared/Composition/AriusLogging.cs` + `RepositoryProviderRegistry.cs` (web root + per-repo loggers), `src/Arius.Core/Features/*/...Handler.cs` (pipeline logs) · **Decisions:** [ADR-0007](../../decisions/adr-0007-separate-phase-and-detail-logging-in-pipeline-handlers.md) · **Terms:** [content hash](../../glossary.md#content-hash), [chunk index](../../glossary.md#chunk-index), [snapshot](../../glossary.md#snapshot)
 
 ## Purpose
 

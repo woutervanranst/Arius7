@@ -41,7 +41,7 @@ The handlers fire them inline at the matching pipeline stage, e.g. `ArchiveComma
 The `Mediator` notification pattern is the seam. Core depends only on `IMediator`; a consumer is any `INotificationHandler<T>` the source generator finds **in the host assembly**. The handler set is discovered by calling `services.AddMediator()` *in the host*, so the generator scans both Arius.Core and the host:
 
 - **CLI** — `BuildProductionServices` calls `AddMediator()` so it finds the handlers in `Arius.Cli` (`CliBuilder.cs`).
-- **API** — `RepositoryProviderRegistry.BuildAsync` calls `AddMediator()` per provider so it finds the `…Forwarder` handlers in `Arius.Api`.
+- **API** — `RepositoryProviderRegistry.BuildAsync` calls `AddMediator()` per provider so it finds the `…Forwarder` handlers in `Arius.Api` (`Features/Archive/ArchiveForwarders.cs`, `Features/Restore/RestoreForwarders.cs`).
 
 Core never references a host type, never holds a host callback, and is not told who (if anyone) is listening — a publish with no registered handler is simply a no-op.
 

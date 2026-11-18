@@ -1,6 +1,6 @@
 # Service lifetimes & scoping
 
-> **Code:** `src/Arius.Core/ServiceCollectionExtensions.cs`, `src/Arius.Api/Composition/RepositoryProviderRegistry.cs` · **Decisions:** [ADR-0013](../../decisions/adr-0013-core-host-separation.md), [ADR-0015](../../decisions/adr-0015-chunk-index-scalability.md), [ADR-0016](../../decisions/adr-0016-multi-machine-cache-coherence.md) · **Terms:** [chunk index](../../glossary.md#chunk-index), [epoch](../../glossary.md#epoch)
+> **Code:** `src/Arius.Core/ServiceCollectionExtensions.cs`, `src/Arius.Api/Shared/Composition/RepositoryProviderRegistry.cs` · **Decisions:** [ADR-0013](../../decisions/adr-0013-core-host-separation.md), [ADR-0015](../../decisions/adr-0015-chunk-index-scalability.md), [ADR-0016](../../decisions/adr-0016-multi-machine-cache-coherence.md) · **Terms:** [chunk index](../../glossary.md#chunk-index), [epoch](../../glossary.md#epoch)
 
 ## Purpose
 
@@ -16,12 +16,13 @@ Each host composes that per-repository provider differently:
 |---|---|---|
 | **CLI** (`Arius.Cli`) | one provider per command invocation | short-lived — the process exits after the command. Provider ≈ command. This is the model the services were originally designed for. |
 | **Explorer** (`Arius.Explorer`) | one provider per opened repository | long-lived process → hits the hazards below. |
-| **Api** (`Arius.Api`, via `RepositoryProviderRegistry`) | **two** lifetimes (below) | long-lived process serving many repos and requests. |
+| **Api** (`Arius.Api`, via `RepositoryProviderRegistry`) | **two** repository lifetimes plus a repository-less provider (below) | long-lived process serving many repos and requests. |
 
-`RepositoryProviderRegistry` runs two provider lifetimes side by side:
+`RepositoryProviderRegistry` runs two repository-bound provider lifetimes side by side, plus a third, repository-less kind:
 
 - **Read providers** — built lazily and **cached per repository** (`GetReadProviderAsync`, a `Lazy<Task<ServiceProvider>>` keyed by repository id), opened with `PreflightMode.ReadOnly`, given an inert `JobSink`. They warm caches across requests (`ls`, queries, restore reads). They are **evicted and disposed** (`Evict`) on a properties change, a delete, or **after an archive**.
 - **Job providers** — a **fresh, dedicated** provider per long-running archive/restore (`CreateJobProviderAsync`), wired to a per-job `JobSink` and its own `IMediator`, **owned and disposed by the job** when it ends.
+- **The repository-less provider** — built **once** (lazily, `GetRepositoryLessProvider`) and **owned by the registry**; callers never dispose it. It is composed with `AddAriusWithoutRepository()` instead of `AddArius(...)` and serves only Core requests that need no repository (`ContainerNamesQuery`, listing an account's containers before a repository exists); every repository-bound command and query resolves to a stand-in that fails fast. It holds no repository state, so it has no eviction rule.
 
 ## Key invariants
 
