@@ -2,9 +2,6 @@ using System.Reflection;
 using ArchUnitNET.Loader;
 using Arius.Api.Shared.Composition;
 using Arius.Api.Shared.Hubs;
-using Arius.Core.Shared.ChunkIndex;
-using Arius.Core.Shared.ChunkStorage;
-using Arius.Core.Shared.FileTree;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
 
@@ -13,8 +10,9 @@ namespace Arius.Architecture.Tests;
 /// <summary>
 /// Enforces Arius.Api's vertical-slice layout: <c>Features/&lt;Area&gt;</c> slices over <c>Shared/</c>
 /// infrastructure, reaching Arius.Core only through its features.
-/// Note (same limitation as DependencyTests): ArchUnitNET does not detect usages that occur only
-/// inside lambdas / async state machines, so endpoint lambda bodies are not covered.
+/// Blind spot: ArchUnitNET does not see what the body of an <c>async IAsyncEnumerable</c> method uses,
+/// so the hub's streaming features (StreamContainers, StreamEntries, SearchAll) are checked on their
+/// signatures only. Endpoint lambdas are covered.
 /// </summary>
 public class ApiArchitectureTests
 {
@@ -35,8 +33,11 @@ public class ApiArchitectureTests
         typeof(JobsHub).FullName!,
     ];
 
+    // Types declared in Arius.Api namespaces only: skips the Mediator-generated wiring, which references every handler.
     private static IEnumerable<ArchUnitNET.Domain.IType> ApiTypes =>
-        Architecture.Types.Where(type => type.Assembly.Name == ApiAssembly.GetName().Name);
+        Architecture.Types
+            .Where(type => type.Assembly.Name == ApiAssembly.GetName().Name)
+            .Where(type => IsWithin(type.Namespace.FullName, "Arius.Api"));
 
     [Test]
     public void Internal_Types_Should_Only_Be_Used_Within_Their_Namespace_Subtree()
@@ -116,11 +117,13 @@ public class ApiArchitectureTests
     {
         // A host sends commands and queries through IMediator; it does not resolve Core's Shared services.
         // The one seam is the composer that opens the container and registers the Core graph.
-        var coreServices = new[]
-        {
-            typeof(ISnapshotService), typeof(IChunkIndexService), typeof(IChunkStorageService), typeof(IFileTreeService),
-            typeof(IBlobContainerService), typeof(IBlobService), typeof(IBlobServiceFactory),
-        }.Select(type => type.FullName!).ToHashSet(StringComparer.Ordinal);
+        var coreServices = typeof(Core.AssemblyMarker).Assembly.GetTypes()
+            .Where(type => type is { IsInterface: true, IsPublic: true })
+            .Where(type => IsWithin(type.Namespace ?? string.Empty, "Arius.Core.Shared"))
+            .Select(type => type.FullName!)
+            .ToHashSet(StringComparer.Ordinal);
+        coreServices.ShouldContain(typeof(ISnapshotService).FullName!);
+        coreServices.ShouldContain(typeof(IBlobServiceFactory).FullName!);
 
         var violations = new List<string>();
         foreach (var consumer in ApiTypes.Where(type => type.FullName != typeof(AzureRepositoryCoreComposer).FullName))

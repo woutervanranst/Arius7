@@ -12,13 +12,15 @@ namespace Arius.Api.Shared.Composition;
 /// bound to one account/container/passphrase — Arius.Core registers everything as singletons scoped
 /// to a single repository, so providers are reused, not rebuilt per request.
 ///
-/// Two lifetimes:
+/// Three kinds:
 /// <list type="bullet">
 ///   <item><b>Read providers</b> — long-lived, cached per repo, <see cref="PreflightMode.ReadOnly"/>; warm
 ///   caches across requests. Evicted/disposed on properties change, delete, or after an archive.</item>
 ///   <item><b>Job providers</b> — fresh per long-running archive/restore, owned and disposed by the job:
 ///   this isolates per-job events (own IMediator) and avoids reusing a chunk index that becomes single-shot
 ///   after flush.</item>
+///   <item><b>The repository-less provider</b> — built once, for Core requests that need no repository
+///   (listing an account's containers).</item>
 /// </list>
 /// </summary>
 public sealed class RepositoryProviderRegistry : IAsyncDisposable
