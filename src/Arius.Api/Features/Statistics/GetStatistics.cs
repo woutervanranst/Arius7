@@ -1,8 +1,6 @@
 using System.Text.Json;
-using Arius.Api.Features.Repositories;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
-using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.Storage;
@@ -21,8 +19,8 @@ internal static class GetStatistics
     // with NO blob-storage access — that is what makes a warm load fast. The cache is invalidated
     // explicitly when the snapshot set can have changed: after an archive (JobRunner) and on a
     // properties change / delete (UpdateRepository / DeleteRepository). Only on a MISS do we touch storage: ask Core for
-    // the latest snapshot version once to stamp the entry's fingerprint (the latest snapshot version, for
-    // provenance + pruning prior generations) and run the real computation.
+    // the latest snapshot version once to stamp the entry's fingerprint (for provenance + pruning prior
+    // generations) and run the real computation.
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/repos/{id:long}/stats", async (long id, string? version, bool? full, AppDatabase database, RepositoryProviderRegistry registry, CancellationToken ct) =>
         {

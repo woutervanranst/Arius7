@@ -4,7 +4,7 @@ using Arius.Core.Shared.Storage;
 namespace Arius.Api.Shared.Composition;
 
 /// <summary>
-/// Registers the per-repository Arius.Core service graph (command/query handlers + the storage
+/// Registers the Arius.Core service graph for one repository (command/query handlers + the storage
 /// services they depend on) into a freshly-built per-job/read <see cref="IServiceCollection"/>.
 /// Production wires the real Azure-backed Core (<see cref="AzureRepositoryCoreComposer"/>); tests can
 /// swap in a scripted fake without touching Arius.Core.

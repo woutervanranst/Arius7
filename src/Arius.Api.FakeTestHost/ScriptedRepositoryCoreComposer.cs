@@ -1,5 +1,6 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
+using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ContainerNamesQuery;
@@ -52,7 +53,8 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
 
     public void ComposeWithoutRepository(IServiceCollection services)
     {
-        AddNotConfiguredStandIns(services);
+        // Core's own stand-ins for the repository-bound requests, then the scripted container listing on top.
+        services.AddAriusWithoutRepository();
         services.AddSingleton<IStreamQueryHandler<ContainerNamesQuery, string>, ScriptedContainerNamesHandler>();
     }
 
@@ -74,7 +76,6 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
         services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>, NotConfiguredQueryHandler<StatisticsQuery, RepositoryStatistics>>();
         services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>, NotConfiguredQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
         services.AddSingleton<IQueryHandler<LatestSnapshotVersionQuery, string?>, NotConfiguredQueryHandler<LatestSnapshotVersionQuery, string?>>();
-        // ContainerNamesQueryHandler(IServiceProvider) needs no Core services, so its real (AddMediator-
-        // registered) handler resolves fine as-is — no stand-in required.
+        // ContainerNamesQuery gets no stand-in: its handler needs no repository services.
     }
 }

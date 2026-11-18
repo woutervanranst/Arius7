@@ -4,6 +4,7 @@ using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Shared.Storage;
 using Mediator;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -23,12 +24,20 @@ public class RepositoryLessProviderTests
         var secrets      = new SecretProtector(DataProtectionProvider.Create(nameof(RepositoryLessProviderTests)));
         var composer     = new AzureRepositoryCoreComposer(new FakeBlobServiceFactory());
 
-        await using var registry = new RepositoryProviderRegistry(new AppDatabase(databasePath), secrets, composer, NullLoggerFactory.Instance);
+        try
+        {
+            await using var registry = new RepositoryProviderRegistry(new AppDatabase(databasePath), secrets, composer, NullLoggerFactory.Instance);
 
-        var mediator = registry.GetRepositoryLessProvider().GetRequiredService<IMediator>();
-        var names    = await mediator.CreateStream(new ContainerNamesQuery("account", "key")).ToListAsync();
+            var mediator = registry.GetRepositoryLessProvider().GetRequiredService<IMediator>();
+            var names    = await mediator.CreateStream(new ContainerNamesQuery("account", "key")).ToListAsync();
 
-        names.ShouldBe(["account/one", "account/two"]);
+            names.ShouldBe(["account/one", "account/two"]);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(Path.GetDirectoryName(databasePath)!, recursive: true);
+        }
     }
 
     private sealed class FakeBlobServiceFactory : IBlobServiceFactory
