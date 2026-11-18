@@ -2,20 +2,9 @@ using Arius.Api.Shared.AppData;
 
 namespace Arius.Api.Features.Accounts;
 
-/// <summary>Storage-account CRUD over the app database: the <c>/accounts</c> route group.</summary>
+/// <summary>Helpers shared by the <c>/accounts</c> endpoints.</summary>
 internal static class AccountEndpoints
 {
-    public static void MapAccountEndpoints(this IEndpointRouteBuilder app)
-    {
-        var group = app.MapGroup("/accounts");
-
-        ListAccounts.Map(group);
-        GetAccount.Map(group);
-        CreateAccount.Map(group);
-        UpdateAccount.Map(group);
-        DeleteAccount.Map(group);
-    }
-
     internal static AccountDto ToDto(AppDatabase db, AccountRecord account)
         => new(account.Id, account.Name, db.CountRepositoriesForAccount(account.Id), account.EncryptedAccountKey is not null);
 }

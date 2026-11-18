@@ -1,10 +1,13 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Cost;
 
 /// <summary><c>GET /settings/cost</c></summary>
-internal static class GetCostSettings
+internal sealed class GetCostSettings(AppDatabase db) : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapGet("/settings/cost", (AppDatabase db) => Results.Ok(db.GetCostSettings()));
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapGet("/settings/cost", (GetCostSettings endpoint) => endpoint.Handle());
+
+    public IResult Handle() => Results.Ok(db.GetCostSettings());
 }

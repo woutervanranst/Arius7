@@ -1,19 +1,11 @@
 using System.Text.Json;
-using Arius.Api.Features.Accounts;
-using Arius.Api.Features.Cost;
-using Arius.Api.Features.Defaults;
 using Arius.Api.Features.Downloads;
-using Arius.Api.Features.Filesystem;
-using Arius.Api.Features.Health;
-using Arius.Api.Features.Jobs;
-using Arius.Api.Features.Repositories;
 using Arius.Api.Features.Restore;
 using Arius.Api.Features.Schedules;
-using Arius.Api.Features.Snapshots;
-using Arius.Api.Features.Statistics;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
 using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Hosting;
 using Arius.Api.Shared.Hubs;
 using Arius.Api.Shared.Jobs;
 using Arius.AzureBlob;
@@ -62,6 +54,7 @@ public static class AriusApiHost
         builder.Services.AddSingleton<RestoreApprovalRegistry>();
         builder.Services.AddSingleton<JobStateRegistry>();
         builder.Services.AddSingleton<JobRunner>();
+        builder.Services.AddFeatures();
         builder.Services.AddHostedService<SchedulerService>();
         builder.Services.AddHostedService<RehydrationPollingService>();
         builder.Services.AddHostedService<StaleApprovalSweepService>();
@@ -97,17 +90,7 @@ public static class AriusApiHost
             return await next(ctx);
         });
 
-        GetHealth.Map(api);
-        api.MapAccountEndpoints();
-        api.MapRepositoryEndpoints();
-        api.MapDefaultsEndpoints();
-        ListSnapshots.Map(api);
-        GetStatistics.Map(api);
-        api.MapJobEndpoints();
-        api.MapScheduleEndpoints();
-        api.MapDownloadEndpoints();
-        api.MapCostSettingsEndpoints();
-        ListFilesystem.Map(api);
+        api.MapEndpoints();
         app.MapHub<JobsHub>("/hubs/arius");
 
         // Development-only API docs: raw document at /openapi/v1.json, Scalar UI at /scalar.

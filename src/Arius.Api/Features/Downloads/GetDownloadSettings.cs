@@ -1,10 +1,13 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Downloads;
 
 /// <summary><c>GET /settings/downloads</c></summary>
-internal static class GetDownloadSettings
+internal sealed class GetDownloadSettings(AppDatabase db) : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapGet("/settings/downloads", (AppDatabase db) => Results.Ok(db.GetDownloadSettings()));
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapGet("/settings/downloads", (GetDownloadSettings endpoint) => endpoint.Handle());
+
+    public IResult Handle() => Results.Ok(db.GetDownloadSettings());
 }

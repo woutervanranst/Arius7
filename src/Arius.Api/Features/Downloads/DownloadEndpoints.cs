@@ -4,21 +4,9 @@ using Microsoft.Net.Http.Headers;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary>A download job's files and serving them from its staging folder (one file as itself, several as one ZIP).</summary>
+/// <summary>Helpers shared by the <c>/jobs/{id}/download</c>, <c>/downloads</c> and <c>/settings/downloads</c> endpoints.</summary>
 internal static class DownloadEndpoints
 {
-    public static void MapDownloadEndpoints(this IEndpointRouteBuilder app)
-    {
-        GetDownload.Map(app);
-        GetDownloadContent.Map(app);
-        CleanupDownload.Map(app);
-        GetDownloadSettings.Map(app);
-        UpdateDownloadSettings.Map(app);
-        GetDownloadsUsage.Map(app);
-        CleanupDownloads.Map(app);
-        GetPendingDownload.Map(app);
-    }
-
     /// <summary>Whether a finished transfer counts as the file being downloaded: never when aborted; judged by the range
     /// actually <em>served</em> (<c>null</c> = the whole file), since the request's range can be a suffix or be ignored.</summary>
     internal static bool CountsAsDownloaded(bool aborted, ContentRangeHeaderValue? served, long length) =>

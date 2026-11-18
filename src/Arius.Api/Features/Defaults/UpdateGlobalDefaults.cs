@@ -1,17 +1,20 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Defaults;
 
 /// <summary><c>PUT /settings/defaults</c></summary>
-internal static class UpdateGlobalDefaults
+internal sealed class UpdateGlobalDefaults(AppDatabase db) : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapPut("/settings/defaults", (DefaultValues values, AppDatabase db) =>
-        {
-            if (OptionDefaults.Validate(values) is { } error)
-                return Results.BadRequest(error);
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapPut("/settings/defaults", (DefaultValues values, UpdateGlobalDefaults endpoint) => endpoint.Handle(values));
 
-            db.ReplaceGlobalDefaults(values);
-            return Results.Ok(DefaultsEndpoints.ToGlobalDto(db));
-        });
+    public IResult Handle(DefaultValues values)
+    {
+        if (OptionDefaults.Validate(values) is { } error)
+            return Results.BadRequest(error);
+
+        db.ReplaceGlobalDefaults(values);
+        return Results.Ok(DefaultsEndpoints.ToGlobalDto(db));
+    }
 }

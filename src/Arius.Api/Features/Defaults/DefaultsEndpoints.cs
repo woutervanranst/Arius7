@@ -2,17 +2,9 @@ using Arius.Api.Shared.AppData;
 
 namespace Arius.Api.Features.Defaults;
 
-/// <summary>Global and per-repository archive/restore option defaults.</summary>
+/// <summary>Helpers shared by the <c>/settings/defaults</c> and <c>/repos/{id}/defaults</c> endpoints.</summary>
 internal static class DefaultsEndpoints
 {
-    public static void MapDefaultsEndpoints(this IEndpointRouteBuilder app)
-    {
-        GetGlobalDefaults.Map(app);
-        UpdateGlobalDefaults.Map(app);
-        GetRepositoryDefaults.Map(app);
-        UpdateRepositoryDefaults.Map(app);
-    }
-
     internal static GlobalDefaultsDto ToGlobalDto(AppDatabase db) => new(
         db.GetGlobalDefaults(),
         OptionDefaults.Factory,

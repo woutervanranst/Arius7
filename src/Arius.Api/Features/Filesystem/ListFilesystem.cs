@@ -1,3 +1,5 @@
+using Arius.Api.Shared.Hosting;
+
 namespace Arius.Api.Features.Filesystem;
 
 /// <summary>
@@ -6,42 +8,44 @@ namespace Arius.Api.Features.Filesystem;
 /// folders on the machine running the API. The stored local path must resolve here (not on the
 /// browser's machine), which is why the picker is server-driven.
 /// </summary>
-internal static class ListFilesystem
+internal sealed class ListFilesystem : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapGet("/fs/list", (string? path) =>
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapGet("/fs/list", (string? path, ListFilesystem endpoint) => endpoint.Handle(path));
+
+    public IResult Handle(string? path)
+    {
+        // Default to the filesystem root the API can see; the client navigates from there.
+        var target = string.IsNullOrWhiteSpace(path) ? DefaultRoot() : path.Trim();
+
+        DirectoryInfo directory;
+        try
         {
-            // Default to the filesystem root the API can see; the client navigates from there.
-            var target = string.IsNullOrWhiteSpace(path) ? DefaultRoot() : path.Trim();
+            directory = new DirectoryInfo(target);
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException)
+        {
+            return Results.BadRequest($"Invalid path: {ex.Message}");
+        }
 
-            DirectoryInfo directory;
-            try
-            {
-                directory = new DirectoryInfo(target);
-            }
-            catch (Exception ex) when (ex is ArgumentException or PathTooLongException)
-            {
-                return Results.BadRequest($"Invalid path: {ex.Message}");
-            }
+        if (!directory.Exists)
+            return Results.NotFound($"Directory not found: {target}");
 
-            if (!directory.Exists)
-                return Results.NotFound($"Directory not found: {target}");
+        List<FsEntryDto> entries;
+        try
+        {
+            entries = directory.EnumerateDirectories()
+                .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(d => new FsEntryDto(d.Name, d.FullName))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return Results.Problem($"Cannot read directory: {ex.Message}", statusCode: StatusCodes.Status403Forbidden);
+        }
 
-            List<FsEntryDto> entries;
-            try
-            {
-                entries = directory.EnumerateDirectories()
-                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(d => new FsEntryDto(d.Name, d.FullName))
-                    .ToList();
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-            {
-                return Results.Problem($"Cannot read directory: {ex.Message}", statusCode: StatusCodes.Status403Forbidden);
-            }
-
-            return Results.Ok(new FsListDto(directory.FullName, directory.Parent?.FullName, entries));
-        });
+        return Results.Ok(new FsListDto(directory.FullName, directory.Parent?.FullName, entries));
+    }
 
     private static string DefaultRoot()
         => Path.GetPathRoot(Environment.CurrentDirectory) is { Length: > 0 } root ? root : "/";
