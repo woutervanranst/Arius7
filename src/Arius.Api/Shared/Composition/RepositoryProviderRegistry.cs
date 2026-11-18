@@ -43,6 +43,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     // are one int per removed id (ids are reused by SQLite, so a set of dead ids would not be enough).
     private readonly Dictionary<long, int> _repoGenerations = new();
 
+    private readonly Lazy<ServiceProvider> _repositoryLessProvider;
+
     public RepositoryProviderRegistry(
         AppDatabase database,
         SecretProtector secrets,
@@ -54,6 +56,22 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         _coreComposer       = coreComposer;
         _loggerFactory      = loggerFactory;
         _logger             = loggerFactory.CreateLogger<RepositoryProviderRegistry>();
+        _repositoryLessProvider = new Lazy<ServiceProvider>(BuildRepositoryLessProvider);
+    }
+
+    /// <summary>Gets (building once) the provider for Core requests that need no repository, e.g. listing an
+    /// account's containers before a repository exists. Owned by the registry; do not dispose.</summary>
+    public ServiceProvider GetRepositoryLessProvider() => _repositoryLessProvider.Value;
+
+    private ServiceProvider BuildRepositoryLessProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(new JobSink());   // inert: the event forwarders never fire here
+        services.AddMediator();
+        _coreComposer.ComposeWithoutRepository(services);
+        services.AddSingleton(_loggerFactory);
+        services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
+        return services.BuildServiceProvider();
     }
 
     /// <summary>Gets (building once, then caching) the shared read-only provider for a repository.</summary>
@@ -247,6 +265,9 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
         foreach (var provider in providers)
             await DisposeProviderAsync(provider).ConfigureAwait(false);
+
+        if (_repositoryLessProvider.IsValueCreated)
+            await _repositoryLessProvider.Value.DisposeAsync().ConfigureAwait(false);
 
         // Dispose loggers last so any provider-disposal logging still lands in the rolling file.
         foreach (var factory in loggerFactories)

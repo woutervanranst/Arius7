@@ -208,6 +208,55 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers the mediator handlers for a provider that is not bound to a repository — a host that needs
+    /// Core before a repository exists (e.g. listing an account's containers while adding one). Only the
+    /// repository-independent <see cref="ContainerNamesQuery"/> is served; every other request throws.
+    /// </summary>
+    /// <remarks>
+    /// The stand-ins are needed because Mediator resolves every discovered handler on first use, and the
+    /// repository-bound handlers cannot be built without a container. This list must track
+    /// <see cref="AddArius"/>. An <see cref="IBlobServiceFactory"/> must be registered separately
+    /// (e.g. via <c>AddAzureBlobStorage()</c>).
+    /// </remarks>
+    public static IServiceCollection AddAriusWithoutRepository(this IServiceCollection services)
+    {
+        services.AddSingleton<IStreamQueryHandler<ContainerNamesQuery, string>>(sp => new ContainerNamesQueryHandler(sp));
+
+        services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>, RepositoryRequiredCommandHandler<ArchiveCommand, ArchiveResult>>();
+        services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>, RepositoryRequiredCommandHandler<RestoreCommand, RestoreResult>>();
+        services.AddSingleton<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>, RepositoryRequiredCommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
+        services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>, RepositoryRequiredStreamQueryHandler<ListQuery, RepositoryEntry>>();
+        services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>, RepositoryRequiredStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
+        services.AddSingleton<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>, RepositoryRequiredStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
+        services.AddSingleton<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>, RepositoryRequiredStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>();
+        services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>, RepositoryRequiredQueryHandler<StatisticsQuery, RepositoryStatistics>>();
+        services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>, RepositoryRequiredQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
+
+        return services;
+    }
+
+    private sealed class RepositoryRequiredCommandHandler<TCommand, TResponse> : ICommandHandler<TCommand, TResponse>
+        where TCommand : ICommand<TResponse>
+    {
+        public ValueTask<TResponse> Handle(TCommand command, CancellationToken cancellationToken) =>
+            throw new NotSupportedException($"{typeof(TCommand).Name} needs a repository; this provider is not bound to one.");
+    }
+
+    private sealed class RepositoryRequiredQueryHandler<TQuery, TResponse> : IQueryHandler<TQuery, TResponse>
+        where TQuery : IQuery<TResponse>
+    {
+        public ValueTask<TResponse> Handle(TQuery query, CancellationToken cancellationToken) =>
+            throw new NotSupportedException($"{typeof(TQuery).Name} needs a repository; this provider is not bound to one.");
+    }
+
+    private sealed class RepositoryRequiredStreamQueryHandler<TQuery, TResponse> : IStreamQueryHandler<TQuery, TResponse>
+        where TQuery : IStreamQuery<TResponse>
+    {
+        public IAsyncEnumerable<TResponse> Handle(TQuery query, CancellationToken cancellationToken) =>
+            throw new NotSupportedException($"{typeof(TQuery).Name} needs a repository; this provider is not bound to one.");
+    }
+
     private sealed class NullBlobServiceFactory : IBlobServiceFactory
     {
         public Task<IBlobService> CreateAsync(

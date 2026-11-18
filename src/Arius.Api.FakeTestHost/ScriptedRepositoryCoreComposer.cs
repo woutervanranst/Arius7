@@ -2,6 +2,7 @@ using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
+using Arius.Core.Features.ContainerNamesQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
@@ -26,23 +27,7 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
         services.AddSingleton(gate);
         services.AddSingleton(new ScenarioContext(connection.RepositoryId));
 
-        // Register a NotConfigured stand-in for EVERY command/query/stream-query interface Arius.Core
-        // exposes up front — this list must track the handler set AddArius() wires in
-        // src/Arius.Core/ServiceCollectionExtensions.cs — because Mediator eagerly resolves every
-        // discovered handler on first Send/Publish, not just the one a scenario scripts (see
-        // NotConfiguredHandlers.cs for why). ArchiveCommand and RestoreCommand are scenario-scriptable
-        // but still need a baseline stand-in for runs that don't script them.
-        services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>, NotConfiguredCommandHandler<ArchiveCommand, ArchiveResult>>();
-        services.AddSingleton<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>, NotConfiguredCommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
-        services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>, NotConfiguredCommandHandler<RestoreCommand, RestoreResult>>();
-        services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>, NotConfiguredStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
-        services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>, NotConfiguredStreamQueryHandler<ListQuery, RepositoryEntry>>();
-        services.AddSingleton<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>, NotConfiguredStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>();
-        services.AddSingleton<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>, NotConfiguredStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
-        services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>, NotConfiguredQueryHandler<StatisticsQuery, RepositoryStatistics>>();
-        services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>, NotConfiguredQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
-        // ContainerNamesQueryHandler(IServiceProvider) needs no Core services, so its real (AddMediator-
-        // registered) handler resolves fine as-is — no stand-in required.
+        AddNotConfiguredStandIns(services);
 
         // Scenario overrides — registered after the stand-ins above, so they win (MS-DI resolves the LAST
         // registration for a given service type). A test that sets only one of Archive/Restore leaves the
@@ -62,5 +47,32 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
         }
 
         return Task.CompletedTask;
+    }
+
+    public void ComposeWithoutRepository(IServiceCollection services)
+    {
+        AddNotConfiguredStandIns(services);
+        services.AddSingleton<IStreamQueryHandler<ContainerNamesQuery, string>, ScriptedContainerNamesHandler>();
+    }
+
+    private static void AddNotConfiguredStandIns(IServiceCollection services)
+    {
+        // Register a NotConfigured stand-in for EVERY command/query/stream-query interface Arius.Core
+        // exposes up front — this list must track the handler set AddArius() wires in
+        // src/Arius.Core/ServiceCollectionExtensions.cs — because Mediator eagerly resolves every
+        // discovered handler on first Send/Publish, not just the one a scenario scripts (see
+        // NotConfiguredHandlers.cs for why). ArchiveCommand and RestoreCommand are scenario-scriptable
+        // but still need a baseline stand-in for runs that don't script them.
+        services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>, NotConfiguredCommandHandler<ArchiveCommand, ArchiveResult>>();
+        services.AddSingleton<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>, NotConfiguredCommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
+        services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>, NotConfiguredCommandHandler<RestoreCommand, RestoreResult>>();
+        services.AddSingleton<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>, NotConfiguredStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
+        services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>, NotConfiguredStreamQueryHandler<ListQuery, RepositoryEntry>>();
+        services.AddSingleton<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>, NotConfiguredStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>();
+        services.AddSingleton<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>, NotConfiguredStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
+        services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>, NotConfiguredQueryHandler<StatisticsQuery, RepositoryStatistics>>();
+        services.AddSingleton<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>, NotConfiguredQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
+        // ContainerNamesQueryHandler(IServiceProvider) needs no Core services, so its real (AddMediator-
+        // registered) handler resolves fine as-is — no stand-in required.
     }
 }

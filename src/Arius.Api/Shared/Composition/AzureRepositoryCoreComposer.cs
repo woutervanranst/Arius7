@@ -16,4 +16,10 @@ public sealed class AzureRepositoryCoreComposer(IBlobServiceFactory blobServiceF
         services.AddAzureBlobStorage();
         services.AddArius(blobContainer, connection.Passphrase, connection.AccountName, connection.Container);
     }
+
+    public void ComposeWithoutRepository(IServiceCollection services)
+    {
+        services.AddSingleton(blobServiceFactory);
+        services.AddAriusWithoutRepository();
+    }
 }

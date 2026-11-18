@@ -7,7 +7,6 @@ using Arius.Api.Features.Restore;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
 using Arius.Api.Shared.Jobs;
-using Arius.Core.Shared.Storage;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Shared.Hubs;
@@ -23,13 +22,12 @@ public sealed class JobsHub(
     JobRunner jobRunner,
     RestoreApprovalRegistry approvals,
     JobStateRegistry jobStates,
-    SecretProtector secrets,
-    IBlobServiceFactory blobServiceFactory) : Hub
+    SecretProtector secrets) : Hub
 {
     // ── Accounts ──────────────────────────────────────────────────────────────
 
     public IAsyncEnumerable<string> StreamContainers(long accountId, string? accountName, string? accountKey, CancellationToken cancellationToken)
-        => Features.Accounts.StreamContainers.HandleAsync(database, secrets, blobServiceFactory, accountId, accountName, accountKey, cancellationToken);
+        => Features.Accounts.StreamContainers.HandleAsync(database, secrets, registry, accountId, accountName, accountKey, cancellationToken);
 
     // ── Browse ────────────────────────────────────────────────────────────────
 
