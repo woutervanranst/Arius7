@@ -2,7 +2,9 @@ using Arius.Api.FakeTestHost;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +47,19 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
             accountId: accountId,
             localPath: localPath ?? Path.Combine(Path.GetTempPath(), $"arius-itest-src-{Guid.NewGuid():N}"),
             encryptedPassphrase: secrets.Protect("passphrase"));
+    }
+
+    /// <summary>An unstarted SignalR client for the in-process hub (long polling over the test server).</summary>
+    public HubConnection CreateHubConnection()
+    {
+        var handler = Server.CreateHandler();
+        return new HubConnectionBuilder()
+            .WithUrl("http://localhost/hubs/arius", o =>
+            {
+                o.HttpMessageHandlerFactory = _ => handler;
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .Build();
     }
 
     protected override void Dispose(bool disposing)

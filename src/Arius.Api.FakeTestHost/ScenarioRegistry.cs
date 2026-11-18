@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using Arius.Core.Features.ArchiveCommand;
+using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RestoreCommand;
+using Arius.Core.Features.SnapshotsListQuery;
+using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.Cost;
 using Mediator;
 
@@ -31,18 +34,38 @@ public sealed record RestoreScenario(
     public ConcurrentQueue<RestoreCommand> Received { get; } = new();
 }
 
+/// <summary>
+/// A scripted read side: what the repository's listing (<see cref="ListQuery"/>), snapshot list, latest snapshot
+/// version and statistics queries return (a <c>null</c> list streams nothing; <c>null</c> statistics throw). When <paramref name="ContainerMissing"/>
+/// building the repository's provider fails the way a not-yet-created container does
+/// (<see cref="Arius.Core.Shared.Storage.PreflightErrorKind.ContainerNotFound"/>).
+/// </summary>
+public sealed record ReadScenario(
+    IReadOnlyList<RepositoryEntry>? Entries = null,
+    IReadOnlyList<SnapshotInfo>? Snapshots = null,
+    RepositoryStatistics? Statistics = null,
+    string? LatestVersion = null,
+    bool ContainerMissing = false)
+{
+    /// <summary>Every query the scripted read handler received, in order, so a test can assert what the host asked Core.</summary>
+    public ConcurrentQueue<object> Received { get; } = new();
+}
+
 /// <summary>Holds the next scripted scenario for each repository. Set by tests, taken by the scripted handlers.</summary>
 public sealed class ScenarioRegistry
 {
     private readonly ConcurrentDictionary<long, ArchiveScenario> _archive = new();
     private readonly ConcurrentDictionary<long, RestoreScenario> _restore = new();
+    private readonly ConcurrentDictionary<long, ReadScenario> _read = new();
 
     public void SetArchive(long repositoryId, ArchiveScenario scenario) => _archive[repositoryId] = scenario;
     public void SetRestore(long repositoryId, RestoreScenario scenario) => _restore[repositoryId] = scenario;
+    public void SetRead(long repositoryId, ReadScenario scenario) => _read[repositoryId] = scenario;
 
     public ArchiveScenario? TakeArchive(long repositoryId) => _archive.TryGetValue(repositoryId, out var s) ? s : null;
     public RestoreScenario? TakeRestore(long repositoryId) => _restore.TryGetValue(repositoryId, out var s) ? s : null;
+    public ReadScenario? TakeRead(long repositoryId) => _read.TryGetValue(repositoryId, out var s) ? s : null;
 
     /// <summary>Test-only: clear all registered scenarios (cross-spec isolation in the hermetic suite).</summary>
-    public void Clear() { _archive.Clear(); _restore.Clear(); }
+    public void Clear() { _archive.Clear(); _restore.Clear(); _read.Clear(); }
 }
