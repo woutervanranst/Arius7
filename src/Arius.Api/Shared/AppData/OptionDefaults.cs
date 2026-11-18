@@ -5,6 +5,7 @@ namespace Arius.Api.Shared.AppData;
 /// properties (a run's own choice is layered on top by the caller). Pure model and rules; storage lives in
 /// <see cref="AppDatabase"/>.
 /// </summary>
+[SharedWithinAssembly] // the defaults hierarchy is read by several feature areas
 internal static class OptionDefaults
 {
     public const string SourceFactory    = "factory";
