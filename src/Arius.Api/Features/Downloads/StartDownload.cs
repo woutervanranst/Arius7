@@ -1,4 +1,6 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
+using Arius.Api.Shared.Hubs;
 using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.FileSystem;
 using Microsoft.AspNetCore.SignalR;
@@ -7,9 +9,9 @@ namespace Arius.Api.Features.Downloads;
 
 /// <summary>Hub <c>StartDownload</c> — starts a download of the collected files from the pinned snapshot version; the
 /// files are restored into the job's staging folder for the browser to fetch.</summary>
-internal static class StartDownload
+public sealed class StartDownload(IHubContext<JobsHub> hub, AppDatabase database, JobRunner jobRunner) : IHubHandler
 {
-    public static async Task<string> HandleAsync(Hub hub, AppDatabase database, JobRunner jobRunner, long repositoryId, string? version, DownloadFileRequest[]? files)
+    public async Task<string> HandleAsync(string connectionId, long repositoryId, string? version, DownloadFileRequest[]? files)
     {
         if (string.IsNullOrWhiteSpace(version))
             throw new HubException("Choose a snapshot to download from.");
@@ -33,7 +35,7 @@ internal static class StartDownload
             throw new HubException("A job is already running for this repository.");
 
         var jobId = Guid.NewGuid().ToString();
-        await hub.Groups.AddToGroupAsync(hub.Context.ConnectionId, jobId);
+        await hub.Groups.AddToGroupAsync(connectionId, jobId);
         _ = jobRunner.RunDownloadAsync(repositoryId, jobId, version, collected);
         return jobId;
     }

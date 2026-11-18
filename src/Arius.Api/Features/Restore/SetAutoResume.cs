@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
 using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Restore;
@@ -7,9 +8,9 @@ namespace Arius.Api.Features.Restore;
 /// <summary>Hub <c>SetAutoResume</c> — toggles auto-resume for a rehydrating restore. OFF stops the poller
 /// re-driving it (status stays rehydrating; the UI shows "≈ hydrated by" + a manual Restore-now). ON re-drives
 /// immediately.</summary>
-internal static class SetAutoResume
+public sealed class SetAutoResume(AppDatabase database, JobRunner jobRunner) : IHubHandler
 {
-    public static Task HandleAsync(AppDatabase database, JobRunner jobRunner, string jobId, bool autoResume)
+    public Task HandleAsync(string jobId, bool autoResume)
     {
         var job = database.GetJob(jobId);
         if (job?.StateJson is null) return Task.CompletedTask;

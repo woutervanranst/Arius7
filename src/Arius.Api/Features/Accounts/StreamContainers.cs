@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Hosting;
 using Arius.Core.Features.ContainerNamesQuery;
 using Mediator;
 
@@ -10,12 +11,9 @@ namespace Arius.Api.Features.Accounts;
 /// Hub <c>StreamContainers</c> — streams the container names in an account (Add-existing wizard). Pass
 /// <c>accountId</c> &gt; 0 to use a configured account's stored key, or 0 with an explicit name + key for a new account.
 /// </summary>
-internal static class StreamContainers
+public sealed class StreamContainers(AppDatabase database, SecretProtector secrets, RepositoryProviderRegistry registry) : IHubHandler
 {
-    public static async IAsyncEnumerable<string> HandleAsync(
-        AppDatabase database,
-        SecretProtector secrets,
-        RepositoryProviderRegistry registry,
+    public async IAsyncEnumerable<string> HandleAsync(
         long accountId,
         string? accountName,
         string? accountKey,
