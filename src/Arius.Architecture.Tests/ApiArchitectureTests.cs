@@ -115,6 +115,22 @@ public class ApiArchitectureTests
     }
 
     [Test]
+    public void Hub_Handler_Parameters_Should_Be_Marked_FromServices()
+    {
+        // SignalR infers a service only for a hub-method parameter that carries no attributes, and the compiler
+        // adds a nullability attribute to some. Unmarked, such a handler becomes an expected wire argument and
+        // every call from the client fails on the argument count.
+        var unmarked = typeof(JobsHub).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .SelectMany(method => method.GetParameters()
+                .Where(parameter => typeof(IHubHandler).IsAssignableFrom(parameter.ParameterType))
+                .Where(parameter => parameter.GetCustomAttribute<Microsoft.AspNetCore.Mvc.FromServicesAttribute>() is null)
+                .Select(parameter => $"{method.Name}({parameter.ParameterType.FullName} {parameter.Name})"))
+            .ToList();
+
+        ShouldBeEmpty(unmarked, "A hub handler parameter on JobsHub must carry [FromServices]:");
+    }
+
+    [Test]
     public void Shared_Should_Not_Depend_On_Features()
     {
         var violations = new List<string>();
