@@ -1,14 +1,17 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Schedules;
 
 /// <summary><c>DELETE /repos/{id}/schedules/{scheduleId}</c></summary>
-internal static class DeleteSchedule
+internal sealed class DeleteSchedule(AppDatabase db) : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapDelete("/repos/{id:long}/schedules/{scheduleId:long}", (long id, long scheduleId, AppDatabase db) =>
-        {
-            db.DeleteSchedule(scheduleId);
-            return Results.NoContent();
-        });
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapDelete("/repos/{id:long}/schedules/{scheduleId:long}", (long id, long scheduleId, DeleteSchedule endpoint) => endpoint.Handle(id, scheduleId));
+
+    public IResult Handle(long id, long scheduleId)
+    {
+        db.DeleteSchedule(scheduleId);
+        return Results.NoContent();
+    }
 }

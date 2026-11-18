@@ -1,10 +1,13 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Defaults;
 
 /// <summary><c>GET /settings/defaults</c></summary>
-internal static class GetGlobalDefaults
+internal sealed class GetGlobalDefaults(AppDatabase db) : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapGet("/settings/defaults", (AppDatabase db) => Results.Ok(DefaultsEndpoints.ToGlobalDto(db)));
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapGet("/settings/defaults", (GetGlobalDefaults endpoint) => endpoint.Handle());
+
+    public IResult Handle() => Results.Ok(DefaultsEndpoints.ToGlobalDto(db));
 }

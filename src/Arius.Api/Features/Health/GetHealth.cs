@@ -1,8 +1,12 @@
+using Arius.Api.Shared.Hosting;
+
 namespace Arius.Api.Features.Health;
 
 /// <summary><c>GET /health</c> — liveness probe.</summary>
-internal static class GetHealth
+internal sealed class GetHealth : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapGet("/health", (GetHealth endpoint) => endpoint.Handle());
+
+    public IResult Handle() => Results.Ok(new { status = "ok" });
 }

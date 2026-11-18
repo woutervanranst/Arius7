@@ -1,11 +1,14 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Schedules;
 
 /// <summary><c>GET /repos/{id}/schedules</c></summary>
-internal static class ListSchedules
+internal sealed class ListSchedules(AppDatabase db) : IEndpoint
 {
-    public static void Map(IEndpointRouteBuilder app) =>
-        app.MapGet("/repos/{id:long}/schedules", (long id, AppDatabase db) =>
-            db.ListSchedules(id).Select(ScheduleEndpoints.ToDto).ToList());
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapGet("/repos/{id:long}/schedules", (long id, ListSchedules endpoint) => endpoint.Handle(id));
+
+    public List<ScheduleDto> Handle(long id) =>
+        db.ListSchedules(id).Select(ScheduleEndpoints.ToDto).ToList();
 }

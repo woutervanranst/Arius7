@@ -5,20 +5,9 @@ using Mediator;
 
 namespace Arius.Api.Features.Repositories;
 
-/// <summary>Repository CRUD over the app database: the <c>/repos</c> route group.</summary>
+/// <summary>Helpers shared by the <c>/repos</c> endpoints.</summary>
 internal static class RepositoryEndpoints
 {
-    public static void MapRepositoryEndpoints(this IEndpointRouteBuilder app)
-    {
-        var group = app.MapGroup("/repos");
-
-        ListRepositories.Map(group);
-        GetRepository.Map(group);
-        CreateRepository.Map(group);
-        UpdateRepository.Map(group);
-        DeleteRepository.Map(group);
-    }
-
     /// <summary>
     /// Builds a repository DTO, resolving its region through a DB-backed read-through cache.
     /// </summary>
