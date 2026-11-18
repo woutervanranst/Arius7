@@ -18,12 +18,16 @@ using Mediator;
 
 namespace Arius.Api.FakeTestHost;
 
-/// <summary>Test composer: registers a scripted Core (scenario-driven command handlers + a deterministic
+/// <summary>Test composer: registers a scripted Core (scenario-driven command and query handlers + a deterministic
 /// cost estimator) into the per-repo provider. Never opens a real container.</summary>
 public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, ScenarioGate gate) : IRepositoryCoreComposer
 {
     public Task ComposeAsync(IServiceCollection services, RepositoryConnection connection, PreflightMode mode, CancellationToken cancellationToken)
     {
+        var read = scenarios.TakeRead(connection.RepositoryId);
+        if (read is { ContainerMissing: true })
+            throw new PreflightException(PreflightErrorKind.ContainerNotFound, "scripted", connection.AccountName, connection.Container, statusCode: 404);
+
         services.AddSingleton<IStorageCostEstimator>(new ScriptedStorageCostEstimator());
         // Per-repo gate + context so the scripted handlers can hold a run until a control endpoint releases it.
         services.AddSingleton(gate);
@@ -46,6 +50,15 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
         {
             services.AddSingleton(restore);
             services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>, ScriptedRestoreHandler>();
+        }
+
+        if (read is not null)
+        {
+            services.AddSingleton(read);
+            services.AddSingleton<IStreamQueryHandler<ListQuery, RepositoryEntry>, ScriptedReadHandler>();
+            services.AddSingleton<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>, ScriptedReadHandler>();
+            services.AddSingleton<IQueryHandler<LatestSnapshotVersionQuery, string?>, ScriptedReadHandler>();
+            services.AddSingleton<IQueryHandler<StatisticsQuery, RepositoryStatistics>, ScriptedReadHandler>();
         }
 
         return Task.CompletedTask;
