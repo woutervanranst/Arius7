@@ -1,7 +1,9 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
+using Arius.Api.Shared.Jobs;
 using Cronos;
 
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Features.Schedules;
 
 /// <summary>
 /// Fires cron archive schedules. Wakes every minute, computes each enabled schedule's next run with
@@ -27,7 +29,7 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
     private void Tick()
     {
         // Resolve scoped-ish singletons fresh each tick (all are singletons here).
-        var database = services.GetRequiredService<AppData.AppDatabase>();
+        var database = services.GetRequiredService<Arius.Api.Shared.AppData.AppDatabase>();
         var runner = services.GetRequiredService<JobRunner>();
         var now = DateTimeOffset.UtcNow;
 

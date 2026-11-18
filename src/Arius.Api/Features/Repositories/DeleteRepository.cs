@@ -1,8 +1,8 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Downloads;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Downloads;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Repositories;
 
 /// <summary><c>DELETE /repos/{id}</c></summary>
 internal static class DeleteRepository

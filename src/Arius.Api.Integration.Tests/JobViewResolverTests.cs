@@ -1,4 +1,5 @@
-using Arius.Api.Jobs;
+using Arius.Api.Features.Jobs;
+using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Integration.Tests;
 

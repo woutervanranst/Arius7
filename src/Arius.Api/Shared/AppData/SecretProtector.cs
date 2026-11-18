@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 
-namespace Arius.Api.AppData;
+namespace Arius.Api.Shared.AppData;
 
 /// <summary>
 /// Encrypts account keys and passphrases at rest in the app SQLite, using ASP.NET Core Data

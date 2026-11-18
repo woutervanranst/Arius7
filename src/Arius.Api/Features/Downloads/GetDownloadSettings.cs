@@ -1,6 +1,6 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary><c>GET /settings/downloads</c></summary>
 internal static class GetDownloadSettings

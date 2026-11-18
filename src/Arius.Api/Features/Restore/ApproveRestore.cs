@@ -1,7 +1,7 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Restore;
 
 /// <summary>Hub <c>ApproveRestore</c> — answers the restore cost modal. An <c>awaiting-cost</c> job is always LIVE
 /// within a process lifetime (its run blocks in the approval callback), so this only ever resolves an in-run wait; a

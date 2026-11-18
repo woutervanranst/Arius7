@@ -1,5 +1,5 @@
-using Arius.Api.Hubs;
-using Arius.Api.Jobs;
+using Arius.Api.Features.Restore;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Api.Tests.Jobs;

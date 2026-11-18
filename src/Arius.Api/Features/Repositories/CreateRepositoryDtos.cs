@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Repositories;
 
 public sealed record CreateRepositoryRequest(
     long    AccountId,

@@ -1,9 +1,9 @@
 using System.IO.Compression;
-using Arius.Api.AppData;
-using Arius.Api.Downloads;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
 using Microsoft.Net.Http.Headers;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary><c>GET /jobs/{id}/download/content?set=all|remaining</c> — serves the staged files: one file as itself
 /// (range requests supported), several as one streamed ZIP.</summary>

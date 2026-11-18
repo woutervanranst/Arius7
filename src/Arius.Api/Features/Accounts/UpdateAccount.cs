@@ -1,8 +1,7 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Accounts;
 
 /// <summary><c>PATCH /accounts/{id}</c> — account-flyout edit: rotate the key.</summary>
 internal static class UpdateAccount

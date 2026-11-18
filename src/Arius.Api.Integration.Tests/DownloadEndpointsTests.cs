@@ -1,12 +1,12 @@
 using System.IO.Compression;
-using System.Net;
 using System.Net.Http.Json;
+using System.Net;
 using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Downloads;
 using Arius.Api.FakeTestHost;
 using Arius.Api.Integration.Tests.Harness;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;

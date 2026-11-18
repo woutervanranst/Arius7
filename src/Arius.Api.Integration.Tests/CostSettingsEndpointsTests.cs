@@ -1,7 +1,7 @@
-using System.Net;
 using System.Net.Http.Json;
-using Arius.Api.AppData;
+using System.Net;
 using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Shared.AppData;
 
 namespace Arius.Api.Integration.Tests;
 

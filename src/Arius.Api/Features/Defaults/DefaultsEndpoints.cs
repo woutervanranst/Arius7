@@ -1,7 +1,6 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Defaults;
 
 /// <summary>Global and per-repository archive/restore option defaults.</summary>
 internal static class DefaultsEndpoints

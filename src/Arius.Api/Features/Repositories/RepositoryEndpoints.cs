@@ -1,10 +1,9 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Arius.Core.Features.StorageAccountInfoQuery;
 using Mediator;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Repositories;
 
 /// <summary>Repository CRUD over the app database: the <c>/repos</c> route group.</summary>
 internal static class RepositoryEndpoints

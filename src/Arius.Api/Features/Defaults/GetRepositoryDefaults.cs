@@ -1,6 +1,6 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Defaults;
 
 /// <summary><c>GET /repos/{id}/defaults</c></summary>
 internal static class GetRepositoryDefaults

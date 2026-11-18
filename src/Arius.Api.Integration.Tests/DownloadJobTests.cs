@@ -1,14 +1,15 @@
-using Arius.Api.AppData;
-using Arius.Api.Downloads;
 using Arius.Api.FakeTestHost;
+using Arius.Api.Features.Downloads;
 using Arius.Api.Integration.Tests.Harness;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.RestoreCommand;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests;
@@ -207,7 +208,7 @@ public class DownloadJobTests
             .Build();
         await conn.StartAsync();
 
-        Contracts.DownloadFileRequest[] files = path is null ? [] : [new Contracts.DownloadFileRequest(path, 1)];
+        DownloadFileRequest[] files = path is null ? [] : [new DownloadFileRequest(path, 1)];
         var ex = await Assert.ThrowsAsync<HubException>(() => conn.InvokeAsync<string>("StartDownload", repoId, version, files));
 
         await Assert.That(ex!.Message).Contains(expectedMessage);

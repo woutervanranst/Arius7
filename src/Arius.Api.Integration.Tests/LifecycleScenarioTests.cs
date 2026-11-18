@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
+using Arius.Api.Features.Jobs;
 using Arius.Api.Integration.Tests.Harness;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests;

@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
+using Arius.Api.Features.Restore;
+using Arius.Api.Shared.Hubs;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Jobs;
 
 /// <summary>
 /// Parks a restore's <c>ConfirmRehydration</c> callback until the client answers the cost modal

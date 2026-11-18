@@ -1,7 +1,7 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Repositories;
 
 /// <summary><c>GET /repos</c></summary>
 internal static class ListRepositories

@@ -1,8 +1,8 @@
-using Arius.Api.AppData;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 using Microsoft.AspNetCore.SignalR;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Archive;
 
 /// <summary>Hub <c>StartArchive</c> — starts an archive; the caller's connection joins the job group before events flow.</summary>
 internal static class StartArchive

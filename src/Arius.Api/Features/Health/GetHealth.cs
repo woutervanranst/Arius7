@@ -1,4 +1,4 @@
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Health;
 
 /// <summary><c>GET /health</c> — liveness probe.</summary>
 internal static class GetHealth

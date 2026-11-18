@@ -1,6 +1,4 @@
-using Arius.Api.Contracts;
-
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Filesystem;
 
 /// <summary>
 /// <c>GET /fs/list</c> — server-side directory browsing for the local-path picker. Lists directories <b>as the

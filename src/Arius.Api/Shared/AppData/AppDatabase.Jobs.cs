@@ -1,6 +1,8 @@
+using Arius.Api.Features.Jobs;
+using Arius.Api.Shared.Jobs;
 using Microsoft.Data.Sqlite;
 
-namespace Arius.Api.AppData;
+namespace Arius.Api.Shared.AppData;
 
 public sealed partial class AppDatabase
 {
@@ -23,7 +25,7 @@ public sealed partial class AppDatabase
 
     /// <summary>Transitions a job to a terminal status (<c>completed</c>/<c>failed</c>/<c>cancelled</c>/<c>interrupted</c>).
     /// Guarded: a row already in a terminal status is left untouched — this is what stops a late-arriving cancel
-    /// (<see cref="Arius.Api.Hubs.JobsHub.CancelJob"/>'s fall-through branch) from racing the rehydration poller's
+    /// (<see cref="Arius.Api.Shared.Hubs.JobsHub.CancelJob"/>'s fall-through branch) from racing the rehydration poller's
     /// completion and clobbering an already-<c>completed</c> row back to <c>cancelled</c>/pct 0. Returns <c>true</c>
     /// when the guarded UPDATE applied the transition, <c>false</c> when the row was already terminal (guard hit) —
     /// callers that must not act on a no-op transition (e.g. broadcasting a terminal Done) should check this.</summary>
@@ -59,8 +61,8 @@ public sealed partial class AppDatabase
 
     /// <summary>Guarded flip of a parked restore to <c>running</c> for a resume: applies only while the row is still
     /// <c>rehydrating</c>/<c>awaiting-cost</c>. Returns <c>false</c> when the row was terminalized in the meantime
-    /// (e.g. a concurrent cancel via <see cref="Arius.Api.Hubs.JobsHub.CancelJob"/>'s parked branch), so
-    /// <see cref="Arius.Api.Jobs.JobRunner.ResumeRestoreAsync"/> can bail instead of resurrecting a cancelled job to
+    /// (e.g. a concurrent cancel via <see cref="Arius.Api.Shared.Hubs.JobsHub.CancelJob"/>'s parked branch), so
+    /// <see cref="Arius.Api.Shared.Jobs.JobRunner.ResumeRestoreAsync"/> can bail instead of resurrecting a cancelled job to
     /// running and driving it to completion. Unlike <see cref="SetJobStatus"/> this is conditional.</summary>
     public bool TryResumeToRunning(string id, string? detail = null)
     {
@@ -99,7 +101,7 @@ public sealed partial class AppDatabase
     }
 
     /// <summary>Jobs stuck at <c>awaiting-cost</c> whose <c>started_at</c> predates <paramref name="olderThan"/> —
-    /// the abandoned-cost-prompt work list for <see cref="Arius.Api.Jobs.StaleApprovalSweepService"/>. Never returns
+    /// the abandoned-cost-prompt work list for <see cref="Arius.Api.Features.Restore.StaleApprovalSweepService"/>. Never returns
     /// <c>rehydrating</c> rows (those legitimately live for hours).</summary>
     public IReadOnlyList<JobRecord> ListStaleAwaitingCost(DateTimeOffset olderThan)
     {

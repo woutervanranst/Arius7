@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Restore;
 
 /// <summary>Hub <c>SetAutoResume</c> — toggles auto-resume for a rehydrating restore. OFF stops the poller
 /// re-driving it (status stays rehydrating; the UI shows "≈ hydrated by" + a manual Restore-now). ON re-drives

@@ -1,4 +1,4 @@
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Hosting;
 
 /// <summary>Shared background-loop helper: await the next tick, returning <c>false</c> (rather than throwing)
 /// when the host is stopping. Used by every <see cref="Microsoft.Extensions.Hosting.BackgroundService"/> loop.</summary>

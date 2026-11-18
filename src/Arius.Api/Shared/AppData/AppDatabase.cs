@@ -1,6 +1,7 @@
+using Arius.Api.Features.Statistics;
 using Microsoft.Data.Sqlite;
 
-namespace Arius.Api.AppData;
+namespace Arius.Api.Shared.AppData;
 
 /// <summary>
 /// The Arius.Api application database (separate from Arius.Core's chunk-index cache): storage

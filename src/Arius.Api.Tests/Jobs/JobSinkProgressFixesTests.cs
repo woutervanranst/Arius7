@@ -1,4 +1,4 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.Hashes;
 
 namespace Arius.Api.Tests.Jobs;

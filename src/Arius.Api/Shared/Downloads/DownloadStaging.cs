@@ -1,4 +1,4 @@
-namespace Arius.Api.Downloads;
+namespace Arius.Api.Shared.Downloads;
 
 /// <summary>
 /// The per-job staging folders (<c>{root}/{jobId}</c>) that a download job restores into and the browser then

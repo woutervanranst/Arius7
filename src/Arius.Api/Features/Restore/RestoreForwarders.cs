@@ -1,8 +1,8 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.RestoreCommand;
 using Mediator;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Restore;
 
 // Forwarders for Arius.Core restore events → the running job's SignalR group.
 

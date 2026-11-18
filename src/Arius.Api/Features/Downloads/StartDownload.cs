@@ -1,10 +1,9 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.FileSystem;
 using Microsoft.AspNetCore.SignalR;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary>Hub <c>StartDownload</c> — starts a download of the collected files from the pinned snapshot version; the
 /// files are restored into the job's staging folder for the browser to fetch.</summary>

@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Filesystem;
 
 /// <summary>A directory as the Arius.Api host/container sees it.</summary>
 public sealed record FsEntryDto(string Name, string Path);

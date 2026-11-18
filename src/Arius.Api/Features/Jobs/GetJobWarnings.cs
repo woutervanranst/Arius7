@@ -1,8 +1,7 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary><c>GET /jobs/{id}/warnings</c> — the job's verbatim warnings tail.</summary>
 internal static class GetJobWarnings

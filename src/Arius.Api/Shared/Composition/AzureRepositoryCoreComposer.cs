@@ -1,9 +1,9 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 using Arius.AzureBlob;
-using Arius.Core;
 using Arius.Core.Shared.Storage;
+using Arius.Core;
 
-namespace Arius.Api.Composition;
+namespace Arius.Api.Shared.Composition;
 
 /// <summary>Production composer: opens the real Azure container and registers the real Arius.Core graph.</summary>
 public sealed class AzureRepositoryCoreComposer(IBlobServiceFactory blobServiceFactory) : IRepositoryCoreComposer

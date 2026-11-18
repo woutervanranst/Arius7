@@ -1,4 +1,4 @@
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Jobs;
 
 public sealed record JobDto(
     string          Id,

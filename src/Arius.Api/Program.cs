@@ -1,5 +1,6 @@
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Arius.Api;
-using Arius.Api.Composition;
 using Arius.Core.Shared;
 using Serilog;
 

@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary>Hub <c>DetachFromJob</c> — leaves the job's SignalR group (the client stopped watching it).</summary>
 internal static class DetachFromJob

@@ -1,4 +1,4 @@
-using Arius.Api.Endpoints;
+using Arius.Api.Features.Downloads;
 using Microsoft.Net.Http.Headers;
 using Shouldly;
 

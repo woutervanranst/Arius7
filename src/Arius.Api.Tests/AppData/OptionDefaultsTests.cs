@@ -1,4 +1,4 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 using Shouldly;
 
 namespace Arius.Api.Tests.AppData;

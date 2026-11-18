@@ -1,7 +1,6 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Accounts;
 
 /// <summary>Storage-account CRUD over the app database: the <c>/accounts</c> route group.</summary>
 internal static class AccountEndpoints

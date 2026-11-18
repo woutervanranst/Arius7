@@ -1,11 +1,11 @@
-using Arius.Api.AppData;
-using Arius.Api.Composition;
 using Arius.Api.FakeTestHost;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests.Harness;
 

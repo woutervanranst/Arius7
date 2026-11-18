@@ -1,7 +1,6 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Repositories;
 
 /// <summary><c>POST /repos</c></summary>
 internal static class CreateRepository

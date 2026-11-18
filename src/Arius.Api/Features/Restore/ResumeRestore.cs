@@ -1,6 +1,6 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Restore;
 
 /// <summary>Hub <c>ResumeRestore</c> — manual "Restore now" for a rehydrating restore whose auto-resume is off.</summary>
 internal static class ResumeRestore

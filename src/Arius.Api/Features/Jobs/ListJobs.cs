@@ -1,7 +1,6 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
+using Arius.Api.Shared.AppData;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary><c>GET /jobs</c> — jobs history, optionally filtered by repository and status.</summary>
 internal static class ListJobs

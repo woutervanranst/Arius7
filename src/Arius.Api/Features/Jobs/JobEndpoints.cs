@@ -1,4 +1,4 @@
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary>Jobs history and single-job detail.</summary>
 internal static class JobEndpoints

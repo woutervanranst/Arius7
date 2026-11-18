@@ -1,7 +1,9 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Downloads;
-using Arius.Api.Jobs;
+using Arius.Api.Features.Archive;
+using Arius.Api.Features.Downloads;
+using Arius.Api.Features.Restore;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Api.FakeTestHost;

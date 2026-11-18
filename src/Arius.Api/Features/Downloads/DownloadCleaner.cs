@@ -1,6 +1,7 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
 
-namespace Arius.Api.Downloads;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary>
 /// Deletes download staging folders. A folder is removable when its job row is gone (an orphan) or terminal —

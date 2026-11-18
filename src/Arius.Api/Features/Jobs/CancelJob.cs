@@ -1,6 +1,6 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary>Hub <c>CancelJob</c> — requests cancellation of a job. A job parked at the cost prompt is cancelled by
 /// resolving its wait as a decline (the restore run's decline branch marks it <c>cancelled</c>). A LIVE job with no

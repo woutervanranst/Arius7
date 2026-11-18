@@ -1,8 +1,8 @@
 using System.Runtime.CompilerServices;
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Accounts;
 
 /// <summary>
 /// Hub <c>StreamContainers</c> — streams the container names in an account (Add-existing wizard). Pass

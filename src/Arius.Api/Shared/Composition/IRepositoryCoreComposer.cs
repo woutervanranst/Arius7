@@ -1,7 +1,7 @@
-using Arius.Api.AppData;
+using Arius.Api.Shared.AppData;
 using Arius.Core.Shared.Storage;
 
-namespace Arius.Api.Composition;
+namespace Arius.Api.Shared.Composition;
 
 /// <summary>
 /// Registers the per-repository Arius.Core service graph (command/query handlers + the storage

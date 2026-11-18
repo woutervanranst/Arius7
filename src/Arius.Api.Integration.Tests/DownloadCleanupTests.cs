@@ -1,9 +1,9 @@
-using System.Net;
 using System.Net.Http.Json;
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Downloads;
+using System.Net;
+using Arius.Api.Features.Downloads;
 using Arius.Api.Integration.Tests.Harness;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests;

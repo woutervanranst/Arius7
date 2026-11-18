@@ -1,4 +1,4 @@
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Features.Restore;
 
 /// <summary>Adaptive rehydration re-drive cadence. Pure, clock-injected so it is unit-testable.
 /// High: every 15 min from start. Standard: quiet for the first ~10 h (rehydration can't finish sooner), then

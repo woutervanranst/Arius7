@@ -1,4 +1,4 @@
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Jobs;
 
 /// <summary>Absolute-state progress snapshot for a job — the payload for the coalesced Progress emit and for
 /// snapshot-on-attach. Everything is a total, so a consumer applies latest-wins with no accumulation.</summary>

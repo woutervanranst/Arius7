@@ -1,5 +1,5 @@
-using Arius.Api.AppData;
-using Arius.Api.Endpoints;
+using Arius.Api.Features.Repositories;
+using Arius.Api.Shared.AppData;
 using Arius.Core.Features.StorageAccountInfoQuery;
 using Microsoft.Data.Sqlite;
 using Shouldly;

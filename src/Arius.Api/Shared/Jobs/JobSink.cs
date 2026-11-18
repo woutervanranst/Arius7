@@ -1,9 +1,9 @@
-using Arius.Api.Contracts;
-using Arius.Api.Hubs;
+using Arius.Api.Features.Jobs;
+using Arius.Api.Shared.Hubs;
 using Arius.Core.Shared.Hashes;
 using Microsoft.AspNetCore.SignalR;
 
-namespace Arius.Api.Jobs;
+namespace Arius.Api.Shared.Jobs;
 
 /// <summary>
 /// Per-job channel to the client. Registered as a singleton inside a job's own service provider, so

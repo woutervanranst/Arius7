@@ -1,7 +1,7 @@
-using Arius.Api.AppData;
-using Arius.Api.Downloads;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
 
-namespace Arius.Api.Endpoints;
+namespace Arius.Api.Features.Downloads;
 
 /// <summary><c>POST /jobs/{id}/download/cleanup</c> — deletes a finished download's staging folder.</summary>
 internal static class CleanupDownload

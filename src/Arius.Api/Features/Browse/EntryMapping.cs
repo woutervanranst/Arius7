@@ -1,6 +1,6 @@
 using Arius.Core.Features.ListQuery;
 
-namespace Arius.Api.Contracts;
+namespace Arius.Api.Features.Browse;
 
 internal static class EntryMapping
 {

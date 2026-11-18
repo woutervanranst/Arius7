@@ -1,4 +1,4 @@
-using Arius.Api.Jobs;
+using Arius.Api.Shared.Jobs;
 using Shouldly;
 
 namespace Arius.Api.Tests.Jobs;

@@ -1,9 +1,8 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Jobs;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Jobs;
 using Microsoft.AspNetCore.SignalR;
 
-namespace Arius.Api.Hubs;
+namespace Arius.Api.Features.Jobs;
 
 /// <summary>Hub <c>AttachToJob</c> — joins the job's SignalR group and returns its current state: live from the
 /// registry if the job is running, else reconstructed from persisted state_json for a parked/finished job.

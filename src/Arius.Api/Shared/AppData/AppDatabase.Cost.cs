@@ -1,6 +1,7 @@
+using Arius.Api.Features.Cost;
 using Microsoft.Data.Sqlite;
 
-namespace Arius.Api.AppData;
+namespace Arius.Api.Shared.AppData;
 
 public sealed partial class AppDatabase
 {
