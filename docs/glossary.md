@@ -339,7 +339,8 @@ resolve/create/list in `SnapshotService`
 files into a per-job staging folder on the server so the browser can download them: one
 file as itself, several as a ZIP built on the fly. It is the restore flow with a different
 destination. See [ADR-0026](decisions/adr-0026-browser-downloads-staged-by-a-download-job.md).
-*Code:* `JobRunner.RunDownloadAsync` (`src/Arius.Api/Jobs/JobRunner.cs`), started by
+*Code:* `JobRunner.RunDownloadAsync` (`src/Arius.Api/Shared/Jobs/JobRunner.cs`), started by
 `JobsHub.StartDownload`; staging in `DownloadStaging`
-(`src/Arius.Api/Downloads/DownloadStaging.cs`); serving in `DownloadEndpoints`.
+(`src/Arius.Api/Shared/Downloads/DownloadStaging.cs`); serving in `DownloadEndpoints`
+(`src/Arius.Api/Features/Downloads/`).
 Design: [Web host](design/hosts/web.md#download-jobs).

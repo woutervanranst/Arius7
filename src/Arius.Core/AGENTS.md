@@ -49,7 +49,9 @@ and **explicit handler factories** (handlers take per-repository `accountName`/
 are singletons scoped to that provider. **`AddMediator()` is intentionally NOT called
 here** — the source generator must run in the outermost assembly (a host or test
 project), so the host calls it. Adding a handler that needs account/container? Register a
-factory here too.
+factory here too. `AddAriusWithoutRepository()` is the repository-less variant: it registers only
+`ContainerNamesQuery` plus fail-fast stand-ins for every repository-bound handler (for a host's
+account-level requests before a repository exists); a new repository-bound handler needs a stand-in there too.
 
 ## Build & test (this project only)
 
