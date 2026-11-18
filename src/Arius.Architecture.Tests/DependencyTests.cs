@@ -69,6 +69,7 @@ public class DependencyTests
         {
             typeof(AzureBlob.AssemblyMarker).Assembly,
             typeof(Cli.AssemblyMarker).Assembly,
+            typeof(Api.AssemblyMarker).Assembly,
         }
         .SelectMany(assembly => assembly.GetTypes())
         .Where(type => type is { IsClass: true, IsAbstract: false })

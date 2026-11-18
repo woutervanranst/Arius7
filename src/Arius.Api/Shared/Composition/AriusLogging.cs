@@ -18,6 +18,7 @@ namespace Arius.Api.Shared.Composition;
 ///   delete to release the file handle.</item>
 /// </list>
 /// </summary>
+[SharedWithinAssembly] // used by the composition root (Program, AriusApiHost)
 internal static class AriusLogging
 {
     private static readonly ExpressionTemplate LineTemplate = new(AriusLogConfig.LineTemplate);
