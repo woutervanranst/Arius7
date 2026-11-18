@@ -1,6 +1,7 @@
 using System.Reflection;
 using ArchUnitNET.Loader;
 using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Hosting;
 using Arius.Api.Shared.Hubs;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
@@ -12,7 +13,7 @@ namespace Arius.Architecture.Tests;
 /// infrastructure, reaching Arius.Core only through its features.
 /// Blind spot: ArchUnitNET does not see what the body of an <c>async IAsyncEnumerable</c> method uses,
 /// so the hub's streaming features (StreamContainers, StreamEntries, SearchAll) are checked on their
-/// signatures only. Endpoint lambdas are covered.
+/// signatures and constructor dependencies only. Endpoint methods are covered.
 /// </summary>
 public class ApiArchitectureTests
 {
@@ -98,6 +99,19 @@ public class ApiArchitectureTests
         }
 
         ShouldBeEmpty(violations, "A feature area may only use its own types and Shared; move what two areas need to Shared:");
+    }
+
+    [Test]
+    public void Endpoints_And_Hub_Handlers_Should_Live_In_Features()
+    {
+        var misplaced = ApiAssembly.GetTypes()
+            .Where(type => type is { IsClass: true, IsAbstract: false })
+            .Where(type => typeof(IEndpoint).IsAssignableFrom(type) || typeof(IHubHandler).IsAssignableFrom(type))
+            .Where(type => FeatureArea(type.Namespace ?? string.Empty) is null)
+            .Select(type => type.FullName!)
+            .ToList();
+
+        ShouldBeEmpty(misplaced, "An IEndpoint or IHubHandler is a vertical slice and belongs in a feature area:");
     }
 
     [Test]
