@@ -1,9 +1,11 @@
+using Arius.Api.Shared.Hosting;
+using Arius.Api.Shared.Hubs;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Features.Jobs;
 
 /// <summary>Hub <c>DetachFromJob</c> — leaves the job's SignalR group (the client stopped watching it).</summary>
-internal static class DetachFromJob
+public sealed class DetachFromJob(IHubContext<JobsHub> hub) : IHubHandler
 {
-    public static Task HandleAsync(Hub hub, string jobId) => hub.Groups.RemoveFromGroupAsync(hub.Context.ConnectionId, jobId);
+    public Task HandleAsync(string connectionId, string jobId) => hub.Groups.RemoveFromGroupAsync(connectionId, jobId);
 }

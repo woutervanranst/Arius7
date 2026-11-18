@@ -1,3 +1,4 @@
+using Arius.Api.Shared.Hosting;
 using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Jobs;
@@ -7,9 +8,9 @@ namespace Arius.Api.Features.Jobs;
 /// pending approval is cancelled cooperatively (its token trips at the next checkpoint). A PARKED job
 /// (awaiting-cost / rehydrating, no live run) releases any waiting approval and is marked terminal so the poller
 /// skips it and the single-active-job guard is freed.</summary>
-internal static class CancelJob
+public sealed class CancelJob(RestoreApprovalRegistry approvals, JobStateRegistry jobStates, JobRunner jobRunner) : IHubHandler
 {
-    public static Task HandleAsync(RestoreApprovalRegistry approvals, JobStateRegistry jobStates, JobRunner jobRunner, string jobId)
+    public Task HandleAsync(string jobId)
     {
         // A job parked at the cost prompt is cancelled by resolving its wait as a decline — the restore run's
         // decline branch then marks it `cancelled`. This MUST precede CancelLive: cancelling the CTS would race

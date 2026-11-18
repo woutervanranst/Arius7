@@ -1,4 +1,6 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
+using Arius.Api.Shared.Hubs;
 using Arius.Api.Shared.Jobs;
 using Microsoft.AspNetCore.SignalR;
 
@@ -7,11 +9,11 @@ namespace Arius.Api.Features.Jobs;
 /// <summary>Hub <c>AttachToJob</c> — joins the job's SignalR group and returns its current state: live from the
 /// registry if the job is running, else reconstructed from persisted state_json for a parked/finished job.
 /// Progress deltas follow.</summary>
-internal static class AttachToJob
+public sealed class AttachToJob(IHubContext<JobsHub> hub, AppDatabase database, JobStateRegistry jobStates) : IHubHandler
 {
-    public static async Task<JobAttachState?> HandleAsync(Hub hub, AppDatabase database, JobStateRegistry jobStates, string jobId)
+    public async Task<JobAttachState?> HandleAsync(string connectionId, string jobId)
     {
-        await hub.Groups.AddToGroupAsync(hub.Context.ConnectionId, jobId);
+        await hub.Groups.AddToGroupAsync(connectionId, jobId);
 
         var job = database.GetJob(jobId);
         if (job is null) return null;

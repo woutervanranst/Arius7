@@ -1,20 +1,22 @@
 using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
+using Arius.Api.Shared.Hubs;
 using Arius.Api.Shared.Jobs;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Features.Restore;
 
 /// <summary>Hub <c>StartRestore</c> — starts a restore (empty targetPaths = whole repository).</summary>
-internal static class StartRestore
+public sealed class StartRestore(IHubContext<JobsHub> hub, AppDatabase database, JobRunner jobRunner) : IHubHandler
 {
-    public static async Task<string> HandleAsync(Hub hub, AppDatabase database, JobRunner jobRunner, long repositoryId, string? version, string[]? targetPaths, bool overwrite, bool noPointers)
+    public async Task<string> HandleAsync(string connectionId, long repositoryId, string? version, string[]? targetPaths, bool overwrite, bool noPointers)
     {
         if (database.HasActiveJob(repositoryId))
             throw new HubException("A job is already running for this repository.");
 
         var jobId = Guid.NewGuid().ToString();
-        await hub.Groups.AddToGroupAsync(hub.Context.ConnectionId, jobId);
-        _ = jobRunner.RunRestoreAsync(repositoryId, jobId, hub.Context.ConnectionId, version, targetPaths ?? [], overwrite, noPointers);
+        await hub.Groups.AddToGroupAsync(connectionId, jobId);
+        _ = jobRunner.RunRestoreAsync(repositoryId, jobId, connectionId, version, targetPaths ?? [], overwrite, noPointers);
         return jobId;
     }
 }

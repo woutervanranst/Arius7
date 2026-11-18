@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Hosting;
 using Arius.Core.Features.ListQuery;
 using Mediator;
 
@@ -10,11 +11,9 @@ namespace Arius.Api.Features.Browse;
 /// Hub <c>SearchAll</c> — streams cross-repository search hits: runs a recursive filename filter across every
 /// repository (each failure isolated so one unreachable repo doesn't fail the whole search).
 /// </summary>
-internal static class SearchAll
+public sealed class SearchAll(AppDatabase database, RepositoryProviderRegistry registry) : IHubHandler
 {
-    public static async IAsyncEnumerable<SearchHitDto> HandleAsync(
-        AppDatabase database,
-        RepositoryProviderRegistry registry,
+    public async IAsyncEnumerable<SearchHitDto> HandleAsync(
         string query,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {

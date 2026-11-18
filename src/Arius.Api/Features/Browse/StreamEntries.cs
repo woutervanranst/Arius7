@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Hosting;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Storage;
@@ -12,15 +13,13 @@ namespace Arius.Api.Features.Browse;
 /// Hub <c>StreamEntries</c> — streams the immediate children (directories + files) of a folder in a snapshot,
 /// server → client.
 /// </summary>
-internal static class StreamEntries
+public sealed class StreamEntries(AppDatabase database, RepositoryProviderRegistry registry) : IHubHandler
 {
     /// <param name="version">Snapshot version (null/empty = latest).</param>
     /// <param name="prefix">Folder path within the repository (null/empty = root).</param>
     /// <param name="filter">Case-insensitive filename substring filter.</param>
     /// <param name="includeLocal">Overlay the repository's local folder onto the listing.</param>
-    public static async IAsyncEnumerable<EntryDto> HandleAsync(
-        AppDatabase database,
-        RepositoryProviderRegistry registry,
+    public async IAsyncEnumerable<EntryDto> HandleAsync(
         long repositoryId,
         string? version,
         string? prefix,
