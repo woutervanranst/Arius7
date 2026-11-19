@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.SnapshotsListQuery;
@@ -8,16 +9,20 @@ namespace Arius.Api.FakeTestHost;
 
 /// <summary>Fake read side: answers the browse, snapshot-list and statistics queries from the repository's
 /// <see cref="ReadScenario"/>, recording each query it receives. No storage is touched.</summary>
-public sealed class ScriptedReadHandler(ReadScenario scenario)
+public sealed class ScriptedReadHandler(ReadScenario scenario, ScenarioGate gate, ScenarioContext ctx)
     : IStreamQueryHandler<ListQuery, RepositoryEntry>,
       IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>,
       IQueryHandler<LatestSnapshotVersionQuery, string?>,
       IQueryHandler<StatisticsQuery, RepositoryStatistics>
 {
-    public IAsyncEnumerable<RepositoryEntry> Handle(ListQuery query, CancellationToken cancellationToken)
+    public async IAsyncEnumerable<RepositoryEntry> Handle(ListQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         scenario.Received.Enqueue(query);
-        return (scenario.Entries ?? []).ToAsyncEnumerable();
+        foreach (var entry in scenario.Entries ?? [])
+            yield return entry;
+
+        if (scenario.Gated)
+            await gate.WaitForRelease(ctx.RepositoryId, cancellationToken);   // listing held "running" until released
     }
 
     public IAsyncEnumerable<SnapshotInfo> Handle(SnapshotsListQuery query, CancellationToken cancellationToken)
