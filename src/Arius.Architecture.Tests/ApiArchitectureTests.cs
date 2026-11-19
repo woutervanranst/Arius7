@@ -115,6 +115,29 @@ public class ApiArchitectureTests
     }
 
     [Test]
+    public void Endpoints_Should_Expose_A_Single_Handle_Method()
+    {
+        // IEndpoint cannot declare Handle: each endpoint binds its own wire parameters and returns its own type.
+        // The convention is enforced here instead.
+        var violations = ApiAssembly.GetTypes()
+            .Where(type => type is { IsClass: true, IsAbstract: false } && typeof(IEndpoint).IsAssignableFrom(type))
+            .Select(type => (type, methods: type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)))
+            .Where(endpoint => endpoint.methods is not [var method] || method.Name != ExpectedName(method.ReturnType))
+            .Select(endpoint => $"'{endpoint.type.FullName}' exposes [{string.Join(", ", endpoint.methods.Select(m => m.Name))}].")
+            .ToList();
+
+        ShouldBeEmpty(violations, "An IEndpoint exposes exactly one public instance method: Handle, or HandleAsync when it returns a Task, ValueTask or IAsyncEnumerable:");
+
+        static string ExpectedName(System.Type returnType) =>
+            typeof(Task).IsAssignableFrom(returnType)
+            || returnType == typeof(ValueTask)
+            || returnType.IsGenericType && returnType.GetGenericTypeDefinition() is var definition
+               && (definition == typeof(ValueTask<>) || definition == typeof(IAsyncEnumerable<>))
+                ? "HandleAsync"
+                : "Handle";
+    }
+
+    [Test]
     public void Hub_Handler_Parameters_Should_Be_Marked_FromServices()
     {
         // SignalR infers a service only for a hub-method parameter that carries no attributes, and the compiler
