@@ -1,9 +1,8 @@
 namespace Arius.Api.Shared.Jobs;
 
-/// <summary>The cost-modal payload pushed on the <c>CostEstimate</c> message and returned by snapshot-on-attach
-/// for an <c>awaiting-cost</c> job. jobId-tagged so a client attached to several jobs routes it.
-/// Wait windows are the provider SLAs surfaced via <c>RestoreCostEstimate</c> — the modal renders
-/// "up to {standardWaitHours} h".</summary>
+/// <summary>The restore cost prompt, sent as the <c>CostEstimate</c> message and returned on attach to an
+/// <c>awaiting-cost</c> job. Carries the job id so a client attached to several jobs can route it. The wait hours
+/// are the storage provider's rehydration SLAs.</summary>
 public sealed record CostEstimateDto(
     string JobId,
     int    ChunksAvailable,

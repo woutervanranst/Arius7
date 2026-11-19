@@ -45,10 +45,7 @@ public sealed partial class AppDatabase
         return (long)command.ExecuteScalar()!;
     }
 
-    /// <summary>
-    /// Updates the mutable repository properties. A <c>null</c> argument leaves that column unchanged
-    /// (so callers need not resupply secrets that are not being rotated).
-    /// </summary>
+    /// <summary>Updates the mutable repository properties. A <c>null</c> argument leaves that column unchanged.</summary>
     public void UpdateRepository(long id, string? alias, string? localPath, string? encryptedPassphrase)
     {
         using var connection = OpenConnection();
@@ -68,9 +65,9 @@ public sealed partial class AppDatabase
     }
 
     /// <summary>
-    /// Caches a repository's configured region (<see cref="RepositoryRecord.RegionHint"/>). Pass a non-null,
-    /// configured region to memoize it (it's immutable once set, so the overview can serve it without opening
-    /// the container); pass <c>null</c> to invalidate the cache so the region is re-resolved live on next read.
+    /// Caches the repository's configured region (<see cref="RepositoryRecord.RegionHint"/>). The region is immutable
+    /// once set, so it can be served without opening the container; <c>null</c> clears it so the next read resolves
+    /// it again.
     /// </summary>
     public void SetRepositoryRegionHint(long id, string? regionHint)
     {
@@ -86,8 +83,8 @@ public sealed partial class AppDatabase
     {
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
-        // Cascade: a repository's jobs/schedules/cached statistics reference it, so remove them first
-        // (download_files hangs off jobs, so it goes before them).
+        // Foreign keys are enforced without cascade, so delete the dependent rows first; download_files references
+        // jobs, so it goes before them.
         using (var downloadFiles = connection.CreateCommand())
         {
             downloadFiles.Transaction = transaction;
@@ -117,7 +114,7 @@ public sealed partial class AppDatabase
         reader.GetString(2),
         reader.GetInt64(3),
         reader.IsDBNull(4) ? null : reader.GetString(4),
-        reader.IsDBNull(5) ? null : reader.GetString(5),  // region_hint (cached configured region)
-        reader.IsDBNull(6) ? null : reader.GetString(6),  // passphrase
+        reader.IsDBNull(5) ? null : reader.GetString(5),
+        reader.IsDBNull(6) ? null : reader.GetString(6),
         DateTimeOffset.Parse(reader.GetString(7)));
 }

@@ -4,7 +4,7 @@ using Mediator;
 
 namespace Arius.Api.Features.Restore;
 
-// Forwarders for Arius.Core restore events → the running job's SignalR group.
+// Each forwarder applies one Arius.Core restore event to the job's JobSink.
 
 public sealed class SnapshotResolvedForwarder(JobSink sink) : INotificationHandler<SnapshotResolvedEvent>
 {

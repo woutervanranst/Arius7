@@ -3,7 +3,6 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary><c>GET /downloads/usage</c> — staging folders on the server disk and their total size.</summary>
 internal sealed class GetDownloadsUsage(DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

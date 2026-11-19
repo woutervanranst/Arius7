@@ -41,10 +41,7 @@ public sealed partial class AppDatabase
         return (long)command.ExecuteScalar()!;
     }
 
-    /// <summary>
-    /// Updates an account's connection material. A <c>null</c> <paramref name="encryptedAccountKey"/> leaves the
-    /// stored key unchanged (so the key need not be resupplied for an unrelated edit).
-    /// </summary>
+    /// <summary>Replaces the account key. A <c>null</c> <paramref name="encryptedAccountKey"/> leaves the stored key unchanged.</summary>
     public void UpdateAccount(long id, string? encryptedAccountKey)
     {
         using var connection = OpenConnection();
@@ -77,7 +74,6 @@ public sealed partial class AppDatabase
         return (int)(long)command.ExecuteScalar()!;
     }
 
-    /// <summary>Repository ids belonging to an account — used to evict providers / clear stats caches after an account change.</summary>
     public IReadOnlyList<long> ListRepositoryIdsForAccount(long accountId)
     {
         using var connection = OpenConnection();

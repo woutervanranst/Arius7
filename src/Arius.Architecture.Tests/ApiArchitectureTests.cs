@@ -10,10 +10,9 @@ namespace Arius.Architecture.Tests;
 
 /// <summary>
 /// Enforces Arius.Api's vertical-slice layout: <c>Features/&lt;Area&gt;</c> slices over <c>Shared/</c>
-/// infrastructure, reaching Arius.Core only through its features.
-/// Blind spot: ArchUnitNET does not see what the body of an <c>async IAsyncEnumerable</c> method uses,
-/// so the hub's streaming features (StreamContainers, StreamEntries, SearchAll) are checked on their
-/// signatures and constructor dependencies only. Endpoint methods are covered.
+/// infrastructure, reaching Arius.Core only through its features. ArchUnitNET does not see what the body of an
+/// <c>async IAsyncEnumerable</c> method uses, so the hub's streaming features (StreamContainers, StreamEntries,
+/// SearchAll) are checked on their signatures and constructor dependencies only.
 /// </summary>
 public class ApiArchitectureTests
 {
@@ -117,9 +116,9 @@ public class ApiArchitectureTests
     [Test]
     public void Hub_Handler_Parameters_Should_Be_Marked_FromServices()
     {
-        // SignalR infers a service only for a hub-method parameter that carries no attributes, and the compiler
-        // adds a nullability attribute to some. Unmarked, such a handler becomes an expected wire argument and
-        // every call from the client fails on the argument count.
+        // SignalR infers a service only for a hub-method parameter without attributes, and the compiler adds a
+        // nullability attribute to some parameters. An unmarked handler then becomes an expected wire argument and
+        // every client call fails on the argument count.
         var unmarked = typeof(JobsHub).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .SelectMany(method => method.GetParameters()
                 .Where(parameter => typeof(IHubHandler).IsAssignableFrom(parameter.ParameterType))

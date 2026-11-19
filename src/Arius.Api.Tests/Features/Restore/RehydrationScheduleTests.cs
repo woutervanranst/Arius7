@@ -19,7 +19,7 @@ public sealed class RehydrationScheduleTests
     {
         RehydrationSchedule.IsDue(T0.AddHours(9), T0, T0, "Standard", firstChunkSeen: false).ShouldBeFalse();
         RehydrationSchedule.IsDue(T0.AddHours(10), T0, T0, "Standard", firstChunkSeen: false).ShouldBeTrue();
-        // after a re-run at +10h, next due is +1h later
+        // after a run at 10 h, the next check is due 1 h later
         RehydrationSchedule.IsDue(T0.AddHours(10).AddMinutes(30), T0, T0.AddHours(10), "Standard", false).ShouldBeFalse();
         RehydrationSchedule.IsDue(T0.AddHours(11), T0, T0.AddHours(10), "Standard", false).ShouldBeTrue();
     }

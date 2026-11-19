@@ -29,13 +29,13 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.AddSingleton(Scenarios);
-            services.AddSingleton<ScenarioGate>();   // ScriptedRepositoryCoreComposer ctor dependency
+            services.AddSingleton<ScenarioGate>();   // required by ScriptedRepositoryCoreComposer
             services.RemoveAll<IRepositoryCoreComposer>();
             services.AddSingleton<IRepositoryCoreComposer, ScriptedRepositoryCoreComposer>();
         });
     }
 
-    /// <summary>Seeds an account + repository row (protected secrets, no real Azure) and returns the repo id.</summary>
+    /// <summary>Seeds an account and a repository with protected secrets and returns the repository id.</summary>
     public long SeedRepository(string? localPath = null)
     {
         var db      = Services.GetRequiredService<AppDatabase>();
@@ -49,7 +49,7 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
             encryptedPassphrase: secrets.Protect("passphrase"));
     }
 
-    /// <summary>An unstarted SignalR client for the in-process hub (long polling over the test server).</summary>
+    /// <summary>An unstarted SignalR client for the in-process hub, using long polling over the test server.</summary>
     public HubConnection CreateHubConnection()
     {
         var handler = Server.CreateHandler();
@@ -67,12 +67,8 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
         base.Dispose(disposing);
         if (!disposing) return;
 
-        // AppDatabase opens pooled connections (Pooling=true) and runs in WAL mode, and the background
-        // job pollers keep the pool warm right up to shutdown. On Windows a pooled physical connection
-        // holds the .sqlite file (and its -wal/-shm sidecars) open, so the delete below throws
-        // IOException("used by another process"). base.Dispose above has torn down the host (stopping
-        // those pollers and closing the root/per-repo log files); clearing the Sqlite pool now releases the
-        // last DB handles so the whole throwaway directory can be removed.
+        // On Windows a pooled SQLite connection keeps the database file and its -wal/-shm files open, so the
+        // delete below would fail. The host is already torn down, so clearing the pools releases the last handles.
         SqliteConnection.ClearAllPools();
 
         TryDeleteDirectory(_root);
@@ -80,10 +76,9 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
 
     private static void TryDeleteDirectory(string path)
     {
-        // Even after ClearAllPools, a just-released Sqlite handle can linger for a moment on Windows —
-        // a background poller can be mid-query when the host is torn down, and WebApplicationFactory's
-        // synchronous Dispose does not await hosted-service shutdown. Retry briefly, then give up: a
-        // leaked throwaway temp directory must never fail an otherwise-passing test.
+        // On Windows a released SQLite handle can linger briefly: a poller can be mid-query at teardown, and the
+        // synchronous Dispose does not await hosted-service shutdown. Retry briefly, then give up: a leaked temp
+        // directory must not fail a passing test.
         for (var attempt = 0; ; attempt++)
         {
             try
@@ -97,8 +92,7 @@ public sealed class AriusApiFactory : WebApplicationFactory<Program>
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Report rather than swallow: silence here would hide exactly the file-locking regression
-                // this retry loop exists to absorb (a handle we forgot to close), and the leftovers
+                // Report instead of swallowing: a persistent lock points at an unclosed handle, and leftovers
                 // accumulate across CI runs.
                 Console.Error.WriteLine($"[AriusApiFactory] could not clean up '{path}': {ex.Message}");
                 return;

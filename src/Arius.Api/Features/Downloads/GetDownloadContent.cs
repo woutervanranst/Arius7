@@ -6,8 +6,7 @@ using Microsoft.Net.Http.Headers;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary><c>GET /jobs/{id}/download/content?set=all|remaining</c> — serves the staged files: one file as itself
-/// (range requests supported), several as one streamed ZIP.</summary>
+/// <summary>Serves the staged files: a single file as itself, with range requests, or several files as one streamed ZIP.</summary>
 internal sealed class GetDownloadContent(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
@@ -67,7 +66,7 @@ internal sealed class GetDownloadContent(AppDatabase db, DownloadStaging staging
 
         return Results.Empty;
 
-        // ZIP can only store 1980-2107.
+        // ZIP entries can only store dates from 1980 to 2107.
         static DateTimeOffset ZipTime(DateTime t) =>
             t < new DateTime(1980, 1, 1) ? new DateTime(1980, 1, 1) : t > new DateTime(2107, 12, 31) ? new DateTime(2107, 12, 31) : t;
     }

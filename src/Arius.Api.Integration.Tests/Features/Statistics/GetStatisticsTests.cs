@@ -10,8 +10,8 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Api.Integration.Tests.Features.Statistics;
 
-/// <summary><c>GET /repos/{id}/stats</c> — repository statistics, computed by Core on a miss and memoized per
-/// (version, full) so a repeat is served without touching storage.</summary>
+/// <summary><c>GET /repos/{id}/stats</c>: statistics are computed by Core on a cache miss and cached per version and
+/// coverage, so a repeat request does not touch storage.</summary>
 public class GetStatisticsTests
 {
     private static readonly RepositoryStatistics Computed = new(
@@ -40,7 +40,7 @@ public class GetStatisticsTests
         var repeat = await client.GetFromJsonAsync<StatisticsDto>($"/api/repos/{repoId}/stats?version=v1");
 
         await AssertComputed(repeat!);
-        await Assert.That(scenario.Received.OfType<StatisticsQuery>().Count()).IsEqualTo(1);   // no second trip to Core
+        await Assert.That(scenario.Received.OfType<StatisticsQuery>().Count()).IsEqualTo(1);   // served from the cache
 
         await client.GetFromJsonAsync<StatisticsDto>($"/api/repos/{repoId}/stats?version=v1&full=true");
 

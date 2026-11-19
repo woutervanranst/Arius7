@@ -18,13 +18,13 @@ The handler keeps only files in the repository with a content hash, batches one 
 
 ### ContainerNamesQuery
 
-`ContainerNamesQuery(AccountName, AccountKey?)` streams `string` container names for an Azure Blob account — Explorer's account picker uses this to discover Arius repositories. The handler resolves an `IBlobServiceFactory`, opens the account, and forwards `IBlobService.GetContainerNamesAsync`.
+`ContainerNamesQuery(AccountName, AccountKey?)` streams `string` container names for an Azure Blob account — Explorer's account picker uses this to discover Arius repositories. The handler resolves an `IBlobServiceFactory`, opens the account, and forwards `IBlobService.GetContainerNamesAsync`. It needs no repository, so a host can send it through a provider composed with `AddAriusWithoutRepository()`.
 
 Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a container is an Arius repository iff it has at least one blob under the `snapshots/` prefix (`BlobPaths.SnapshotsPrefix`). The probe is one listing per container with `pageSizeHint: 1`, and the prefix blob itself is excluded so an empty `snapshots/` marker is not mistaken for a real repository. This filters out non-Arius containers (e.g. `$logs`, `$web`).
 
 ### LatestSnapshotVersionQuery
 
-`LatestSnapshotVersionQuery()` is an `IQuery<string?>` returning the version of the repository's newest [snapshot](../../../glossary.md#snapshot), or `null` when it has none. The handler lists the snapshot blob names once (`ISnapshotService.ListBlobNamesAsync`) and maps the last one through `GetVersion`; no manifest is resolved. It exists so a host can fingerprint the snapshot set cheaply — the web host stamps its [statistics cache](../../hosts/web.md#statistics-cache) with it — without reaching into `ISnapshotService` or paying for `SnapshotsListQuery`, which resolves every manifest.
+`LatestSnapshotVersionQuery()` is an `IQuery<string?>` returning the version of the repository's newest [snapshot](../../../glossary.md#snapshot), or `null` when it has none. It lists snapshot blob names only and resolves no manifest, so a host can use it as a cheap fingerprint of the snapshot set, unlike `SnapshotsListQuery`, which resolves every manifest. The web host stamps its [statistics cache](../../hosts/web.md#statistics-cache) with it.
 
 ### SnapshotsListQuery
 
@@ -63,5 +63,4 @@ These are deliberately thin vertical slices: query + result + handler, dispatche
 
 - `ChunkHydrationStatusQuery` issues per-distinct-chunk `GetHydrationStatusAsync` calls serially; a large archived selection could be parallelized if rehydration UX needs it.
 - `StatisticsQuery`'s default-path accuracy is bounded by chunk-index cache coverage; figures shift as the cache syncs and there is no "syncing / partial" signal in `RepositoryStatistics`. `EnsureFullCoverage` removes the bound at the cost of a full-index download — there is no middle ground (incremental "fill the gaps as you go") yet.
-- `ContainerNamesQuery` needs no repository, so a host sends it through a provider composed with `AddAriusWithoutRepository()` (the web host's repository-less provider).
 - `ContainerNamesQuery` validates one container at a time; account scans with many non-Arius containers pay one listing each.

@@ -9,18 +9,18 @@ using Mediator;
 
 namespace Arius.Api.FakeTestHost;
 
-/// <summary>A scripted archive run: publish <paramref name="Events"/> in order, then return <paramref name="Result"/>.
-/// When <paramref name="Gated"/> the handler holds after the events until <see cref="ScenarioGate"/> releases the
-/// repo (lets a browser test observe the job "running" in the Active list before it completes).</summary>
+/// <summary>A scripted archive run: publishes <paramref name="Events"/> in order, then returns <paramref name="Result"/>.
+/// When <paramref name="Gated"/>, the handler waits after the events until <see cref="ScenarioGate"/> releases the
+/// repository, so a test can observe the running job before it completes.</summary>
 public sealed record ArchiveScenario(IReadOnlyList<INotification> Events, ArchiveResult Result, bool Gated = false);
 
 /// <summary>
-/// A scripted restore run: publish <paramref name="PreCostEvents"/>; if <paramref name="CostPrompt"/> is set,
-/// invoke the run's ConfirmRehydration callback with it (declined/timed-out ⇒ stop, return <paramref name="Result"/>);
-/// otherwise publish <paramref name="PostApproveEvents"/> and return <paramref name="Result"/>. When
-/// <paramref name="Gated"/> the handler holds after the post-approve events until <see cref="ScenarioGate"/> releases.
-/// When <paramref name="WritesFiles"/> the handler writes each restored file under the command's root directory
-/// before publishing its <see cref="FileRestoredEvent"/> (what a download job stages).
+/// A scripted restore run: publishes <paramref name="PreCostEvents"/>, then passes <paramref name="CostPrompt"/>, if
+/// set, to the run's ConfirmRehydration callback. A declined or timed-out prompt returns <paramref name="Result"/>;
+/// otherwise the run publishes <paramref name="PostApproveEvents"/> and returns <paramref name="Result"/>. When
+/// <paramref name="Gated"/>, the handler waits after the post-approve events until <see cref="ScenarioGate"/>
+/// releases the repository. When <paramref name="WritesFiles"/>, the handler writes each restored file under the
+/// command's root directory before publishing its <see cref="FileRestoredEvent"/>, as a download job needs.
 /// </summary>
 public sealed record RestoreScenario(
     IReadOnlyList<INotification> PreCostEvents,
@@ -35,12 +35,12 @@ public sealed record RestoreScenario(
 }
 
 /// <summary>
-/// A scripted read side: what the repository's listing (<see cref="ListQuery"/>), snapshot list, latest snapshot
-/// version and statistics queries return (a <c>null</c> list streams nothing; <c>null</c> statistics throw). When <paramref name="ContainerMissing"/>
-/// building the repository's provider fails the way a not-yet-created container does
-/// (<see cref="Arius.Core.Shared.Storage.PreflightErrorKind.ContainerNotFound"/>). When <paramref name="Gated"/> the
-/// listing holds open after its entries until <see cref="ScenarioGate"/> releases the repo (lets a test observe
-/// entries arriving while the listing is still running).
+/// A scripted read side: what the listing (<see cref="ListQuery"/>), snapshot list, latest snapshot version and
+/// statistics queries return. A <c>null</c> list streams nothing; <c>null</c> statistics throw. When
+/// <paramref name="ContainerMissing"/>, building the provider fails as it does for a container that does not exist
+/// yet (<see cref="Arius.Core.Shared.Storage.PreflightErrorKind.ContainerNotFound"/>). When <paramref name="Gated"/>,
+/// the listing stays open after its entries until <see cref="ScenarioGate"/> releases the repository, so a test can
+/// observe entries arriving while it runs.
 /// </summary>
 public sealed record ReadScenario(
     IReadOnlyList<RepositoryEntry>? Entries = null,
@@ -54,7 +54,7 @@ public sealed record ReadScenario(
     public ConcurrentQueue<object> Received { get; } = new();
 }
 
-/// <summary>Holds the next scripted scenario for each repository. Set by tests, taken by the scripted handlers.</summary>
+/// <summary>The scripted scenarios per repository: set by tests, read by <see cref="ScriptedRepositoryCoreComposer"/>.</summary>
 public sealed class ScenarioRegistry
 {
     private readonly ConcurrentDictionary<long, ArchiveScenario> _archive = new();
@@ -69,6 +69,6 @@ public sealed class ScenarioRegistry
     public RestoreScenario? TakeRestore(long repositoryId) => _restore.TryGetValue(repositoryId, out var s) ? s : null;
     public ReadScenario? TakeRead(long repositoryId) => _read.TryGetValue(repositoryId, out var s) ? s : null;
 
-    /// <summary>Test-only: clear all registered scenarios (cross-spec isolation in the hermetic suite).</summary>
+    /// <summary>Clears all scenarios, so hermetic specs are isolated from each other.</summary>
     public void Clear() { _archive.Clear(); _restore.Clear(); _read.Clear(); }
 }

@@ -4,7 +4,6 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Jobs;
 
-/// <summary><c>GET /jobs/{id}/warnings</c> — the job's verbatim warnings tail.</summary>
 internal sealed class GetJobWarnings(AppDatabase db, JobStateRegistry jobStates) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

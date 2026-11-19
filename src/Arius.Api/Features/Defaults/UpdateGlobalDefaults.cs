@@ -3,7 +3,6 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Defaults;
 
-/// <summary><c>PUT /settings/defaults</c></summary>
 internal sealed class UpdateGlobalDefaults(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

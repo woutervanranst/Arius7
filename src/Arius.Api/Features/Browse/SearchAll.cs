@@ -8,8 +8,8 @@ using Mediator;
 namespace Arius.Api.Features.Browse;
 
 /// <summary>
-/// Hub <c>SearchAll</c> — streams cross-repository search hits as they are found: runs a recursive filename filter
-/// across every repository in turn (each failure isolated so one unreachable repo doesn't fail the whole search).
+/// Streams filename-search hits across all repositories as they are found. A repository that fails is skipped and
+/// the search continues with the next one.
 /// </summary>
 public sealed class SearchAll(AppDatabase database, RepositoryProviderRegistry registry) : IHubHandler
 {
@@ -35,9 +35,8 @@ public sealed class SearchAll(AppDatabase database, RepositoryProviderRegistry r
                     yield return new SearchHitDto(repo.Id, repo.Alias, EntryMapping.ToDto(file));
         }
 
-        // C# forbids `yield return` inside a try with a catch, so the failure isolation guards each step instead:
-        // a repository that can't be opened or listed (even partway through) ends its own hits; the search goes on
-        // unless the caller cancelled it (the web UI does so whenever a newer query supersedes this one).
+        // C# does not allow `yield return` inside a try block with a catch clause, so each step is guarded instead.
+        // A failure while opening or listing a repository ends only that repository's hits; cancellation still propagates.
         async ValueTask<bool> TryMoveNextAsync(IAsyncEnumerator<SearchHitDto> hits)
         {
             try

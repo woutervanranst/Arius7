@@ -3,10 +3,9 @@ using Arius.Api.Shared.Hosting;
 namespace Arius.Api.Features.Filesystem;
 
 /// <summary>
-/// <c>GET /fs/list</c> — server-side directory browsing for the local-path picker. Lists directories <b>as the
-/// Arius.Api host/container sees them</b> — under Docker these are the mounted volumes; in dev they are real
-/// folders on the machine running the API. The stored local path must resolve here (not on the
-/// browser's machine), which is why the picker is server-driven.
+/// Lists subdirectories for the local-path picker as the Api host sees them (under Docker, the mounted volumes).
+/// The picker is server-driven because a repository's local path must resolve on the host, not on the browser's
+/// machine.
 /// </summary>
 internal sealed class ListFilesystem : IEndpoint
 {
@@ -15,7 +14,6 @@ internal sealed class ListFilesystem : IEndpoint
 
     private IResult Handle(string? path)
     {
-        // Default to the filesystem root the API can see; the client navigates from there.
         var target = string.IsNullOrWhiteSpace(path) ? DefaultRoot() : path.Trim();
 
         DirectoryInfo directory;

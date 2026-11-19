@@ -17,10 +17,9 @@ using Serilog;
 
 namespace Arius.Api;
 
-/// <summary>Shared composition for the Arius.Api pipeline, reused by the production host (Program.cs) and the
-/// out-of-process Testing host (Arius.Api.FakeTestHost). The Core seam — <see cref="IRepositoryCoreComposer"/> — is
-/// registered with <c>TryAdd</c>, so a host that pre-registers a scripted composer wins without any environment
-/// branch here (mirrors the CliHarness "inject the factory" pattern).</summary>
+/// <summary>Composes the Arius.Api pipeline for both the production host and the test host (Arius.Api.FakeTestHost).
+/// <see cref="IRepositoryCoreComposer"/> is registered with <c>TryAdd</c>, so a host that registers its own composer
+/// first replaces the Azure one.</summary>
 public static class AriusApiHost
 {
     public static WebApplicationBuilder AddAriusApi(this WebApplicationBuilder builder)
@@ -31,9 +30,8 @@ public static class AriusApiHost
                       ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "keys");
         Directory.CreateDirectory(keysDir);
 
-        // The app-wide root logger for host/startup events (per-repository files are owned by the registry).
-        // Also the static Log.Logger, so Program.cs's Log.Fatal/CloseAndFlush act on it; the host owns its
-        // lifetime and flushes it on shutdown.
+        // Root logger for host events; per-repository logs are owned by the registry. Also assigned to the static
+        // Log.Logger, so Program.cs's Log.Fatal and CloseAndFlush use it.
         var appLogDir  = Path.Combine(Path.GetDirectoryName(dbPath)!, "logs");
         var rootLogger = AriusLogging.BuildRootLogger(appLogDir);
         Log.Logger = rootLogger;
@@ -63,7 +61,6 @@ public static class AriusApiHost
         builder.Services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
-        // OpenAPI document generation — Development only (mapped in MapAriusApi via Scalar).
         if (builder.Environment.IsDevelopment())
             builder.Services.AddOpenApi();
 
@@ -93,8 +90,7 @@ public static class AriusApiHost
         api.MapEndpoints();
         app.MapHub<JobsHub>("/hubs/arius");
 
-        // Development-only API docs: raw document at /openapi/v1.json, Scalar UI at /scalar.
-        // Mapped as real routes so they resolve before the SPA fallback below.
+        // Development only: the OpenAPI document at /openapi/v1.json and the Scalar UI at /scalar.
         if (app.Environment.IsDevelopment())
         {
             app.MapOpenApi();

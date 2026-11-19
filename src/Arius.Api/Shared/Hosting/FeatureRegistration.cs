@@ -9,8 +9,8 @@ internal static class FeatureRegistration
     private static readonly Type[] Endpoints   = ConcreteTypesOf(typeof(IEndpoint));
     private static readonly Type[] HubHandlers = ConcreteTypesOf(typeof(IHubHandler));
 
-    /// <summary>Registers every endpoint and hub handler. Singletons: they are stateless and everything they
-    /// depend on is a singleton.</summary>
+    /// <summary>Registers every endpoint and hub handler as a singleton; they are stateless and depend only on
+    /// singletons.</summary>
     public static IServiceCollection AddFeatures(this IServiceCollection services)
     {
         foreach (var feature in Endpoints.Concat(HubHandlers))

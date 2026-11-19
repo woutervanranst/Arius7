@@ -1,14 +1,13 @@
 namespace Arius.Api.Shared.AppData;
 
-/// <summary>The single source of truth for job status sets. Terminal = a finished row that must never be
-/// re-transitioned; non-terminal = an active row the single-active-job guard counts. Kept here so the SQL
-/// guards, the unique index, and the endpoint filters can't drift apart.</summary>
+/// <summary>Job status sets shared by the SQL guards, the single-active-job unique index and the endpoint filters.
+/// A terminal job is never transitioned again; a non-terminal job is the repository's active job.</summary>
 public static class JobStatuses
 {
     public static readonly string[] Terminal    = ["completed", "failed", "cancelled", "interrupted"];
     public static readonly string[] NonTerminal = ["running", "awaiting-cost", "rehydrating"];
 
-    // Compile-time constants for inlining into SQL WHERE clauses (no user input — safe from injection).
+    // SQL literal lists for interpolating into WHERE clauses; constants, so safe from injection.
     public const string TerminalSqlList    = "'completed','failed','cancelled','interrupted'";
     public const string NonTerminalSqlList = "'running','awaiting-cost','rehydrating'";
 }

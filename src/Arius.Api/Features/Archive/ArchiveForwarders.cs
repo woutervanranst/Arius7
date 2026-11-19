@@ -4,7 +4,7 @@ using Mediator;
 
 namespace Arius.Api.Features.Archive;
 
-// Each forwarder folds one Arius.Core archive event into the job's JobSink byte aggregate.
+// Each forwarder applies one Arius.Core archive event to the job's JobSink.
 
 public sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<ScanCompleteEvent>
 {
@@ -25,15 +25,15 @@ public sealed class FileHashingForwarder(JobSink sink) : INotificationHandler<Fi
     public ValueTask Handle(FileHashingEvent n, CancellationToken ct) { sink.SetPhase("hash-route"); return ValueTask.CompletedTask; }
 }
 
-// Bytes are credited on hash completion (not at hash start, which only advances the phase), so the hashed
-// total — and the hash rate and ETA derived from it — reflects work finished rather than merely enqueued.
+// Bytes are credited on hash completion, not at hash start, so the hashed total (and the hash rate and ETA
+// derived from it) reflects finished work.
 public sealed class FileHashedForwarder(JobSink sink) : INotificationHandler<FileHashedEvent>
 {
     public ValueTask Handle(FileHashedEvent n, CancellationToken ct) { sink.AddHashed(n.FileSize); return ValueTask.CompletedTask; }
 }
 
-// The dedup/route stage has drained, so the new-byte upload total is final: the upload-progress denominator
-// switches off the still-growing "queued so far" estimate and the ETA stops being provisional.
+// Routing has drained, so the new-byte total is final: it replaces the growing queued-bytes estimate as the
+// upload-progress denominator, and the ETA stops being provisional.
 public sealed class RoutingCompleteForwarder(JobSink sink) : INotificationHandler<RoutingCompleteEvent>
 {
     public ValueTask Handle(RoutingCompleteEvent n, CancellationToken ct) { sink.SetNewByteTotal(n.NewByteTotal); return ValueTask.CompletedTask; }
@@ -76,7 +76,7 @@ public sealed class ChunkUploadingForwarder(JobSink sink) : INotificationHandler
     public ValueTask Handle(ChunkUploadingEvent n, CancellationToken ct)
     {
         sink.SetPhase("upload");
-        sink.AddQueuedNew(n.Size);   // additive "new bytes to upload" total (upload-progress denominator)
+        sink.AddQueuedNew(n.Size);   // provisional upload-progress denominator until routing completes
         return ValueTask.CompletedTask;
     }
 }

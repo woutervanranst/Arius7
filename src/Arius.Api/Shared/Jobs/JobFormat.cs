@@ -1,9 +1,9 @@
 namespace Arius.Api.Shared.Jobs;
 
-[SharedWithinAssembly] // job log formatting, also used by the event forwarders
+[SharedWithinAssembly]
 internal static class JobFormat
 {
-    // Same ladder as Arius.Web's formatBytes, so a figure reads identically in the job log and on screen.
+    // Matches Arius.Web's formatBytes, so a figure reads the same in the job log and in the UI.
     public static string Bytes(long b)
         => b >= 1_000_000_000_000 ? $"{b / 1e12:0.00} TB"
          : b >= 1_000_000_000 ? $"{b / 1e9:0.00} GB"

@@ -8,8 +8,8 @@ using Mediator;
 namespace Arius.Api.Features.Accounts;
 
 /// <summary>
-/// Hub <c>StreamContainers</c> — streams the container names in an account (Add-existing wizard). Pass
-/// <c>accountId</c> &gt; 0 to use a configured account's stored key, or 0 with an explicit name + key for a new account.
+/// Streams the names of the containers in a storage account. Pass a positive <c>accountId</c> to use a saved
+/// account's stored key, or 0 with an explicit name and key for an account that is not saved yet.
 /// </summary>
 public sealed class StreamContainers(AppDatabase database, SecretProtector secrets, RepositoryProviderRegistry registry) : IHubHandler
 {

@@ -8,7 +8,7 @@ public sealed partial class AppDatabase
     private const string CleanupEnabledKey = "downloads.cleanupEnabled";
     private const string CleanupDaysKey    = "downloads.cleanupDays";
 
-    /// <summary>Records the files a download job collected, all not-ready and not-downloaded, in one transaction.</summary>
+    /// <summary>Records the files a download job collected, initially neither ready nor downloaded.</summary>
     public void InsertDownloadFiles(string jobId, IReadOnlyList<DownloadFile> files)
     {
         using var connection = OpenConnection();
@@ -65,7 +65,7 @@ public sealed partial class AppDatabase
         transaction.Commit();
     }
 
-    /// <summary>Jobs of kind <c>download</c> in any status, optionally repo-scoped, newest <c>started_at</c> first.</summary>
+    /// <summary>Download jobs in any status, newest first, optionally for one repository.</summary>
     public IReadOnlyList<JobRecord> ListDownloadJobs(long? repositoryId = null)
     {
         using var connection = OpenConnection();

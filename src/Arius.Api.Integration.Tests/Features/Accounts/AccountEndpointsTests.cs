@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests.Features.Accounts;
 
-/// <summary>The <c>/accounts</c> endpoints: create, list, read, rotate the key and delete — the key is stored
+/// <summary>The <c>/accounts</c> endpoints: create, list, read, rotate the key and delete. The key is stored
 /// encrypted and never returned.</summary>
 public class AccountEndpointsTests
 {

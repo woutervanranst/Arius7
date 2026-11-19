@@ -1,7 +1,7 @@
 namespace Arius.Api.Shared.Hosting;
 
-/// <summary>Shared background-loop helper: await the next tick, returning <c>false</c> (rather than throwing)
-/// when the host is stopping. Used by every <see cref="Microsoft.Extensions.Hosting.BackgroundService"/> loop.</summary>
+/// <summary>Waits for the next tick of a background-service loop, returning <c>false</c> instead of throwing when the
+/// host is stopping.</summary>
 public static class PeriodicTimerExtensions
 {
     public static async Task<bool> SafeWaitForNextTickAsync(this PeriodicTimer timer, CancellationToken token)

@@ -9,18 +9,17 @@ public class RepresentationTests
     [Test]
     public async Task Pointer_heavy_archive_does_not_underflow_TotalNewBytes()
     {
-        // Steady state: 1000 pointer-only deduped files (scanned as 0 bytes, deduped at full size)
-        // + one new 100 MB file that actually uploads.
+        // 1000 pointer-only files (scanned as 0 bytes, deduplicated at full size) and one new 100 MB file.
         var s = new JobSink();
-        s.SetTotals(files: 1001, bytes: 100_000_000);      // scan excludes pointer-only (0 bytes each)
-        s.AddDeduped(original: 1_000_000_000);             // pointer-only dedup at full size (> total)
-        s.AddQueuedNew(100_000_000);                       // one new chunk queued for upload
+        s.SetTotals(files: 1001, bytes: 100_000_000);
+        s.AddDeduped(original: 1_000_000_000);             // exceeds the total
+        s.AddQueuedNew(100_000_000);
         s.AddUploaded(ChunkHash.Parse(new string('a', 64)), stored: 60_000_000, original: 100_000_000);
 
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
-        // Additive new-bytes, NOT total - deduped (which would be Max(0, 100M - 1000M) = 0):
+        // Not total − deduped, which would clamp to 0.
         await Assert.That(snap.TotalNewBytes).IsEqualTo(100_000_000L);
-        await Assert.That(snap.Pct).IsEqualTo(100);        // uploaded 100M of 100M new
+        await Assert.That(snap.Pct).IsEqualTo(100);        // 100 MB of 100 MB new bytes uploaded
     }
 
     [Test]
@@ -33,8 +32,8 @@ public class RepresentationTests
             new Arius.Core.Features.RestoreCommand.RehydrationStatusEvent(Available: 145, Rehydrated: 0, NeedsRehydration: 282, Pending: 0), default);
 
         var snap = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
-        await Assert.That(snap.ChunksTotal).IsEqualTo(427);            // authoritative, includes needs-rehydration
-        // sanity: the four buckets sum to the authoritative total
+        await Assert.That(snap.ChunksTotal).IsEqualTo(427);            // includes the chunks needing rehydration
+        // the four buckets add up to the total
         await Assert.That(snap.ChunksAvailable + snap.ChunksRehydrated + snap.ChunksNeedingRehydration + snap.ChunksPending)
             .IsEqualTo(snap.ChunksTotal);
     }

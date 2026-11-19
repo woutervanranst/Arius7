@@ -11,9 +11,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Arius.Api.Tests.Shared.Composition;
 
 /// <summary>
-/// A repository delete disposes that repository's logger factory to release its rolling log file. A provider
-/// build that was already in flight must not re-register a fresh factory behind the delete — nothing would
-/// ever dispose it, and the deleted repository's log file would stay open for the process lifetime.
+/// Deleting a repository disposes its logger factory to release its log file. A provider build already in flight
+/// must not register a new factory after the delete: nothing would dispose it, and the log file would stay open.
 /// </summary>
 public class RepositoryProviderRegistryRemovalTests
 {
@@ -35,8 +34,7 @@ public class RepositoryProviderRegistryRemovalTests
     [Test]
     public async Task A_build_in_flight_when_the_repository_is_removed_cannot_register_a_logger_factory()
     {
-        // Unique account/container: the logger factory would be created under ~/.arius/{account}-{container}/logs,
-        // whose (non-)existence is the observable proof that no factory was built after the removal.
+        // A unique account name: ~/.arius/{account}-{container}/logs exists only if a logger factory was created.
         var accountName   = $"arius-regtest-{Guid.NewGuid():N}";
         var containerName = "c";
         var logsDirectory = RepositoryLocalStatePaths.GetLogsDirectory(accountName, containerName);
@@ -54,24 +52,22 @@ public class RepositoryProviderRegistryRemovalTests
         try
         {
             var build = registry.GetReadProviderAsync(repositoryId, CancellationToken.None);
-            await composer.Entered.Task;      // the build is past LoadConnection and parked inside ComposeAsync
+            await composer.Entered.Task;      // the build is blocked inside ComposeAsync
 
-            registry.Remove(repositoryId);    // repository deleted while that build is in flight
+            registry.Remove(repositoryId);
             composer.Release.SetResult();
 
-            // The build is void: its repository is gone, so it must fault rather than cache a logger factory.
+            // The repository is gone, so the build must fault instead of creating a logger factory.
             await Assert.That(async () => await build).Throws<Exception>();
             await Assert.That(Directory.Exists(logsDirectory)).IsFalse();
         }
         finally
         {
-            // TrimEnd first: GetDirectoryName of a path with a trailing separator returns the path itself,
-            // which would leave the repository root (the .arius child directory) behind.
+            // TrimEnd first: GetDirectoryName of a path with a trailing separator returns the path itself.
             if (Directory.Exists(logsDirectory))
                 Directory.Delete(Path.GetDirectoryName(logsDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))!, recursive: true);
 
-            // AppDatabase pools its connections; on Windows a pooled physical handle keeps app.sqlite open
-            // and the delete below throws IOException("used by another process").
+            // On Windows a pooled connection keeps app.sqlite open, so clear the pools before deleting.
             SqliteConnection.ClearAllPools();
             Directory.Delete(Path.GetDirectoryName(databasePath)!, recursive: true);
         }

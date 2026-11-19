@@ -41,14 +41,12 @@ public class ReattachScenarioTests
         var runner = factory.Services.GetRequiredService<JobRunner>();
         var db = factory.Services.GetRequiredService<AppDatabase>();
         var jobId = Guid.NewGuid().ToString();
-        // Fire-and-forget: the run parks at awaiting-cost (no approval). JobRunner's task is still alive, blocked
-        // in the ConfirmRehydration callback awaiting an answer — the sink stays registered in JobStateRegistry
-        // the whole time (see JobsHub.AttachToJob / JobEndpoints), which is why the reattach below must prove
-        // the LIVE path, not just the persisted state_json path.
+        // The run parks at awaiting-cost while still alive, blocked in the ConfirmRehydration callback, so its sink
+        // stays in JobStateRegistry and the reattach below exercises the live path, not the persisted state.
         _ = runner.RunRestoreAsync(repoId, jobId, "test", null, [], false, false);
         await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
 
-        // Reattach via GET /jobs/{id} — a fresh reader, no SignalR connection of its own.
+        // Reattach through GET /jobs/{id}, without a SignalR connection.
         var http = factory.CreateClient();
         var detail = await http.GetFromJsonAsync<JsonElement>($"/api/jobs/{jobId}");
         await Assert.That(detail.GetProperty("cost").ValueKind).IsNotEqualTo(JsonValueKind.Null);
@@ -59,7 +57,7 @@ public class ReattachScenarioTests
         await Assert.That(detail.GetProperty("resume").GetProperty("lastCheckedAt").GetDateTimeOffset())
             .IsEqualTo(detail.GetProperty("resume").GetProperty("rehydrationStartedAt").GetDateTimeOffset());
 
-        // Clean up the parked run's blocked task.
+        // Release the blocked run.
         factory.Services.GetRequiredService<RestoreApprovalRegistry>().Resolve(jobId, null);
     }
 }

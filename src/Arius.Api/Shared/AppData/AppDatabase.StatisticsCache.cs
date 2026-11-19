@@ -5,12 +5,9 @@ namespace Arius.Api.Shared.AppData;
 public sealed partial class AppDatabase
 {
     /// <summary>
-    /// Returns the cached statistics <c>payload</c> for a request variant, or <c>null</c> if not cached.
-    /// This is a pure local read — no blob storage is touched — so a hit is fast. Freshness is the
-    /// caller's responsibility: the cache is invalidated explicitly (see <see cref="ClearStatisticsCache"/>)
-    /// when the snapshot set changes (archive) or the repository's connection changes. The stored
-    /// fingerprint records which snapshot the figures were computed against (provenance + prune), but is
-    /// deliberately not re-verified against blob storage on every read.
+    /// Returns the cached statistics payload for a request variant, or <c>null</c>. Reads no blob storage and does
+    /// not revalidate the stored fingerprint: callers keep the cache fresh by calling
+    /// <see cref="ClearStatisticsCache"/> when the snapshot set or the repository's connection changes.
     /// </summary>
     public string? GetCachedStatistics(long repositoryId, string version, bool full)
     {
@@ -25,8 +22,8 @@ public sealed partial class AppDatabase
     }
 
     /// <summary>
-    /// Stores (overwriting any prior variant) the computed statistics <c>payload</c> for a request
-    /// variant and prunes the repository's now-stale rows (those stamped with an older fingerprint).
+    /// Stores the statistics payload for a request variant, replacing any previous one, and deletes the repository's
+    /// rows stamped with a different (older) fingerprint.
     /// </summary>
     public void UpsertCachedStatistics(long repositoryId, string version, bool full, string fingerprint, string payload)
     {

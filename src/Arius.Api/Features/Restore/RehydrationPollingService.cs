@@ -1,16 +1,14 @@
 using System.Text.Json;
-using Arius.Api.Features.Schedules;
 using Arius.Api.Shared.Hosting;
 using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Restore;
 
 /// <summary>
-/// Re-drives pending (rehydrating) restores until they complete. Wakes every minute, rebuilds its work list from
-/// <see cref="Arius.Api.Shared.AppData.AppDatabase.ListActiveRehydrations"/> (no per-job timers → survives restart; re-arms every
-/// rehydrating row on startup), and for each auto-resume job whose adaptive cadence is due, calls
-/// <see cref="JobRunner.ResumeRestoreAsync"/>. Auto-resume=off jobs are skipped (a manual "Restore now" drives them).
-/// Mirrors <see cref="SchedulerService"/>.
+/// Re-drives rehydrating restores until they complete. Every minute it rebuilds its work list from
+/// <see cref="Arius.Api.Shared.AppData.AppDatabase.ListActiveRehydrations"/>, so pending restores survive a restart
+/// without per-job timers, and calls <see cref="JobRunner.ResumeRestoreAsync"/> for each auto-resume job whose
+/// <see cref="RehydrationSchedule"/> is due. Jobs with auto-resume off are resumed manually.
 /// </summary>
 public sealed class RehydrationPollingService(IServiceProvider services, ILogger<RehydrationPollingService> logger) : BackgroundService
 {

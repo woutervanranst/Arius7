@@ -26,7 +26,7 @@ public class RepresentationScenarioTests
             [
                 new ScanCompleteEvent(TotalFiles: 1001, TotalBytes: 100_000_000),           // pointer-only files scanned as 0
                 new FileDedupedEvent(RelativePath.Parse("deduped.bin"), ContentHash.Parse(new string('b', 64)), OriginalSize: 1_000_000_000), // pointer-only dedup, full size
-                new ChunkUploadingEvent(ChunkHash.Parse(new string('c', 64)), 100_000_000), // one new chunk queued
+                new ChunkUploadingEvent(ChunkHash.Parse(new string('c', 64)), 100_000_000),
                 new ChunkUploadedEvent(ChunkHash.Parse(new string('c', 64)), StoredSize: 60_000_000, OriginalSize: 100_000_000),
             ],
             Result: new ArchiveResult
@@ -44,7 +44,7 @@ public class RepresentationScenarioTests
         var job = db.GetJob(jobId)!;
         await Assert.That(job.Status).IsEqualTo("completed");
         var snap = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson!)!.Snapshot;
-        await Assert.That(snap.TotalNewBytes).IsEqualTo(100_000_000L);   // additive, not Max(0, 100M - 1000M)=0
+        await Assert.That(snap.TotalNewBytes).IsEqualTo(100_000_000L);   // not total − deduped, which would clamp to 0
     }
 
     [Test]
@@ -62,7 +62,7 @@ public class RepresentationScenarioTests
                 new ChunkResolutionCompleteEvent(TotalChunks: 427, LargeCount: 12, TarCount: 40, TotalChunkBytes: 2_760_000_000),
                 new RehydrationStatusEvent(Available: 145, Rehydrated: 0, NeedsRehydration: 282, Pending: 0),
             ],
-            CostPrompt: null,   // nothing pending pre-cost in this snapshot shape; no prompt
+            CostPrompt: null,
             PostApproveEvents: [ new FileRestoredEvent(RelativePath.Parse("a"), 3_000_000) ],
             Result: new RestoreResult { Success = true, FilesRestored = 100, FilesSkipped = 0, ChunksPendingRehydration = 0, ErrorMessage = null }));
 
@@ -72,10 +72,8 @@ public class RepresentationScenarioTests
 
         var db = factory.Services.GetRequiredService<AppDatabase>();
         var job = db.GetJob(jobId)!;
-        // With CostPrompt null and no pending rehydration the restore completes without resetting the sink's
-        // chunk total, so it survives unchanged into the terminal persisted snapshot. That makes state_json the
-        // reliable place to assert ChunksTotal == 427 (the authoritative total including chunks still needing
-        // rehydration), not just a live/in-flight value.
+        // Without a cost prompt or pending rehydration the sink's chunk total is never reset, so the persisted
+        // terminal snapshot still holds it.
         await Assert.That(job!.Status).IsEqualTo("completed");
         var snap = JsonSerializer.Deserialize<PersistedJobState>(job.StateJson!)!.Snapshot;
         await Assert.That(snap.ChunksTotal).IsEqualTo(427);   // includes the 282 needing rehydration

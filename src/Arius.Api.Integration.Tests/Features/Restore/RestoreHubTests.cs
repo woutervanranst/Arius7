@@ -196,7 +196,7 @@ public class RestoreHubTests
 
     private static string TempDestination() => Path.Combine(Path.GetTempPath(), $"arius-itest-dst-{Guid.NewGuid():N}");
 
-    /// <summary>A restore parked at <c>rehydrating</c> with no live run (between poller ticks), carrying its resume parameters.</summary>
+    /// <summary>A restore parked at <c>rehydrating</c> with its resume parameters and no live run, as between poller ticks.</summary>
     private static string SeedParkedRestore(AppDatabase db, long repoId, string destination, bool autoResume)
     {
         var jobId = Guid.NewGuid().ToString();
@@ -215,8 +215,8 @@ public class RestoreHubTests
         return jobId;
     }
 
-    /// <summary>Waits for the run to park at <c>rehydrating</c> and finish (so the view comes from the persisted
-    /// state), then returns the job's <c>resume</c> as <c>GET /jobs/{id}</c> reports it.</summary>
+    /// <summary>Waits until the run parks at <c>rehydrating</c> and ends, so the view comes from the persisted state,
+    /// then returns the job's <c>resume</c> from <c>GET /jobs/{id}</c>.</summary>
     private static async Task<JsonElement> ParkedResumeAsync(AriusApiFactory factory, string jobId)
     {
         var db = factory.Services.GetRequiredService<AppDatabase>();
@@ -228,7 +228,7 @@ public class RestoreHubTests
         return detail.GetProperty("resume").Clone();
     }
 
-    /// <summary>The status of the first <c>Done</c> the connection receives (JobSink sends one camelCase object).</summary>
+    /// <summary>Completes with the status of the first <c>Done</c> message, which carries one camelCase object.</summary>
     private static TaskCompletionSource<string> OnDone(HubConnection conn)
     {
         var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);

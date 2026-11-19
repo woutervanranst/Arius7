@@ -16,10 +16,8 @@ using NSubstitute;
 namespace Arius.Cli.Tests.TestSupport;
 
 /// <summary>
-/// Builds a CLI invocation harness with mock command handlers.
-/// The factory passed to <see cref="CliBuilder.BuildRootCommand"/> registers
-/// <c>AddMediator()</c> then overrides all three handler interfaces with
-/// NSubstitute mocks that capture the command objects for assertion.
+/// Invokes the CLI against a service provider whose Core handlers are NSubstitute mocks, so tests can assert the
+/// commands and queries the CLI sends.
 /// </summary>
 internal sealed class CliHarness
 {
@@ -42,9 +40,7 @@ internal sealed class CliHarness
         var repairHandler = Substitute.For<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
         var listQueryHandler = Substitute.For<IStreamQueryHandler<ListQuery, RepositoryEntry>>();
         var hydrationHandler = Substitute.For<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
-        // Mediator's source generator resolves every command handler when a command is sent, so the
-        // CLI-unused snapshot/stats query handlers must be supplied too (they otherwise need a real
-        // ISnapshotService the harness has no reason to wire up).
+        // Mediator resolves every handler when a request is sent, so the handlers the CLI does not use need mocks too.
         var snapshotsHandler = Substitute.For<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
         var snapshotDiffHandler = Substitute.For<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>();
         var statsHandler = Substitute.For<IQueryHandler<StatisticsQuery, RepositoryStatistics>>();

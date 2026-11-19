@@ -10,8 +10,6 @@ namespace Arius.Api.Integration.Tests.Features.Restore;
 
 public class ConcurrentResumeSmokeTests
 {
-    // Liveness/leak smoke test for concurrent ResumeRestoreAsync of the same job: it verifies the code path
-    // does not deadlock, does not double-complete, and leaks no registry entry under real concurrency.
     [Test]
     public async Task Concurrent_resumes_of_the_same_job_complete_cleanly_without_deadlock_or_leak()
     {
@@ -43,12 +41,12 @@ public class ConcurrentResumeSmokeTests
             },
         }));
 
-        // Genuinely interleave the two resumes.
+        // Task.Run so the two resumes interleave.
         var a = Task.Run(() => runner.ResumeRestoreAsync(jobId));
         var b = Task.Run(() => runner.ResumeRestoreAsync(jobId));
         await Task.WhenAll(a, b);
 
-        await Assert.That(jobStates.TryGet(jobId, out _)).IsFalse();          // no leaked registration
-        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");   // single clean completion
+        await Assert.That(jobStates.TryGet(jobId, out _)).IsFalse();
+        await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
     }
 }

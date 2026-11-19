@@ -15,7 +15,7 @@ public class ApprovalRegistryTests
         reg.Resolve("job-1", RehydratePriority.High);
 
         await Assert.That(await wait).IsEqualTo(RehydratePriority.High);
-        await Assert.That(reg.HasPending("job-1")).IsFalse();   // entry removed after resolve
+        await Assert.That(reg.HasPending("job-1")).IsFalse();
     }
 
     [Test]

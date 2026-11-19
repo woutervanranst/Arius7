@@ -5,7 +5,7 @@ namespace Arius.Api.Shared.AppData;
 /// properties (a run's own choice is layered on top by the caller). Pure model and rules; storage lives in
 /// <see cref="AppDatabase"/>.
 /// </summary>
-[SharedWithinAssembly] // the defaults hierarchy is read by several feature areas
+[SharedWithinAssembly]
 internal static class OptionDefaults
 {
     public const string SourceFactory    = "factory";
@@ -51,7 +51,6 @@ internal static class OptionDefaults
         return null;
     }
 
-    /// <summary>Maps an <c>onDisk</c> value to the archive command's flags.</summary>
     public static (bool RemoveLocal, bool WritePointers) ToArchiveFlags(string onDisk) => onDisk switch
     {
         "keep"          => (false, false),

@@ -7,8 +7,8 @@ using Mediator;
 
 namespace Arius.Api.FakeTestHost;
 
-/// <summary>Fake read side: answers the browse, snapshot-list and statistics queries from the repository's
-/// <see cref="ReadScenario"/>, recording each query it receives. No storage is touched.</summary>
+/// <summary>Fake read side: answers the read queries from the repository's <see cref="ReadScenario"/> and records
+/// each query it receives. No storage is touched.</summary>
 public sealed class ScriptedReadHandler(ReadScenario scenario, ScenarioGate gate, ScenarioContext ctx)
     : IStreamQueryHandler<ListQuery, RepositoryEntry>,
       IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>,
@@ -22,7 +22,7 @@ public sealed class ScriptedReadHandler(ReadScenario scenario, ScenarioGate gate
             yield return entry;
 
         if (scenario.Gated)
-            await gate.WaitForRelease(ctx.RepositoryId, cancellationToken);   // listing held "running" until released
+            await gate.WaitForRelease(ctx.RepositoryId, cancellationToken);   // keeps the listing open until released
     }
 
     public IAsyncEnumerable<SnapshotInfo> Handle(SnapshotsListQuery query, CancellationToken cancellationToken)

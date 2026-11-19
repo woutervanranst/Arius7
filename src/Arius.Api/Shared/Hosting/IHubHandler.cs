@@ -1,8 +1,8 @@
 namespace Arius.Api.Shared.Hosting;
 
 /// <summary>
-/// The behaviour of one hub method: a class with its services constructor-injected, which the hub receives as a
-/// method-injected service and forwards to. Discovered and registered by <see cref="FeatureRegistration"/>.
+/// Implements one hub method, with its services constructor-injected. <c>JobsHub</c> receives the handler as a
+/// method-injected service and forwards the call to it. Registered by <see cref="FeatureRegistration"/>.
 /// </summary>
 [SharedWithinAssembly]
 internal interface IHubHandler;

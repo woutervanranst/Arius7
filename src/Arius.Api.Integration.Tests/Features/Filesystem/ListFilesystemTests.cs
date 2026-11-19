@@ -5,7 +5,7 @@ using Arius.Api.Integration.Tests.Harness;
 
 namespace Arius.Api.Integration.Tests.Features.Filesystem;
 
-/// <summary><c>GET /fs/list</c> — the local-path picker browses directories as the Api host sees them.</summary>
+/// <summary><c>GET /fs/list</c>: lists directories as the Api host sees them, for the local-path picker.</summary>
 public class ListFilesystemTests
 {
     [Test]
@@ -21,7 +21,7 @@ public class ListFilesystemTests
             Directory.CreateDirectory(Path.Combine(root.FullName, "gamma", "nested"));
             await File.WriteAllTextAsync(Path.Combine(root.FullName, "file.txt"), "not a directory");
 
-            // Surrounding whitespace (e.g. a pasted path) is ignored.
+            // Surrounding whitespace, as in a pasted path, is ignored.
             var listing = await client.GetFromJsonAsync<FsListDto>($"/api/fs/list?path={Uri.EscapeDataString($"  {root.FullName}  ")}");
 
             await Assert.That(listing!.Path).IsEqualTo(root.FullName);

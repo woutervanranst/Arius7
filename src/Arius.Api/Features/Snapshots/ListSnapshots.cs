@@ -7,7 +7,6 @@ using Mediator;
 
 namespace Arius.Api.Features.Snapshots;
 
-/// <summary><c>GET /repos/{id}/snapshots</c> — the repository's snapshots (time-travel).</summary>
 internal sealed class ListSnapshots(RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
@@ -17,9 +16,8 @@ internal sealed class ListSnapshots(RepositoryProviderRegistry registry) : IEndp
     {
         var snapshots = new List<SnapshotDto>();
 
-        // A repository whose container hasn't been created yet (no archive has run) has no
-        // snapshots by definition — degrade to empty rather than surfacing a 500, mirroring
-        // RepositoryEndpoints.TryGetAccountInfoAsync.
+        // A container that does not exist yet (no archive has run) has no snapshots: return an empty list instead
+        // of a 500.
         ServiceProvider provider;
         try
         {

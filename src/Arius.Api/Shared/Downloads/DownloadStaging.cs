@@ -36,21 +36,21 @@ public sealed class DownloadStaging(string root)
         }
     }
 
-    /// <summary>Removes the job folder; already gone (e.g. removed meanwhile by a concurrent clean-up) is success.</summary>
+    /// <summary>Removes the job folder. A folder that is already gone, e.g. removed by a concurrent clean-up, is not an error.</summary>
     public void Delete(string jobId)
     {
         try { Directory.Delete(PathFor(jobId), recursive: true); }
         catch (DirectoryNotFoundException) { }
     }
 
-    /// <summary>Names of the job staging folders under the root; only GUID-named folders count, so a foreign folder
-    /// (e.g. a user's <c>Downloads</c> when the data directory is misplaced) is never listed, counted or cleaned up.</summary>
+    /// <summary>Names of the job staging folders under the root. Only GUID-named folders count, so a foreign folder
+    /// (e.g. a user's <c>Downloads</c> when the data directory is misplaced) is never listed or cleaned up.</summary>
     public IReadOnlyList<string> ListJobIds() =>
         Directory.Exists(root)
             ? Directory.EnumerateDirectories(root).Select(d => Path.GetFileName(d)).Where(name => Guid.TryParse(name, out _)).ToList()
             : [];
 
-    /// <summary>Total size of the job folder's files; files (or the folder) deleted meanwhile by a concurrent clean-up count as 0.</summary>
+    /// <summary>Total size of the job folder's files. Files or a folder deleted by a concurrent clean-up count as 0.</summary>
     public long SizeOf(string jobId)
     {
         var folder = PathFor(jobId);

@@ -3,7 +3,7 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Restore;
 
-/// <summary>Hub <c>ResumeRestore</c> — manual "Restore now" for a rehydrating restore whose auto-resume is off.</summary>
+/// <summary>Re-drives a rehydrating restore on demand, for a job whose auto-resume is off.</summary>
 public sealed class ResumeRestore(JobRunner jobRunner) : IHubHandler
 {
     public Task HandleAsync(string jobId)

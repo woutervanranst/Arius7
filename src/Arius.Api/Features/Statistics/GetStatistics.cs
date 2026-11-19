@@ -9,19 +9,14 @@ using Mediator;
 
 namespace Arius.Api.Features.Statistics;
 
-/// <summary><c>GET /repos/{id}/stats</c> — repository statistics.</summary>
+/// <summary>
+/// Repository statistics, cached in the app database. Statistics are a pure function of the snapshot set, so a cache
+/// hit is served without storage access; the cache is cleared when the snapshot set can change (after an archive, and
+/// on a repository update or delete). <c>full=true</c> loads the whole chunk index so the repository-wide storage
+/// figures are complete, which is slower.
+/// </summary>
 internal sealed class GetStatistics(AppDatabase database, RepositoryProviderRegistry registry) : IEndpoint
 {
-    // `full=true` loads the whole chunk index so the repository-wide storage figures are complete
-    // (slower); the web Statistics screen lazy-loads its storage section with that flag.
-    //
-    // The result is memoized in the app database (see statistics_cache). A repository's statistics are
-    // a pure function of its snapshot set, so a cache HIT is served straight from the local database
-    // with NO blob-storage access — that is what makes a warm load fast. The cache is invalidated
-    // explicitly when the snapshot set can have changed: after an archive (JobRunner) and on a
-    // properties change / delete (UpdateRepository / DeleteRepository). Only on a MISS do we touch storage: ask Core for
-    // the latest snapshot version once to stamp the entry's fingerprint (for provenance + pruning prior
-    // generations) and run the real computation.
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/repos/{id:long}/stats", (long id, string? version, bool? full, CancellationToken ct, GetStatistics endpoint) => endpoint.HandleAsync(id, version, full, ct));
 
@@ -34,8 +29,7 @@ internal sealed class GetStatistics(AppDatabase database, RepositoryProviderRegi
         if (cached is not null)
             return JsonSerializer.Deserialize<StatisticsDto>(cached)!;
 
-        // A repository whose container hasn't been created yet (no archive has run) has no
-        // statistics by definition — degrade to zeroed-out stats rather than surfacing a 500.
+        // A container that does not exist yet (no archive has run) has no statistics: return zeros instead of a 500.
         ServiceProvider provider;
         try
         {
@@ -48,8 +42,7 @@ internal sealed class GetStatistics(AppDatabase database, RepositoryProviderRegi
 
         var mediator = provider.GetRequiredService<IMediator>();
 
-        // Miss: derive the fingerprint cheaply (latest blob name only — not SnapshotsListQuery, which
-        // resolves every manifest), compute, and store.
+        // The latest snapshot version fingerprints the cache entry so older generations can be pruned.
         var fingerprint = await mediator.Send(new LatestSnapshotVersionQuery(), ct) ?? string.Empty;
 
         var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag), ct);

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Features.Restore;
 
-/// <summary>Hub <c>StartRestore</c> — starts a restore (empty targetPaths = whole repository).</summary>
+/// <summary>Starts a restore job. An empty <c>targetPaths</c> restores the whole repository.</summary>
 public sealed class StartRestore(IHubContext<JobsHub> hub, AppDatabase database, JobRunner jobRunner) : IHubHandler
 {
     public async Task<string> HandleAsync(string connectionId, long repositoryId, string? version, string[]? targetPaths, bool overwrite, bool noPointers)

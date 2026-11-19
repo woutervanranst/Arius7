@@ -23,12 +23,9 @@ public sealed partial class AppDatabase
         command.ExecuteNonQuery();
     }
 
-    /// <summary>Transitions a job to a terminal status (<c>completed</c>/<c>failed</c>/<c>cancelled</c>/<c>interrupted</c>).
-    /// Guarded: a row already in a terminal status is left untouched — this is what stops a late-arriving cancel
-    /// (<see cref="Arius.Api.Shared.Hubs.JobsHub.CancelJob"/>'s fall-through branch) from racing the rehydration poller's
-    /// completion and clobbering an already-<c>completed</c> row back to <c>cancelled</c>/pct 0. Returns <c>true</c>
-    /// when the guarded UPDATE applied the transition, <c>false</c> when the row was already terminal (guard hit) —
-    /// callers that must not act on a no-op transition (e.g. broadcasting a terminal Done) should check this.</summary>
+    /// <summary>Moves a job to a terminal status. A row that is already terminal is left unchanged, so a late cancel
+    /// cannot overwrite a job the rehydration poller has just completed. Returns <c>false</c> when the row was already
+    /// terminal; callers that act on the transition (e.g. broadcasting <c>Done</c>) must check it.</summary>
     public bool CompleteJob(string id, string status, double pct, string? detail)
     {
         using var connection = OpenConnection();
@@ -42,10 +39,8 @@ public sealed partial class AppDatabase
         return command.ExecuteNonQuery() > 0;
     }
 
-    /// <summary>Updates a job's <c>status</c> (and optional <c>detail</c>) for a NON-terminal transition
-    /// (running↔awaiting-cost↔rehydrating). Leaves <c>finished_at</c> untouched — use <see cref="CompleteJob"/>
-    /// for terminal states. The <c>ux_jobs_one_active_per_repo</c> index is enforced: moving between two
-    /// non-terminal statuses for the same repository's single active row is a plain UPDATE and never conflicts.</summary>
+    /// <summary>Moves a job between non-terminal statuses (<c>running</c>, <c>awaiting-cost</c>, <c>rehydrating</c>)
+    /// without setting <c>finished_at</c>; use <see cref="CompleteJob"/> for terminal statuses.</summary>
     public void SetJobStatus(string id, string status, string? detail = null)
     {
         using var connection = OpenConnection();
@@ -59,11 +54,9 @@ public sealed partial class AppDatabase
         command.ExecuteNonQuery();
     }
 
-    /// <summary>Guarded flip of a parked restore to <c>running</c> for a resume: applies only while the row is still
-    /// <c>rehydrating</c>/<c>awaiting-cost</c>. Returns <c>false</c> when the row was terminalized in the meantime
-    /// (e.g. a concurrent cancel via <see cref="Arius.Api.Shared.Hubs.JobsHub.CancelJob"/>'s parked branch), so
-    /// <see cref="Arius.Api.Shared.Jobs.JobRunner.ResumeRestoreAsync"/> can bail instead of resurrecting a cancelled job to
-    /// running and driving it to completion. Unlike <see cref="SetJobStatus"/> this is conditional.</summary>
+    /// <summary>Moves a parked restore (<c>rehydrating</c> or <c>awaiting-cost</c>) to <c>running</c> to resume it.
+    /// Returns <c>false</c> when the job became terminal in the meantime (e.g. it was cancelled), so
+    /// <see cref="Arius.Api.Shared.Jobs.JobRunner.ResumeRestoreAsync"/> does not resume a cancelled job.</summary>
     public bool TryResumeToRunning(string id, string? detail = null)
     {
         using var connection = OpenConnection();
@@ -74,8 +67,6 @@ public sealed partial class AppDatabase
         return command.ExecuteNonQuery() > 0;
     }
 
-    /// <summary>Reads a single job by id, or <c>null</c> if it does not exist. Backs <c>GET /jobs/{id}</c>
-    /// and the rehydration poller's per-job due check.</summary>
     public JobRecord? GetJob(string id)
     {
         using var connection = OpenConnection();
@@ -86,8 +77,8 @@ public sealed partial class AppDatabase
         return reader.Read() ? ReadJob(reader) : null;
     }
 
-    /// <summary>All jobs currently in <c>rehydrating</c> — the rehydration poller's work list. Rebuilt from the
-    /// DB every tick so the poller holds no per-job timers and survives an Api restart.</summary>
+    /// <summary>Jobs in <c>rehydrating</c>. The rehydration poller reads this every tick instead of keeping per-job
+    /// timers, so it survives an Api restart.</summary>
     public IReadOnlyList<JobRecord> ListActiveRehydrations()
     {
         using var connection = OpenConnection();
@@ -100,9 +91,8 @@ public sealed partial class AppDatabase
         return result;
     }
 
-    /// <summary>Jobs stuck at <c>awaiting-cost</c> whose <c>started_at</c> predates <paramref name="olderThan"/> —
-    /// the abandoned-cost-prompt work list for <see cref="Arius.Api.Features.Restore.StaleApprovalSweepService"/>. Never returns
-    /// <c>rehydrating</c> rows (those legitimately live for hours).</summary>
+    /// <summary>Jobs at <c>awaiting-cost</c> that started before <paramref name="olderThan"/>: the abandoned cost
+    /// prompts that <see cref="Arius.Api.Features.Restore.StaleApprovalSweepService"/> declines.</summary>
     public IReadOnlyList<JobRecord> ListStaleAwaitingCost(DateTimeOffset olderThan)
     {
         using var connection = OpenConnection();
@@ -129,8 +119,8 @@ public sealed partial class AppDatabase
         return result;
     }
 
-    /// <summary>Latest archive command start time per repository. Unlike <see cref="ListJobs"/>, this is not capped
-    /// by the global job-history window, so repository rows always report the actual latest run.</summary>
+    /// <summary>Latest archive start time per repository. Unlike <see cref="ListJobs"/> it is not limited to the
+    /// recent job history, so it always reports the latest run.</summary>
     public IReadOnlyDictionary<long, DateTimeOffset> ListLatestArchiveStartedAt(long? repositoryId = null)
     {
         using var connection = OpenConnection();
@@ -150,11 +140,9 @@ public sealed partial class AppDatabase
         return result;
     }
 
-    /// <summary>Non-terminal jobs (running/awaiting-cost/rehydrating), optionally repo-scoped, ordered newest-first.
-    /// Deliberately <b>uncapped</b>: unlike <see cref="ListJobs"/> it never hides an active job behind the newest-100
-    /// window, since a long-lived <c>awaiting-cost</c> (up to 24h) or <c>rehydrating</c> job can sit outside that
-    /// window in a busy multi-repo/scheduled system. Backs <c>GET /jobs?status=active</c> (job-pill discovery).
-    /// Bounded in practice by the single-active-job-per-repo unique index.</summary>
+    /// <summary>Non-terminal jobs, newest first, optionally for one repository. Unlike <see cref="ListJobs"/> it has no
+    /// limit, so a long-lived <c>awaiting-cost</c> or <c>rehydrating</c> job is never hidden behind newer jobs. The
+    /// single-active-job index bounds it to one row per repository.</summary>
     public IReadOnlyList<JobRecord> ListActiveJobs(long? repositoryId = null)
     {
         using var connection = OpenConnection();
@@ -172,8 +160,8 @@ public sealed partial class AppDatabase
         return result;
     }
 
-    /// <summary>Persists the job's live <see cref="JobSnapshot"/> (serialized) so it survives a host restart
-    /// and can seed a reconnecting client. Overwritten roughly every progress tick while the job runs.</summary>
+    /// <summary>Persists the job's serialized <see cref="JobSnapshot"/> so it survives a host restart and can seed a
+    /// reconnecting client.</summary>
     public void SaveJobState(string id, string stateJson)
     {
         using var connection = OpenConnection();
@@ -184,7 +172,7 @@ public sealed partial class AppDatabase
         command.ExecuteNonQuery();
     }
 
-    /// <summary>Persists the job's terminal <see cref="JobOutcome"/> (serialized) for the jobs-history list.</summary>
+    /// <summary>Persists the job's serialized terminal <see cref="JobOutcome"/> for the job history.</summary>
     public void SetJobOutcome(string id, string outcomeJson)
     {
         using var connection = OpenConnection();
@@ -195,9 +183,8 @@ public sealed partial class AppDatabase
         command.ExecuteNonQuery();
     }
 
-    /// <summary>Cooperative check backing the single-active-job-per-repository guard: <c>true</c> while the
-    /// repository has a non-terminal job (running/awaiting-cost/rehydrating). The <c>ux_jobs_one_active_per_repo</c>
-    /// unique index is the race-proof backstop for callers that race past this check.</summary>
+    /// <summary>Whether the repository has a non-terminal job. This check is cooperative; the
+    /// <c>ux_jobs_one_active_per_repo</c> unique index is the race-proof backstop.</summary>
     public bool HasActiveJob(long repositoryId)
     {
         using var connection = OpenConnection();
@@ -207,8 +194,7 @@ public sealed partial class AppDatabase
         return command.ExecuteScalar() is not null;
     }
 
-    /// <summary>Test-only: wipes every app row (accounts/repositories/jobs/schedules/statistics) for cross-spec
-    /// isolation in the hermetic browser suite. Never called by production paths.</summary>
+    /// <summary>Test-only: deletes every row so the hermetic browser specs are isolated from each other.</summary>
     public void ResetAll()
     {
         using var connection = OpenConnection();
@@ -220,23 +206,18 @@ public sealed partial class AppDatabase
         command.ExecuteNonQuery();
     }
 
-    /// <summary>On Api startup, any job left <c>running</c> OR <c>awaiting-cost</c> by a crash/restart is orphaned:
-    /// both carry in-process/in-memory state (the live run, resp. the in-memory approval wait) that is gone after a
-    /// restart, so neither can continue in place. Mark them <c>interrupted</c> (terminal → frees the
-    /// <c>ux_jobs_one_active_per_repo</c> guard so the user can re-run; no paid work is lost at awaiting-cost because
-    /// rehydration hasn't started yet). <c>rehydrating</c> is deliberately left untouched — the poller legitimately
-    /// re-arms it from the DB on its next tick.</summary>
+    /// <summary>Marks jobs left <c>running</c> or <c>awaiting-cost</c> by a crash or restart as <c>interrupted</c>:
+    /// their live run or in-memory approval wait is gone, so they cannot continue. This frees the single-active-job
+    /// guard; no paid work is lost at <c>awaiting-cost</c> because rehydration has not started. <c>rehydrating</c> jobs
+    /// are left for the rehydration poller to resume.</summary>
     public int ReconcileInterruptedJobs()
     {
         using var connection = OpenConnection();
         return ReconcileRunningJobs(connection);
     }
 
-    /// <summary>Marks every orphaned <c>running</c> AND <c>awaiting-cost</c> job <c>interrupted</c> on the given
-    /// connection (both have in-process/in-memory state that's gone after a restart). <c>rehydrating</c> is left for
-    /// the poller to re-arm. Shared by the schema initializer (must run before <c>ux_jobs_one_active_per_repo</c> is
-    /// created — see the call site in <see cref="CreateOrUpgradeSchema"/>) and the public
-    /// <see cref="ReconcileInterruptedJobs"/>.</summary>
+    /// <summary><see cref="ReconcileInterruptedJobs"/> on an open connection, so <see cref="CreateOrUpgradeSchema"/>
+    /// can run it before creating <c>ux_jobs_one_active_per_repo</c>.</summary>
     private static int ReconcileRunningJobs(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();

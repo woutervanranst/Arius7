@@ -10,10 +10,8 @@ namespace Arius.Api.Integration.Tests.Features.Jobs;
 
 public class LifecycleScenarioTests
 {
-    /// <summary>Regression: <c>GET /jobs/{id}</c> must report the true total on <c>Snapshot.WarningCount</c>,
-    /// not the ring-capped <c>Warnings.Count</c> (max 200) which undercounts any job with more than 200
-    /// warnings. Persists a <see cref="PersistedJobState"/> with the >200 mismatch directly and asserts the
-    /// endpoint reports the true total.</summary>
+    /// <summary><c>GET /jobs/{id}</c> reports the total warning count (<c>Snapshot.WarningCount</c>), not the number
+    /// of warnings retained in the capped ring.</summary>
     [Test]
     public async Task Detail_endpoint_reports_the_true_warning_count_not_the_ring_cap()
     {
@@ -28,7 +26,7 @@ public class LifecycleScenarioTests
             JobId = "j-warn", Phase = "done",
             TotalBytes = 0, TotalNewBytes = 0, ScannedBytes = 0, ScannedFiles = 0, HashedBytes = 0, UploadedBytes = 0,
             DedupedBytes = 0, DedupedFiles = 0, EtaSeconds = null, ThroughputBytesPerSec = 0, Pct = 100,
-            WarningCount = 250,   // true total; the ring below only retains the last 50 lines
+            WarningCount = 250,   // the persisted ring below holds only 50
             Stats = new Dictionary<string, string>(),
         };
         var persisted = new PersistedJobState
@@ -44,6 +42,6 @@ public class LifecycleScenarioTests
             "/api/jobs/j-warn", new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         await Assert.That(detail).IsNotNull();
-        await Assert.That(detail!.WarningCount).IsEqualTo(250);   // not 50 (the persisted ring's Count)
+        await Assert.That(detail!.WarningCount).IsEqualTo(250);
     }
 }

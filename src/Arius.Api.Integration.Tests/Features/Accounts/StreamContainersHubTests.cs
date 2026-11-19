@@ -22,7 +22,7 @@ public class StreamContainersHubTests
             .Build();
         await conn.StartAsync();
 
-        // accountId 0 = a not-yet-saved account: explicit name + key, no repository involved.
+        // accountId 0 is an unsaved account: the name and key are passed explicitly.
         var names = new List<string>();
         await foreach (var name in conn.StreamAsync<string>("StreamContainers", 0L, "new-account", "new-key"))
             names.Add(name);

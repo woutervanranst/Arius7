@@ -7,9 +7,8 @@ using Arius.Core.Shared.Hashes;
 namespace Arius.Api.Tests.Features.Archive;
 
 /// <summary>
-/// Locks down the forwarder wiring: hashed bytes are credited on completion (<see cref="FileHashedEvent"/>),
-/// not at hash start (<see cref="FileHashingEvent"/>), and the exact new-byte upload total arrives via
-/// <see cref="RoutingCompleteEvent"/>.
+/// Hashed bytes are credited when hashing completes (<see cref="FileHashedEvent"/>), not when it starts
+/// (<see cref="FileHashingEvent"/>), and the exact new-byte total arrives with <see cref="RoutingCompleteEvent"/>.
 /// </summary>
 public class ArchiveForwardersHashedRoutingTests
 {
@@ -28,8 +27,8 @@ public class ArchiveForwardersHashedRoutingTests
     [Test]
     public async Task FileHashingForwarder_advances_phase_but_does_not_credit_hashed_bytes()
     {
-        // Crediting at hash start would make the hash counter — and the hash rate and ETA — lead reality by
-        // the files still in flight.
+        // Crediting at hash start would make the hashed bytes, hash rate and ETA run ahead by the files still
+        // being hashed.
         var s = new JobSink();
         await new FileHashingForwarder(s).Handle(new FileHashingEvent(RelativePath.Parse("a.bin"), 4096), default);
 
@@ -49,12 +48,12 @@ public class ArchiveForwardersHashedRoutingTests
         s.AddUploaded(ChunkHash.Parse(new string('a', 64)), stored: 0, original: 1_000_000);   // 1 MB/s
         s.SampleForEta(t0.AddSeconds(1));
 
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsTrue();   // provisional pre-routing
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsTrue();   // routing not complete
 
         await new RoutingCompleteForwarder(s).Handle(new RoutingCompleteEvent(2_000_000), default);
 
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
-        await Assert.That(snap.EtaSeconds!.Value).IsBetween(1, 2);   // exact: (2M − 1M) / 1 MB/s ≈ 1 s
+        await Assert.That(snap.EtaSeconds!.Value).IsBetween(1, 2);   // (2 MB − 1 MB) / 1 MB/s = 1 s
         await Assert.That(snap.EtaIsProvisional).IsFalse();
     }
 }
