@@ -10,7 +10,7 @@ internal sealed class CleanupDownload(AppDatabase db, DownloadStaging staging) :
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPost("/jobs/{id}/download/cleanup", (string id, CleanupDownload endpoint) => endpoint.Handle(id));
 
-    public IResult Handle(string id)
+    private IResult Handle(string id)
     {
         var job = db.GetDownloadJob(id);
         if (job is null) return Results.NotFound();

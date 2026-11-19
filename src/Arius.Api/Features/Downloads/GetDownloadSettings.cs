@@ -9,5 +9,5 @@ internal sealed class GetDownloadSettings(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/settings/downloads", (GetDownloadSettings endpoint) => endpoint.Handle());
 
-    public IResult Handle() => Results.Ok(db.GetDownloadSettings());
+    private IResult Handle() => Results.Ok(db.GetDownloadSettings());
 }

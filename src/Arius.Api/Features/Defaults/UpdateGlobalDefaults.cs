@@ -9,7 +9,7 @@ internal sealed class UpdateGlobalDefaults(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPut("/settings/defaults", (DefaultValues values, UpdateGlobalDefaults endpoint) => endpoint.Handle(values));
 
-    public IResult Handle(DefaultValues values)
+    private IResult Handle(DefaultValues values)
     {
         if (OptionDefaults.Validate(values) is { } error)
             return Results.BadRequest(error);

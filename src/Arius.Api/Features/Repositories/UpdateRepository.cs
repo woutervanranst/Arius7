@@ -10,7 +10,7 @@ internal sealed class UpdateRepository(AppDatabase db, SecretProtector secrets, 
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPatch("/repos/{id:long}", (long id, UpdateRepositoryRequest request, UpdateRepository endpoint) => endpoint.Handle(id, request));
 
-    public IResult Handle(long id, UpdateRepositoryRequest request)
+    private IResult Handle(long id, UpdateRepositoryRequest request)
     {
         if (db.GetRepository(id) is null)
             return Results.NotFound();

@@ -9,7 +9,7 @@ internal sealed class CreateSchedule(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPost("/repos/{id:long}/schedules", (long id, CreateScheduleRequest request, CreateSchedule endpoint) => endpoint.Handle(id, request));
 
-    public IResult Handle(long id, CreateScheduleRequest request)
+    private IResult Handle(long id, CreateScheduleRequest request)
     {
         if (db.GetRepository(id) is null) return Results.NotFound();
         var scheduleId = db.InsertSchedule(id, request.Cron, request.Kind ?? "archive", enabled: true);

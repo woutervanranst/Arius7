@@ -13,7 +13,7 @@ internal sealed class GetDownloadContent(AppDatabase db, DownloadStaging staging
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/jobs/{id}/download/content", (string id, string? set, HttpContext http, GetDownloadContent endpoint) => endpoint.HandleAsync(id, set, http));
 
-    public async Task<IResult> HandleAsync(string id, string? set, HttpContext http)
+    private async Task<IResult> HandleAsync(string id, string? set, HttpContext http)
     {
         var job = db.GetDownloadJob(id);
         if (job is null) return Results.NotFound();

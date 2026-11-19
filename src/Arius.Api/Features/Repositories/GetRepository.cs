@@ -10,7 +10,7 @@ internal sealed class GetRepository(AppDatabase db, RepositoryProviderRegistry r
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/repos/{id:long}", (long id, CancellationToken ct, GetRepository endpoint) => endpoint.HandleAsync(id, ct));
 
-    public async Task<IResult> HandleAsync(long id, CancellationToken ct)
+    private async Task<IResult> HandleAsync(long id, CancellationToken ct)
     {
         var repository = db.GetRepository(id);
         if (repository is null)

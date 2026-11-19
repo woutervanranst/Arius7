@@ -9,7 +9,7 @@ internal sealed class DeleteAccount(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapDelete("/accounts/{id:long}", (long id, DeleteAccount endpoint) => endpoint.Handle(id));
 
-    public IResult Handle(long id)
+    private IResult Handle(long id)
     {
         if (db.GetAccount(id) is null)
             return Results.NotFound();

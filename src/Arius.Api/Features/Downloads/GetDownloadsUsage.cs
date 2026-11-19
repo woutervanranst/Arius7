@@ -9,5 +9,5 @@ internal sealed class GetDownloadsUsage(DownloadStaging staging) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/downloads/usage", (GetDownloadsUsage endpoint) => endpoint.Handle());
 
-    public IResult Handle() => Results.Ok(DownloadEndpoints.Usage(staging));
+    private IResult Handle() => Results.Ok(DownloadEndpoints.Usage(staging));
 }

@@ -10,7 +10,7 @@ internal sealed class ListRepositories(AppDatabase db, RepositoryProviderRegistr
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/repos/", (CancellationToken ct, ListRepositories endpoint) => endpoint.HandleAsync(ct));
 
-    public async Task<List<RepositoryDto>> HandleAsync(CancellationToken ct)
+    private async Task<List<RepositoryDto>> HandleAsync(CancellationToken ct)
     {
         var repositories = db.ListRepositories();
         var lastArchiveStarts = db.ListLatestArchiveStartedAt();

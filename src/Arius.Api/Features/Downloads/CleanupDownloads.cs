@@ -9,7 +9,7 @@ internal sealed class CleanupDownloads(DownloadCleaner cleaner, DownloadStaging 
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPost("/downloads/cleanup", (CleanupDownloads endpoint) => endpoint.Handle());
 
-    public IResult Handle()
+    private IResult Handle()
     {
         cleaner.CleanUpAll();
         return Results.Ok(DownloadEndpoints.Usage(staging));

@@ -9,7 +9,7 @@ internal sealed class CreateRepository(AppDatabase db, SecretProtector secrets) 
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPost("/repos/", (CreateRepositoryRequest request, CreateRepository endpoint) => endpoint.Handle(request));
 
-    public IResult Handle(CreateRepositoryRequest request)
+    private IResult Handle(CreateRepositoryRequest request)
     {
         if (db.GetAccount(request.AccountId) is null)
             return Results.BadRequest($"Account {request.AccountId} does not exist.");
