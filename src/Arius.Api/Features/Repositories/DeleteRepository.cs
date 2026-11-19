@@ -5,7 +5,6 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Repositories;
 
-/// <summary><c>DELETE /repos/{id}</c></summary>
 internal sealed class DeleteRepository(AppDatabase db, RepositoryProviderRegistry registry, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
@@ -16,7 +15,7 @@ internal sealed class DeleteRepository(AppDatabase db, RepositoryProviderRegistr
         if (db.GetRepository(id) is null)
             return Results.NotFound();
 
-        // Deleting disposes the repo's logger factory, which a concurrent job build resolves loggers from.
+        // Deleting disposes the repository's logger factory, which a running job's provider still uses.
         if (db.HasActiveJob(id))
             return Results.Conflict("Repository has an active job; wait for it to finish or cancel it before deleting.");
 
@@ -24,7 +23,7 @@ internal sealed class DeleteRepository(AppDatabase db, RepositoryProviderRegistr
             staging.Delete(job.Id);
 
         db.DeleteRepository(id);
-        registry.Remove(id); // repo is gone for good → also dispose its rolling-log factory, not just Evict the provider
+        registry.Remove(id); // unlike Evict, also disposes the repository's logger factory
         return Results.NoContent();
     }
 }

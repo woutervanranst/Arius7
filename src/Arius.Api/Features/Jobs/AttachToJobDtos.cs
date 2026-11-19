@@ -2,6 +2,6 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Jobs;
 
-/// <summary>Snapshot-on-attach payload: the job's current status, its absolute progress snapshot,
-/// the cost modal if it is awaiting-cost, and the live warning count. One round trip, one client apply-path.</summary>
+/// <summary>Everything a client needs when it attaches to a job, in one round trip: the status, the progress
+/// snapshot, the pending cost estimate when awaiting cost, the warning count and the restore resume state.</summary>
 public sealed record JobAttachState(string Status, Arius.Api.Shared.Jobs.JobSnapshot Snapshot, CostEstimateDto? Cost, int WarningCount, ResumeInfo? Resume);

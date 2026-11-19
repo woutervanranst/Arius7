@@ -18,8 +18,8 @@ using Mediator;
 
 namespace Arius.Api.FakeTestHost;
 
-/// <summary>Test composer: registers a scripted Core (scenario-driven command and query handlers + a deterministic
-/// cost estimator) into the per-repo provider. Never opens a real container.</summary>
+/// <summary>Test composer: registers a scripted Core (scenario-driven handlers and a deterministic cost estimator).
+/// Never opens a real container.</summary>
 public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, ScenarioGate gate) : IRepositoryCoreComposer
 {
     public Task ComposeAsync(IServiceCollection services, RepositoryConnection connection, PreflightMode mode, CancellationToken cancellationToken)
@@ -29,15 +29,13 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
             throw new PreflightException(PreflightErrorKind.ContainerNotFound, "scripted", connection.AccountName, connection.Container, statusCode: 404);
 
         services.AddSingleton<IStorageCostEstimator>(new ScriptedStorageCostEstimator());
-        // Per-repo gate + context so the scripted handlers can hold a run until a control endpoint releases it.
+        // Lets the scripted handlers hold a run until a control endpoint releases it.
         services.AddSingleton(gate);
         services.AddSingleton(new ScenarioContext(connection.RepositoryId));
 
         AddNotConfiguredStandIns(services);
 
-        // Scenario overrides — registered after the stand-ins above, so they win (MS-DI resolves the LAST
-        // registration for a given service type). A test that sets only one of Archive/Restore leaves the
-        // other on its stand-in, which is exactly what makes a restore-only (or archive-only) scenario safe.
+        // Registered after the stand-ins so they win: Microsoft DI resolves the last registration of a service type.
         var archive = scenarios.TakeArchive(connection.RepositoryId);
         if (archive is not null)
         {
@@ -66,19 +64,15 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
 
     public void ComposeWithoutRepository(IServiceCollection services)
     {
-        // Core's own stand-ins for the repository-bound requests, then the scripted container listing on top.
+        // Registered after Core's handlers so the scripted container listing replaces the real one.
         services.AddAriusWithoutRepository();
         services.AddSingleton<IStreamQueryHandler<ContainerNamesQuery, string>, ScriptedContainerNamesHandler>();
     }
 
     private static void AddNotConfiguredStandIns(IServiceCollection services)
     {
-        // Register a NotConfigured stand-in for EVERY command/query/stream-query interface Arius.Core
-        // exposes up front — this list must track the handler set AddArius() wires in
-        // src/Arius.Core/ServiceCollectionExtensions.cs — because Mediator eagerly resolves every
-        // discovered handler on first Send/Publish, not just the one a scenario scripts (see
-        // NotConfiguredHandlers.cs for why). ArchiveCommand and RestoreCommand are scenario-scriptable
-        // but still need a baseline stand-in for runs that don't script them.
+        // Mediator resolves every discovered handler on first use, so every request needs a handler, not only the
+        // scripted ones. This list must match the handlers AddArius() registers.
         services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>, NotConfiguredCommandHandler<ArchiveCommand, ArchiveResult>>();
         services.AddSingleton<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>, NotConfiguredCommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>, NotConfiguredCommandHandler<RestoreCommand, RestoreResult>>();

@@ -8,10 +8,8 @@ using static ArchUnitNET.Fluent.ArchRuleDefinition;
 namespace Arius.Architecture.Tests;
 
 /// <summary>
-/// Architecture tests enforcing dependency rules across projects.
-/// Note: uses HasNoViolations() since the base TngTech.ArchUnitNET package
-/// does not expose Check(Architecture) on IArchRule (that is added by framework
-/// extension packages like ArchUnitNET.xUnit or ArchUnitNET.NUnit).
+/// Dependency rules across the Arius projects. Uses <c>HasNoViolations()</c> because the base ArchUnitNET package
+/// has no <c>Check(Architecture)</c>; that comes with the test-framework extension packages.
 /// </summary>
 public class DependencyTests
 {
@@ -31,7 +29,6 @@ public class DependencyTests
     [Test]
     public void Core_Should_Not_Reference_Azure()
     {
-        // Core must not depend on any Azure namespace types (Azure.Storage, Azure.Identity, Azure.Core, etc.)
         IArchRule rule = Classes().That().ResideInAssembly(CoreAssembly)
             .Should().NotDependOnAnyTypesThat().ResideInNamespace("Azure");
 
@@ -52,8 +49,7 @@ public class DependencyTests
     [Test]
     public void Cli_Should_Not_Reference_Azure()
     {
-        // CLI must not depend on any Azure namespace types directly;
-        // all Azure interactions are mediated through Arius.AzureBlob types.
+        // Azure access goes through Arius.AzureBlob.
         IArchRule rule = Classes().That().ResideInAssembly(CliAssembly)
             .Should().NotDependOnAnyTypesThat().ResideInNamespace("Azure");
 
@@ -88,11 +84,8 @@ public class DependencyTests
     {
         var internalTypes = new[]
         {
-            // FileSystem types
             typeof(LocalDirectory),
             typeof(RelativeFileSystem),
-
-            // Archive feature types
             typeof(BinaryFile),
             typeof(PointerFile),
             typeof(FilePair)
@@ -107,36 +100,35 @@ public class DependencyTests
     [Test]
     public void Core_Is_Exposed_Primarily_Through_Mediator()
     {
-        // See ADR0010 for more context.
-        // NOTE: this test is NOT exhaustive: it does NOT validate lambdas / async state machines.
+        // See ADR-0010. Not exhaustive: ArchUnitNET does not see dependencies inside lambdas or async state machines.
 
         var contractTypes = GetContractTypes();
 
-        // RULE: Every non-contract Core class is treated as Core-owned implementation detail unless explicitly exempted below.
+        // Every Core class is an implementation detail unless exempted below.
         var coreSharedServiceTypes = typeof(Core.AssemblyMarker).Assembly
             .GetTypes()
             .Where(type => type is { IsClass: true, Namespace: not null })
-            // EXCEPTION RULE: Public contracts and the Core DTO/value types reachable from those contracts are allowed across assembly boundaries.
+            // Exempt: public contracts and the Core types reachable from them.
             .Where(type => !contractTypes.Contains(type))
-            // EXCEPTION RULE: Notification messages are public cross-boundary events; they are allowed outside Core as event contracts, not implementation services.
+            // Exempt: notifications, the events non-Core observers subscribe to.
             .Where(type => !type.GetInterfaces().Any(IsNotification))
-            // EXCEPTION RULE: Core-defined exception types are boundary contracts; non-Core adapters may throw, catch, or translate them.
+            // Exempt: Core exceptions, which adapters may throw, catch or translate.
             .Where(type => !type.IsAssignableTo(typeof(Exception)))
-            // EXCEPTION RULE: These Core entry-point or boundary helper types are intentionally callable from composition roots or storage adapters.
+            // Exempt: entry points and helpers that composition roots and storage adapters call.
             .Except([
                 typeof(Core.ServiceCollectionExtensions),
                 typeof(Core.Shared.RepositoryLocalStatePaths), // for GetLogsDirectory
-                typeof(Core.Shared.AriusLogConfig)             // the ARIUS_LOG_LEVEL + line-format contract every host configures its own Serilog from
+                typeof(Core.Shared.AriusLogConfig)             // the log level and line format every host configures Serilog with
                 ])
             .ToList();
 
-        // RULE: Command and query handlers remain Core implementation details, but Mediator source-generated infrastructure must reference them for generated dispatch/registration metadata.
+        // Handlers are Core implementation details, but the Mediator-generated infrastructure must reference them.
         var mediatorHandlerNames = coreSharedServiceTypes
             .Where(type => type.GetInterfaces().Any(IsCommandHandler) || type.GetInterfaces().Any(IsQueryHandler))
             .Select(type => type.FullName!)
             .ToHashSet(StringComparer.Ordinal);
 
-        // RULE: Validate dependencies by full name so ArchUnit reports one precise forbidden Core type per failure.
+        // Checked one type at a time so each failure names the forbidden Core type.
         var coreSharedServiceNames = coreSharedServiceTypes
             .Select(type => type.FullName!)
             .Order()
@@ -146,19 +138,17 @@ public class DependencyTests
         {
             foreach (var nonCoreAssembly in new[] { AzureBlobAssembly, CliAssembly })
             {
-                // RULE: Non-Core assemblies must not depend on Core implementation types by default.
                 var classes = Classes().That().ResideInAssembly(nonCoreAssembly);
 
                 if (mediatorHandlerNames.Contains(coreSharedServiceName))
                 {
-                    // RULE: Only Mediator-generated infrastructure may depend on Core command/query handlers outside Core.
+                    // Outside Core, only the Mediator-generated infrastructure may depend on handlers.
                     classes = classes
                         .And().DoNotHaveFullName("Microsoft.Extensions.DependencyInjection.MediatorDependencyInjectionExtensions")
                         .And().DoNotHaveFullName("Mediator.Mediator")
                         .And().DoNotHaveFullName("Mediator.Internals.ContainerMetadata");
                 }
 
-                // RULE: After applying the narrow contract/source-generator exceptions, no remaining non-Core class may reference the Core implementation type under test.
                 IArchRule rule = classes
                     .Should().NotDependOnAnyTypesThat().HaveFullName(coreSharedServiceName);
 
@@ -177,23 +167,22 @@ public class DependencyTests
         {
             var coreAssembly = typeof(Core.AssemblyMarker).Assembly;
             var contractTypes = new HashSet<System.Type>();
-            // RULE: Start from every public Core contract surface that non-Core callers, adapters, or observers are allowed to know about.
+            // Seeded with the Core surface that non-Core callers, adapters and observers may know about.
             var pending = new Queue<System.Type>(coreAssembly
                 .GetTypes()
                 .SelectMany(type => GetContractSeedTypes(type)));
 
-            // RULE: Treat contract DTO graphs transitively so nested Core value objects used by allowed contracts are allowed too.
+            // Transitive, so the Core types that allowed contracts use are allowed too.
             while (pending.TryDequeue(out var type))
             {
                 foreach (var dependency in GetCoreTypes(type, coreAssembly))
                 {
-                    // RULE: Each Core type in the contract graph is processed once to avoid cycles between DTOs and value objects.
+                    // Visit each type once: the graph can contain cycles.
                     if (!contractTypes.Add(dependency))
                     {
                         continue;
                     }
 
-                    // RULE: Any Core type used by a contract type's public construction/storage surface becomes part of the allowed contract graph.
                     foreach (var usedType in GetUsedTypes(dependency))
                     {
                         pending.Enqueue(usedType);
@@ -208,11 +197,11 @@ public class DependencyTests
         {
             if (type.GetInterfaces().Any(IsNotification))
             {
-                // RULE: Notification classes are message contracts because non-Core observers subscribe to them.
+                // Notifications: non-Core observers subscribe to them.
                 yield return type;
             }
 
-            // RULE: Command and command-result types are message contracts because non-Core callers send commands and receive results through Mediator.
+            // Commands and their results: non-Core callers send them through Mediator.
             foreach (var commandHandlerArgument in type.GetInterfaces()
                 .Where(IsCommandHandler)
                 .SelectMany(handlerInterface => handlerInterface.GetGenericArguments()))
@@ -220,7 +209,7 @@ public class DependencyTests
                 yield return commandHandlerArgument;
             }
 
-            // RULE: Query and query-result types are message contracts because non-Core callers send queries and enumerate/read results through Mediator.
+            // Queries and their results: non-Core callers send them through Mediator.
             foreach (var queryHandlerArgument in type.GetInterfaces()
                 .Where(IsQueryHandler)
                 .SelectMany(handlerInterface => handlerInterface.GetGenericArguments()))
@@ -230,7 +219,7 @@ public class DependencyTests
 
             if (type is { IsInterface: true, IsPublic: true })
             {
-                // RULE: Public interface member signatures are boundary contracts because non-Core implementations and callers must compile against their DTO/value types.
+                // Public interface signatures: non-Core implementations and callers compile against their types.
                 foreach (var usedType in GetUsedTypes(type))
                 {
                     yield return usedType;
@@ -240,19 +229,16 @@ public class DependencyTests
 
         static IEnumerable<System.Type> GetUsedTypes(System.Type type)
         {
-            // RULE: Public DTO properties define part of the cross-boundary contract surface.
             foreach (var property in type.GetProperties())
             {
                 yield return property.PropertyType;
             }
 
-            // RULE: Public DTO fields, if any, define part of the cross-boundary contract surface.
             foreach (var field in type.GetFields())
             {
                 yield return field.FieldType;
             }
 
-            // RULE: Constructor parameter types define positional record and DTO creation contracts.
             foreach (var constructor in type.GetConstructors())
             {
                 foreach (var parameter in constructor.GetParameters())
@@ -261,7 +247,6 @@ public class DependencyTests
                 }
             }
 
-            // RULE: Method return and parameter types define public interface contracts.
             foreach (var method in type.GetMethods())
             {
                 yield return method.ReturnType;
@@ -277,7 +262,7 @@ public class DependencyTests
         {
             if (type.IsArray || type.IsByRef || type.IsPointer)
             {
-                // RULE: Wrapper shapes are not contracts themselves; their Core element type is the contract dependency.
+                // For arrays, by-refs and pointers, the element type is the dependency.
                 foreach (var coreType in GetCoreTypes(type.GetElementType()!, coreAssembly))
                 {
                     yield return coreType;
@@ -288,7 +273,7 @@ public class DependencyTests
 
             if (type.IsGenericType)
             {
-                // RULE: Generic containers are allowed only insofar as their Core generic arguments are allowed contract dependencies.
+                // For generic types, the Core type arguments are the dependencies.
                 foreach (var genericArgument in type.GetGenericArguments())
                 {
                     foreach (var coreType in GetCoreTypes(genericArgument, coreAssembly))
@@ -300,7 +285,6 @@ public class DependencyTests
 
             if (type.Assembly == coreAssembly)
             {
-                // RULE: Only Arius.Core-owned types can be added to the Core contract allow-list; framework and third-party types are irrelevant to this rule.
                 yield return type;
             }
         }
@@ -366,7 +350,6 @@ public class DependencyTests
             $"Only {typeof(ChunkIndexLocalStore).FullName} and {typeof(HashCacheLocalStore).FullName} should know the local stores use SQLite. Violations: {DescribeViolations(rule)}");
     }
 
-    // Helper: produce a human-readable summary of rule violations for failure messages
     private static string DescribeViolations(IArchRule rule)
     {
         var results = rule.Evaluate(Architecture)

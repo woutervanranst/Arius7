@@ -7,7 +7,7 @@ using Arius.Core.Features.SnapshotsListQuery;
 
 namespace Arius.Api.Integration.Tests.Features.Snapshots;
 
-/// <summary><c>GET /repos/{id}/snapshots</c> — the repository's snapshots for time travel.</summary>
+/// <summary><c>GET /repos/{id}/snapshots</c>: the repository's snapshots, for time travel.</summary>
 public class ListSnapshotsTests
 {
     [Test]

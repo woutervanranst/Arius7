@@ -43,11 +43,6 @@ public class ArchiveHubTests
             })
             .Build();
 
-        // JobSink.Done sends a SINGLE argument — an anonymous object { jobId, status, summary, outcome } —
-        // not four positional args (see src/Arius.Api/Shared/Jobs/JobSink.cs `Group?.SendAsync("Done", new {...})`).
-        // The hub's JSON protocol is configured with camelCase property naming (Program.cs `AddJsonProtocol`),
-        // hence the explicit JsonPropertyName mapping below (belt-and-braces vs. relying on the client's
-        // default case-insensitive matching).
         var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         conn.On<DoneMessage>("Done", msg => done.TrySetResult(msg.Status));
 
@@ -59,7 +54,7 @@ public class ArchiveHubTests
         await Assert.That(jobId).IsNotNull();
     }
 
-    /// <summary>Mirrors the anonymous object <see cref="Arius.Api.Shared.Jobs.JobSink.Done"/> sends over the hub.</summary>
+    /// <summary>The single camelCase object <see cref="Arius.Api.Shared.Jobs.JobSink.Done"/> sends over the hub.</summary>
     private sealed record DoneMessage(
         [property: JsonPropertyName("jobId")] string? JobId,
         [property: JsonPropertyName("status")] string Status,

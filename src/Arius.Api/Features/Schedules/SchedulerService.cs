@@ -6,15 +6,14 @@ using Cronos;
 namespace Arius.Api.Features.Schedules;
 
 /// <summary>
-/// Fires cron archive schedules. Wakes every minute, computes each enabled schedule's next run with
-/// Cronos, and enqueues an archive job when due. Lightweight by design (a hosted BackgroundService
-/// rather than Quartz) — sufficient for a handful of per-repo schedules.
+/// Starts scheduled archives. Every minute it computes each enabled schedule's next run from its cron expression
+/// and starts an archive job when the run is due.
 /// </summary>
 public sealed class SchedulerService(IServiceProvider services, ILogger<SchedulerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Stagger startup so the app finishes booting first.
+        // Let the app finish starting before the first tick.
         try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); } catch (OperationCanceledException) { return; }
 
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
@@ -28,7 +27,6 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
 
     private void Tick()
     {
-        // Resolve scoped-ish singletons fresh each tick (all are singletons here).
         var database = services.GetRequiredService<Arius.Api.Shared.AppData.AppDatabase>();
         var runner = services.GetRequiredService<JobRunner>();
         var now = DateTimeOffset.UtcNow;
@@ -50,8 +48,7 @@ public sealed class SchedulerService(IServiceProvider services, ILogger<Schedule
             if (now < schedule.NextRun.Value)
                 continue;
 
-            // A failure for one schedule (e.g. a corrupt stored default) must not starve the others, and the
-            // schedule still advances so it is not retried every minute.
+            // A failing schedule must not block the others, and it still advances so it is not retried every minute.
             try
             {
                 var repo = database.GetRepository(schedule.RepositoryId);

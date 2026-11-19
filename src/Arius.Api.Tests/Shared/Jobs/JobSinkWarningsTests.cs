@@ -24,7 +24,7 @@ public sealed class JobSinkWarningsTests
         var s = new JobSink();
         for (var i = 0; i < 250; i++) s.Log($"warn {i}", "warn");
 
-        s.WarningCount.ShouldBe(250);          // total ever, not the ring size
+        s.WarningCount.ShouldBe(250);          // the total, not the ring size
         s.Warnings.Count.ShouldBe(200);        // ring cap
         s.Warnings[^1].ShouldBe("warn 249");   // newest retained
         s.Warnings[0].ShouldBe("warn 50");     // oldest 50 trimmed

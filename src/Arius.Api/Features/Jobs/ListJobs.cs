@@ -3,7 +3,6 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Jobs;
 
-/// <summary><c>GET /jobs</c> — jobs history, optionally filtered by repository and status.</summary>
 internal sealed class ListJobs(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
@@ -13,8 +12,8 @@ internal sealed class ListJobs(AppDatabase db) : IEndpoint
     {
         var aliases = db.ListRepositories().ToDictionary(r => r.Id, r => r.Alias);
         var nonTerminal = new HashSet<string>(JobStatuses.NonTerminal);
-        // "active" is served by an uncapped, repo-scoped query: filtering the globally capped ListJobs() in
-        // memory could drop a long-lived non-terminal job that fell outside the newest-100 window.
+        // "active" uses an uncapped query: ListJobs() returns only the newest jobs, so filtering it could miss a
+        // long-running job.
         IEnumerable<JobRecord> jobs = status == "active"
             ? db.ListActiveJobs(repositoryId)
             : db.ListJobs()

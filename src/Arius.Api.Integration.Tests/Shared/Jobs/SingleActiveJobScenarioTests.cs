@@ -42,15 +42,14 @@ public class SingleActiveJobScenarioTests
         _ = runner.RunRestoreAsync(repoId, jobId, "test", null, [], false, false);
         await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
 
-        // By design: the repo is busy while the restore is parked → HasActiveJob true, a new start is rejected.
+        // A restore parked at the cost prompt keeps the repository busy.
         await Assert.That(db.HasActiveJob(repoId)).IsTrue();
 
-        // Cancel the parked restore (decline) → frees the repo.
+        // Declining the parked restore frees the repository.
         approvals.Resolve(jobId, null);
         await ScenarioWait.Until(() => !db.HasActiveJob(repoId), TimeSpan.FromSeconds(10));
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("cancelled");
 
-        // Now a new job for the repo is accepted (guard clear).
         await Assert.That(db.HasActiveJob(repoId)).IsFalse();
     }
 }

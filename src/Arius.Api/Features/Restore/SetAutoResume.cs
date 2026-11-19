@@ -5,9 +5,8 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Restore;
 
-/// <summary>Hub <c>SetAutoResume</c> — toggles auto-resume for a rehydrating restore. OFF stops the poller
-/// re-driving it (status stays rehydrating; the UI shows "≈ hydrated by" + a manual Restore-now). ON re-drives
-/// immediately.</summary>
+/// <summary>Turns auto-resume on or off for a rehydrating restore. When off, the poller stops re-driving the job and
+/// it stays <c>rehydrating</c> until resumed manually; turning it on re-drives the job immediately.</summary>
 public sealed class SetAutoResume(AppDatabase database, JobRunner jobRunner) : IHubHandler
 {
     public Task HandleAsync(string jobId, bool autoResume)

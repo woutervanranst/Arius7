@@ -3,7 +3,6 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Repositories;
 
-/// <summary><c>POST /repos</c></summary>
 internal sealed class CreateRepository(AppDatabase db, SecretProtector secrets) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
@@ -21,7 +20,8 @@ internal sealed class CreateRepository(AppDatabase db, SecretProtector secrets) 
             request.LocalPath,
             secrets.Protect(request.Passphrase));
 
-        // Region is left unresolved here (the container may not exist yet); the client refetches the list, which resolves and caches it.
+        // The region stays unresolved because the container may not exist yet; it is resolved and cached when the
+        // client refetches the list.
         return Results.Created($"/repos/{id}", RepositoryEndpoints.ToDto(db, db.GetRepository(id)!, region: null, regionIsDefault: false));
     }
 }

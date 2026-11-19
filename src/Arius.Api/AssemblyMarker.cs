@@ -6,5 +6,4 @@ using System.Runtime.CompilerServices;
 
 namespace Arius.Api;
 
-/// <summary>Marker class to locate the Arius.Api assembly.</summary>
 public sealed class AssemblyMarker { }

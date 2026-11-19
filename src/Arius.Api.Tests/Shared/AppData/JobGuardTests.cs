@@ -5,14 +5,13 @@ using Shouldly;
 namespace Arius.Api.Tests.Shared.AppData;
 
 /// <summary>
-/// Covers the single-active-job-per-repository guard: <see cref="AppDatabase.HasActiveJob"/> (the
-/// cooperative check used by the start paths), the <c>ux_jobs_one_active_per_repo</c> partial unique
-/// index (the race-proof backstop enforced by SQLite itself), and <see cref="AppDatabase.ReconcileInterruptedJobs"/>
-/// (restart recovery for jobs orphaned by a crash).
+/// Covers the single-active-job-per-repository guard: the cooperative <see cref="AppDatabase.HasActiveJob"/> check,
+/// the <c>ux_jobs_one_active_per_repo</c> partial unique index that enforces it in SQLite, and
+/// <see cref="AppDatabase.ReconcileInterruptedJobs"/>, which recovers jobs orphaned by a crash.
 /// </summary>
 public sealed class JobGuardTests
 {
-    /// <summary>A fresh on-disk database with one account + repository (the FK target for a job row).</summary>
+    /// <summary>A fresh on-disk database with one repository for job rows to reference.</summary>
     private static (AppDatabase Database, long RepositoryId) NewDatabase()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"arius-api-tests-{Guid.NewGuid():N}.db");
@@ -57,10 +56,8 @@ public sealed class JobGuardTests
     }
 
     /// <summary>
-    /// An on-disk database with TWO 'running' rows for the same <c>repo_id</c>. The schema initializer's
-    /// <c>CREATE UNIQUE INDEX ux_jobs_one_active_per_repo</c> would reject that state unless the orphan
-    /// reconciliation (running → interrupted) runs first. Reopening the same on-disk file with a new
-    /// <see cref="AppDatabase"/> must therefore neither throw nor leave any 'running' row behind.
+    /// Two 'running' rows for one repository make creating <c>ux_jobs_one_active_per_repo</c> fail, so opening the
+    /// database must first reconcile them to 'interrupted'; otherwise the Api cannot start.
     /// </summary>
     [Test]
     public async Task Reopening_a_database_with_two_pre_guard_running_rows_reconciles_before_the_index_is_created()
@@ -71,8 +68,7 @@ public sealed class JobGuardTests
         var repositoryId = seed.InsertRepository("alias", "container", accountId, localPath: null, encryptedPassphrase: null);
         seed.InsertJob("j1", repositoryId, "archive", "one-off", "running");
 
-        // A second 'running' row for the same repo can't go through InsertJob (the guard's unique
-        // index already rejects it). Force it directly on the connection to reproduce the on-disk state.
+        // InsertJob rejects a second running row, so drop the index and insert it directly.
         var connectionString = new SqliteConnectionStringBuilder { DataSource = path }.ToString();
         await using (var connection = new SqliteConnection(connectionString))
         {
@@ -91,8 +87,6 @@ public sealed class JobGuardTests
             insert.ExecuteNonQuery();
         }
 
-        // Reopening must reconcile the orphaned 'running' rows BEFORE recreating the unique index —
-        // otherwise index creation throws and AppDatabase construction (and Api startup with it) faults.
         var reopened = Should.NotThrow(() => new AppDatabase(path));
 
         var jobs = reopened.ListJobs();

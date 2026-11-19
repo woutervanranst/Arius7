@@ -6,9 +6,8 @@ namespace Arius.Core.Features.LatestSnapshotVersionQuery;
 // --- QUERY
 
 /// <summary>
-/// Mediator query: the version of the repository's newest snapshot, or <c>null</c> when it has none.
-/// Cheap by design — it lists the snapshot blob names only and resolves no manifest — so a host can use it
-/// as a fingerprint of the snapshot set (e.g. to stamp cached statistics).
+/// The version of the repository's newest snapshot, or <c>null</c> when it has none. It lists snapshot blob names
+/// only and resolves no manifest, so a host can use it as a cheap fingerprint of the snapshot set.
 /// </summary>
 public sealed record LatestSnapshotVersionQuery() : IQuery<string?>;
 

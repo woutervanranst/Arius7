@@ -20,7 +20,7 @@ public class DownloadCleanupTests
         var terminal = JobStatuses.Terminal.Contains(status);
         db.InsertJob(jobId, repositoryId, "download", "manual", terminal ? "running" : status);
         if (terminal)
-            db.CompleteJob(jobId, status, 100, null);   // sets finished_at; a row inserted terminal would never get one
+            db.CompleteJob(jobId, status, 100, null);   // sets finished_at, which a row inserted as terminal lacks
 
         Stage(staging, jobId);
         return jobId;

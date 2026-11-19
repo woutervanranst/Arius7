@@ -1,8 +1,8 @@
 namespace Arius.Api.Features.Restore;
 
-/// <summary>Adaptive rehydration re-drive cadence. Pure, clock-injected so it is unit-testable.
-/// High: every 15 min from start. Standard: quiet for the first ~10 h (rehydration can't finish sooner), then
-/// hourly. Once a re-run has seen ≥1 chunk become available, tighten to every 15 min regardless of priority.</summary>
+/// <summary>When a rehydrating restore is due to be re-driven. High priority: every 15 minutes. Standard priority:
+/// not until 10 hours after the start (rehydration cannot finish sooner), then hourly. Once a chunk has become
+/// available: every 15 minutes, regardless of priority.</summary>
 public static class RehydrationSchedule
 {
     private static readonly TimeSpan Tight     = TimeSpan.FromMinutes(15);
@@ -15,7 +15,6 @@ public static class RehydrationSchedule
         if (firstChunkSeen || priority == "High")
             return sinceLast >= Tight;
 
-        // Standard, no chunk seen yet: one quiet window from start, then hourly re-checks.
         var elapsed = now - startedAt;
         return elapsed < Standard1 ? sinceLast >= Standard1 : sinceLast >= StandardN;
     }

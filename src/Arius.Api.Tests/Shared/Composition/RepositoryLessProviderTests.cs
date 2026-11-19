@@ -12,8 +12,8 @@ using Shouldly;
 namespace Arius.Api.Tests.Shared.Composition;
 
 /// <summary>
-/// The production composition (real Mediator + real Core registration) must be able to serve the one Core
-/// request that needs no repository: listing an account's containers.
+/// The production composition (real Mediator and Core registration) must serve the one Core request that needs no
+/// repository: listing an account's containers.
 /// </summary>
 public class RepositoryLessProviderTests
 {

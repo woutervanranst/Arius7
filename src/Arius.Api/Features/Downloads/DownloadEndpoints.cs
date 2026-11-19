@@ -4,11 +4,11 @@ using Microsoft.Net.Http.Headers;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary>Helpers shared by the <c>/jobs/{id}/download</c>, <c>/downloads</c> and <c>/settings/downloads</c> endpoints.</summary>
 internal static class DownloadEndpoints
 {
-    /// <summary>Whether a finished transfer counts as the file being downloaded: never when aborted; judged by the range
-    /// actually <em>served</em> (<c>null</c> = the whole file), since the request's range can be a suffix or be ignored.</summary>
+    /// <summary>Whether a finished transfer counts as a completed download: never when aborted, otherwise when the
+    /// served range (<c>null</c> for the whole file) reaches the last byte. The served range is used because the
+    /// requested range can be a suffix or be ignored.</summary>
     internal static bool CountsAsDownloaded(bool aborted, ContentRangeHeaderValue? served, long length) =>
         !aborted && (served is null || served.To >= length - 1);
 
@@ -22,7 +22,8 @@ internal static class DownloadEndpoints
 
     internal static bool IsCleanedUp(JobRecord job, DownloadStaging staging) => IsTerminal(job) && !staging.Exists(job.Id);
 
-    /// <summary>The job, only when it exists and is a download — the staging helper trusts its job id, so every route resolves it here first.</summary>
+    /// <summary>Returns the job only when it is a download job. <see cref="DownloadStaging"/> trusts the job id it is
+    /// given, so every download route resolves the job here first.</summary>
     internal static JobRecord? GetDownloadJob(this AppDatabase db, string id) =>
         db.GetJob(id) is { Kind: "download" } job ? job : null;
 }

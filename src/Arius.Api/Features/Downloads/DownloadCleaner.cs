@@ -10,11 +10,12 @@ namespace Arius.Api.Features.Downloads;
 /// </summary>
 internal sealed class DownloadCleaner(AppDatabase database, DownloadStaging staging, ILogger<DownloadCleaner> logger)
 {
-    /// <summary>Deletes every removable staging folder (Settings → Clean up all now); returns how many were deleted.</summary>
+    /// <summary>Deletes every removable staging folder and returns how many were deleted.</summary>
     public int CleanUpAll() => CleanUp(_ => true);
 
-    /// <summary>Deletes removable folders whose job finished at least the configured number of days before <paramref name="now"/>
-    /// (orphans immediately); no-op when clean-up is disabled. Returns how many were deleted.</summary>
+    /// <summary>Deletes removable folders whose job finished at least the configured number of days before
+    /// <paramref name="now"/>, and orphaned folders immediately. Does nothing when clean-up is disabled. Returns how
+    /// many were deleted.</summary>
     public int CleanUpExpired(DateTimeOffset now)
     {
         var settings = database.GetDownloadSettings();

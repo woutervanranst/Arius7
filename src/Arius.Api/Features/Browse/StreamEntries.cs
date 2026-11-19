@@ -10,13 +10,12 @@ using Mediator;
 namespace Arius.Api.Features.Browse;
 
 /// <summary>
-/// Hub <c>StreamEntries</c> — streams the immediate children (directories + files) of a folder in a snapshot,
-/// server → client.
+/// Streams the immediate children (directories and files) of a folder in a snapshot.
 /// </summary>
 public sealed class StreamEntries(AppDatabase database, RepositoryProviderRegistry registry) : IHubHandler
 {
-    /// <param name="version">Snapshot version (null/empty = latest).</param>
-    /// <param name="prefix">Folder path within the repository (null/empty = root).</param>
+    /// <param name="version">Snapshot version; null or empty for the latest.</param>
+    /// <param name="prefix">Folder path within the repository; null or empty for the root.</param>
     /// <param name="filter">Case-insensitive filename substring filter.</param>
     /// <param name="includeLocal">Overlay the repository's local folder onto the listing.</param>
     public async IAsyncEnumerable<EntryDto> HandleAsync(
@@ -29,8 +28,8 @@ public sealed class StreamEntries(AppDatabase database, RepositoryProviderRegist
     {
         var repository = database.GetRepository(repositoryId);
 
-        // A repository whose container hasn't been created yet (no archive has run) has no entries
-        // by definition — degrade to an empty stream rather than surfacing a hub exception.
+        // A container that does not exist yet (no archive has run) has no entries: return an empty stream
+        // instead of a hub error.
         ServiceProvider provider;
         try
         {

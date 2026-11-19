@@ -60,9 +60,9 @@ public sealed class JobLifecycleDbTests
 
         db.ReconcileInterruptedJobs();
 
-        db.GetJob("await")!.Status.ShouldBe("interrupted");   // orphaned cost prompt is terminal → guard freed
+        db.GetJob("await")!.Status.ShouldBe("interrupted");   // an orphaned cost prompt is terminal, which frees the guard
         db.HasActiveJob(repoId).ShouldBeFalse();
-        db.GetJob("rehy")!.Status.ShouldBe("rehydrating");    // poller re-arms this one
+        db.GetJob("rehy")!.Status.ShouldBe("rehydrating");    // the poller resumes this one
     }
 
     [Test]
@@ -70,20 +70,20 @@ public sealed class JobLifecycleDbTests
     {
         var (db, repoId) = NewDatabase();
         db.InsertJob("j", repoId, "restore", "one-off", "running");
-        db.CompleteJob("j", "completed", 100, "Restore complete.");   // legitimate terminal transition
+        db.CompleteJob("j", "completed", 100, "Restore complete.");
 
-        db.CompleteJob("j", "cancelled", 0, "Cancelled.");            // racing cancel — must be a no-op now
+        db.CompleteJob("j", "cancelled", 0, "Cancelled.");            // a racing cancel must be a no-op
 
         var job = db.GetJob("j")!;
-        job.Status.ShouldBe("completed");   // NOT clobbered to cancelled
-        job.Pct.ShouldBe(100d);             // pct not reset to 0
+        job.Status.ShouldBe("completed");
+        job.Pct.ShouldBe(100d);
     }
 
     [Test]
     public async Task CompleteJob_finalizes_a_parked_awaiting_cost_row_with_finished_at()
     {
-        // Regression for JobsHub.DeclineParkedAsync: a single guarded CompleteJob from the still-non-terminal
-        // "awaiting-cost" status must finalize status + pct + detail + finished_at.
+        // Declining a parked job completes it from "awaiting-cost" in one guarded call, which must set the
+        // status, pct, detail and finished_at.
         var (db, repoId) = NewDatabase();
         db.InsertJob("j", repoId, "restore", "one-off", "running");
         db.SetJobStatus("j", "awaiting-cost", "Awaiting cost approval");
@@ -92,7 +92,7 @@ public sealed class JobLifecycleDbTests
 
         var job = db.GetJob("j")!;
         job.Status.ShouldBe("cancelled");
-        job.FinishedAt.ShouldNotBeNull();   // the bug left this null
+        job.FinishedAt.ShouldNotBeNull();
         job.Detail.ShouldBe("Cancelled.");
     }
 }

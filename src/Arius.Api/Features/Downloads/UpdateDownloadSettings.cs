@@ -3,7 +3,6 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary><c>PUT /settings/downloads</c></summary>
 internal sealed class UpdateDownloadSettings(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

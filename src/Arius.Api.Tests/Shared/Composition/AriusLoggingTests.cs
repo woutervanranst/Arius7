@@ -5,9 +5,9 @@ using Serilog.Events;
 namespace Arius.Api.Tests.Shared.Composition;
 
 /// <summary>
-/// Drives the real Serilog pipeline built by <see cref="AriusLogging"/> to lock in the ownership contract:
-/// the root logger writes host/startup events to the app-wide file, each repository owns its own logger/file,
-/// and disposing a repository's factory releases its file handle (so a deleted repo's logs can be removed).
+/// Exercises the Serilog pipeline built by <see cref="AriusLogging"/>: the root logger writes host events to the
+/// app-wide file, each repository has its own logger and file, and disposing a repository's factory releases its
+/// file so a deleted repository's logs can be removed.
 /// </summary>
 public class AriusLoggingTests
 {
@@ -25,14 +25,12 @@ public class AriusLoggingTests
 
         try
         {
-            // Each logger owns one rolling arius-{date}.txt: root writes appWideDir's, repoFactory writes
-            // repoDir's. Both must be disposed before those files are read — a live Serilog file sink holds
-            // its file with FileShare.Read, which excludes the writer, so File.ReadAllText fails on Windows.
+            // Dispose both loggers before reading their files: a live Serilog file sink opens its file with
+            // FileShare.Read, so File.ReadAllText fails on Windows.
             using (var root = AriusLogging.BuildRootLogger(appWideDir, LogEventLevel.Information))
             using (var repoFactory = AriusLogging.CreateRepositoryLoggerFactory(repoDir, LogEventLevel.Information))
             {
                 repoFactory.CreateLogger("RepoScoped").LogInformation("repo-line-{Marker}", "ALPHA");
-                // Host/startup logging has no repository logger → app-wide fallback file.
                 root.Information("host-line-{Marker}", "BETA");
             }
 
@@ -45,7 +43,7 @@ public class AriusLoggingTests
             await Assert.That(appWideLog).Contains("host-line-BETA");
             await Assert.That(appWideLog).DoesNotContain("repo-line-ALPHA");
 
-            // Line format carries the [SourceContext] class name (CLI parity).
+            // The line format includes the [SourceContext] class name, as in the CLI.
             await Assert.That(repoLog).Contains("[RepoScoped]");
         }
         finally
@@ -58,8 +56,8 @@ public class AriusLoggingTests
     [Test]
     public async Task Disposing_a_repo_factory_releases_its_log_file_so_the_folder_can_be_deleted()
     {
-        // The per-repo factory owns the rolling file, so disposing it must close the handle. Only Windows
-        // actually blocks a delete on an open handle; on POSIX this asserts the contract without enforcing it.
+        // Disposing the repository factory must close its log file. Only Windows blocks deleting an open file,
+        // so on other platforms this test cannot detect a leaked handle.
         var repoDir = NewTempDir();
 
         var factory = AriusLogging.CreateRepositoryLoggerFactory(repoDir, LogEventLevel.Information);

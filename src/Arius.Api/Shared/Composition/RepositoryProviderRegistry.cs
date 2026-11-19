@@ -7,20 +7,16 @@ using Arius.Core;
 namespace Arius.Api.Shared.Composition;
 
 /// <summary>
-/// Builds and caches per-repository service providers. Each provider has its own
-/// <c>IMediator</c> + Arius.Core service graph (via <see cref="ServiceCollectionExtensions.AddArius"/>)
-/// bound to one account/container/passphrase — Arius.Core registers everything as singletons scoped
-/// to a single repository, so providers are reused, not rebuilt per request.
-///
-/// Three kinds:
+/// Builds and caches service providers. <see cref="ServiceCollectionExtensions.AddArius"/> registers Arius.Core as
+/// singletons bound to one account, container and passphrase, so each repository gets its own provider with its
+/// own <c>IMediator</c>.
 /// <list type="bullet">
-///   <item><b>Read providers</b> — long-lived, cached per repo, <see cref="PreflightMode.ReadOnly"/>; warm
-///   caches across requests. Evicted/disposed on properties change, delete, or after an archive.</item>
-///   <item><b>Job providers</b> — fresh per long-running archive/restore, owned and disposed by the job:
-///   this isolates per-job events (own IMediator) and avoids reusing a chunk index that becomes single-shot
-///   after flush.</item>
-///   <item><b>The repository-less provider</b> — built once, for Core requests that need no repository
-///   (listing an account's containers).</item>
+///   <item><b>Read providers</b>: cached per repository and <see cref="PreflightMode.ReadOnly"/>, so caches stay warm
+///   across requests. Evicted on a properties change, a delete, or after an archive.</item>
+///   <item><b>Job providers</b>: one per archive or restore, owned and disposed by the job. This isolates the job's
+///   events and avoids reusing a chunk index, which is single-shot after flush.</item>
+///   <item><b>The repository-less provider</b>: built once, for Core requests that need no repository, such as
+///   listing an account's containers.</item>
 /// </list>
 /// </summary>
 public sealed class RepositoryProviderRegistry : IAsyncDisposable
@@ -34,15 +30,13 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private readonly object _gate = new();
     private readonly Dictionary<long, Lazy<Task<ServiceProvider>>> _readProviders = new();
 
-    // One logger factory per repository, each owning the Serilog logger that writes that repo's rolling file.
-    // Cached so every provider shares one file handle, and so Remove can dispose it on repository delete.
+    // One logger factory per repository, owning the Serilog logger that writes its log file. Cached so all of the
+    // repository's providers share one file handle and Remove can dispose it on delete.
     private readonly Dictionary<long, ILoggerFactory> _repoLoggerFactories = new();
 
-    // Per-repository lifecycle generation, bumped by Remove. A build captures the generation before its
-    // awaited compose and re-checks it when registering the logger factory: without that, a build already in
-    // flight when the repository is deleted would cache a *fresh* factory under the removed id, which nothing
-    // disposes — holding the deleted repository's rolling log file open for the rest of the process. Entries
-    // are one int per removed id (ids are reused by SQLite, so a set of dead ids would not be enough).
+    // Per-repository generation, incremented by Remove. A build captures it before its awaited compose and checks it
+    // again when registering the logger factory; otherwise a build in flight during a delete would cache a new
+    // factory under the removed id that nothing disposes, keeping the deleted repository's log file open.
     private readonly Dictionary<long, int> _repoGenerations = new();
 
     private readonly Lazy<ServiceProvider> _repositoryLessProvider;
@@ -61,14 +55,14 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         _repositoryLessProvider = new Lazy<ServiceProvider>(BuildRepositoryLessProvider);
     }
 
-    /// <summary>Gets (building once) the provider for Core requests that need no repository, e.g. listing an
-    /// account's containers before a repository exists. Owned by the registry; do not dispose.</summary>
+    /// <summary>Gets the provider for Core requests that need no repository, building it on first use. The registry
+    /// owns it; do not dispose it.</summary>
     public ServiceProvider GetRepositoryLessProvider() => _repositoryLessProvider.Value;
 
     private ServiceProvider BuildRepositoryLessProvider()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(new JobSink());   // inert: the event forwarders never fire here
+        services.AddSingleton(new JobSink());   // inert; the event forwarders registered by AddMediator depend on it
         services.AddMediator();
         _coreComposer.ComposeWithoutRepository(services);
         services.AddSingleton(_loggerFactory);
@@ -76,7 +70,7 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         return services.BuildServiceProvider();
     }
 
-    /// <summary>Gets (building once, then caching) the shared read-only provider for a repository.</summary>
+    /// <summary>Gets the cached read-only provider for a repository, building it on first use.</summary>
     public async Task<ServiceProvider> GetReadProviderAsync(long repositoryId, CancellationToken cancellationToken)
     {
         Lazy<Task<ServiceProvider>> lazy;
@@ -96,9 +90,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         }
         catch
         {
-            // A build that failed (e.g. the container doesn't exist yet — no archive has run) must not
-            // poison the cache forever: evict it so the next call rebuilds from scratch instead of
-            // replaying the same fault indefinitely.
+            // Evict a failed build (e.g. the container does not exist before the first archive) so the next call
+            // retries instead of replaying the fault.
             lock (_gate)
             {
                 if (_readProviders.TryGetValue(repositoryId, out var current) && current == lazy)
@@ -129,10 +122,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Fully removes a repository from the registry: drops its cached read provider AND its per-repo logger
-    /// factory, disposing both. Use on repository <b>delete</b> — unlike <see cref="Evict"/>, which is for
-    /// archive/properties changes where the repo lives on. Disposing the factory closes the repo's rolling log
-    /// file, so its logs can be deleted along with it.
+    /// Removes a deleted repository: disposes its cached read provider and its logger factory, which closes its log
+    /// file so the logs can be deleted. Use <see cref="Evict"/> when the repository still exists.
     /// </summary>
     public void Remove(long repositoryId)
     {
@@ -142,19 +133,17 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         {
             _readProviders.Remove(repositoryId, out provider);
             _repoLoggerFactories.Remove(repositoryId, out factory);
-            // Invalidate any build already in flight for this repository, so it cannot re-register a factory
-            // behind us (see _repoGenerations).
+            // Invalidates any build in flight, so it cannot register a factory afterwards (see _repoGenerations).
             _repoGenerations[repositoryId] = CurrentGenerationLocked(repositoryId) + 1;
         }
 
-        // Fire-and-forget; the await chain keeps the ordering. A concurrent build either re-reads the
-        // dictionaries under the gate and gets a fresh factory, or is rejected by the generation check.
+        // Fire-and-forget; the await chain preserves the disposal order.
         _ = DisposeProviderThenFactoryAsync(provider, factory);
     }
 
-    /// <summary>Wires the repository's diagnostics logger onto a job sink before its provider is built, so the
-    /// <c>[ETA]</c> trace covers the (potentially slow) provider-build phase too. Best-effort: a failure only
-    /// leaves the trace silent, it never fails the job. No-op for an inert (non-job) sink.</summary>
+    /// <summary>Attaches the repository's diagnostics logger to a job sink before its provider is built, so the
+    /// <c>[ETA]</c> trace also covers the provider build. Best-effort: a failure only disables the trace. No-op for an
+    /// inert sink.</summary>
     public void AttachJobDiagnostics(JobSink sink, long repositoryId)
     {
         if (sink.JobId is null)
@@ -162,8 +151,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
 
         try
         {
-            // Captured before the DB read, so a delete that lands while we resolve the connection rejects
-            // this attachment instead of caching a factory for a repository that is going away.
+            // Captured before the database read, so a delete during the read rejects this attachment instead of
+            // caching a factory for a removed repository.
             var generation = CurrentGeneration(repositoryId);
             var connection = LoadConnection(repositoryId);
             var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, generation, connection.AccountName, connection.Container);
@@ -189,12 +178,9 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         // AddMediator() (generated in this assembly) must run here, not inside the composer.
         services.AddMediator();
 
-        // The Arius.Core graph (handlers + storage) is composed behind an interface so tests can
-        // swap in a scripted fake without touching Arius.Core.
         await _coreComposer.ComposeAsync(services, connection, mode, cancellationToken).ConfigureAwait(false);
 
-        // Route Core's logging to the repository's own rolling log file — the same cached factory
-        // AttachJobDiagnostics already wired onto the job sink.
+        // Core logs to the repository's own log file, through the same factory AttachJobDiagnostics uses.
         var repoLoggerFactory = GetOrCreateRepoLoggerFactory(repositoryId, generation, connection.AccountName, connection.Container);
         services.AddSingleton(repoLoggerFactory);
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
@@ -204,11 +190,9 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets (building once, then caching) the logger factory a repository's providers use. It writes the repo's
-    /// rolling <c>arius-{date}.txt</c> under <c>~/.arius/{account}-{container}/logs/</c> — the same directory and
-    /// format the CLI uses (<see cref="AriusLogging"/>).
-    /// Throws <see cref="RepositoryNotFoundException"/> when <paramref name="generation"/> is stale, i.e. the
-    /// repository was removed after the caller started — the caller's whole build is void at that point.
+    /// Gets the logger factory shared by a repository's providers, creating it on first use. Throws
+    /// <see cref="RepositoryNotFoundException"/> when <paramref name="generation"/> is stale, i.e. the repository was
+    /// removed after the caller started.
     /// </summary>
     private ILoggerFactory GetOrCreateRepoLoggerFactory(long repositoryId, int generation, string accountName, string containerName)
     {
@@ -289,8 +273,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         }
     }
 
-    /// <summary>Disposes a removed repository's read provider and then its logger factory. The order matters:
-    /// the provider resolves loggers from the factory, so it must be gone before the factory is.</summary>
+    /// <summary>Disposes a removed repository's read provider, then its logger factory: the provider resolves
+    /// loggers from the factory, so it must go first.</summary>
     private static async Task DisposeProviderThenFactoryAsync(Lazy<Task<ServiceProvider>>? provider, ILoggerFactory? factory)
     {
         if (provider is not null)

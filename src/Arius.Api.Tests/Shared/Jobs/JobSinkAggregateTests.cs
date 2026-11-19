@@ -10,7 +10,7 @@ namespace Arius.Api.Tests.Shared.Jobs;
 
 public class JobSinkAggregateTests
 {
-    private static JobSink NewArchiveSink() => new();   // inert (no hub) — aggregation is hub-independent
+    private static JobSink NewArchiveSink() => new();   // no hub: aggregation does not need one
 
     [Test]
     public async Task Byte_layers_and_dedup_accumulate_as_original_bytes()
@@ -27,17 +27,16 @@ public class JobSinkAggregateTests
         await Assert.That(snap.TotalBytes).IsEqualTo(3000L);
         await Assert.That(snap.ScannedBytes).IsEqualTo(3000L);
         await Assert.That(snap.HashedBytes).IsEqualTo(3000L);
-        await Assert.That(snap.UploadedBytes).IsEqualTo(2000L);   // original units, not stored
+        await Assert.That(snap.UploadedBytes).IsEqualTo(2000L);   // original bytes, not stored bytes
         await Assert.That(snap.DedupedBytes).IsEqualTo(1000L);
-        await Assert.That(snap.TotalNewBytes).IsEqualTo(2000L);   // additive queued-new bytes
+        await Assert.That(snap.TotalNewBytes).IsEqualTo(2000L);
     }
 
     [Test]
     public async Task ScannedFiles_counts_one_per_scanned_file_even_when_bytes_are_zero()
     {
-        // Thin / pointer-only archive: each scanned file has no local binary, so AddScanned credits 0 bytes,
-        // yet it is still one file scanned. The file count must climb while ScannedBytes stays 0 — so the UI
-        // can show "Scanned 0 B, N files" instead of a stuck "0 B".
+        // In a pointer-only archive a scanned file has no local binary, so AddScanned credits 0 bytes. The file
+        // count must still increase so the UI can show "Scanned 0 B, N files".
         var s = NewArchiveSink();
         s.AddScanned(0);
         s.AddScanned(0);
@@ -54,17 +53,17 @@ public class JobSinkAggregateTests
         var s = NewArchiveSink();
         var chunk = ChunkHash.Parse(new string('e', 64));
 
-        // Streaming reports are CUMULATIVE per chunk; uploadedBytes rises by the delta each time.
+        // Streaming reports are cumulative per chunk; uploaded bytes rise by the delta.
         s.ReportUploadStreamed(chunk, 30);
         await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(30L);
         s.ReportUploadStreamed(chunk, 100);
         await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(100L);
 
-        // Completion reconciles to the final original size — it does NOT re-add the already-streamed bytes.
+        // Completion sets the final original size and does not add the streamed bytes again.
         s.AddUploaded(chunk, stored: 60, original: 100);
         await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(100L);
 
-        // A chunk that never streamed still credits its full size on completion (scripted / non-streaming path).
+        // A chunk that never streamed is credited its full size on completion.
         s.AddUploaded(ChunkHash.Parse(new string('f', 64)), stored: 20, original: 50);
         await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).UploadedBytes).IsEqualTo(150L);
     }
@@ -75,19 +74,19 @@ public class JobSinkAggregateTests
         var s = new JobSink();
         s.SetRestoreTotals(files: 2, bytes: 300);
 
-        // Large file "a" downloads in increments (cumulative), then completes.
+        // File "a" streams in cumulative increments, then completes.
         s.ReportRestoreStreamed("a", 40);
         await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).BytesRestored).IsEqualTo(40L);
         s.ReportRestoreStreamed("a", 100);
         await Assert.That(s.BuildSnapshot(DateTimeOffset.UnixEpoch).BytesRestored).IsEqualTo(100L);
 
-        // Completion reconciles to the final size (same key) — does NOT re-add the streamed bytes.
+        // Completion sets the final size and does not add the streamed bytes again.
         s.AddRestored("a", 100);
         var snap1 = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
         await Assert.That(snap1.BytesRestored).IsEqualTo(100L);
         await Assert.That(snap1.FilesRestored).IsEqualTo(1L);
 
-        // Small tar-bundle file "b" never streamed — credited fully on completion.
+        // File "b", from a tar chunk, never streams and is credited fully on completion.
         s.AddRestored("b", 200);
         var snap2 = s.BuildSnapshot(DateTimeOffset.UnixEpoch);
         await Assert.That(snap2.BytesRestored).IsEqualTo(300L);

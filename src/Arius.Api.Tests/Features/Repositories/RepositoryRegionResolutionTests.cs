@@ -7,10 +7,10 @@ using Shouldly;
 namespace Arius.Api.Tests.Features.Repositories;
 
 /// <summary>
-/// Covers the DB-backed read-through cache for a repository's region (see
-/// <see cref="RepositoryEndpoints.ResolveRegionDtoAsync"/> and <see cref="AppDatabase.SetRepositoryRegionHint"/>):
-/// a configured region is memoized (immutable once set) and served without opening the container, while an
-/// unset/unknown region is resolved live and only persisted when it is a real configured region.
+/// Covers the database-backed read-through cache for a repository's region
+/// (<see cref="RepositoryEndpoints.ResolveRegionDtoAsync"/>, <see cref="AppDatabase.SetRepositoryRegionHint"/>): a
+/// configured region is cached and served without opening the container; an unset or unknown region is resolved
+/// live and cached only when it is a configured region.
 /// </summary>
 public sealed class RepositoryRegionResolutionTests
 {
@@ -22,8 +22,6 @@ public sealed class RepositoryRegionResolutionTests
         var repositoryId = database.InsertRepository("alias", "container", accountId, localPath: null, encryptedPassphrase: null);
         return (database, repositoryId);
     }
-
-    // ── DB cache layer ──────────────────────────────────────────────────────────
 
     [Test]
     public async Task NewRepository_HasNoCachedRegion()
@@ -58,8 +56,8 @@ public sealed class RepositoryRegionResolutionTests
     [Test]
     public async Task Migration_AddsRegionHintColumnToAPreExistingDatabase()
     {
-        // A database created before region_hint existed: CREATE TABLE IF NOT EXISTS won't add the column on
-        // upgrade, so the additive ALTER in CreateOrUpgradeSchema must.
+        // A database created before region_hint existed: CREATE TABLE IF NOT EXISTS does not add the column,
+        // so the ALTER in CreateOrUpgradeSchema must.
         var path = Path.Combine(Path.GetTempPath(), $"arius-api-tests-mig-{Guid.NewGuid():N}.db");
         var connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate }.ToString();
         using (var seed = new SqliteConnection(connectionString))
@@ -81,15 +79,13 @@ public sealed class RepositoryRegionResolutionTests
         }
         SqliteConnection.ClearPool(new SqliteConnection(connectionString)); // release the seed file handle before reopening
 
-        var database = new AppDatabase(path); // runs the additive region_hint migration
+        var database = new AppDatabase(path); // runs the region_hint migration
 
         var repository = database.GetRepository(1)!;
         repository.RegionHint.ShouldBeNull();           // column added, defaults to null on the existing row
         database.SetRepositoryRegionHint(1, "westeurope");
         database.GetRepository(1)!.RegionHint.ShouldBe("westeurope");
     }
-
-    // ── Read-through resolution ─────────────────────────────────────────────────
 
     [Test]
     public async Task CachedRegion_IsServedWithoutResolvingLive()
@@ -104,7 +100,7 @@ public sealed class RepositoryRegionResolutionTests
             (_, _) => { resolvedLive = true; return Task.FromResult<StorageAccountInfo?>(null); },
             CancellationToken.None);
 
-        resolvedLive.ShouldBeFalse(); // the whole point: a cached region must not open the container
+        resolvedLive.ShouldBeFalse(); // a cached region must not open the container
         dto.Region.ShouldBe("westeurope");
         dto.RegionIsDefault.ShouldBeFalse();
     }
@@ -140,7 +136,7 @@ public sealed class RepositoryRegionResolutionTests
         calls.ShouldBe(1);
         dto.Region.ShouldBe("westeurope");
         dto.RegionIsDefault.ShouldBeFalse();
-        database.GetRepository(repositoryId)!.RegionHint.ShouldBe("westeurope"); // persisted for next time
+        database.GetRepository(repositoryId)!.RegionHint.ShouldBe("westeurope");
     }
 
     [Test]
@@ -156,7 +152,7 @@ public sealed class RepositoryRegionResolutionTests
 
         dto.Region.ShouldBe("northeurope");
         dto.RegionIsDefault.ShouldBeTrue();
-        // Not cached: an unconfigured container must keep re-resolving so it picks up a region once one is set.
+        // An unconfigured container keeps resolving live so it picks up a region once one is set.
         database.GetRepository(repositoryId)!.RegionHint.ShouldBeNull();
     }
 
@@ -168,7 +164,7 @@ public sealed class RepositoryRegionResolutionTests
 
         var dto = await RepositoryEndpoints.ResolveRegionDtoAsync(
             database, repository,
-            (_, _) => Task.FromResult<StorageAccountInfo?>(null), // best-effort live resolve failed
+            (_, _) => Task.FromResult<StorageAccountInfo?>(null), // live resolution failed
             CancellationToken.None);
 
         dto.Region.ShouldBeNull();

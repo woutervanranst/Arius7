@@ -1,6 +1,6 @@
 namespace Arius.Api.Features.Repositories;
 
-/// <summary>Properties-screen update. Null fields are left unchanged (so secrets need not be resupplied).</summary>
+/// <summary>Null fields are left unchanged, so secrets need not be supplied again.</summary>
 public sealed record UpdateRepositoryRequest(
     string? Alias,
     string? LocalPath,

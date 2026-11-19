@@ -3,9 +3,8 @@ using Microsoft.AspNetCore.DataProtection;
 namespace Arius.Api.Shared.AppData;
 
 /// <summary>
-/// Encrypts account keys and passphrases at rest in the app SQLite, using ASP.NET Core Data
-/// Protection keyed by the server's key ring (persisted to the mounted volume). This is server-side
-/// secret protection — distinct from Arius.Core's passphrase-based content encryption.
+/// Encrypts account keys and passphrases at rest in the app database with ASP.NET Core Data Protection, keyed by the
+/// server's key ring on the mounted volume. Unrelated to Arius.Core's passphrase-based content encryption.
 /// </summary>
 public sealed class SecretProtector
 {

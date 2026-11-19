@@ -6,9 +6,8 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Features.Jobs;
 
-/// <summary>Hub <c>AttachToJob</c> — joins the job's SignalR group and returns its current state: live from the
-/// registry if the job is running, else reconstructed from persisted state_json for a parked/finished job.
-/// Progress deltas follow.</summary>
+/// <summary>Joins the job's SignalR group and returns the job's current state; progress updates follow over the
+/// group.</summary>
 public sealed class AttachToJob(IHubContext<JobsHub> hub, AppDatabase database, JobStateRegistry jobStates) : IHubHandler
 {
     public async Task<JobAttachState?> HandleAsync(string connectionId, string jobId)
@@ -18,10 +17,6 @@ public sealed class AttachToJob(IHubContext<JobsHub> hub, AppDatabase database, 
         var job = database.GetJob(jobId);
         if (job is null) return null;
 
-        // A job blocked in the ConfirmRehydration callback (genuinely parked at awaiting-cost, still within the
-        // approval window) still has a LIVE sink here — JobRunner's method has not returned, so nothing has
-        // removed it from jobStates yet. JobViewResolver reads the cost/resume the run staged on the sink for
-        // exactly this case rather than hardcoding null.
         var view = JobViewResolver.Resolve(jobStates, jobId, job.StateJson);
         return new JobAttachState(job.Status, view.Snapshot ?? EmptySnapshot(jobId), view.Cost, view.WarningCount, view.Resume);
     }

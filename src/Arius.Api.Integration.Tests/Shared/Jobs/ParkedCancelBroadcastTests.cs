@@ -34,10 +34,10 @@ public class ParkedCancelBroadcastTests
 
         var jobId = Guid.NewGuid().ToString();
         db.InsertJob(jobId, repoId, "restore", "one-off", "rehydrating");
-        await Assert.That(db.CompleteJob(jobId, "completed", 100, "Restore complete.")).IsTrue();   // poller wins
-        await Assert.That(db.CompleteJob(jobId, "cancelled", 0, "late")).IsFalse();                 // guard: no-op on terminal
+        await Assert.That(db.CompleteJob(jobId, "completed", 100, "Restore complete.")).IsTrue();   // the poller completes it first
+        await Assert.That(db.CompleteJob(jobId, "cancelled", 0, "late")).IsFalse();                 // completing a terminal job is a no-op
 
-        runner.CancelParked(jobId);   // late cancel must not clobber
+        runner.CancelParked(jobId);   // a late cancel must not overwrite the outcome
 
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
     }

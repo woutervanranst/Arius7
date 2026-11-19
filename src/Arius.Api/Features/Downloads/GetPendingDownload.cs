@@ -4,7 +4,7 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary><c>GET /repos/{id}/downloads/pending</c> — the newest finished download with staged files not yet fetched.</summary>
+/// <summary>Returns the repository's newest finished download that still has staged files not yet fetched.</summary>
 internal sealed class GetPendingDownload(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

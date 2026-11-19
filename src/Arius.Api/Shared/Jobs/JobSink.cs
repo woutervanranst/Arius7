@@ -6,68 +6,62 @@ using Microsoft.AspNetCore.SignalR;
 namespace Arius.Api.Shared.Jobs;
 
 /// <summary>
-/// Per-job channel to the client. Registered as a singleton inside a job's own service provider, so
-/// the INotification forwarders (and the command's IProgress closures) resolve exactly this job's
-/// sink — events are isolated by provider, not by a correlation id. Read providers get an inert sink
-/// (no <see cref="JobId"/>), so the same forwarders are harmless there. Also holds the per-job
-/// aggregate counters that feed the drawer's stat grid.
+/// A job's channel to its clients and its progress counters. Registered as a singleton in the job's own service
+/// provider, so the notification forwarders and progress callbacks resolve this job's sink: events are isolated
+/// by provider, not by a correlation id. Read providers get an inert sink without a <see cref="JobId"/>, on which
+/// the forwarders have no effect.
 /// </summary>
 public sealed class JobSink
 {
     private readonly IHubContext<JobsHub>? _hub;
-    // Per-repo diagnostic logger (ETA/throughput tracing); null on inert/read sinks and until attached.
-    // Volatile: attached on the job-start thread, read on the reporting timer's threadpool thread.
+    // ETA diagnostics logger; null on an inert sink and until attached.
+    // Volatile: attached on the job-start thread, read on the reporting timer's thread.
     private volatile ILogger? _logger;
 
-    /// <summary>The SignalR group id (= the job id), or null for an inert (non-job) sink.</summary>
+    /// <summary>The job id, which is also its SignalR group; null for an inert sink.</summary>
     public string? JobId { get; }
 
-    /// <summary>Per-job cancellation source. <see cref="CancelJob"/> cancels this; <see cref="JobRunner"/>
-    /// threads its token into the Core command.</summary>
+    /// <summary>Cancelled by <see cref="CancelJob"/>; <see cref="JobRunner"/> passes its token to the Core command.</summary>
     public CancellationTokenSource Cts { get; } = new();
 
     public JobSink() { }                                  // inert sink for read providers
     public JobSink(string jobId, IHubContext<JobsHub>? hub, ILogger? logger = null) { JobId = jobId; _hub = hub; _logger = logger; }
 
-    /// <summary>Attaches the per-repository diagnostics logger, so the <c>[ETA]</c> trace lands in the repo's
-    /// <c>arius-{date}.txt</c> alongside Core's events. Set after construction because the sink is created
-    /// before the repository's provider (and its logger factory) exists.</summary>
+    /// <summary>Attaches the repository's logger so the <c>[ETA]</c> trace lands in the repository log next to
+    /// Core's events. Set after construction because the sink exists before the repository's provider and its
+    /// logger factory.</summary>
     public void AttachDiagnosticsLogger(ILogger logger) => _logger = logger;
 
     private IClientProxy? Group => JobId is null || _hub is null ? null : _hub.Clients.Group(JobId);
 
-    // ── Messages ────────────────────────────────────────────────────────────
     public void Log(string text, string severity = "meta")
     {
-        // Capture warn/error lines for the warnings panel/count.
         if (severity is "warn" or "error")
             CaptureWarning(text);
     }
-    /// <summary>The most recent cost estimate pushed via <see cref="Cost"/>, retained so a live reattach while the
-    /// run is blocked awaiting cost-approval can render "Review cost ›" without waiting for the persisted snapshot.
-    /// Cleared by <see cref="ClearPending"/> once the prompt resolves.</summary>
+    /// <summary>The last cost estimate sent by <see cref="Cost"/>, kept so a client reattaching while the run awaits
+    /// approval can show the cost prompt. Cleared by <see cref="ClearPending"/>.</summary>
     public CostEstimateDto? PendingCost { get; private set; }
 
-    /// <summary>The resume defaults (auto-resume + rehydration window) that would apply if this cost prompt times
-    /// out — surfaced alongside <see cref="PendingCost"/> for the same live-reattach window.</summary>
+    /// <summary>The resume settings (auto-resume and rehydration window) shown with <see cref="PendingCost"/> to a
+    /// reattaching client.</summary>
     public RestoreResumeState? PendingResume { get; private set; }
 
     public void Cost(CostEstimateDto estimate) { PendingCost = estimate; Group?.SendAsync("CostEstimate", estimate); }
 
     public void SetPendingResume(RestoreResumeState resume) => PendingResume = resume;
 
-    /// <summary>Clears the pending cost/resume once the prompt resolves (approved) — a live reattach after this
-    /// point is mid-restore, not awaiting a decision, so it must not show a stale modal.</summary>
+    /// <summary>Clears the pending cost and resume settings once the prompt is approved, so a client reattaching
+    /// mid-restore does not see a stale cost prompt.</summary>
     public void ClearPending() { PendingCost = null; PendingResume = null; }
 
     private volatile bool _done;
-    /// <summary>Whether a terminal <see cref="Done"/> has been sent — suppresses any late progress emit.</summary>
+    /// <summary>Whether <see cref="Done"/> has been sent; no progress is sent after it.</summary>
     public bool IsDone => _done;
 
-    /// <summary>Serializes the terminal <see cref="Done"/> send against <see cref="EmitNow"/> so the two can never
-    /// interleave: without this, the 1s timer's <c>EmitNow</c> could read <c>_done == false</c>, get preempted, and
-    /// send a stale "Progress" after "Done" already reached the client. Never held across <see cref="BuildSnapshot"/>,
-    /// so it cannot nest under <see cref="_sampleLock"/>/<see cref="_warnLock"/>.</summary>
+    /// <summary>Serializes <see cref="Done"/> against progress sends, so a stale <c>Progress</c> never follows
+    /// <c>Done</c> to the client. Never held across <see cref="BuildSnapshot"/>, so it cannot nest with
+    /// <see cref="_sampleLock"/> or <see cref="_warnLock"/>.</summary>
     private readonly object _emitLock = new();
 
     public void Done(string status, string summary, string? outcomeJson = null)
@@ -79,7 +73,7 @@ public sealed class JobSink
         }
     }
 
-    // ── Warnings capture (verbatim warn/error lines; count survives ring trimming) ──
+    // Warn/error lines, kept verbatim in a bounded ring.
     private const int WarningRingCap = 200;
     private readonly LinkedList<string> _warnings = new();
     private readonly object _warnLock = new();
@@ -95,21 +89,19 @@ public sealed class JobSink
         }
     }
 
-    /// <summary>Total warn/error lines seen (accurate even after the ring trims older lines).</summary>
+    /// <summary>Total warn/error lines, including those trimmed from <see cref="Warnings"/>.</summary>
     public int WarningCount { get { lock (_warnLock) return _warningCount; } }
 
-    /// <summary>The last ≤200 warn/error lines, oldest→newest.</summary>
+    /// <summary>The last 200 warn/error lines at most, oldest first.</summary>
     public IReadOnlyList<string> Warnings { get { lock (_warnLock) return _warnings.ToArray(); } }
 
-    // ── Coalesced progress reporting ─────────────────────────────────────────
     private Timer? _timer;
 
-    /// <summary>Begins coalesced progress emission (~1s) plus ETA sampling. No-op for an inert (no-hub) sink.</summary>
+    /// <summary>Starts sending progress and sampling throughput once per second. No-op for an inert sink.</summary>
     public void StartReporting()
     {
         if (JobId is null) return;
-        // One snapshot per tick, shared by the wire and the log: building a second one for the diagnostics
-        // would let concurrent events make the logged line disagree with the payload the client received.
+        // One snapshot per tick feeds both the client and the log, so the logged line matches what the client received.
         _timer = new Timer(_ =>
         {
             var now = _now();
@@ -122,9 +114,8 @@ public sealed class JobSink
 
     public void StopReporting() { _timer?.Dispose(); _timer = null; EmitNow(); }
 
-    /// <summary>Logs <paramref name="snap"/> — the very <see cref="JobSnapshot"/> instance emitted to the web
-    /// client over SignalR this tick — at Debug under the "[ETA]" tag, so what Arius.Web renders is reproducible
-    /// from the log alone. No-op unless a logger was supplied and Debug is enabled.</summary>
+    /// <summary>Logs the snapshot sent to the client at Debug under the <c>[ETA]</c> tag, so what the web UI rendered
+    /// can be reproduced from the log.</summary>
     internal void LogEtaDiagnostics(JobSnapshot snap)
     {
         if (_logger is null || JobId is null || !_logger.IsEnabled(LogLevel.Debug)) return;
@@ -138,88 +129,72 @@ public sealed class JobSink
             snap.ChunksTotal, snap.ChunksAvailable, snap.ChunksRehydrated, snap.ChunksNeedingRehydration, snap.ChunksPending);
     }
 
-    /// <summary>Sends the current absolute snapshot immediately (used on transitions and on stop). No-ops once
-    /// <see cref="Done"/> has been sent, so the timer's final <see cref="StopReporting"/> emit can never race a
-    /// terminal message that already reached the client (a reattaching client would otherwise see a
-    /// live-looking Progress after the job ended).</summary>
+    /// <summary>Sends the current snapshot immediately, e.g. on a status transition. Does nothing after
+    /// <see cref="Done"/>, so a client never receives progress for a finished job.</summary>
     public void EmitNow()
     {
         if (_done) return;
-        Emit(BuildSnapshot(_now()));             // built outside the lock (absolute-state; a stale build is fine)
+        Emit(BuildSnapshot(_now()));             // built outside the lock: a slightly stale snapshot is harmless
     }
 
-    /// <summary>Sends an already-built snapshot, so a caller that also needs it (the reporting timer, which logs
-    /// the same instance) never has to build a second one.</summary>
     private void Emit(JobSnapshot snapshot)
     {
         lock (_emitLock)
         {
-            if (_done) return;                   // re-check under the lock: a Done that raced in wins
+            if (_done) return;                   // re-check under the lock: a concurrent Done wins
             Group?.SendAsync("Progress", snapshot);
         }
     }
 
-    // ── Byte-weighted aggregate (archive + restore) ─────────────────────────────
     private long _totalFiles, _totalBytes, _scannedBytes, _scannedFiles, _hashedBytes, _uploadedBytes, _dedupedBytes, _dedupedFiles, _queuedNewBytes, _newByteTotal;
     private volatile bool _newByteTotalFinal;   // set once RoutingCompleteEvent has fixed the exact new-byte total
     private long _restoreTotalFiles, _restoreTotalBytes, _filesRestored, _bytesRestored;
     private volatile int _rehydAvailable, _rehydRehydrated, _rehydNeeds, _rehydPending, _chunksTotal;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<ChunkHash, long> _tarUncompressed = new();
 
-    // Forward-only phase ordinal. A job is either archive or restore, and each command drives a disjoint,
-    // monotonically-advancing slice of PhaseNames — so the concurrent per-item forwarders that fold into
-    // `hash-route`/`upload` (or restore's `download`) can call SetPhase repeatedly and out of order without
-    // ever regressing the stepper to an earlier milestone.
+    // The phases in order; archive and restore each advance through their own slice.
     private static readonly string[] PhaseNames =
     {
         "starting",
         "scan", "hash-route", "upload", "snapshot",                     // archive
         "classify", "confirm-cost", "download", "rehydrate", "cleanup", // restore
     };
-    private int _phaseOrdinal;   // index into PhaseNames; 0 = "starting"
+    private int _phaseOrdinal;
 
-    private volatile string _status = "running";   // live DB-status mirror; rides along in every snapshot so the client sees status transitions without a reload
+    private volatile string _status = "running";   // mirrors the job's database status
 
-    /// <summary>Testable clock seam — tests inject a fixed/stepped clock; production uses real time.</summary>
+    /// <summary>Clock seam for tests.</summary>
     internal Func<DateTimeOffset> _now = () => DateTimeOffset.UtcNow;
 
     public void SetTotals(long files, long bytes) { Interlocked.Exchange(ref _totalFiles, files); Interlocked.Exchange(ref _totalBytes, bytes); }
-    /// <summary>Records one scanned file of <paramref name="bytes"/> bytes. The file count rises per call even when
-    /// <paramref name="bytes"/> is 0 (pointer-only / thin-archive files have no local binary to read), so the UI can
-    /// show "Scanned 0 B, N files" instead of a stuck "0 B".</summary>
+    /// <summary>Records one scanned file. The file count rises even when <paramref name="bytes"/> is 0 (a pointer-only
+    /// file has no local binary), so scanning progress stays visible.</summary>
     public void AddScanned(long bytes) { Interlocked.Add(ref _scannedBytes, bytes); Interlocked.Increment(ref _scannedFiles); }
     public void AddHashed(long bytes)  => Interlocked.Add(ref _hashedBytes, bytes);
-    /// <summary>Reconciles a completed chunk's upload to its full original size. Streaming progress
-    /// (<see cref="ReportUploadStreamed"/>) may already have credited most of it; this only tops up any remaining
-    /// delta, so the chunk contributes exactly <paramref name="original"/> whether or not streaming was reported
-    /// (scripted tests / non-streaming providers still credit the full size here).</summary>
+    /// <summary>Credits a completed chunk at its full <paramref name="original"/> size, topping up what
+    /// <see cref="ReportUploadStreamed"/> already credited, so the chunk counts once whether or not streaming
+    /// progress was reported.</summary>
     public void AddUploaded(ChunkHash chunk, long stored, long original) => CreditUpload(chunk, original);
-    /// <summary>Accumulates the original (uncompressed) size of each new chunk queued for upload — the
-    /// additive "new bytes to upload" total. Independent of the deduped/total subtraction, so it never
-    /// underflows for pointer-only-heavy repos. Final once routing completes; 0 until the first queue.</summary>
+    /// <summary>Adds the original size of a new chunk queued for upload; the running sum is the provisional
+    /// new-byte total.</summary>
     public void AddQueuedNew(long originalSize) => Interlocked.Add(ref _queuedNewBytes, originalSize);
-    /// <summary>Records the exact, final count of new (non-deduped) original bytes to upload, from
-    /// <c>RoutingCompleteEvent</c>. Until this fires the upload ETA uses the still-growing
-    /// <see cref="_queuedNewBytes"/> as a provisional denominator.</summary>
+    /// <summary>Sets the exact new-byte total from <c>RoutingCompleteEvent</c>. Until then the upload ETA uses the
+    /// growing <see cref="_queuedNewBytes"/>.</summary>
     public void SetNewByteTotal(long newByteTotal) { Interlocked.Exchange(ref _newByteTotal, newByteTotal); _newByteTotalFinal = true; }
     public void AddDeduped(long original) { Interlocked.Add(ref _dedupedBytes, original); Interlocked.Increment(ref _dedupedFiles); }
     public void RememberTar(ChunkHash tarHash, long uncompressed) => _tarUncompressed[tarHash] = uncompressed;
     public void AddUploadedTar(ChunkHash tarHash) { if (_tarUncompressed.TryGetValue(tarHash, out var u)) CreditUpload(tarHash, u); }
 
-    // ── Upload progress crediting (streaming + completion, no double-count) ──────
     private readonly Dictionary<ChunkHash, long> _uploadCredited = new();
     private readonly object _uploadLock = new();
 
-    /// <summary>Streaming upload progress: <paramref name="cumulative"/> is the running total of bytes read from the
-    /// source for one chunk/tar (Arius.Core's ProgressStream via <c>ArchiveCommandOptions.CreateUploadProgress</c>).
-    /// Crediting only the per-chunk delta makes <see cref="_uploadedBytes"/> rise continuously instead of jumping
-    /// when a whole chunk/tar finishes.</summary>
+    /// <summary>Credits streaming upload progress: <paramref name="cumulative"/> is the bytes read so far for one
+    /// chunk or tar, so uploaded bytes rise continuously instead of once per finished chunk.</summary>
     public void ReportUploadStreamed(ChunkHash chunk, long cumulative) => CreditUpload(chunk, cumulative);
 
-    /// <summary>Advances a chunk's credited-uploaded high-water mark to <paramref name="cumulative"/> and adds the
-    /// delta to the aggregate. Monotonic per chunk (a completion reconcile can only top up), so streaming reports and
-    /// the terminal completion event compose without double-counting. Serialized because <see cref="Progress{T}"/>
-    /// callbacks and the completion forwarder can run on different threadpool threads for the same chunk.</summary>
+    /// <summary>Raises the chunk's credited high-water mark to <paramref name="cumulative"/> and adds the difference to
+    /// the total, so streaming reports and the completion event never double-count. Locked because
+    /// <see cref="Progress{T}"/> callbacks and the completion forwarder can run concurrently for the same chunk.</summary>
     private void CreditUpload(ChunkHash chunk, long cumulative)
     {
         lock (_uploadLock)
@@ -232,26 +207,22 @@ public sealed class JobSink
     }
 
     public void SetRestoreTotals(long files, long bytes) { Interlocked.Exchange(ref _restoreTotalFiles, files); Interlocked.Exchange(ref _restoreTotalBytes, bytes); }
-    /// <summary>Marks one file restored: bumps the file count and reconciles its bytes to <paramref name="size"/>.
-    /// Streaming download progress (<see cref="ReportRestoreStreamed"/>) keyed by the same relative path may already
-    /// have credited most of it, so this only tops up the remainder — no double-count.</summary>
+    /// <summary>Marks one file restored and credits it at <paramref name="size"/>, topping up what
+    /// <see cref="ReportRestoreStreamed"/> already credited for the same path.</summary>
     public void AddRestored(string key, long size) { Interlocked.Increment(ref _filesRestored); CreditRestore(key, size); FileRestored?.Invoke(key); }
 
-    /// <summary>Invoked with the restored file's relative path after <see cref="AddRestored"/> credits it (a download job marks the file ready).</summary>
+    /// <summary>Raised with the relative path of each restored file; a download job uses it to mark the file ready.</summary>
     public Action<string>? FileRestored { get; set; }
 
-    // ── Restore(download) progress crediting — mirrors the upload path ───────────
     private readonly Dictionary<string, long> _restoreCredited = new();
 
-    /// <summary>Streaming restore progress: <paramref name="cumulative"/> is the running total of bytes downloaded
-    /// for one large file (Arius.Core's <c>RestoreOptions.CreateLargeFileDownloadProgress</c>). Crediting only the
-    /// per-file delta makes <see cref="_bytesRestored"/> rise continuously as a large file downloads instead of
-    /// jumping only when it finishes.</summary>
+    /// <summary>Credits streaming download progress: <paramref name="cumulative"/> is the bytes downloaded so far for
+    /// one large file, so restored bytes rise continuously while it downloads.</summary>
     public void ReportRestoreStreamed(string key, long cumulative) => CreditRestore(key, cumulative);
 
     private void CreditRestore(string key, long cumulative)
     {
-        lock (_uploadLock)   // archive & restore never run on the same sink, so the crediting lock is shared
+        lock (_uploadLock)   // archive and restore never share a sink, so one lock serves both
         {
             var prev = _restoreCredited.TryGetValue(key, out var p) ? p : 0L;
             if (cumulative <= prev) return;
@@ -262,14 +233,12 @@ public sealed class JobSink
     public void SetRehydration(int available, int rehydrated, int needs, int pending)
     { _rehydAvailable = available; _rehydRehydrated = rehydrated; _rehydNeeds = needs; _rehydPending = pending; }
 
-    /// <summary>Records the authoritative distinct-chunk total from ChunkResolutionCompleteEvent — the single
-    /// denominator for the restore hydration bar.</summary>
+    /// <summary>Sets the distinct-chunk total from <c>ChunkResolutionCompleteEvent</c>, the denominator of the restore
+    /// hydration bar.</summary>
     public void SetChunkTotals(int totalChunks) => _chunksTotal = totalChunks;
 
-    /// <summary>Advances the job phase, forward-only: a phase earlier than (or equal to) the current one is
-    /// ignored, so the concurrent per-item forwarders that drive `hash-route`/`upload`/`download` can fire in any
-    /// order without regressing the stepper. Unknown phase names are ignored — every emitted phase is in
-    /// <see cref="PhaseNames"/>.</summary>
+    /// <summary>Advances the job phase. An earlier or unknown phase is ignored, so concurrent per-item forwarders can
+    /// report phases in any order without moving the stepper back.</summary>
     public void SetPhase(string phase)
     {
         var next = Array.IndexOf(PhaseNames, phase);
@@ -278,31 +247,27 @@ public sealed class JobSink
         do
         {
             cur = Volatile.Read(ref _phaseOrdinal);
-            if (next <= cur) return;   // never regress; early-out keeps the per-file hot path lock-free
+            if (next <= cur) return;   // early return keeps the per-file hot path lock-free
         } while (Interlocked.CompareExchange(ref _phaseOrdinal, next, cur) != cur);
     }
     public void SetStatus(string status) => _status = status;
 
-    // ── Smoothed throughput (two EMAs, adaptive window) → a stable, phase-aware ETA ──
-    // Archive work is two concurrent streams: local hashing and upload. Restore has one (download),
-    // which rides the transfer EMA (upload==0 for restore). Each EMA is continuous-time — its alpha is
-    // derived from the real gap dt and a time constant τ that widens with elapsed time, so a 2-minute job
-    // stays responsive while a multi-hour job settles.
+    // Throughput is smoothed with two exponential moving averages: local hashing, and transfer (upload for
+    // archive, download for restore). Their time constant is a tenth of the elapsed time, clamped to
+    // [3 s, 10 min], so a short job stays responsive while a long job settles.
     private readonly object _sampleLock = new();
-    private double _transferRate;                   // EMA bytes/sec of uploaded+restored (network)
-    private double _hashRate;                        // EMA bytes/sec of hashed (local)
-    private DateTimeOffset? _startedAt;              // first-sample anchor for the elapsed-scaled window
+    private double _transferRate;                   // bytes/s uploaded or downloaded
+    private double _hashRate;                        // bytes/s hashed
+    private DateTimeOffset? _startedAt;              // time of the first sample
     private DateTimeOffset? _lastSampleAt;
     private long _lastTransferProgress;
     private long _lastHashProgress;
-    private const double EmaTauElapsedFraction = 0.1;   // τ grows at 1/10 of elapsed…
-    private const double EmaTauMinSeconds      = 3.0;   // …floored (small jobs stay responsive)…
-    private const double EmaTauMaxSeconds      = 600.0; // …and capped at 10 min (long jobs stay steady).
+    private const double EmaTauElapsedFraction = 0.1;
+    private const double EmaTauMinSeconds      = 3.0;
+    private const double EmaTauMaxSeconds      = 600.0;
 
-    /// <summary>Fold the latest instantaneous throughput into two EMAs (transfer = upload+restore, and hash).
-    /// A flat tick HOLDS a rate rather than decaying it, so a between-chunk gap can't inflate the ETA — only
-    /// sustained progress moves an estimate. The smoothing alpha is derived from the real gap and a time
-    /// constant τ that widens with elapsed time, so short jobs react quickly and long jobs stop swinging.</summary>
+    /// <summary>Folds the progress since the last sample into both rates. A tick without progress keeps the rate
+    /// instead of decaying it, so a gap between chunks does not inflate the ETA.</summary>
     public void SampleForEta(DateTimeOffset now)
     {
         lock (_sampleLock)
@@ -334,8 +299,7 @@ public sealed class JobSink
         }
     }
 
-    /// <summary>One EMA fold. A non-positive delta (flat tick) holds the prior rate; the first positive sample
-    /// seeds the EMA with the raw instantaneous rate (so a single observation isn't damped from zero).</summary>
+    /// <summary>The first positive sample seeds the rate directly, so it is not damped from zero.</summary>
     private static double FoldRate(double rate, long delta, double dt, double alpha)
     {
         if (delta <= 0) return rate;
@@ -348,39 +312,36 @@ public sealed class JobSink
         lock (_sampleLock) return (_transferRate, _hashRate);
     }
 
-    // ── Snapshot builder ─────────────────────────────────────────────────────
     public JobSnapshot BuildSnapshot(DateTimeOffset now)
     {
         var total    = Interlocked.Read(ref _totalBytes);
         var deduped  = Interlocked.Read(ref _dedupedBytes);
         var uploaded = Interlocked.Read(ref _uploadedBytes);
         var hashed   = Interlocked.Read(ref _hashedBytes);
-        // "New bytes to upload" is the sum of queued new-chunk sizes (additive) — NOT total - deduped,
-        // which underflows when pointer-only files (scanned as 0 bytes) are deduped at full size.
+        // New bytes to upload are the sum of queued new-chunk sizes, not total minus deduped, which underflows when
+        // pointer-only files (scanned as 0 bytes) are deduplicated at full size.
         var totalNew = Interlocked.Read(ref _queuedNewBytes);
         var (transferRate, hashRate) = Rates();
 
-        // A job is either archive or restore, never both — pick the active kind's totals/progress
-        // so both Pct and EtaSeconds are meaningful whichever kind is running.
+        // A job is either archive or restore; Pct and EtaSeconds use the active kind's totals.
         var restoreTotalFiles = Interlocked.Read(ref _restoreTotalFiles);
         var restored          = Interlocked.Read(ref _bytesRestored);
         var restoreTotal      = Interlocked.Read(ref _restoreTotalBytes);
-        // Streaming credits stored(compressed) download bytes, which can slightly exceed the original-byte total —
-        // cap so the tiles and bar never read over the total (pct is already clamped; this fixes the raw "on disk" value).
+        // Streaming credits stored (compressed) bytes, which can slightly exceed the original-byte total; cap so the
+        // UI never shows more than the total.
         if (restoreTotal > 0 && restored > restoreTotal) restored = restoreTotal;
         var isRestore         = restoreTotal > 0 || restoreTotalFiles > 0;
 
-        // ETA models the run as concurrent constraints and takes the slower (max):
-        //  • upload: (newBytes − uploaded) / transferRate. newBytes is the queued-new total (a converging lower
-        //    bound) until RoutingCompleteEvent fixes the exact figure.
-        //  • local (archive only): (total − hashed) / hashRate — the read/hash backlog. This is what makes a
-        //    fully-deduped archive read its true (hash-bound) time instead of "seconds".
-        // Restore has no local term (its bytes are known up front and only download). While the scan is still
-        // running (total == 0) an archive stays "estimating" — a partial totalNew would under-read.
+        // The ETA is the slower of two concurrent constraints:
+        //  - upload: remaining new bytes / transfer rate. Until RoutingCompleteEvent fixes the exact total, the
+        //    queued-new total serves as a lower bound.
+        //  - hashing (archive only): remaining bytes to hash / hash rate, so a fully deduplicated archive reports
+        //    its real, hash-bound time.
+        // Restore has only the download term. An archive has no ETA until the scan completes (total == 0), because
+        // a partial new-byte total would underestimate.
         var newByteTotalFinal = _newByteTotalFinal;
         var uploadDenom       = newByteTotalFinal ? Interlocked.Read(ref _newByteTotal) : totalNew;
 
-        // ── ETA (prediction): one number, binding on the slower constraint. Unchanged behaviour. ──
         long? eta;
         var etaIsProvisional = false;
         if (isRestore)
@@ -391,25 +352,24 @@ public sealed class JobSink
         }
         else if (total == 0)
         {
-            eta = null;                        // scan not complete → estimating
+            eta = null;                        // still scanning
         }
         else
         {
             long? uploadEta = transferRate > 0 ? (long)Math.Ceiling(Math.Max(0L, uploadDenom - uploaded) / transferRate) : null;
             long? hashEta   = hashRate     > 0 ? (long)Math.Ceiling(Math.Max(0L, total - hashed)         / hashRate)     : null;
-            // Bind on the slower constraint (ties resolve to upload, so a finished job doesn't read a stale hash term).
+            // The slower constraint wins; ties go to upload, so a finished job does not report a stale hash term.
             eta = (hashEta is { } h && (uploadEta is not { } u || h > u)) ? hashEta : uploadEta;
             etaIsProvisional = eta is not null && !newByteTotalFinal;
         }
 
-        // ── Throughput (observation): two independently-honest rates, each zeroed when its stream is idle/done. ──
-        // The rates come from the two EMAs; liveness only gates WHETHER an already-smoothed rate is shown, so a
-        // finished stream can never surface a stale value and the scan window shows live hashing (not 0).
+        // Each reported rate is its smoothed rate while that stream is active and 0 otherwise, so a finished stream
+        // never shows a stale rate. Hashing counts as active during the scan.
         double hashTp, uploadTp;
         if (isRestore)
         {
             hashTp   = 0;                                                                 // restore never hashes
-            uploadTp = restoreTotal > 0 && restored < restoreTotal ? transferRate : 0;   // the download rides the transfer EMA
+            uploadTp = restoreTotal > 0 && restored < restoreTotal ? transferRate : 0;   // the download uses the transfer rate
         }
         else
         {
@@ -419,9 +379,8 @@ public sealed class JobSink
             uploadTp = uploadLive ? transferRate : 0;
         }
         var dominantTp = Math.Max(hashTp, uploadTp);
-        // Archive pct is the monotonic "filled fraction" (uploaded + deduplicated) over the fixed scan total —
-        // the same value the detail-page layered bar shows. The clamp absorbs the pointer-only case where
-        // deduped alone exceeds the total.
+        // Archive Pct is (uploaded + deduplicated) / scanned total, matching the job page's progress bar. The clamp
+        // covers pointer-only files, whose deduplicated size can exceed the total.
         var pct = isRestore
             ? (restoreTotal > 0
                 ? (int)Math.Clamp(restored * 100 / restoreTotal, 0, 100)
@@ -444,7 +403,7 @@ public sealed class JobSink
             HashThroughputBytesPerSec = hashTp, UploadThroughputBytesPerSec = uploadTp,
             Pct = pct, EtaIsProvisional = etaIsProvisional,
             WarningCount = WarningCount,
-            Stats = new Dictionary<string, string>   // legacy stat grid
+            Stats = new Dictionary<string, string>   // job drawer stat grid
             {
                 ["Uploaded"] = JobFormat.Bytes(uploaded),
                 ["Deduped"]  = Interlocked.Read(ref _dedupedFiles).ToString(),
@@ -461,9 +420,8 @@ public sealed class JobSink
         };
     }
 
-    /// <summary>Builds the compact, terminal outcome summary persisted to the jobs `outcome` column on completion.
-    /// Archive fields come from the archive counters, restore fields from the restore counters — a job is
-    /// either archive or restore, never both, so the unused side's fields are naturally null/zero.</summary>
+    /// <summary>Builds the summary persisted to <c>jobs.outcome</c> when the job ends. The fields of the other job
+    /// kind are null or zero.</summary>
     public JobOutcome BuildOutcome(DateTimeOffset startedAt, DateTimeOffset now, string? snapshotTimestamp) => new()
     {
         FileCount = Interlocked.Read(ref _totalFiles) is var f and > 0 ? f : null,
@@ -475,9 +433,6 @@ public sealed class JobSink
         DurationSeconds = (long)(now - startedAt).TotalSeconds,
     };
 
-    /// <summary>Assembles the <see cref="PersistedJobState"/> written to <c>state_json</c> — current snapshot,
-    /// warnings tail, and (restore) the resume params + cost estimate. Archive jobs pass <paramref name="resume"/>
-    /// = null and no <paramref name="cost"/>.</summary>
     public PersistedJobState BuildPersistedState(DateTimeOffset now, RestoreResumeState? resume, CostEstimateDto? cost = null) => new()
     {
         Snapshot = BuildSnapshot(now),
@@ -486,9 +441,7 @@ public sealed class JobSink
         Cost     = cost,
     };
 
-    /// <summary>Copies the current rehydrated chunk count into <paramref name="resume"/> (used by the poller to
-    /// tighten cadence once rehydration has started producing newly-ready chunks). Deliberately excludes
-    /// already-available (always-online) chunks — those must not trip the quiet window.</summary>
+    /// <summary>Copies the live <see cref="RestoreResumeState.RehydratedCount"/> into <paramref name="resume"/>.</summary>
     public RestoreResumeState WithLiveRehydrationCounts(RestoreResumeState resume) =>
         resume with { RehydratedCount = _rehydRehydrated };
 }

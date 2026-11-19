@@ -2,7 +2,6 @@ using Arius.Api.Shared.AppData;
 
 namespace Arius.Api.Features.Defaults;
 
-/// <summary>Helpers shared by the <c>/settings/defaults</c> and <c>/repos/{id}/defaults</c> endpoints.</summary>
 internal static class DefaultsEndpoints
 {
     internal static GlobalDefaultsDto ToGlobalDto(AppDatabase db) => new(

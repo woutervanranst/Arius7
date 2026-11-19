@@ -3,7 +3,6 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Schedules;
 
-/// <summary><c>GET /repos/{id}/schedules</c></summary>
 internal sealed class ListSchedules(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

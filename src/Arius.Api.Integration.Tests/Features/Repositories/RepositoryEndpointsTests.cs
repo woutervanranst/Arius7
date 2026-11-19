@@ -9,8 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests.Features.Repositories;
 
-/// <summary>The <c>/repos</c> endpoints: create, list and update a repository — the passphrase is stored encrypted and
-/// never returned, and an update drops what was cached for the old connection.</summary>
+/// <summary>The <c>/repos</c> endpoints: create, list and update a repository. The passphrase is stored encrypted and
+/// never returned, and an update discards what was cached for the old connection.</summary>
 public class RepositoryEndpointsTests
 {
     [Test]

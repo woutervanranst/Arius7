@@ -6,8 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Arius.Api.Integration.Tests.Features.Repositories;
 
 /// <summary>
-/// DELETE /repos/{id} must refuse while a job is active: deleting disposes the repository's logger factory
-/// (closing its log file), which a concurrent job build resolves loggers from — so the two must not overlap.
+/// DELETE /repos/{id} is refused while a job is active: the delete disposes the repository's logger factory,
+/// which the running job's provider uses.
 /// </summary>
 public class RepositoryDeleteGuardTests
 {

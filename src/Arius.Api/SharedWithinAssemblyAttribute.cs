@@ -1,10 +1,8 @@
 namespace Arius.Api;
 
 /// <summary>
-/// Marks an <c>internal</c> type as intentionally shareable across namespaces within this
-/// assembly. The namespace-scoped-internal architecture test (see Arius.Architecture.Tests)
-/// normally requires an internal type to be used only from its own namespace or a descendant;
-/// types carrying this attribute are exempt from that check while remaining assembly-internal.
+/// Exempts an <c>internal</c> type from the architecture rule that restricts internal types to their own namespace
+/// subtree, so it can be shared across namespaces within this assembly.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface
     | AttributeTargets.Enum, Inherited = false)]

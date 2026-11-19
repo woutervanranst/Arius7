@@ -3,10 +3,10 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Shared.AppData;
 
-/// <summary>A configured Azure Storage account. <see cref="EncryptedAccountKey"/> is Data-Protection ciphertext.</summary>
+/// <summary>A configured Azure Storage account. <see cref="EncryptedAccountKey"/> is Data Protection ciphertext.</summary>
 public sealed record AccountRecord(long Id, string Name, string? EncryptedAccountKey, DateTimeOffset CreatedAt);
 
-/// <summary>A managed repository (one blob container). <see cref="EncryptedPassphrase"/> is Data-Protection ciphertext.</summary>
+/// <summary>A managed repository (one blob container). <see cref="EncryptedPassphrase"/> is Data Protection ciphertext.</summary>
 public sealed record RepositoryRecord(
     long            Id,
     string          Alias,
@@ -27,13 +27,13 @@ public sealed record RepositoryConnection(
     string? Passphrase,
     string? LocalPath);
 
-/// <summary>A one-off or scheduled archive/restore run.</summary>
+/// <summary>A one-off or scheduled archive, restore or download run.</summary>
 public sealed record JobRecord(
     string          Id,
     long            RepositoryId,
     string          Kind,        // archive | restore | download
     string          Trigger,     // one-off | schedule
-    string          Status,      // non-terminal: running | awaiting-cost | rehydrating — terminal: completed | failed | cancelled | interrupted
+    string          Status,      // see JobStatuses
     double          Pct,
     string?         Detail,
     DateTimeOffset? StartedAt,
@@ -41,7 +41,7 @@ public sealed record JobRecord(
     string?         StateJson = null,   // serialized live JobSnapshot, refreshed while the job runs
     string?         Outcome = null);    // serialized terminal JobOutcome, written on completion
 
-/// <summary>One file collected by a download job: repository-relative <see cref="Path"/>, whether it is staged on the server (<see cref="Ready"/>) and whether the browser has fetched it (<see cref="Downloaded"/>).</summary>
+/// <summary>A file collected by a download job. <see cref="Ready"/>: staged on the server; <see cref="Downloaded"/>: fetched by the browser.</summary>
 public sealed record DownloadFile(string Path, long Size, bool Ready = false, bool Downloaded = false);
 
 /// <summary>Server-wide clean-up of downloaded files: whether it runs and how many days after a download job finished.</summary>

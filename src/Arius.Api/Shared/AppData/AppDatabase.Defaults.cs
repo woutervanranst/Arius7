@@ -13,7 +13,7 @@ public sealed partial class AppDatabase
         return OptionDefaults.FromRows(ReadOptionRows(command));
     }
 
-    /// <summary>Replaces the whole global set: deletes every row and inserts the non-null values, in one transaction.</summary>
+    /// <summary>Replaces the global defaults atomically; a <c>null</c> value leaves that option unset.</summary>
     public void ReplaceGlobalDefaults(DefaultValues values)
     {
         using var connection = OpenConnection();
@@ -43,7 +43,7 @@ public sealed partial class AppDatabase
         return OptionDefaults.FromRows(ReadOptionRows(command));
     }
 
-    /// <summary>Replaces a repository's whole set: deletes its rows and inserts the non-null values, in one transaction.</summary>
+    /// <summary>Replaces a repository's defaults atomically; a <c>null</c> value leaves that option unset, so it is inherited.</summary>
     public void ReplaceRepositoryDefaults(long repositoryId, DefaultValues values)
     {
         using var connection = OpenConnection();
@@ -66,7 +66,7 @@ public sealed partial class AppDatabase
         transaction.Commit();
     }
 
-    /// <summary>Aliases (ordered) of the repositories that have no own value for <paramref name="option"/> and so inherit it.</summary>
+    /// <summary>Aliases, in order, of the repositories that set no value for <paramref name="option"/> and therefore inherit it.</summary>
     public IReadOnlyList<string> ListAliasesInheriting(string option)
     {
         using var connection = OpenConnection();

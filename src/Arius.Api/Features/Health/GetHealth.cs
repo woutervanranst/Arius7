@@ -2,7 +2,7 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Health;
 
-/// <summary><c>GET /health</c> — liveness probe.</summary>
+/// <summary>Liveness probe.</summary>
 internal sealed class GetHealth : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

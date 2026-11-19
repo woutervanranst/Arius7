@@ -3,13 +3,12 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Jobs;
 
-/// <summary>A job's current view resolved from the single source of truth: the live <see cref="JobSink"/> if the
-/// run is executing, else the persisted <c>state_json</c>, else empty. <see cref="Snapshot"/> is null only when
-/// neither source exists.</summary>
+/// <summary>A job's current state: from the live <see cref="JobSink"/> while the run executes, otherwise from the
+/// persisted <c>state_json</c>. <see cref="Snapshot"/> is null when neither exists.</summary>
 public sealed record ResolvedJobView(JobSnapshot? Snapshot, CostEstimateDto? Cost, ResumeInfo? Resume, int WarningCount, IReadOnlyList<string> Warnings);
 
-/// <summary>The one place that resolves live-sink-vs-persisted job state, shared by the hub's <c>AttachToJob</c> and
-/// the <c>GET /jobs/{id}</c> + <c>GET /jobs/{id}/warnings</c> endpoints.</summary>
+/// <summary>Resolves a job's state from its live sink or its persisted state. A run blocked at the cost prompt is
+/// still live, so its pending cost estimate and resume state come from the sink.</summary>
 public static class JobViewResolver
 {
     public static ResolvedJobView Resolve(JobStateRegistry jobStates, string jobId, string? stateJson)
@@ -25,7 +24,7 @@ public static class JobViewResolver
                 if (persisted is not null)
                     return new ResolvedJobView(persisted.Snapshot, persisted.Cost, ResumeInfo.From(persisted.Resume), persisted.Snapshot.WarningCount, persisted.Warnings ?? []);
             }
-            catch (JsonException) { /* fall through to empty */ }
+            catch (JsonException) { /* unreadable state: treat as empty */ }
         }
 
         return new ResolvedJobView(Snapshot: null, Cost: null, Resume: null, WarningCount: 0, Warnings: []);

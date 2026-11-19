@@ -4,10 +4,8 @@ using Microsoft.Data.Sqlite;
 namespace Arius.Api.Shared.AppData;
 
 /// <summary>
-/// The Arius.Api application database (separate from Arius.Core's chunk-index cache): storage
-/// accounts, repositories, jobs, and schedules. Raw <see cref="SqliteConnection"/> access mirrors
-/// the idiom of Arius.Core's local stores (connection-string builder, WAL, parameterized commands).
-/// Secrets (account keys, passphrases) are stored as Data-Protection ciphertext; see <see cref="SecretProtector"/>.
+/// The Arius.Api application database, separate from Arius.Core's chunk-index cache. Secrets (account keys,
+/// passphrases) are stored as Data Protection ciphertext; see <see cref="SecretProtector"/>.
 /// </summary>
 public sealed partial class AppDatabase
 {
@@ -88,11 +86,10 @@ public sealed partial class AppDatabase
                 PRIMARY KEY (repo_id, option)
             );
 
-            -- Memoizes the (expensive) Arius.Core statistics computation. Keyed by the request
-            -- variant (version + full-coverage flag) and stamped with the repository fingerprint —
-            -- the latest snapshot version at compute time. A row is a hit only while its fingerprint
-            -- still matches the current latest snapshot; a new snapshot changes the fingerprint and
-            -- the stale rows are recomputed (and pruned) on the next read.
+            -- Caches Core's statistics per request variant (version, full-coverage flag). The fingerprint
+            -- is the latest snapshot version at compute time and is used to prune older generations.
+            -- Reads do not re-check it: the cache is cleared after an archive and on a repository
+            -- update or delete.
             CREATE TABLE IF NOT EXISTS statistics_cache (
                 repo_id     INTEGER NOT NULL REFERENCES repositories(id),
                 version     TEXT NOT NULL,
@@ -119,23 +116,19 @@ public sealed partial class AppDatabase
             """;
         create.ExecuteNonQuery();
 
-        // Additive migration for databases created before region_hint existed (CREATE TABLE IF NOT EXISTS
-        // won't add a column to an existing table). Idempotent: no-op once the column is present.
+        // CREATE TABLE IF NOT EXISTS does not add columns to an existing table, so later columns are added here.
         EnsureColumn(connection, table: "repositories", column: "region_hint", type: "TEXT");
         EnsureColumn(connection, table: "jobs", column: "state_json", type: "TEXT");
         EnsureColumn(connection, table: "jobs", column: "outcome",    type: "TEXT");
 
         MigrateDefaultTierToRepositoryDefaults(connection);
 
-        // Reconcile orphaned "running" jobs BEFORE creating the unique index below. A database can already
-        // hold two 'running' rows for the same repo, which would make the CREATE UNIQUE INDEX fail with a
-        // constraint violation and fault AppDatabase construction — and with it, Api startup. A 'running'
-        // row found here is always an orphan from a prior process (this constructor is the only writer
-        // active right now), so reconciling first is always correct.
+        // Must run before the unique index is created: an existing database can hold two 'running' rows for one
+        // repository, which would make CREATE UNIQUE INDEX fail and abort startup. Any 'running' row at this point
+        // is an orphan from a previous process.
         ReconcileRunningJobs(connection);
 
-        // Enforces at most one non-terminal job per repository (running | awaiting-cost | rehydrating);
-        // a new start is rejected rather than queued. Runs on every startup (IF NOT EXISTS).
+        // At most one non-terminal job per repository: a new start is rejected, not queued.
         using var index = connection.CreateCommand();
         index.CommandText = $"""
             CREATE UNIQUE INDEX IF NOT EXISTS ux_jobs_one_active_per_repo
@@ -148,17 +141,16 @@ public sealed partial class AppDatabase
     }
 
     /// <summary>
-    /// The serialization version of the <c>statistics_cache</c> <c>payload</c> (the <c>StatisticsDto</c> shape).
-    /// Bump whenever the payload gains/loses fields so stale rows written by an older build are discarded rather
-    /// than silently deserialized with default values.
+    /// The serialization version of the <c>statistics_cache</c> payload (the <c>StatisticsDto</c> shape). Bump it
+    /// when the payload changes shape, so rows written by an older build are discarded instead of deserialized
+    /// with default values.
     /// </summary>
     private const long CachePayloadVersion = 2;
 
     /// <summary>
-    /// One-time invalidation of <c>statistics_cache</c> rows whose payload predates <see cref="CachePayloadVersion"/>.
-    /// Tracked in <c>PRAGMA user_version</c>: an older build's rows would otherwise deserialize new fields (e.g. the
-    /// storage-cost figures) as 0 and keep serving them — the fingerprint guard only refreshes on a snapshot change,
-    /// which may never come for a dormant repository. A fresh database has an empty cache, so the clear is a no-op.
+    /// Clears <c>statistics_cache</c> once when the payload version stored in <c>PRAGMA user_version</c> is older
+    /// than <see cref="CachePayloadVersion"/>. The fingerprint only changes on a new snapshot, so without this a
+    /// dormant repository would keep serving old rows with new fields read as 0.
     /// </summary>
     private static void EnsureCachePayloadVersion(SqliteConnection connection)
     {
@@ -169,13 +161,13 @@ public sealed partial class AppDatabase
             return;
 
         using var migrate = connection.CreateCommand();
-        // PRAGMA does not accept parameters; the version is a compile-time integer constant, so this is safe.
+        // PRAGMA does not accept parameters; interpolating the compile-time constant is safe.
         migrate.CommandText = $"DELETE FROM statistics_cache; PRAGMA user_version = {CachePayloadVersion};";
         migrate.ExecuteNonQuery();
     }
 
-    /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it is not already present. Names are
-    /// compile-time constants (never user input), so the interpolated DDL is safe.</summary>
+    /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it is absent. The names are compile-time
+    /// constants, never user input, so interpolating them into DDL is safe.</summary>
     private static void EnsureColumn(SqliteConnection connection, string table, string column, string type)
     {
         using var probe = connection.CreateCommand();
@@ -190,10 +182,9 @@ public sealed partial class AppDatabase
     }
 
     /// <summary>
-    /// One-time move of the legacy per-repository <c>default_tier</c> column into <c>repository_defaults</c>:
-    /// recognised tiers become explicit repository-level values (blank/unknown ones are dropped so the repository
-    /// inherits), then the column is dropped. A no-op once the column is gone. Runs in one transaction, so a crash
-    /// leaves the column (and the migration to redo) rather than a half-migrated database.
+    /// Moves the legacy <c>repositories.default_tier</c> column into <c>repository_defaults</c>, then drops it.
+    /// Unrecognised or blank tiers are dropped so the repository inherits. Runs in one transaction, so a crash leaves
+    /// the column in place and the migration reruns on the next start.
     /// </summary>
     private static void MigrateDefaultTierToRepositoryDefaults(SqliteConnection connection)
     {

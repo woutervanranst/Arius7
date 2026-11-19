@@ -4,9 +4,9 @@ namespace Arius.Api.Features.Browse;
 public sealed record EntryDto(
     string         RelativePath,
     string         Name,
-    string         Kind,          // "file" | "dir"
+    string         Kind,          // "file" or "dir"
     int            State,         // raw RepositoryEntryState flags
-    StateFlagsDto  StateFlags,    // decoded flags (the State Ring reads this)
+    StateFlagsDto  StateFlags,    // State decoded into named flags
     string?        ContentHash,
     long?          OriginalSize,
     DateTimeOffset? Created,

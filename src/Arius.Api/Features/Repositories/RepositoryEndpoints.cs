@@ -5,12 +5,9 @@ using Mediator;
 
 namespace Arius.Api.Features.Repositories;
 
-/// <summary>Helpers shared by the <c>/repos</c> endpoints.</summary>
 internal static class RepositoryEndpoints
 {
-    /// <summary>
-    /// Builds a repository DTO, resolving its region through a DB-backed read-through cache.
-    /// </summary>
+    /// <summary>Builds a repository DTO, resolving its region through a read-through cache in the app database.</summary>
     internal static async Task<RepositoryDto> ResolveRegionDtoAsync(
         AppDatabase db,
         RepositoryRecord repository,
@@ -23,15 +20,13 @@ internal static class RepositoryEndpoints
 
         var info = await resolveLive(repository.Id, ct);
         if (info is { RegionIsDefault: false })
-            db.SetRepositoryRegionHint(repository.Id, info.Region); // cache only a configured region (immutable); leave unset ones to re-resolve
+            db.SetRepositoryRegionHint(repository.Id, info.Region); // only a configured region is immutable; a default one is resolved again
         return ToDto(db, repository, info?.Region, info?.RegionIsDefault ?? false, lastArchiveStartedAt);
     }
 
     /// <summary>
-    /// Resolves a repository's storage-account info (currently the pricing region) through Core's Mediator.
-    /// Best-effort: a Mediator query needs the repo's read provider, and an unreachable or misconfigured
-    /// container throws while that provider is built — degrade to <c>null</c> (rendered as unknown) rather
-    /// than failing the caller.
+    /// Resolves a repository's storage-account info (the pricing region). Returns <c>null</c>, shown as unknown,
+    /// when the container is unreachable or misconfigured, instead of failing the caller.
     /// </summary>
     internal static async Task<StorageAccountInfo?> TryGetAccountInfoAsync(RepositoryProviderRegistry registry, long repositoryId, CancellationToken ct)
     {

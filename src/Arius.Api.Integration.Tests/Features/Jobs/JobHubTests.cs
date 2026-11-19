@@ -9,8 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Arius.Api.Integration.Tests.Features.Jobs;
 
-/// <summary>The hub's job methods: <c>AttachToJob</c> (current state + joining the job's group) and <c>CancelJob</c>
-/// for a job awaiting cost approval, a running job and a parked job.</summary>
+/// <summary>The hub's job methods: <c>AttachToJob</c>, which returns the current state and joins the job's group, and
+/// <c>CancelJob</c> for a job awaiting cost approval, a running job and a parked job.</summary>
 public class JobHubTests
 {
     [Test]
@@ -134,7 +134,7 @@ public class JobHubTests
         await using var factory = new AriusApiFactory();
         var db = factory.Services.GetRequiredService<AppDatabase>();
         var repoId = factory.SeedRepository();
-        db.InsertJob("j-parked", repoId, "restore", "one-off", "rehydrating");   // no live run: between poller ticks
+        db.InsertJob("j-parked", repoId, "restore", "one-off", "rehydrating");   // no live run, as between poller ticks
         await using var conn = factory.CreateHubConnection();
         var done = OnDone(conn);
         await conn.StartAsync();
@@ -147,7 +147,7 @@ public class JobHubTests
         await Assert.That(db.HasActiveJob(repoId)).IsFalse();
     }
 
-    /// <summary>The status of the first <c>Done</c> the connection receives (JobSink sends one camelCase object).</summary>
+    /// <summary>Completes with the status of the first <c>Done</c> message, which carries one camelCase object.</summary>
     private static TaskCompletionSource<string> OnDone(HubConnection conn)
     {
         var done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);

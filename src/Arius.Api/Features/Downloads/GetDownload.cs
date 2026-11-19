@@ -4,7 +4,7 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary><c>GET /jobs/{id}/download</c> — a download job's files and clean-up state.</summary>
+/// <summary>Returns a download job's files and clean-up state.</summary>
 internal sealed class GetDownload(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

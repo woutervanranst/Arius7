@@ -54,17 +54,13 @@ public class RestoreCostHandshakeTests
         var run = runner.RunRestoreAsync(repoId, jobId, connectionId: "test", version: null,
             targetPaths: [], overwrite: false, noPointers: false);
 
-        // Wait for the job to park at awaiting-cost, then approve High priority.
         await ScenarioWait.Until(() => db.GetJob(jobId)?.Status == "awaiting-cost", TimeSpan.FromSeconds(10));
         approvals.Resolve(jobId, RehydratePriority.High);
 
         await run;
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
 
-        // The persisted outcome is handed to the web client verbatim (GET /jobs + the SignalR Done) and
-        // parsed there as a camelCase JobOutcome. Default System.Text.Json options emit PascalCase, which
-        // made outcome.filesRestored read as undefined → 0 on the client (the restore-roundtrip
-        // regression). Guard the casing at the point it is produced.
+        // The web client parses the persisted outcome verbatim as a camelCase JobOutcome.
         var outcome = db.GetJob(jobId)!.Outcome;
         await Assert.That(outcome).IsNotNull();
         await Assert.That(outcome!.Contains("\"filesRestored\":3")).IsTrue();
@@ -102,7 +98,7 @@ public class RestoreCostHandshakeTests
 
         await run;
         await Assert.That(db.GetJob(jobId)!.Status).IsEqualTo("completed");
-        // One restore over both targets: each file is counted once, not once per target.
+        // One restore over both targets, so each file is counted once.
         await Assert.That(scenario.Received.Count).IsEqualTo(1);
         await Assert.That(scenario.Received.Single().Options.TargetPaths.SequenceEqual([RelativePath.Parse("photos"), RelativePath.Parse("docs/b.txt")])).IsTrue();
         await Assert.That(db.GetJob(jobId)!.Outcome!.Contains("\"filesRestored\":2")).IsTrue();

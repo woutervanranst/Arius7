@@ -69,7 +69,7 @@ public class JobSinkEtaTests
     [Test]
     public async Task AttachDiagnosticsLogger_starts_diagnostics_for_a_sink_built_without_one()
     {
-        // Mirrors the wiring: JobRunner builds the sink without a logger, the registry attaches it after.
+        // JobRunner builds the sink without a logger; the registry attaches one later.
         var t0  = DateTimeOffset.UnixEpoch;
         var log = new ListLogger(LogLevel.Debug);
         var s   = new JobSink("job-1", hub: null);
@@ -90,16 +90,16 @@ public class JobSinkEtaTests
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
 
-        // No totals yet → estimating (null). Distinct chunk hashes so each call adds (real uploads are distinct chunks).
+        // No totals yet, so no ETA. Each upload uses a distinct chunk hash so that it is counted.
         s.AddUploaded(ChunkHash.Parse(new string('1', 64)), 0, 1_000);
         s.SampleForEta(t0);
         await Assert.That(s.BuildSnapshot(t0).EtaSeconds).IsNull();
 
-        // Totals known; 1 MB uploaded over 1 s = 1 MB/s; 9 MB remaining → 9 s.
+        // With totals known: 1 MB uploaded in 1 s is 1 MB/s, and 9 MB remain, so about 9 s.
         s.SetTotals(files: 10, bytes: 10_000_000);
-        s.AddQueuedNew(10_000_000);             // additive new-bytes-to-upload now known (no dedup here)
-        s.SampleForEta(t0);                    // 1_000 @ t0  (warm start)
-        s.AddUploaded(ChunkHash.Parse(new string('2', 64)), 0, 1_000_000);   // distinct chunk → now 1_001_000 uploaded
+        s.AddQueuedNew(10_000_000);
+        s.SampleForEta(t0);                    // warm start: 1 000 bytes already uploaded
+        s.AddUploaded(ChunkHash.Parse(new string('2', 64)), 0, 1_000_000);
         s.SampleForEta(t0.AddSeconds(1));
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
         await Assert.That(snap.EtaSeconds).IsNotNull();
@@ -112,14 +112,14 @@ public class JobSinkEtaTests
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
 
-        // Warm start already past the (small) total — e.g. a re-baseline shrank totalNew
-        // below what's already been uploaded.
+        // Warm start already past the total, as when a re-baseline shrinks totalNew below the bytes
+        // already uploaded.
         s.AddUploaded(ChunkHash.Parse(new string('3', 64)), 0, 5_000);
         s.SetTotals(files: 1, bytes: 1_000);
-        s.AddQueuedNew(1_000);                 // additive new-bytes-to-upload now known (no dedup here)
-        s.SampleForEta(t0);                    // 5_000 @ t0 (warm start)
+        s.AddQueuedNew(1_000);
+        s.SampleForEta(t0);
 
-        s.AddUploaded(ChunkHash.Parse(new string('4', 64)), 0, 2_000);   // distinct chunk → now 7_000 uploaded; totalNew (1_000) is dwarfed
+        s.AddUploaded(ChunkHash.Parse(new string('4', 64)), 0, 2_000);   // uploaded now far exceeds totalNew
         s.SampleForEta(t0.AddSeconds(1));
 
         var eta = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;
@@ -134,13 +134,12 @@ public class JobSinkEtaTests
         s.SetTotals(files: 1, bytes: 10_000_000);
         s.AddQueuedNew(10_000_000);
 
-        s.SampleForEta(t0);                                                    // baseline
+        s.SampleForEta(t0);
         s.AddUploaded(ChunkHash.Parse(new string('a', 64)), 0, 1_000_000);
-        s.SampleForEta(t0.AddSeconds(1));                                      // 1 MB/s established
+        s.SampleForEta(t0.AddSeconds(1));                                      // 1 MB/s
         var eta1 = s.BuildSnapshot(t0.AddSeconds(1)).EtaSeconds;
 
-        // No new bytes this tick → the rate is HELD, so the ETA must not inflate. Remaining and rate
-        // unchanged ⇒ ETA unchanged.
+        // A tick without progress holds the rate, so with the remaining bytes unchanged the ETA is unchanged.
         s.SampleForEta(t0.AddSeconds(2));
         var eta2 = s.BuildSnapshot(t0.AddSeconds(2)).EtaSeconds;
 
@@ -151,30 +150,29 @@ public class JobSinkEtaTests
     [Test]
     public async Task Eta_is_hash_bound_when_there_is_nothing_to_upload()
     {
-        // Fully-deduped archive: 100 MB to hash, 0 new bytes to upload. The OLD upload-only model
-        // read ~null/0 here; the new model must surface the remaining HASH time.
+        // Fully deduplicated archive: 100 MB to hash and nothing to upload, so the ETA is the remaining hash time.
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 100, bytes: 100_000_000);
-        s.AddQueuedNew(0);                 // nothing new queued
-        s.AddDeduped(100_000_000);         // everything deduped → total-deduped = 0
+        s.AddQueuedNew(0);
+        s.AddDeduped(100_000_000);
 
-        s.SampleForEta(t0);                // baseline
-        s.AddHashed(10_000_000);           // 10 MB hashed
-        s.SampleForEta(t0.AddSeconds(1));  // 10 MB/s hash rate; 90 MB remaining → 9 s
+        s.SampleForEta(t0);
+        s.AddHashed(10_000_000);
+        s.SampleForEta(t0.AddSeconds(1));  // 10 MB/s hash rate with 90 MB remaining: about 9 s
 
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
         await Assert.That(snap.EtaSeconds).IsNotNull();
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(8, 10);
-        await Assert.That(snap.ThroughputBytesPerSec).IsBetween(9_500_000, 10_500_000);  // reports the HASH rate
+        await Assert.That(snap.ThroughputBytesPerSec).IsBetween(9_500_000, 10_500_000);  // the hash rate
         await Assert.That(snap.EtaIsProvisional).IsTrue();                                 // hashing not done
     }
 
     [Test]
     public async Task Eta_is_provisional_until_routing_completes()
     {
-        // Routing draining is the gate, not hashing: skipped/unreadable files mean hashed may never reach
-        // the total, so until SetNewByteTotal the ETA stays provisional.
+        // Routing completion, not hashing, ends the provisional state: skipped or unreadable files mean hashed
+        // may never reach the total.
         var t0 = DateTimeOffset.UnixEpoch;
         var s  = new JobSink();
         s.SetTotals(files: 10, bytes: 10_000_000);
@@ -182,11 +180,11 @@ public class JobSinkEtaTests
 
         s.SampleForEta(t0);
         s.AddUploaded(ChunkHash.Parse(new string('b', 64)), 0, 1_000_000);
-        s.AddHashed(10_000_000);                                  // hashing complete…
+        s.AddHashed(10_000_000);                                  // hashing complete
         s.SampleForEta(t0.AddSeconds(1));
-        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsTrue();   // …but routing hasn't
+        await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsTrue();   // routing not complete
 
-        s.SetNewByteTotal(10_000_000);                            // routing done → exact total known
+        s.SetNewByteTotal(10_000_000);                            // routing complete: exact total known
         await Assert.That(s.BuildSnapshot(t0.AddSeconds(1)).EtaIsProvisional).IsFalse();
     }
 
@@ -198,8 +196,8 @@ public class JobSinkEtaTests
         s.SetRestoreTotals(files: 5, bytes: 10_000_000);
 
         s.SampleForEta(t0);
-        s.ReportRestoreStreamed("f", 1_000_000);                  // 1 MB downloaded
-        s.SampleForEta(t0.AddSeconds(1));                         // 1 MB/s; 9 MB remaining → 9 s
+        s.ReportRestoreStreamed("f", 1_000_000);
+        s.SampleForEta(t0.AddSeconds(1));                         // 1 MB/s with 9 MB remaining: about 9 s
 
         var snap = s.BuildSnapshot(t0.AddSeconds(1));
         await Assert.That(snap.EtaSeconds!.Value).IsBetween(8, 10);
@@ -209,8 +207,8 @@ public class JobSinkEtaTests
     [Test]
     public async Task Adaptive_window_dampens_a_late_spike_more_than_an_early_one()
     {
-        // Same 1 MB/s warm-up + same 3 MB spike; the spike lands after a long elapsed on one sink
-        // (wide window → small alpha → barely moves) and after a short elapsed on the other.
+        // Both sinks get the same 1 MB/s warm-up and 3 MB spike. On one the spike lands late, when the window is
+        // wide and the smoothing factor small, so the rate barely moves; on the other it lands early.
         static ChunkHash Chunk(int i) => ChunkHash.Parse(i.ToString("x").PadLeft(64, '0'));
         static double RateAfterSpike(int warmupTicks)
         {
@@ -219,28 +217,27 @@ public class JobSinkEtaTests
             s.SetTotals(1, 1_000_000_000);
             s.AddQueuedNew(1_000_000_000);
             var t = t0;
-            s.SampleForEta(t);                                   // start (anchors elapsed)
+            s.SampleForEta(t);                                   // anchors the elapsed time
             for (var i = 0; i < warmupTicks; i++)
             {
                 s.AddUploaded(Chunk(i), 0, 1_000_000);           // steady 1 MB/s
                 t = t.AddSeconds(1);
                 s.SampleForEta(t);
             }
-            s.AddUploaded(Chunk(10_000), 0, 3_000_000);          // 3 MB spike this tick
+            s.AddUploaded(Chunk(10_000), 0, 3_000_000);          // 3 MB spike
             t = t.AddSeconds(1);
             s.SampleForEta(t);
-            return s.BuildSnapshot(t).ThroughputBytesPerSec;     // upload binds → this is the transfer rate
+            return s.BuildSnapshot(t).ThroughputBytesPerSec;     // upload is the binding term, so this is the upload rate
         }
 
-        var early = RateAfterSpike(warmupTicks: 1);              // elapsed ≈ 2 s → τ = 3 s
-        var late  = RateAfterSpike(warmupTicks: 120);            // elapsed ≈ 121 s → τ ≈ 12 s
+        var early = RateAfterSpike(warmupTicks: 1);              // elapsed about 2 s: window 3 s
+        var late  = RateAfterSpike(warmupTicks: 120);            // elapsed about 121 s: window about 12 s
         await Assert.That(early).IsGreaterThan(1_000_000.0);
         await Assert.That(late).IsGreaterThan(1_000_000.0);
-        await Assert.That(late).IsLessThan(early);               // wider window = steadier
+        await Assert.That(late).IsLessThan(early);               // a wider window smooths more
     }
 
-    /// <summary>Minimal in-memory <see cref="ILogger"/> that records rendered messages at/above a level,
-    /// so a test can assert the [ETA] diagnostic fires (and at Debug).</summary>
+    /// <summary>An in-memory <see cref="ILogger"/> that records rendered messages at or above a minimum level.</summary>
     private sealed class ListLogger(LogLevel minimum) : ILogger
     {
         public readonly List<(LogLevel Level, string Message)> Entries = new();

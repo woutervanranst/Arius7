@@ -4,14 +4,12 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Accounts;
 
-/// <summary><c>PATCH /accounts/{id}</c> — account-flyout edit: rotate the key.</summary>
 internal sealed class UpdateAccount(AppDatabase db, SecretProtector secrets, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPatch("/accounts/{id:long}", (long id, UpdateAccountRequest request, UpdateAccount endpoint) => endpoint.Handle(id, request));
 
-    // A null key in the request leaves the stored key unchanged;
-    // rotating it invalidates cached providers so the new key takes effect on rebuild.
+    // Cached providers hold the old key; evict them so they rebuild with the new one.
     private IResult Handle(long id, UpdateAccountRequest request)
     {
         if (db.GetAccount(id) is null)

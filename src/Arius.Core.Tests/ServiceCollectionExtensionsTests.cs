@@ -50,7 +50,6 @@ public class ServiceCollectionExtensionsTests
         var options = sp.GetRequiredService<IOptions<FileExclusionOptions>>().Value;
         // Scalar override: host value wins over the embedded default (false).
         options.ExcludeHiddenEntries.ShouldBeTrue();
-        // The host-supplied entry is applied.
         options.ExcludedFileNames.ShouldContain("custom.junk");
 
         var filter = sp.GetRequiredService<FileExclusionFilter>();
