@@ -8,8 +8,8 @@ using Mediator;
 namespace Arius.Api.Features.Browse;
 
 /// <summary>
-/// Hub <c>SearchAll</c> — streams cross-repository search hits: runs a recursive filename filter across every
-/// repository (each failure isolated so one unreachable repo doesn't fail the whole search).
+/// Hub <c>SearchAll</c> — streams cross-repository search hits as they are found: runs a recursive filename filter
+/// across every repository in turn (each failure isolated so one unreachable repo doesn't fail the whole search).
 /// </summary>
 public sealed class SearchAll(AppDatabase database, RepositoryProviderRegistry registry) : IHubHandler
 {
@@ -21,22 +21,33 @@ public sealed class SearchAll(AppDatabase database, RepositoryProviderRegistry r
 
         foreach (var repo in database.ListRepositories())
         {
-            var hits = new List<SearchHitDto>();
+            await using var hits = SearchRepositoryAsync(repo).GetAsyncEnumerator();
+            while (await TryMoveNextAsync(hits))
+                yield return hits.Current;
+        }
+
+        async IAsyncEnumerable<SearchHitDto> SearchRepositoryAsync(RepositoryRecord repo)
+        {
+            var provider = await registry.GetReadProviderAsync(repo.Id, cancellationToken);
+            var mediator = provider.GetRequiredService<IMediator>();
+            await foreach (var entry in mediator.CreateStream(new ListQuery(new ListQueryOptions { Filter = query, Recursive = true }), cancellationToken))
+                if (entry is RepositoryFileEntry file)
+                    yield return new SearchHitDto(repo.Id, repo.Alias, EntryMapping.ToDto(file));
+        }
+
+        // C# forbids `yield return` inside a try with a catch, so the failure isolation guards each step instead:
+        // a repository that can't be opened or listed (even partway through) ends its own hits; the search goes on
+        // unless the caller cancelled it (the web UI does so whenever a newer query supersedes this one).
+        async ValueTask<bool> TryMoveNextAsync(IAsyncEnumerator<SearchHitDto> hits)
+        {
             try
             {
-                var provider = await registry.GetReadProviderAsync(repo.Id, cancellationToken);
-                var mediator = provider.GetRequiredService<IMediator>();
-                await foreach (var entry in mediator.CreateStream(new ListQuery(new ListQueryOptions { Filter = query, Recursive = true }), cancellationToken))
-                    if (entry is RepositoryFileEntry file)
-                        hits.Add(new SearchHitDto(repo.Id, repo.Alias, EntryMapping.ToDto(file)));
+                return await hits.MoveNextAsync();
             }
-            catch
+            catch when (!cancellationToken.IsCancellationRequested)
             {
-                // Skip repositories that can't be opened or listed; keep searching the rest.
+                return false;
             }
-
-            foreach (var hit in hits)
-                yield return hit;
         }
     }
 }

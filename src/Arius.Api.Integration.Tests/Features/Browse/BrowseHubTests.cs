@@ -115,6 +115,31 @@ public class BrowseHubTests
     }
 
     [Test]
+    public async Task SearchAll_streams_a_repositorys_hits_while_its_listing_is_still_running()
+    {
+        await using var factory = new AriusApiFactory();
+        var repoId = factory.SeedRepository();
+        factory.Scenarios.SetRead(repoId, new ReadScenario(Entries: [ArchivedPhoto], Gated: true));
+        await using var conn = factory.CreateHubConnection();
+        await conn.StartAsync();
+
+        try
+        {
+            await using var hits = conn.StreamAsync<SearchHitDto>("SearchAll", "jpg").GetAsyncEnumerator();
+
+            await Assert.That(await hits.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10))).IsTrue();
+            await Assert.That(hits.Current).IsEqualTo(new SearchHitDto(repoId, "itest", ArchivedPhotoDto));
+
+            factory.Services.GetRequiredService<ScenarioGate>().Release(repoId);
+            await Assert.That(await hits.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10))).IsFalse();
+        }
+        finally
+        {
+            factory.Services.GetRequiredService<ScenarioGate>().Release(repoId);
+        }
+    }
+
+    [Test]
     public async Task SearchAll_with_a_blank_query_returns_nothing_without_listing_any_repository()
     {
         await using var factory = new AriusApiFactory();

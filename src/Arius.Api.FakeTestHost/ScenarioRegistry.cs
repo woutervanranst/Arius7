@@ -38,14 +38,17 @@ public sealed record RestoreScenario(
 /// A scripted read side: what the repository's listing (<see cref="ListQuery"/>), snapshot list, latest snapshot
 /// version and statistics queries return (a <c>null</c> list streams nothing; <c>null</c> statistics throw). When <paramref name="ContainerMissing"/>
 /// building the repository's provider fails the way a not-yet-created container does
-/// (<see cref="Arius.Core.Shared.Storage.PreflightErrorKind.ContainerNotFound"/>).
+/// (<see cref="Arius.Core.Shared.Storage.PreflightErrorKind.ContainerNotFound"/>). When <paramref name="Gated"/> the
+/// listing holds open after its entries until <see cref="ScenarioGate"/> releases the repo (lets a test observe
+/// entries arriving while the listing is still running).
 /// </summary>
 public sealed record ReadScenario(
     IReadOnlyList<RepositoryEntry>? Entries = null,
     IReadOnlyList<SnapshotInfo>? Snapshots = null,
     RepositoryStatistics? Statistics = null,
     string? LatestVersion = null,
-    bool ContainerMissing = false)
+    bool ContainerMissing = false,
+    bool Gated = false)
 {
     /// <summary>Every query the scripted read handler received, in order, so a test can assert what the host asked Core.</summary>
     public ConcurrentQueue<object> Received { get; } = new();
