@@ -12,7 +12,7 @@ internal sealed class UpdateAccount(AppDatabase db, SecretProtector secrets, Rep
 
     // A null key in the request leaves the stored key unchanged;
     // rotating it invalidates cached providers so the new key takes effect on rebuild.
-    public IResult Handle(long id, UpdateAccountRequest request)
+    private IResult Handle(long id, UpdateAccountRequest request)
     {
         if (db.GetAccount(id) is null)
             return Results.NotFound();

@@ -9,5 +9,5 @@ internal sealed class GetGlobalDefaults(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/settings/defaults", (GetGlobalDefaults endpoint) => endpoint.Handle());
 
-    public IResult Handle() => Results.Ok(DefaultsEndpoints.ToGlobalDto(db));
+    private IResult Handle() => Results.Ok(DefaultsEndpoints.ToGlobalDto(db));
 }

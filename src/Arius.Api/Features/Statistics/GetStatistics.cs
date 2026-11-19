@@ -25,7 +25,7 @@ internal sealed class GetStatistics(AppDatabase database, RepositoryProviderRegi
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/repos/{id:long}/stats", (long id, string? version, bool? full, CancellationToken ct, GetStatistics endpoint) => endpoint.HandleAsync(id, version, full, ct));
 
-    public async Task<StatisticsDto> HandleAsync(long id, string? version, bool? full, CancellationToken ct)
+    private async Task<StatisticsDto> HandleAsync(long id, string? version, bool? full, CancellationToken ct)
     {
         var fullFlag   = full ?? false;
         var versionKey = version ?? string.Empty;

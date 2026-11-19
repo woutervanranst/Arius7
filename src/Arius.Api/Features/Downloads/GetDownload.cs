@@ -10,7 +10,7 @@ internal sealed class GetDownload(AppDatabase db, DownloadStaging staging) : IEn
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/jobs/{id}/download", (string id, GetDownload endpoint) => endpoint.Handle(id));
 
-    public IResult Handle(string id)
+    private IResult Handle(string id)
     {
         var job = db.GetDownloadJob(id);
         if (job is null) return Results.NotFound();

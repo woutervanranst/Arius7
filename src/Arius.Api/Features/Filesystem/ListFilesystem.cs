@@ -13,7 +13,7 @@ internal sealed class ListFilesystem : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/fs/list", (string? path, ListFilesystem endpoint) => endpoint.Handle(path));
 
-    public IResult Handle(string? path)
+    private IResult Handle(string? path)
     {
         // Default to the filesystem root the API can see; the client navigates from there.
         var target = string.IsNullOrWhiteSpace(path) ? DefaultRoot() : path.Trim();

@@ -10,7 +10,7 @@ internal sealed class GetJob(AppDatabase db, JobStateRegistry jobStates) : IEndp
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/jobs/{id}", (string id, GetJob endpoint) => endpoint.Handle(id));
 
-    public IResult Handle(string id)
+    private IResult Handle(string id)
     {
         var job = db.GetJob(id);
         if (job is null) return Results.NotFound();

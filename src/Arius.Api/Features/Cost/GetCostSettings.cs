@@ -9,5 +9,5 @@ internal sealed class GetCostSettings(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/settings/cost", (GetCostSettings endpoint) => endpoint.Handle());
 
-    public IResult Handle() => Results.Ok(db.GetCostSettings());
+    private IResult Handle() => Results.Ok(db.GetCostSettings());
 }

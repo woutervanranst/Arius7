@@ -9,7 +9,7 @@ internal sealed class ListJobs(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/jobs", (long? repositoryId, string? status, ListJobs endpoint) => endpoint.Handle(repositoryId, status));
 
-    public List<JobDto> Handle(long? repositoryId, string? status)
+    private List<JobDto> Handle(long? repositoryId, string? status)
     {
         var aliases = db.ListRepositories().ToDictionary(r => r.Id, r => r.Alias);
         var nonTerminal = new HashSet<string>(JobStatuses.NonTerminal);

@@ -8,5 +8,5 @@ internal sealed class GetHealth : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/health", (GetHealth endpoint) => endpoint.Handle());
 
-    public IResult Handle() => Results.Ok(new { status = "ok" });
+    private IResult Handle() => Results.Ok(new { status = "ok" });
 }

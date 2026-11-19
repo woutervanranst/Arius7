@@ -11,7 +11,7 @@ internal sealed class DeleteRepository(AppDatabase db, RepositoryProviderRegistr
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapDelete("/repos/{id:long}", (long id, DeleteRepository endpoint) => endpoint.Handle(id));
 
-    public IResult Handle(long id)
+    private IResult Handle(long id)
     {
         if (db.GetRepository(id) is null)
             return Results.NotFound();

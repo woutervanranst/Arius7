@@ -9,6 +9,6 @@ internal sealed class ListSchedules(AppDatabase db) : IEndpoint
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/repos/{id:long}/schedules", (long id, ListSchedules endpoint) => endpoint.Handle(id));
 
-    public List<ScheduleDto> Handle(long id) =>
+    private List<ScheduleDto> Handle(long id) =>
         db.ListSchedules(id).Select(ScheduleEndpoints.ToDto).ToList();
 }

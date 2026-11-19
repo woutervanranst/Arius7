@@ -9,7 +9,7 @@ internal sealed class CreateAccount(AppDatabase db, SecretProtector secrets) : I
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapPost("/accounts/", (CreateAccountRequest request, CreateAccount endpoint) => endpoint.Handle(request));
 
-    public IResult Handle(CreateAccountRequest request)
+    private IResult Handle(CreateAccountRequest request)
     {
         var id = db.InsertAccount(request.Name, secrets.Protect(request.AccountKey));
         var account = db.GetAccount(id)!;

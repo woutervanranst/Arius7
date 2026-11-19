@@ -13,7 +13,7 @@ internal sealed class ListSnapshots(RepositoryProviderRegistry registry) : IEndp
     public static void Map(IEndpointRouteBuilder api) =>
         api.MapGet("/repos/{id:long}/snapshots", (long id, CancellationToken ct, ListSnapshots endpoint) => endpoint.HandleAsync(id, ct));
 
-    public async Task<List<SnapshotDto>> HandleAsync(long id, CancellationToken ct)
+    private async Task<List<SnapshotDto>> HandleAsync(long id, CancellationToken ct)
     {
         var snapshots = new List<SnapshotDto>();
 
