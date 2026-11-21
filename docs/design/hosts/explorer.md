@@ -19,9 +19,9 @@ The host container holds only **shell** services — it is *not* a connected rep
 - `IApplicationSettings` / `IRecentRepositoryManager` — persisted recent-repository list (see [Settings](#settings-and-credentials)).
 - `IDialogService` — opens the modal `ChooseRepositoryWindow`.
 - `IRepositorySession` (singleton) — the per-repository Core provider (below).
-- `IBlobServiceFactory` → `AzureBlobServiceFactory` — used by `RepositorySession` to open containers and by the *root* placeholder Core graph to answer `ContainerNamesQuery` before any repository is connected.
+- `IBlobServiceFactory` → `AzureBlobServiceFactory` — used by `RepositorySession` to open containers and by the root `IMediator` to answer `ContainerNamesQuery` before any repository is connected.
 - The windows + ViewModels (`AddTransient`).
-- `services.AddMediator()` + `RepositorySession.AddRootCorePlaceholders(services)` — registers a **root** Core graph wired to a `NullBlobContainerService`. This exists so the `ChooseRepository` flow has a working `IMediator` (for `ContainerNamesQuery`, which goes through `IBlobServiceFactory`, not the container) *before* a repository is chosen.
+- `services.AddMediator()` — a **root** `IMediator` without a Core graph, so the `ChooseRepository` flow can send `ContainerNamesQuery` (which needs only `IBlobServiceFactory`) *before* a repository is chosen ([ADR-0028](../../decisions/adr-0028-resolve-mediator-handlers-per-message.md)).
 
 `App.OnStartup` resolves and shows `RepositoryExplorerWindow`, after upgrading ClickOnce-era user settings if `ApplicationSettings.Default.UpgradeRequired`. It also installs global handlers for `DispatcherUnhandledException`, `AppDomain.UnhandledException`, and `TaskScheduler.UnobservedTaskException` that log and show a message box rather than crash — important because most Core work runs as fire-and-forget `async void`/`Task` off UI events.
 
@@ -103,7 +103,7 @@ For the checked `SelectedFiles`: `EnsureHydrationStatusesAsync` resolves any sti
 ## Why this shape
 
 - **Drives Core only through `IMediator`, never the handlers/services directly.** Same coupling as every host — requests in, the same `ListQuery` / `ChunkHydrationStatusQuery` / `RestoreCommand` slices the CLI and Web use ([ADR-0010](../../decisions/adr-0010-use-feature-handlers-for-application-use-cases.md), [ADR-0013](../../decisions/adr-0013-core-host-separation.md)). The GUI carries zero repository mechanics, so it stays a thin shell.
-- **`RepositorySession` instead of a global Core container.** Core is configured *per container* (`AddArius` binds one `IBlobContainerService` + passphrase). A desktop app switches repositories at runtime, so the host needs a swappable, disposable child provider rather than a process-lifetime singleton graph — hence the root-placeholder graph for pre-connect queries plus a rebuilt child graph per `Connect`.
+- **`RepositorySession` instead of a global Core container.** Core is configured *per container* (`AddArius` binds one `IBlobContainerService` + passphrase). A desktop app switches repositories at runtime, so the host needs a swappable, disposable child provider rather than a process-lifetime singleton graph — hence a root `IMediator` for pre-connect queries plus a rebuilt child graph per `Connect`.
 - **Conventional CommunityToolkit.Mvvm.** `[ObservableProperty]`/`[RelayCommand]`, DI-injected ViewModels, converters for presentation (`BytesToReadableSizeConverter`, the `StateCircle` brush bindings). This is intentional boilerplate, documented in-repo by `src/Arius.Explorer/CLAUDE.md`; there is no hidden design here.
 
 ## Open seams / future
