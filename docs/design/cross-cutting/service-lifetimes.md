@@ -10,7 +10,7 @@ How Arius.Core's shared services and feature handlers are scoped and how long th
 
 `AddArius` registers **every** Core service and handler — `SnapshotService`, `ChunkIndexService`, `ChunkStorageService`, `FileTreeService`, and all the `*CommandHandler`/`*QueryHandler` factories — as DI **singletons**, with the repository's `accountName`/`containerName` (and passphrase, via `IEncryptionService`) captured in each registration. So "singleton" does **not** mean process-global: it means **one instance per `IServiceProvider`, and each provider is bound to exactly one repository**. The *provider* is the unit of scope, not the process. `AddMediator()` is called by the host (not by `AddArius`), so the host owns the provider's lifecycle.
 
-Every host registers the mediator with a `Transient` lifetime (an assembly-level `[MediatorOptions]` attribute; [ADR-0028](../../decisions/adr-0028-resolve-mediator-handlers-per-message.md)). The mediator resolves a handler when its message is sent, not when the mediator is first used, so a provider only needs the services that its own requests use. This does not change the scope of Core's handlers: `AddArius` runs after `AddMediator()`, so its singleton registrations take precedence, and each provider still holds one instance of each Core handler. Notification handlers in the host, such as the CLI's progress handlers and the Api's event forwarders, are created per event. They must therefore be stateless and keep their state in an injected singleton (`ProgressState`, `JobSink`).
+Every host registers the mediator as `Transient` ([ADR-0028](../../decisions/adr-0028-resolve-mediator-handlers-per-message.md)): it resolves a handler only when its message is sent, so a provider needs only the services its own requests use. Core's handlers remain one instance per provider, because `AddArius` registers them as singletons after `AddMediator()`. Host notification handlers (the CLI's progress handlers, the Api's event forwarders) are created per event, so they must be stateless and keep their state in an injected singleton (`ProgressState`, `JobSink`).
 
 Each host composes that per-repository provider differently:
 
@@ -18,13 +18,13 @@ Each host composes that per-repository provider differently:
 |---|---|---|
 | **CLI** (`Arius.Cli`) | one provider per command invocation | short-lived — the process exits after the command. Provider ≈ command. This is the model the services were originally designed for. |
 | **Explorer** (`Arius.Explorer`) | one provider per opened repository | long-lived process → hits the hazards below. |
-| **Api** (`Arius.Api`, via `RepositoryProviderRegistry`) | **two** repository-bound lifetimes, plus one provider that is not bound to a repository (below) | long-lived process serving many repos and requests. |
+| **Api** (`Arius.Api`, via `RepositoryProviderRegistry`) | three provider kinds (below) | long-lived process serving many repos and requests. |
 
 `RepositoryProviderRegistry` manages three kinds of provider: two that are bound to a repository, and one that is not:
 
 - **Read providers** — built lazily and **cached per repository** (`GetReadProviderAsync`, a `Lazy<Task<ServiceProvider>>` keyed by repository id), opened with `PreflightMode.ReadOnly`, given an inert `JobSink`. They warm caches across requests (`ls`, queries, restore reads). They are **evicted and disposed** (`Evict`) on a properties change, a delete, or **after an archive**.
 - **Job providers** — a **fresh, dedicated** provider per long-running archive/restore (`CreateJobProviderAsync`), wired to a per-job `JobSink` and its own `IMediator`, **owned and disposed by the job** when it ends.
-- **The provider without a repository** — built **once**, on first use, and **owned by the registry**; callers must not dispose it. It contains only `AddMediator()` and the blob service factory. It serves the Core requests that need no repository, such as `ContainerNamesQuery`, which lists an account's containers before a repository exists. Because the mediator resolves a handler only when its message is sent, a repository-bound request sent to this provider fails with a dependency-resolution error. The provider holds no repository state, so it is never evicted.
+- **The provider without a repository** — built **once**, on first use, and **owned by the registry**; callers must not dispose it. It holds only the mediator and the blob service factory, for Core requests that need no repository, such as `ContainerNamesQuery`, which lists an account's containers before a repository exists. A repository-bound request sent to it fails at handler resolution. It holds no repository state, so it is never evicted.
 
 ## Key invariants
 

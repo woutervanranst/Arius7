@@ -57,7 +57,6 @@ services.AddSingleton(blobServiceFactory);
 * Bad, because each send or publish resolves its handler from DI. Per-file notifications allocate a small handler instance per event, which is negligible next to hashing and blob IO.
 * Bad, because a misconfigured handler fails when its message is sent, not on the mediator's first use.
 * Neutral, because handlers must be stateless: an instance lives for one message. State belongs in injected singletons (`ProgressState`, `JobSink`).
-* Neutral, because the scripted fake Core of [ADR-0022](adr-0022-scripted-fake-core-test-harness.md) keeps its `NotConfigured*Handler` stand-ins, but only so that an unscripted request fails with `NotSupportedException`. A request that a scenario does not use no longer needs a stand-in, so the eager-resolution drawback recorded in ADR-0022 no longer applies.
 
 ### Confirmation
 
