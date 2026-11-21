@@ -5,9 +5,9 @@ using Microsoft.AspNetCore.Http.HttpResults;
 namespace Arius.Api.Features.Filesystem;
 
 /// <summary>
-/// Lists subdirectories for the local-path picker as the Api host sees them (under Docker, the mounted volumes).
-/// The picker is server-driven because a repository's local path must resolve on the host, not on the browser's
-/// machine.
+/// <c>GET /fs/list</c>: lists subdirectories for the local-path picker as the Api host sees them (under Docker, the
+/// mounted volumes). The picker is server-driven because a repository's local path must resolve on the host, not on
+/// the browser's machine.
 /// </summary>
 internal sealed class ListFilesystem : IEndpoint
 {

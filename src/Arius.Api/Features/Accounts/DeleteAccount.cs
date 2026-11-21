@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Accounts;
 
+/// <summary><c>DELETE /accounts/{id}</c></summary>
 internal sealed class DeleteAccount(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

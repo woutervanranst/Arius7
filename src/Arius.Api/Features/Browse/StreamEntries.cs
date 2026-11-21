@@ -10,7 +10,7 @@ using Mediator;
 namespace Arius.Api.Features.Browse;
 
 /// <summary>
-/// Streams the immediate children (directories and files) of a folder in a snapshot.
+/// Hub <c>StreamEntries</c>: streams the immediate children (directories and files) of a folder in a snapshot.
 /// </summary>
 public sealed class StreamEntries(AppDatabase database, RepositoryProviderRegistry registry) : IHubHandler
 {

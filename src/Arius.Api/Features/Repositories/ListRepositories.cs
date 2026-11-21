@@ -4,6 +4,7 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Repositories;
 
+/// <summary><c>GET /repos</c></summary>
 internal sealed class ListRepositories(AppDatabase db, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

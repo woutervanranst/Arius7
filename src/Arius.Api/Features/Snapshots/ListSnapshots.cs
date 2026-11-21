@@ -7,6 +7,7 @@ using Mediator;
 
 namespace Arius.Api.Features.Snapshots;
 
+/// <summary><c>GET /repos/{id}/snapshots</c></summary>
 internal sealed class ListSnapshots(RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

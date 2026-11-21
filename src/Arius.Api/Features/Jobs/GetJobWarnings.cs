@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Jobs;
 
+/// <summary><c>GET /jobs/{id}/warnings</c></summary>
 internal sealed class GetJobWarnings(AppDatabase db, JobStateRegistry jobStates) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

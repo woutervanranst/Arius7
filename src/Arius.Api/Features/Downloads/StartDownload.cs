@@ -7,8 +7,8 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary>Starts a download job: restores the collected files from the given snapshot version into the job's
-/// staging folder, for the browser to fetch.</summary>
+/// <summary>Hub <c>StartDownload</c>: starts a download job, restoring the collected files from the given snapshot
+/// version into the job's staging folder for the browser to fetch.</summary>
 public sealed class StartDownload(IHubContext<JobsHub> hub, AppDatabase database, JobRunner jobRunner) : IHubHandler
 {
     public async Task<string> HandleAsync(string connectionId, long repositoryId, string? version, DownloadFileRequest[]? files)

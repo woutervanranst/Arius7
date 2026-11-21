@@ -7,7 +7,8 @@ using Microsoft.Net.Http.Headers;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary>Serves the staged files: a single file as itself, with range requests, or several files as one streamed ZIP.</summary>
+/// <summary><c>GET /jobs/{id}/download/content?set=all|remaining</c>: serves the staged files, a single file as
+/// itself with range requests, or several files as one streamed ZIP.</summary>
 internal sealed class GetDownloadContent(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

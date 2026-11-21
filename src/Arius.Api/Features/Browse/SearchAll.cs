@@ -8,8 +8,8 @@ using Mediator;
 namespace Arius.Api.Features.Browse;
 
 /// <summary>
-/// Streams filename-search hits across all repositories as they are found. A repository that fails is skipped and
-/// the search continues with the next one.
+/// Hub <c>SearchAll</c>: streams filename-search hits across all repositories as they are found. A repository that
+/// fails is skipped and the search continues with the next one.
 /// </summary>
 public sealed class SearchAll(AppDatabase database, RepositoryProviderRegistry registry) : IHubHandler
 {

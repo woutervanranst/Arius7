@@ -4,6 +4,7 @@ using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Jobs;
 
+/// <summary><c>GET /jobs</c></summary>
 internal sealed class ListJobs(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

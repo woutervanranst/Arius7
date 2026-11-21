@@ -4,8 +4,9 @@ using Arius.Core.Shared.Storage;
 
 namespace Arius.Api.Features.Restore;
 
-/// <summary>Approves a restore's cost estimate. An <c>awaiting-cost</c> job always has a live run blocked in the
-/// approval callback, so this only resolves that wait; after a restart such jobs are already <c>interrupted</c>.</summary>
+/// <summary>Hub <c>ApproveRestore</c>: approves a restore's cost estimate. An <c>awaiting-cost</c> job always has a
+/// live run blocked in the approval callback, so this only resolves that wait; after a restart such jobs are already
+/// <c>interrupted</c>.</summary>
 public sealed class ApproveRestore(RestoreApprovalRegistry approvals) : IHubHandler
 {
     public Task HandleAsync(string jobId, string? priority)

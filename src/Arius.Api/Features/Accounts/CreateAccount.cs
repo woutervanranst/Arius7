@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Accounts;
 
+/// <summary><c>POST /accounts</c></summary>
 internal sealed class CreateAccount(AppDatabase db, SecretProtector secrets) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
