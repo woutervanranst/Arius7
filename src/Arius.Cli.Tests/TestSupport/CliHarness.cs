@@ -1,14 +1,8 @@
 using System.CommandLine;
 using Arius.Core.Features.ArchiveCommand;
-using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Features.LatestSnapshotVersionQuery;
-using Arius.Core.Features.SnapshotDiffQuery;
-using Arius.Core.Features.SnapshotsListQuery;
-using Arius.Core.Features.StatisticsQuery;
-using Arius.Core.Features.StorageAccountInfoQuery;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -25,7 +19,6 @@ internal sealed class CliHarness
     public ICommandHandler<RestoreCommand, RestoreResult> RestoreHandler { get; }
     public ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult> RepairHandler { get; }
     public IStreamQueryHandler<ListQuery, RepositoryEntry> ListQueryHandler { get; }
-    public IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult> HydrationHandler { get; }
 
     public string? ResolvedAccount { get; private set; }
 
@@ -39,12 +32,6 @@ internal sealed class CliHarness
         var restoreHandler = Substitute.For<ICommandHandler<RestoreCommand, RestoreResult>>();
         var repairHandler = Substitute.For<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
         var listQueryHandler = Substitute.For<IStreamQueryHandler<ListQuery, RepositoryEntry>>();
-        var hydrationHandler = Substitute.For<IStreamQueryHandler<ChunkHydrationStatusQuery, ChunkHydrationStatusResult>>();
-        // Mediator resolves every handler when a request is sent, so the handlers the CLI does not use need mocks too.
-        var snapshotsHandler = Substitute.For<IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>>();
-        var snapshotDiffHandler = Substitute.For<IStreamQueryHandler<SnapshotDiffQuery, SnapshotDiffEntry>>();
-        var statsHandler = Substitute.For<IQueryHandler<StatisticsQuery, RepositoryStatistics>>();
-        var storageInfoHandler = Substitute.For<IQueryHandler<StorageAccountInfoQuery, StorageAccountInfo>>();
 
         archiveHandler
             .Handle(Arg.Any<ArchiveCommand>(), Arg.Any<CancellationToken>())
@@ -82,31 +69,10 @@ internal sealed class CliHarness
             .Handle(Arg.Any<ListQuery>(), Arg.Any<CancellationToken>())
             .Returns(AsyncEnumerable.Empty<RepositoryEntry>());
 
-        hydrationHandler
-            .Handle(Arg.Any<ChunkHydrationStatusQuery>(), Arg.Any<CancellationToken>())
-            .Returns(AsyncEnumerable.Empty<ChunkHydrationStatusResult>());
-
-        snapshotsHandler
-            .Handle(Arg.Any<SnapshotsListQuery>(), Arg.Any<CancellationToken>())
-            .Returns(AsyncEnumerable.Empty<SnapshotInfo>());
-
-        snapshotDiffHandler
-            .Handle(Arg.Any<SnapshotDiffQuery>(), Arg.Any<CancellationToken>())
-            .Returns(AsyncEnumerable.Empty<SnapshotDiffEntry>());
-
-        statsHandler
-            .Handle(Arg.Any<StatisticsQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<RepositoryStatistics>(new RepositoryStatistics(0, 0, 0, 0, 0, 0, [])));
-
-        storageInfoHandler
-            .Handle(Arg.Any<StorageAccountInfoQuery>(), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<StorageAccountInfo>(new StorageAccountInfo("test", RegionIsDefault: false)));
-
         ArchiveHandler = archiveHandler;
         RestoreHandler = restoreHandler;
         RepairHandler = repairHandler;
         ListQueryHandler = listQueryHandler;
-        HydrationHandler = hydrationHandler;
 
         _rootCommand = CliBuilder.BuildRootCommand(serviceProviderFactory: (account, key, passphrase, container, _) =>
         {
@@ -120,12 +86,6 @@ internal sealed class CliHarness
             services.AddSingleton(restoreHandler);
             services.AddSingleton(repairHandler);
             services.AddSingleton(listQueryHandler);
-            services.AddSingleton(hydrationHandler);
-            services.AddSingleton(snapshotsHandler);
-            services.AddSingleton(snapshotDiffHandler);
-            services.AddSingleton(statsHandler);
-            services.AddSingleton(storageInfoHandler);
-            services.AddSingleton(Substitute.For<IQueryHandler<LatestSnapshotVersionQuery, string?>>());
             return Task.FromResult<IServiceProvider>(services.BuildServiceProvider());
         });
     }
