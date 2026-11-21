@@ -6,7 +6,8 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Features.Archive;
 
-/// <summary>Starts an archive job. The caller joins the job's group before the job starts, so it receives every event.</summary>
+/// <summary>Hub <c>StartArchive</c>: starts an archive job. The caller joins the job's group before the job starts,
+/// so it receives every event.</summary>
 public sealed class StartArchive(IHubContext<JobsHub> hub, AppDatabase database, JobRunner jobRunner) : IHubHandler
 {
     public async Task<string> HandleAsync(string connectionId, long repositoryId, string tier, bool removeLocal, bool writePointers, bool fastHash)

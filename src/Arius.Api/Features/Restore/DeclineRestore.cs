@@ -3,7 +3,8 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Restore;
 
-/// <summary>Declines a restore's cost estimate: resolves a live approval wait, or marks a parked job cancelled.</summary>
+/// <summary>Hub <c>DeclineRestore</c>: declines a restore's cost estimate, resolving a live approval wait or marking
+/// a parked job cancelled.</summary>
 public sealed class DeclineRestore(RestoreApprovalRegistry approvals, JobRunner jobRunner) : IHubHandler
 {
     public Task HandleAsync(string jobId)

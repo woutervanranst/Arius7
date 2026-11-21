@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Arius.Api.Features.Jobs;
 
-/// <summary>Joins the job's SignalR group and returns the job's current state; progress updates follow over the
-/// group.</summary>
+/// <summary>Hub <c>AttachToJob</c>: joins the job's SignalR group and returns the job's current state; progress
+/// updates follow over the group.</summary>
 public sealed class AttachToJob(IHubContext<JobsHub> hub, AppDatabase database, JobStateRegistry jobStates) : IHubHandler
 {
     public async Task<JobAttachState?> HandleAsync(string connectionId, string jobId)

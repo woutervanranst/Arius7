@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Defaults;
 
+/// <summary><c>GET /repos/{id}/defaults</c></summary>
 internal sealed class GetRepositoryDefaults(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

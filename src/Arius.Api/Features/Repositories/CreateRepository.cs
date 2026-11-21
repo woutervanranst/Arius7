@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Repositories;
 
+/// <summary><c>POST /repos</c></summary>
 internal sealed class CreateRepository(AppDatabase db, SecretProtector secrets) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

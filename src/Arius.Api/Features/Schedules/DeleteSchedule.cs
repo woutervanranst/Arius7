@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Schedules;
 
+/// <summary><c>DELETE /repos/{id}/schedules/{scheduleId}</c></summary>
 internal sealed class DeleteSchedule(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

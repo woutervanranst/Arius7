@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary>Returns a download job's files and clean-up state.</summary>
+/// <summary><c>GET /jobs/{id}/download</c>: returns a download job's files and clean-up state.</summary>
 internal sealed class GetDownload(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

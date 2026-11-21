@@ -3,9 +3,9 @@ using Arius.Api.Shared.Jobs;
 
 namespace Arius.Api.Features.Jobs;
 
-/// <summary>Cancels a job. A job waiting at the cost prompt is declined, a running job is cancelled cooperatively,
-/// and a parked job (no live run) is marked cancelled so the poller skips it and the repository's single-active-job
-/// guard is released.</summary>
+/// <summary>Hub <c>CancelJob</c>: cancels a job. A job waiting at the cost prompt is declined, a running job is
+/// cancelled cooperatively, and a parked job (no live run) is marked cancelled so the poller skips it and the
+/// repository's single-active-job guard is released.</summary>
 public sealed class CancelJob(RestoreApprovalRegistry approvals, JobStateRegistry jobStates, JobRunner jobRunner) : IHubHandler
 {
     public Task HandleAsync(string jobId)

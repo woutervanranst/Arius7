@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Repositories;
 
+/// <summary><c>PATCH /repos/{id}</c></summary>
 internal sealed class UpdateRepository(AppDatabase db, SecretProtector secrets, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

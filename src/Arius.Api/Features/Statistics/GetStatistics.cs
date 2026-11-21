@@ -11,10 +11,10 @@ using Mediator;
 namespace Arius.Api.Features.Statistics;
 
 /// <summary>
-/// Repository statistics, cached in the app database. Statistics are a pure function of the snapshot set, so a cache
-/// hit is served without storage access; the cache is cleared when the snapshot set can change (after an archive, and
-/// on a repository update or delete). <c>full=true</c> loads the whole chunk index so the repository-wide storage
-/// figures are complete, which is slower.
+/// <c>GET /repos/{id}/stats</c>: repository statistics, cached in the app database. Statistics are a pure function of
+/// the snapshot set, so a cache hit is served without storage access; the cache is cleared when the snapshot set can
+/// change (after an archive, and on a repository update or delete). <c>full=true</c> loads the whole chunk index so
+/// the repository-wide storage figures are complete, which is slower.
 /// </summary>
 internal sealed class GetStatistics(AppDatabase database, RepositoryProviderRegistry registry) : IEndpoint
 {

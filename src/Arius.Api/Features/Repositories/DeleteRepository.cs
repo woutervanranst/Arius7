@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Repositories;
 
+/// <summary><c>DELETE /repos/{id}</c></summary>
 internal sealed class DeleteRepository(AppDatabase db, RepositoryProviderRegistry registry, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>

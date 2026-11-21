@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Downloads;
 
-/// <summary>Deletes a finished download's staging folder.</summary>
+/// <summary><c>POST /jobs/{id}/download/cleanup</c>: deletes a finished download's staging folder.</summary>
 internal sealed class CleanupDownload(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
