@@ -8,7 +8,7 @@ namespace Arius.Cli.Commands.Restore;
 /// Increments <see cref="ProgressState.FilesRestored"/> and <see cref="ProgressState.BytesRestored"/> when a file is written to disk.
 /// For large-file downloads, also removes the corresponding <see cref="TrackedDownload"/>.
 /// </summary>
-public sealed class FileRestoredHandler(ProgressState state) : INotificationHandler<FileRestoredEvent>
+internal sealed class FileRestoredHandler(ProgressState state) : INotificationHandler<FileRestoredEvent>
 {
     public ValueTask Handle(FileRestoredEvent notification, CancellationToken cancellationToken)
     {
@@ -30,7 +30,7 @@ public sealed class FileRestoredHandler(ProgressState state) : INotificationHand
 // ── FileSkippedHandler ────────────────────────────────────────────────────────
 
 /// <summary>Increments <see cref="ProgressState.FilesSkipped"/> and <see cref="ProgressState.BytesSkipped"/> when a file is skipped.</summary>
-public sealed class FileSkippedHandler(ProgressState state) : INotificationHandler<FileSkippedEvent>
+internal sealed class FileSkippedHandler(ProgressState state) : INotificationHandler<FileSkippedEvent>
 {
     public ValueTask Handle(FileSkippedEvent notification, CancellationToken cancellationToken)
     {
@@ -43,7 +43,7 @@ public sealed class FileSkippedHandler(ProgressState state) : INotificationHandl
 // ── RehydrationStartedHandler ─────────────────────────────────────────────────
 
 /// <summary>Records the rehydration chunk count and total bytes when rehydration is kicked off.</summary>
-public sealed class RehydrationStartedHandler(ProgressState state) : INotificationHandler<RehydrationStartedEvent>
+internal sealed class RehydrationStartedHandler(ProgressState state) : INotificationHandler<RehydrationStartedEvent>
 {
     public ValueTask Handle(RehydrationStartedEvent notification, CancellationToken cancellationToken)
     {
@@ -55,7 +55,7 @@ public sealed class RehydrationStartedHandler(ProgressState state) : INotificati
 // ── SnapshotResolvedHandler ───────────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.SnapshotTimestamp"/> and <see cref="ProgressState.SnapshotRootHash"/> when the snapshot is resolved.</summary>
-public sealed class SnapshotResolvedHandler(ProgressState state) : INotificationHandler<SnapshotResolvedEvent>
+internal sealed class SnapshotResolvedHandler(ProgressState state) : INotificationHandler<SnapshotResolvedEvent>
 {
     public ValueTask Handle(SnapshotResolvedEvent notification, CancellationToken cancellationToken)
     {
@@ -68,7 +68,7 @@ public sealed class SnapshotResolvedHandler(ProgressState state) : INotification
 // ── TreeTraversalCompleteHandler ──────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.RestoreTotalFiles"/>, <see cref="ProgressState.RestoreTotalOriginalSize"/>, and <see cref="ProgressState.TreeTraversalComplete"/>.</summary>
-public sealed class TreeTraversalCompleteHandler(ProgressState state) : INotificationHandler<TreeTraversalCompleteEvent>
+internal sealed class TreeTraversalCompleteHandler(ProgressState state) : INotificationHandler<TreeTraversalCompleteEvent>
 {
     public ValueTask Handle(TreeTraversalCompleteEvent notification, CancellationToken cancellationToken)
     {
@@ -80,7 +80,7 @@ public sealed class TreeTraversalCompleteHandler(ProgressState state) : INotific
 // ── TreeTraversalProgressHandler ──────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.RestoreFilesDiscovered"/> from the batched tree traversal progress event.</summary>
-public sealed class TreeTraversalProgressHandler(ProgressState state) : INotificationHandler<TreeTraversalProgressEvent>
+internal sealed class TreeTraversalProgressHandler(ProgressState state) : INotificationHandler<TreeTraversalProgressEvent>
 {
     public ValueTask Handle(TreeTraversalProgressEvent notification, CancellationToken cancellationToken)
     {
@@ -92,7 +92,7 @@ public sealed class TreeTraversalProgressHandler(ProgressState state) : INotific
 // ── FileRoutedHandler ────────────────────────────────────────────────────
 
 /// <summary>Increments the appropriate route tally based on the event's <see cref="RestoreRoute"/> value.</summary>
-public sealed class FileRoutedHandler(ProgressState state) : INotificationHandler<FileRoutedEvent>
+internal sealed class FileRoutedHandler(ProgressState state) : INotificationHandler<FileRoutedEvent>
 {
     public ValueTask Handle(FileRoutedEvent notification, CancellationToken cancellationToken)
     {
@@ -104,7 +104,7 @@ public sealed class FileRoutedHandler(ProgressState state) : INotificationHandle
 // ── ChunkResolutionCompleteHandler ────────────────────────────────────────────
 
 /// <summary>Sets chunk resolution counts and byte totals from the enriched <see cref="ChunkResolutionCompleteEvent"/>.</summary>
-public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotificationHandler<ChunkResolutionCompleteEvent>
+internal sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotificationHandler<ChunkResolutionCompleteEvent>
 {
     public ValueTask Handle(ChunkResolutionCompleteEvent notification, CancellationToken cancellationToken)
     {
@@ -117,7 +117,7 @@ public sealed class ChunkResolutionCompleteHandler(ProgressState state) : INotif
 // ── RehydrationStatusHandler ──────────────────────────────────────────────────
 
 /// <summary>Sets chunk availability counts from the rehydration check.</summary>
-public sealed class RehydrationStatusHandler(ProgressState state) : INotificationHandler<RehydrationStatusEvent>
+internal sealed class RehydrationStatusHandler(ProgressState state) : INotificationHandler<RehydrationStatusEvent>
 {
     public ValueTask Handle(RehydrationStatusEvent notification, CancellationToken cancellationToken)
     {
@@ -132,7 +132,7 @@ public sealed class RehydrationStatusHandler(ProgressState state) : INotificatio
 /// Stores tar bundle metadata (file count + original size) in <see cref="ProgressState.TarBundleMetadata"/>
 /// before the tar-bundle download progress callback is invoked, so the CLI can build display labels.
 /// </summary>
-public sealed class ChunkDownloadStartedHandler(ProgressState state) : INotificationHandler<ChunkDownloadStartedEvent>
+internal sealed class ChunkDownloadStartedHandler(ProgressState state) : INotificationHandler<ChunkDownloadStartedEvent>
 {
     public ValueTask Handle(ChunkDownloadStartedEvent notification, CancellationToken cancellationToken)
     {
@@ -145,7 +145,7 @@ public sealed class ChunkDownloadStartedHandler(ProgressState state) : INotifica
 // ── ChunkDownloadCompletedHandler ─────────────────────────────────────────────
 
 /// <summary>Removes the <see cref="TrackedDownload"/> entry and increments <see cref="ProgressState.RestoreBytesDownloaded"/>.</summary>
-public sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotificationHandler<ChunkDownloadCompletedEvent>
+internal sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotificationHandler<ChunkDownloadCompletedEvent>
 {
     public ValueTask Handle(ChunkDownloadCompletedEvent notification, CancellationToken cancellationToken)
     {
@@ -158,7 +158,7 @@ public sealed class ChunkDownloadCompletedHandler(ProgressState state) : INotifi
 // ── CleanupCompleteHandler ────────────────────────────────────────────────────
 
 /// <summary>Reserved for future cleanup display. Currently a no-op.</summary>
-public sealed class CleanupCompleteHandler(ProgressState state) : INotificationHandler<CleanupCompleteEvent>
+internal sealed class CleanupCompleteHandler(ProgressState state) : INotificationHandler<CleanupCompleteEvent>
 {
     public ValueTask Handle(CleanupCompleteEvent notification, CancellationToken cancellationToken)
     {
