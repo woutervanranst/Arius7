@@ -23,7 +23,6 @@ public class StorageAccountInfoQueryDispatchTests
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(NullLoggerProvider.Instance));
-        services.AddSingleton<ProgressState>(); // the CLI's Mediator eagerly inits its notification handlers, which need this
 
         // AddMediator() must run in the outermost (test) assembly so the source generator discovers the
         // Core query handler — exactly the wiring this test guards.
