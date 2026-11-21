@@ -24,7 +24,6 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private readonly AppDatabase         _database;
     private readonly SecretProtector     _secrets;
     private readonly IRepositoryCoreComposer _coreComposer;
-    private readonly ILoggerFactory      _loggerFactory;
     private readonly ILogger<RepositoryProviderRegistry> _logger;
 
     private readonly object _gate = new();
@@ -50,7 +49,6 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
         _database           = database;
         _secrets            = secrets;
         _coreComposer       = coreComposer;
-        _loggerFactory      = loggerFactory;
         _logger             = loggerFactory.CreateLogger<RepositoryProviderRegistry>();
         _repositoryLessProvider = new Lazy<ServiceProvider>(BuildRepositoryLessProvider);
     }
@@ -62,11 +60,8 @@ public sealed class RepositoryProviderRegistry : IAsyncDisposable
     private ServiceProvider BuildRepositoryLessProvider()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(new JobSink());   // inert; the event forwarders registered by AddMediator depend on it
         services.AddMediator();
         _coreComposer.ComposeWithoutRepository(services);
-        services.AddSingleton(_loggerFactory);
-        services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
         return services.BuildServiceProvider();
     }
 
