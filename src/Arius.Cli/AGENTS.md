@@ -12,6 +12,7 @@ Cross-cutting rules (think-before-coding, simplicity, testing workflow, code sty
 - `ArchiveProgressHandlers.cs`, `RestoreProgressHandlers.cs` — the `INotificationHandler<T>` set. `DisplayHelpers.cs`, `LsStateFormatter.cs` — rendering helpers.
 
 ## Conventions (this project)
+- **Internal types stay in their command folder.** An internal type in `Commands/<Verb>/` is used only within that folder; only `CliBuilder` references every verb. Move an internal type two folders share up to `Arius.Cli` (usable by every folder below it), or mark it `[SharedWithinAssembly]` if it must stay put — `CliArchitectureTests` enforces this.
 - **Verbs, not `CommandSettings`.** This is **System.CommandLine**, not Spectre.Console.Cli — define `Option<T>`/`Argument<T>` locals, add them to the `Command`, read them via `parseResult.GetValue(...)` inside `cmd.SetAction(async (parseResult, ct) => ...)`. There is no settings POCO.
 - **Handlers carry no business logic.** Each `INotificationHandler<T>` only mutates the singleton `ProgressState` (a state transition or counter bump). `ProgressState` is thread-safe by construction (`Interlocked`/`Volatile`/concurrent collections) because handlers fire from pipeline worker threads. New event in Core → add a thin handler here; don't compute anything.
 - **`AddMediator()` is called in `CliBuilder`, not `AddArius`** — so the Mediator source generator runs in *this* assembly and discovers handlers in both Arius.Core and Arius.Cli. New handler types are picked up automatically.

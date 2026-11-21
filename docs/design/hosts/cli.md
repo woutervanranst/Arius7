@@ -106,6 +106,7 @@ Per ADR-0007 the pipeline emits two log levels (coarse `[phase]` markers + categ
 - **Small files collapse into exactly one `TrackedTar` row.** `TarEntryAddedHandler` removes the per-file `TrackedFile` when the file joins a bundle; nothing should re-add it. Upload progress for a bundle is measured against the *sealed* `TarByteSize` (set in `TarBundleSealingHandler`), not the sum of file contents, or the bar overshoots 100%.
 - **One `IServiceProvider` per repository.** Account/container/passphrase are baked into the provider at construction; there is no cross-repository state to leak between verbs.
 - **Non-interactive runs still complete correctly.** Skipping the Live loop must never change command behavior — only whether frames are drawn.
+- **Internal types stay in their command folder.** An internal type in `Commands/<Verb>/` is used only within that folder; `CliBuilder`, the composition root, is the one type that references every verb. An internal type two folders need moves up to `Arius.Cli` or is marked `[SharedWithinAssembly]` — enforced by `CliArchitectureTests` ([testing](../cross-cutting/testing.md#architecture-tests-as-contract-enforcement)).
 
 ## Why this shape
 
