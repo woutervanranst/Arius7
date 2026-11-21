@@ -59,7 +59,7 @@ Rules:
 * Promote to `Shared/` when a second area needs it. Until then a type stays in its area.
 * Namespaces mirror folders, and the `Arius.Api.Tests` and `Arius.Api.Integration.Tests` projects mirror the same tree.
 
-Enforced by `ApiArchitectureTests`: internal Api types stay within their namespace subtree unless marked `[SharedWithinAssembly]`; feature areas do not depend on each other; `Shared` does not depend on `Features`; the Api does not depend on Core `Shared` services (the Azure repository composer is the one seam); `AriusApiHost` and `JobsHub` are the composition roots allowed to reference every feature. Fixing the two bypasses was part of the work: `StreamContainers` now sends Core's `ContainerNamesQuery` through a repository-less provider, and the stats endpoint uses Core's `LatestSnapshotVersionQuery`. Design: [Web host](../design/hosts/web.md#api-layout).
+Enforced by `ApiArchitectureTests`: internal Api types stay within their namespace subtree unless marked `[SharedWithinAssembly]`; feature areas do not depend on each other; `Shared` does not depend on `Features`; the Api does not depend on Core `Shared` services (the Azure repository composer is the one seam); `AriusApiHost` and `JobsHub` are the composition roots allowed to reference every feature. Fixing the two bypasses was part of the work: `StreamContainers` now sends Core's `ContainerNamesQuery` through a repository-less provider, and the stats endpoint fingerprints its cache through Core's `SnapshotsListQuery` with `Last: 1`. Design: [Web host](../design/hosts/web.md#api-layout).
 
 ### Consequences and Tradeoffs
 

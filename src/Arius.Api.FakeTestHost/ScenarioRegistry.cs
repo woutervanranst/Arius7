@@ -35,8 +35,8 @@ public sealed record RestoreScenario(
 }
 
 /// <summary>
-/// A scripted read side: what the listing (<see cref="ListQuery"/>), snapshot list, latest snapshot version and
-/// statistics queries return. A <c>null</c> list streams nothing; <c>null</c> statistics throw. When
+/// A scripted read side: what the listing (<see cref="ListQuery"/>), snapshot list and statistics queries
+/// return. A <c>null</c> list streams nothing; <c>null</c> statistics throw. When
 /// <paramref name="ContainerMissing"/>, building the provider fails as it does for a container that does not exist
 /// yet (<see cref="Arius.Core.Shared.Storage.PreflightErrorKind.ContainerNotFound"/>). When <paramref name="Gated"/>,
 /// the listing stays open after its entries until <see cref="ScenarioGate"/> releases the repository, so a test can
@@ -46,7 +46,6 @@ public sealed record ReadScenario(
     IReadOnlyList<RepositoryEntry>? Entries = null,
     IReadOnlyList<SnapshotInfo>? Snapshots = null,
     RepositoryStatistics? Statistics = null,
-    string? LatestVersion = null,
     bool ContainerMissing = false,
     bool Gated = false)
 {

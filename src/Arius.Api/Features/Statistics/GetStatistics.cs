@@ -3,7 +3,7 @@ using System.Text.Json;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
 using Arius.Api.Shared.Hosting;
-using Arius.Core.Features.LatestSnapshotVersionQuery;
+using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.Storage;
 using Mediator;
@@ -51,7 +51,8 @@ internal sealed class GetStatistics(AppDatabase database, RepositoryProviderRegi
         var mediator = provider.GetRequiredService<IMediator>();
 
         // The latest snapshot version fingerprints the cache entry so older generations can be pruned.
-        var fingerprint = await mediator.Send(new LatestSnapshotVersionQuery(), ct) ?? string.Empty;
+        var latest      = await mediator.CreateStream(new SnapshotsListQuery(Last: 1), ct).LastOrDefaultAsync(ct);
+        var fingerprint = latest?.Version ?? string.Empty;
 
         var statistics = await mediator.Send(new StatisticsQuery(version, fullFlag), ct);
         var dto = new StatisticsDto(
