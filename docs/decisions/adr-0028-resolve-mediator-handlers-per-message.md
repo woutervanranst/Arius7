@@ -11,7 +11,7 @@ confidence: high
 
 ## Context and Problem Statement
 
-The source-generated mediator defaults to a `Singleton` lifetime. In that mode its `ContainerMetadata` resolves every discovered handler, with its full dependency graph, on the mediator's first use. A provider that serves only some of Core's requests therefore fails unless it registers a stand-in for every other handler, and each stand-in list must match `AddArius`. Three such lists existed: `AddAriusWithoutRepository` (the Api's repository-less provider), `AddRootCorePlaceholders` (Explorer's root container), and the mocks in `CliHarness`.
+The source-generated mediator defaults to a `Singleton` lifetime. In that mode its `ContainerMetadata` resolves every discovered handler, with its full dependency graph, on the mediator's first use. A provider that serves only some of Core's requests therefore fails unless it registers a stand-in for every other handler, and each stand-in list must match `AddArius`. Three such lists existed: `AddAriusWithoutRepository` (for the Api's provider that is not bound to a repository), `AddRootCorePlaceholders` (Explorer's root container), and the mocks in `CliHarness`.
 
 The question for this ADR is how a provider can serve a subset of Core's requests without registering the rest.
 
@@ -57,6 +57,7 @@ services.AddSingleton(blobServiceFactory);
 * Bad, because each send or publish resolves its handler from DI. Per-file notifications allocate a small handler instance per event, which is negligible next to hashing and blob IO.
 * Bad, because a misconfigured handler fails when its message is sent, not on the mediator's first use.
 * Neutral, because handlers must be stateless: an instance lives for one message. State belongs in injected singletons (`ProgressState`, `JobSink`).
+* Neutral, because the scripted fake Core of [ADR-0022](adr-0022-scripted-fake-core-test-harness.md) keeps its `NotConfigured*Handler` stand-ins, but only so that an unscripted request fails with `NotSupportedException`. A request that a scenario does not use no longer needs a stand-in, so the eager-resolution drawback recorded in ADR-0022 no longer applies.
 
 ### Confirmation
 

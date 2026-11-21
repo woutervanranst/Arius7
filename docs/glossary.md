@@ -341,6 +341,6 @@ file as itself, several as a ZIP built on the fly. It is the restore flow with a
 destination. See [ADR-0026](decisions/adr-0026-browser-downloads-staged-by-a-download-job.md).
 *Code:* `JobRunner.RunDownloadAsync` (`src/Arius.Api/Shared/Jobs/JobRunner.cs`), started by
 `JobsHub.StartDownload`; staging in `DownloadStaging`
-(`src/Arius.Api/Shared/Downloads/DownloadStaging.cs`); serving in `DownloadEndpoints`
+(`src/Arius.Api/Shared/Downloads/DownloadStaging.cs`); serving in `GetDownloadContent`
 (`src/Arius.Api/Features/Downloads/`).
 Design: [Web host](design/hosts/web.md#download-jobs).
