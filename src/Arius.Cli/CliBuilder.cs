@@ -22,7 +22,7 @@ namespace Arius.Cli;
 /// Builds the System.CommandLine root command with all verbs, options, and DI wiring.
 /// Extracted from Program.cs so tests can reference it without executing the program.
 /// </summary>
-public static class CliBuilder
+internal static class CliBuilder
 {
     /// <summary>
     /// Creates the CLI option for specifying the Azure Storage account name (`--account` / `-a`).

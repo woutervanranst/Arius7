@@ -6,12 +6,12 @@ namespace Arius.Api.Features.Restore;
 
 // Each forwarder applies one Arius.Core restore event to the job's JobSink.
 
-public sealed class SnapshotResolvedForwarder(JobSink sink) : INotificationHandler<SnapshotResolvedEvent>
+internal sealed class SnapshotResolvedForwarder(JobSink sink) : INotificationHandler<SnapshotResolvedEvent>
 {
     public ValueTask Handle(SnapshotResolvedEvent n, CancellationToken ct) { sink.SetPhase("classify"); return ValueTask.CompletedTask; }
 }
 
-public sealed class TreeTraversalCompleteForwarder(JobSink sink) : INotificationHandler<TreeTraversalCompleteEvent>
+internal sealed class TreeTraversalCompleteForwarder(JobSink sink) : INotificationHandler<TreeTraversalCompleteEvent>
 {
     public ValueTask Handle(TreeTraversalCompleteEvent n, CancellationToken ct)
     {
@@ -21,7 +21,7 @@ public sealed class TreeTraversalCompleteForwarder(JobSink sink) : INotification
     }
 }
 
-public sealed class ChunkResolutionCompleteForwarder(JobSink sink) : INotificationHandler<ChunkResolutionCompleteEvent>
+internal sealed class ChunkResolutionCompleteForwarder(JobSink sink) : INotificationHandler<ChunkResolutionCompleteEvent>
 {
     public ValueTask Handle(ChunkResolutionCompleteEvent n, CancellationToken ct)
     {
@@ -30,7 +30,7 @@ public sealed class ChunkResolutionCompleteForwarder(JobSink sink) : INotificati
     }
 }
 
-public sealed class RehydrationStatusForwarder(JobSink sink) : INotificationHandler<RehydrationStatusEvent>
+internal sealed class RehydrationStatusForwarder(JobSink sink) : INotificationHandler<RehydrationStatusEvent>
 {
     public ValueTask Handle(RehydrationStatusEvent n, CancellationToken ct)
     {
@@ -40,7 +40,7 @@ public sealed class RehydrationStatusForwarder(JobSink sink) : INotificationHand
     }
 }
 
-public sealed class RehydrationStartedForwarder(JobSink sink) : INotificationHandler<RehydrationStartedEvent>
+internal sealed class RehydrationStartedForwarder(JobSink sink) : INotificationHandler<RehydrationStartedEvent>
 {
     public ValueTask Handle(RehydrationStartedEvent n, CancellationToken ct)
     {
@@ -50,12 +50,12 @@ public sealed class RehydrationStartedForwarder(JobSink sink) : INotificationHan
     }
 }
 
-public sealed class ChunkDownloadStartedForwarder(JobSink sink) : INotificationHandler<ChunkDownloadStartedEvent>
+internal sealed class ChunkDownloadStartedForwarder(JobSink sink) : INotificationHandler<ChunkDownloadStartedEvent>
 {
     public ValueTask Handle(ChunkDownloadStartedEvent n, CancellationToken ct) { sink.SetPhase("download"); return ValueTask.CompletedTask; }
 }
 
-public sealed class FileRestoredForwarder(JobSink sink) : INotificationHandler<FileRestoredEvent>
+internal sealed class FileRestoredForwarder(JobSink sink) : INotificationHandler<FileRestoredEvent>
 {
     public ValueTask Handle(FileRestoredEvent n, CancellationToken ct)
     {
