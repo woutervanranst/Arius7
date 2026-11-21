@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Hosting;
+using static Arius.Architecture.Tests.NamespaceScopedInternals;
 
 namespace Arius.Architecture.Tests;
 
@@ -33,10 +34,10 @@ public class ApiArchitectureTests
 
     /// <summary>The types that wire the slices together: the host maps every endpoint, the hub dispatches
     /// every hub method to its feature. They may reference any feature's entry point.</summary>
-    private static readonly string[] CompositionRoots =
+    private static readonly System.Type[] CompositionRoots =
     [
-        typeof(Api.AriusApiHost).FullName!,
-        typeof(JobsHub).FullName!,
+        typeof(Api.AriusApiHost),
+        typeof(JobsHub),
     ];
 
     // Types declared in Arius.Api namespaces only: skips the Mediator-generated wiring, which references every handler.
@@ -46,47 +47,12 @@ public class ApiArchitectureTests
             .Where(type => IsWithin(type.Namespace.FullName, "Arius.Api"));
 
     [Test]
-    public void Internal_Types_Should_Only_Be_Used_Within_Their_Namespace_Subtree()
-    {
-        var declaringNamespaceByType = ApiAssembly.GetTypes()
-            .Where(type => type is { IsNested: false, IsNotPublic: true, Namespace: not null })
-            .Where(type => type.Namespace!.StartsWith("Arius.Api", StringComparison.Ordinal))
-            .Where(type => !type.Name.Contains('<'))
-            .Where(type => type != typeof(Api.SharedWithinAssemblyAttribute))
-            .Where(type => type.GetCustomAttribute<Api.SharedWithinAssemblyAttribute>() is null)
-            .ToDictionary(type => type.FullName!, type => type.Namespace!, StringComparer.Ordinal);
-
-        var violations = new List<string>();
-        foreach (var consumer in ApiTypes.Where(type => !IsCompositionRoot(type)))
-        {
-            var consumerNamespace = consumer.Namespace.FullName;
-            foreach (var dependency in consumer.Dependencies)
-            {
-                if (!declaringNamespaceByType.TryGetValue(dependency.Target.FullName, out var declaringNamespace))
-                    continue;
-                if (IsWithin(consumerNamespace, declaringNamespace))
-                    continue;
-
-                violations.Add(
-                    $"'{dependency.Target.FullName}' is used by '{consumer.FullName}', outside its namespace subtree. " +
-                    "Mark it [SharedWithinAssembly] if cross-namespace sharing is intended.");
-            }
-        }
-
-        ShouldBeEmpty(violations, "Internal Arius.Api types may only be used within their declaring namespace or a descendant:");
-    }
+    public void Internal_Types_Should_Only_Be_Used_Within_Their_Namespace_Subtree() =>
+        ShouldOnlyBeUsedWithinTheirNamespaceSubtree(typeof(Api.SharedWithinAssemblyAttribute), CompositionRoots);
 
     [Test]
-    public void SharedWithinAssembly_Should_Only_Decorate_Internal_Types()
-    {
-        var publicDecorated = ApiAssembly.GetTypes()
-            .Where(type => type.GetCustomAttribute<Api.SharedWithinAssemblyAttribute>() is not null)
-            .Where(type => type.IsVisible)
-            .Select(type => type.FullName!)
-            .ToList();
-
-        ShouldBeEmpty(publicDecorated, "[SharedWithinAssembly] is intended for internal types only:");
-    }
+    public void SharedWithinAssembly_Should_Only_Decorate_Internal_Types() =>
+        SharedWithinAssemblyShouldOnlyDecorateInternalTypes(typeof(Api.SharedWithinAssemblyAttribute));
 
     [Test]
     public void Feature_Areas_Should_Not_Depend_On_Each_Other()
@@ -165,7 +131,7 @@ public class ApiArchitectureTests
     public void Shared_Should_Not_Depend_On_Features()
     {
         var violations = new List<string>();
-        foreach (var consumer in ApiTypes.Where(type => IsWithin(type.Namespace.FullName, SharedNamespace) && !IsCompositionRoot(type)))
+        foreach (var consumer in ApiTypes.Where(type => IsWithin(type.Namespace.FullName, SharedNamespace) && !IsCompositionRoot(type, CompositionRoots)))
             foreach (var dependency in consumer.Dependencies)
                 if (FeatureArea(dependency.Target.Namespace.FullName) is { } area)
                     violations.Add($"'{consumer.FullName}' depends on '{dependency.Target.FullName}' (feature area {area}).");
@@ -208,21 +174,9 @@ public class ApiArchitectureTests
         return ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().ToList();
     }
 
-    private static bool IsCompositionRoot(ArchUnitNET.Domain.IType type) =>
-        CompositionRoots.Any(root => type.FullName == root || type.FullName.StartsWith(root + "+", StringComparison.Ordinal));
-
-    private static bool IsWithin(string candidate, string ancestor) =>
-        candidate == ancestor || candidate.StartsWith(ancestor + ".", StringComparison.Ordinal);
-
     /// <summary>The area segment of a namespace under <c>Arius.Api.Features</c>, or null when it is not one.</summary>
     private static string? FeatureArea(string @namespace) =>
         @namespace.StartsWith(FeaturesNamespace + ".", StringComparison.Ordinal)
             ? @namespace[(FeaturesNamespace.Length + 1)..].Split('.')[0]
             : null;
-
-    private static void ShouldBeEmpty(List<string> violations, string because)
-    {
-        violations = violations.Distinct(StringComparer.Ordinal).OrderBy(v => v, StringComparer.Ordinal).ToList();
-        violations.ShouldBeEmpty(because + Environment.NewLine + string.Join(Environment.NewLine, violations));
-    }
 }
