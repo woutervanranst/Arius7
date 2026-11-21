@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using Arius.Api.FakeTestHost;
 using Arius.Api.Features.Statistics;
 using Arius.Api.Integration.Tests.Harness;
-using Arius.Core.Features.LatestSnapshotVersionQuery;
+using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
 using Arius.Core.Shared.Cost;
 using Arius.Core.Shared.Storage;
@@ -27,7 +27,9 @@ public class GetStatisticsTests
     {
         await using var factory = new AriusApiFactory();
         var repoId = factory.SeedRepository();
-        var scenario = new ReadScenario(Statistics: Computed, LatestVersion: "v2");
+        var scenario = new ReadScenario(
+            Snapshots: [new SnapshotInfo("v1", DateTimeOffset.UnixEpoch, 10), new SnapshotInfo("v2", DateTimeOffset.UnixEpoch.AddDays(1), 12)],
+            Statistics: Computed);
         factory.Scenarios.SetRead(repoId, scenario);
         using var client = factory.CreateClient();
 
@@ -35,7 +37,7 @@ public class GetStatisticsTests
 
         await AssertComputed(first!);
         await Assert.That(scenario.Received.OfType<StatisticsQuery>()).IsEquivalentTo([new StatisticsQuery("v1", EnsureFullCoverage: false)]);
-        await Assert.That(scenario.Received.OfType<LatestSnapshotVersionQuery>().Count()).IsEqualTo(1);
+        await Assert.That(scenario.Received.OfType<SnapshotsListQuery>()).IsEquivalentTo([new SnapshotsListQuery(Last: 1)]);   // fingerprint: the latest snapshot only
 
         var repeat = await client.GetFromJsonAsync<StatisticsDto>($"/api/repos/{repoId}/stats?version=v1");
 

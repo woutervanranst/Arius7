@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Arius.Core.Shared.FileSystem;
 using Arius.Core.Shared.Snapshot;
 using Mediator;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,11 @@ namespace Arius.Core.Features.SnapshotsListQuery;
 /// the time-travel picker/scrubber and the CLI <c>snapshot list</c>. Streams so callers render rows
 /// as each manifest resolves.
 /// </summary>
-public sealed record SnapshotsListQuery() : IStreamQuery<SnapshotInfo>;
+/// <param name="Last">
+/// When set, only the newest <c>Last</c> snapshots are considered (still streamed oldest → newest) and only their
+/// manifests are resolved; an unresolvable one is skipped, not replaced by an older one.
+/// </param>
+public sealed record SnapshotsListQuery(int? Last = null) : IStreamQuery<SnapshotInfo>;
 
 // --- RESULT
 
@@ -44,7 +49,9 @@ public sealed class SnapshotsListQueryHandler(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // ── Stage 1: list snapshot blobs (oldest → newest) ──────────────────────
-        var blobNames = await snapshots.ListBlobNamesAsync(cancellationToken);
+        IEnumerable<RelativePath> blobNames = await snapshots.ListBlobNamesAsync(cancellationToken);
+        if (query.Last is { } last)
+            blobNames = blobNames.TakeLast(last);
 
         // ── Stage 2: resolve each manifest (disk-cache-first), yield as it resolves ──
         var count = 0;

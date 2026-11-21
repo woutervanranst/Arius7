@@ -1,7 +1,6 @@
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ContainerNamesQuery;
-using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.RepairChunkIndexCommand;
 using Arius.Core.Features.RestoreCommand;
@@ -198,10 +197,6 @@ public static class ServiceCollectionExtensions
             new StorageAccountInfoQueryHandler(
                 sp.GetRequiredService<IBlobContainerService>(),
                 sp.GetRequiredService<IStorageCostEstimator>()));
-
-        services.AddSingleton<IQueryHandler<LatestSnapshotVersionQuery, string?>>(sp =>
-            new LatestSnapshotVersionQueryHandler(
-                sp.GetRequiredService<ISnapshotService>()));
 
         return services;
     }

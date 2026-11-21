@@ -1,10 +1,10 @@
 # Read queries
 
-> **Code:** `src/Arius.Core/Features/{ChunkHydrationStatusQuery,ContainerNamesQuery,LatestSnapshotVersionQuery,SnapshotsListQuery,SnapshotDiffQuery,StatisticsQuery}/*.cs`  ·  **Terms:** [snapshot](../../../glossary.md#snapshot) · [storage tier hint](../../../glossary.md#storage-tier-hint)
+> **Code:** `src/Arius.Core/Features/{ChunkHydrationStatusQuery,ContainerNamesQuery,SnapshotsListQuery,SnapshotDiffQuery,StatisticsQuery}/*.cs`  ·  **Terms:** [snapshot](../../../glossary.md#snapshot) · [storage tier hint](../../../glossary.md#storage-tier-hint)
 
 ## Purpose
 
-Six thin Mediator read slices that back UI/host views. Each is a single query record + result + handler with no mutation: hydration status of files, Arius-container discovery in an account, the latest snapshot version, the snapshot list, the diff between two snapshots, and aggregate repository statistics. They are grouped here because none carries enough intent to warrant its own page.
+Five thin Mediator read slices that back UI/host views. Each is a single query record + result + handler with no mutation: hydration status of files, Arius-container discovery in an account, the snapshot list, the diff between two snapshots, and aggregate repository statistics. They are grouped here because none carries enough intent to warrant its own page.
 
 ## How it works
 
@@ -22,13 +22,9 @@ The handler keeps only files in the repository with a content hash, batches one 
 
 Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a container is an Arius repository iff it has at least one blob under the `snapshots/` prefix (`BlobPaths.SnapshotsPrefix`). The probe is one listing per container with `pageSizeHint: 1`, and the prefix blob itself is excluded so an empty `snapshots/` marker is not mistaken for a real repository. This filters out non-Arius containers (e.g. `$logs`, `$web`).
 
-### LatestSnapshotVersionQuery
-
-`LatestSnapshotVersionQuery()` is an `IQuery<string?>` returning the version of the repository's newest [snapshot](../../../glossary.md#snapshot), or `null` when it has none. It lists snapshot blob names only and resolves no manifest, so a host can use it as a cheap fingerprint of the snapshot set, unlike `SnapshotsListQuery`, which resolves every manifest. The web host stamps its [statistics cache](../../hosts/web.md#statistics-cache) with it.
-
 ### SnapshotsListQuery
 
-`SnapshotsListQuery()` is an `IStreamQuery<SnapshotInfo>` streaming `SnapshotInfo(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker, the CLI `snapshot list`, and `arius snapshot diff` argument resolution. It streams (one blob per snapshot, resolved oldest→newest) so callers render rows as each manifest resolves. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped.
+`SnapshotsListQuery(Last? = null)` is an `IStreamQuery<SnapshotInfo>` streaming `SnapshotInfo(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker, the CLI `snapshot list`, and `arius snapshot diff` argument resolution. It streams (one blob per snapshot, resolved oldest→newest) so callers render rows as each manifest resolves. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped. `Last` keeps only the newest N blob names before resolving, so `Last: 1` resolves just the latest manifest — the web host uses it to stamp its [statistics cache](../../hosts/web.md#statistics-cache).
 
 ### SnapshotDiffQuery
 

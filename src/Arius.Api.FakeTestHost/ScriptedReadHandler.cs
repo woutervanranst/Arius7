@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using Arius.Core.Features.LatestSnapshotVersionQuery;
 using Arius.Core.Features.ListQuery;
 using Arius.Core.Features.SnapshotsListQuery;
 using Arius.Core.Features.StatisticsQuery;
@@ -12,7 +11,6 @@ namespace Arius.Api.FakeTestHost;
 public sealed class ScriptedReadHandler(ReadScenario scenario, ScenarioGate gate, ScenarioContext ctx)
     : IStreamQueryHandler<ListQuery, RepositoryEntry>,
       IStreamQueryHandler<SnapshotsListQuery, SnapshotInfo>,
-      IQueryHandler<LatestSnapshotVersionQuery, string?>,
       IQueryHandler<StatisticsQuery, RepositoryStatistics>
 {
     public async IAsyncEnumerable<RepositoryEntry> Handle(ListQuery query, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -28,13 +26,8 @@ public sealed class ScriptedReadHandler(ReadScenario scenario, ScenarioGate gate
     public IAsyncEnumerable<SnapshotInfo> Handle(SnapshotsListQuery query, CancellationToken cancellationToken)
     {
         scenario.Received.Enqueue(query);
-        return (scenario.Snapshots ?? []).ToAsyncEnumerable();
-    }
-
-    public ValueTask<string?> Handle(LatestSnapshotVersionQuery query, CancellationToken cancellationToken)
-    {
-        scenario.Received.Enqueue(query);
-        return ValueTask.FromResult(scenario.LatestVersion);
+        var snapshots = scenario.Snapshots ?? [];
+        return (query.Last is { } last ? snapshots.TakeLast(last) : snapshots).ToAsyncEnumerable();
     }
 
     public ValueTask<RepositoryStatistics> Handle(StatisticsQuery query, CancellationToken cancellationToken)
