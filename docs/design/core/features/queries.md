@@ -18,7 +18,7 @@ The handler keeps only files in the repository with a content hash, batches one 
 
 ### ContainerNamesQuery
 
-`ContainerNamesQuery(AccountName, AccountKey?)` streams `string` container names for an Azure Blob account — Explorer's account picker uses this to discover Arius repositories. The handler resolves an `IBlobServiceFactory`, opens the account, and forwards `IBlobService.GetContainerNamesAsync`. It needs no repository, so a host can send it through a provider composed with `AddAriusWithoutRepository()`.
+`ContainerNamesQuery(AccountName, AccountKey?)` streams `string` container names for an Azure Blob account — Explorer's account picker uses this to discover Arius repositories. The handler resolves an `IBlobServiceFactory`, opens the account, and forwards `IBlobService.GetContainerNamesAsync`. It needs no repository, so a host can send it through a provider that has only `AddMediator()` and an `IBlobServiceFactory` ([ADR-0028](../../../decisions/adr-0028-resolve-mediator-handlers-per-message.md)).
 
 Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a container is an Arius repository iff it has at least one blob under the `snapshots/` prefix (`BlobPaths.SnapshotsPrefix`). The probe is one listing per container with `pageSizeHint: 1`, and the prefix blob itself is excluded so an empty `snapshots/` marker is not mistaken for a real repository. This filters out non-Arius containers (e.g. `$logs`, `$web`).
 

@@ -33,3 +33,4 @@ New decision? Copy [`adr-template.md`](adr-template.md).
 | [0025](adr-0025-archive-restore-defaults-hierarchy.md) | Resolve archive and restore defaults by live inheritance across four levels |
 | [0026](adr-0026-browser-downloads-staged-by-a-download-job.md) | Stage browser downloads on the server with a download job that reuses the restore flow |
 | [0027](adr-0027-api-vertical-slices.md) | Organise Arius.Api as vertical slices with a thin dispatcher hub |
+| [0028](adr-0028-resolve-mediator-handlers-per-message.md) | Resolve Mediator handlers per message (Transient lifetime) |
