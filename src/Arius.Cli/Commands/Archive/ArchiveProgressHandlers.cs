@@ -6,7 +6,7 @@ namespace Arius.Cli.Commands.Archive;
 // ── FileScannedHandler ────────────────────────────────────────────────────────
 
 /// <summary>Increments <see cref="ProgressState.FilesScanned"/> and <see cref="ProgressState.BytesScanned"/> per file.</summary>
-public sealed class FileScannedHandler(ProgressState state) : INotificationHandler<FileScannedEvent>
+internal sealed class FileScannedHandler(ProgressState state) : INotificationHandler<FileScannedEvent>
 {
     public ValueTask Handle(FileScannedEvent notification, CancellationToken cancellationToken)
     {
@@ -18,7 +18,7 @@ public sealed class FileScannedHandler(ProgressState state) : INotificationHandl
 // ── EntryExcludedHandler ───────────────────────────────────────────────────────
 
 /// <summary>Counts entries excluded during enumeration (excluded / broken symlink / unreadable dir).</summary>
-public sealed class EntryExcludedHandler(ProgressState state) : INotificationHandler<EntryExcludedEvent>
+internal sealed class EntryExcludedHandler(ProgressState state) : INotificationHandler<EntryExcludedEvent>
 {
     public ValueTask Handle(EntryExcludedEvent notification, CancellationToken cancellationToken)
     {
@@ -30,7 +30,7 @@ public sealed class EntryExcludedHandler(ProgressState state) : INotificationHan
 // ── ScanCompleteHandler ───────────────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.TotalFiles"/>, <see cref="ProgressState.TotalBytes"/>, and <see cref="ProgressState.ScanComplete"/> when enumeration finishes.</summary>
-public sealed class ScanCompleteHandler(ProgressState state) : INotificationHandler<ScanCompleteEvent>
+internal sealed class ScanCompleteHandler(ProgressState state) : INotificationHandler<ScanCompleteEvent>
 {
     public ValueTask Handle(ScanCompleteEvent notification, CancellationToken cancellationToken)
     {
@@ -42,7 +42,7 @@ public sealed class ScanCompleteHandler(ProgressState state) : INotificationHand
 // ── FileHashingHandler ────────────────────────────────────────────────────────
 
 /// <summary>Adds a <see cref="TrackedFile"/> entry with State=Hashing.</summary>
-public sealed class FileHashingHandler(ProgressState state) : INotificationHandler<FileHashingEvent>
+internal sealed class FileHashingHandler(ProgressState state) : INotificationHandler<FileHashingEvent>
 {
     public ValueTask Handle(FileHashingEvent notification, CancellationToken cancellationToken)
     {
@@ -57,7 +57,7 @@ public sealed class FileHashingHandler(ProgressState state) : INotificationHandl
 /// Sets <see cref="TrackedFile.ContentHash"/>, transitions to <see cref="FileState.Hashed"/>,
 /// populates the reverse map, and increments <see cref="ProgressState.FilesHashed"/>.
 /// </summary>
-public sealed class FileHashedHandler(ProgressState state) : INotificationHandler<FileHashedEvent>
+internal sealed class FileHashedHandler(ProgressState state) : INotificationHandler<FileHashedEvent>
 {
     public ValueTask Handle(FileHashedEvent notification, CancellationToken cancellationToken)
     {
@@ -72,7 +72,7 @@ public sealed class FileHashedHandler(ProgressState state) : INotificationHandle
 /// Removes the <see cref="TrackedFile"/> row for a file the pipeline skipped (unreadable /
 /// broken link / deleted mid-run), so it does not linger at 0% in the display.
 /// </summary>
-public sealed class FileSkippedHandler(ProgressState state) : INotificationHandler<FileSkippedEvent>
+internal sealed class FileSkippedHandler(ProgressState state) : INotificationHandler<FileSkippedEvent>
 {
     public ValueTask Handle(FileSkippedEvent notification, CancellationToken cancellationToken)
     {
@@ -84,7 +84,7 @@ public sealed class FileSkippedHandler(ProgressState state) : INotificationHandl
 // ── TarBundleStartedHandler ───────────────────────────────────────────────────
 
 /// <summary>Creates a new <see cref="TrackedTar"/> with the next bundle number and State=Accumulating.</summary>
-public sealed class TarBundleStartedHandler(ProgressState state) : INotificationHandler<TarBundleStartedEvent>
+internal sealed class TarBundleStartedHandler(ProgressState state) : INotificationHandler<TarBundleStartedEvent>
 {
     public ValueTask Handle(TarBundleStartedEvent notification, CancellationToken cancellationToken)
     {
@@ -103,7 +103,7 @@ public sealed class TarBundleStartedHandler(ProgressState state) : INotification
 /// updates the current <see cref="TrackedTar"/> file count and accumulated bytes,
 /// and increments <see cref="ProgressState.FilesUnique"/>.
 /// </summary>
-public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHandler<TarEntryAddedEvent>
+internal sealed class TarEntryAddedHandler(ProgressState state) : INotificationHandler<TarEntryAddedEvent>
 {
     public ValueTask Handle(TarEntryAddedEvent notification, CancellationToken cancellationToken)
     {
@@ -124,7 +124,7 @@ public sealed class TarEntryAddedHandler(ProgressState state) : INotificationHan
 // ── TarBundleSealingHandler ───────────────────────────────────────────────────
 
 /// <summary>Transitions the current <see cref="TrackedTar"/> to Sealing and sets its TarHash and TotalBytes.</summary>
-public sealed class TarBundleSealingHandler(ProgressState state) : INotificationHandler<TarBundleSealingEvent>
+internal sealed class TarBundleSealingHandler(ProgressState state) : INotificationHandler<TarBundleSealingEvent>
 {
     public ValueTask Handle(TarBundleSealingEvent notification, CancellationToken cancellationToken)
     {
@@ -148,7 +148,7 @@ public sealed class TarBundleSealingHandler(ProgressState state) : INotification
 /// <summary>
 /// Removes tracked files when their content is deduplicated.
 /// </summary>
-public sealed class FileDedupedHandler(ProgressState state) : INotificationHandler<FileDedupedEvent>
+internal sealed class FileDedupedHandler(ProgressState state) : INotificationHandler<FileDedupedEvent>
 {
     public ValueTask Handle(FileDedupedEvent notification, CancellationToken cancellationToken)
     {
@@ -164,7 +164,7 @@ public sealed class FileDedupedHandler(ProgressState state) : INotificationHandl
 /// Dual lookup: large file → transitions <see cref="TrackedFile"/> to Uploading and increments <see cref="ProgressState.FilesUnique"/>;
 /// TAR bundle → transitions <see cref="TrackedTar"/> to Uploading.
 /// </summary>
-public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHandler<ChunkUploadingEvent>
+internal sealed class ChunkUploadingHandler(ProgressState state) : INotificationHandler<ChunkUploadingEvent>
 {
     public ValueTask Handle(ChunkUploadingEvent notification, CancellationToken cancellationToken)
     {
@@ -193,7 +193,7 @@ public sealed class ChunkUploadingHandler(ProgressState state) : INotificationHa
 /// Removes the <see cref="TrackedFile"/> entry (large file done)
 /// and increments <see cref="ProgressState.ChunksUploaded"/> / <see cref="ProgressState.BytesUploaded"/>.
 /// </summary>
-public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHandler<ChunkUploadedEvent>
+internal sealed class ChunkUploadedHandler(ProgressState state) : INotificationHandler<ChunkUploadedEvent>
 {
     public ValueTask Handle(ChunkUploadedEvent notification, CancellationToken cancellationToken)
     {
@@ -209,7 +209,7 @@ public sealed class ChunkUploadedHandler(ProgressState state) : INotificationHan
 /// Removes the <see cref="TrackedTar"/> entry for the uploaded tar bundle
 /// and increments <see cref="ProgressState.TarsUploaded"/> and <see cref="ProgressState.ChunksUploaded"/>.
 /// </summary>
-public sealed class TarBundleUploadedHandler(ProgressState state) : INotificationHandler<TarBundleUploadedEvent>
+internal sealed class TarBundleUploadedHandler(ProgressState state) : INotificationHandler<TarBundleUploadedEvent>
 {
     public ValueTask Handle(TarBundleUploadedEvent notification, CancellationToken cancellationToken)
     {
@@ -226,7 +226,7 @@ public sealed class TarBundleUploadedHandler(ProgressState state) : INotificatio
 // ── SnapshotCreatedHandler ────────────────────────────────────────────────────
 
 /// <summary>Sets <see cref="ProgressState.SnapshotComplete"/> when the snapshot is created.</summary>
-public sealed class SnapshotCreatedHandler(ProgressState state) : INotificationHandler<SnapshotCreatedEvent>
+internal sealed class SnapshotCreatedHandler(ProgressState state) : INotificationHandler<SnapshotCreatedEvent>
 {
     public ValueTask Handle(SnapshotCreatedEvent notification, CancellationToken cancellationToken)
     {

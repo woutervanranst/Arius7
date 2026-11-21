@@ -49,7 +49,8 @@ and **explicit handler factories** (handlers take per-repository `accountName`/
 are singletons scoped to that provider. **`AddMediator()` is intentionally NOT called
 here** — the source generator must run in the outermost assembly (a host or test
 project), so the host calls it. Adding a handler that needs account/container? Register a
-factory here too.
+factory here too. `ContainerNamesQuery` needs only an `IBlobServiceFactory`, so a host can serve
+it from a provider without `AddArius` ([ADR-0028](../../docs/decisions/adr-0028-resolve-mediator-handlers-per-message.md)).
 
 ## Build & test (this project only)
 

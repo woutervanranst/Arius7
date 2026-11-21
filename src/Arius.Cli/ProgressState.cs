@@ -8,7 +8,7 @@ namespace Arius.Cli;
 // ── FileState enum ────────────────────────────────────────────────────────────
 
 /// <summary>Lifecycle state of a file being tracked through the archive pipeline.</summary>
-public enum FileState
+internal enum FileState
 {
     /// <summary>File is being hashed (large and small files). Visible in display.</summary>
     Hashing,
@@ -30,7 +30,7 @@ public enum FileState
 /// <see cref="BytesProcessed"/> is updated via <see cref="Interlocked.Exchange(ref long, long)"/>
 /// for lock-free thread safety. Other mutable fields use <see cref="Volatile"/> reads/writes.
 /// </summary>
-public sealed class TrackedFile
+internal sealed class TrackedFile
 {
     /// <summary>
     /// Initializes a new TrackedFile for the specified relative path and file size and sets its initial state to Hashing.
@@ -83,7 +83,7 @@ public sealed class TrackedFile
 // ── TarState enum ─────────────────────────────────────────────────────────────
 
 /// <summary>Lifecycle state of a TAR bundle being tracked through the archive pipeline.</summary>
-public enum TarState
+internal enum TarState
 {
     /// <summary>TAR is accepting small files (growing).</summary>
     Accumulating,
@@ -101,7 +101,7 @@ public enum TarState
 /// Per-TAR state for a bundle being accumulated or uploaded.
 /// Interlocked / Volatile used for thread-safe field updates.
 /// </summary>
-public sealed class TrackedTar
+internal sealed class TrackedTar
 {
     /// <summary>Sequential display number (1-based), assigned by the CLI handler.</summary>
     public int BundleNumber { get; }
@@ -180,7 +180,7 @@ public sealed class TrackedTar
 /// removed on completion. <see cref="BytesDownloaded"/> is updated via
 /// <see cref="Interlocked.Exchange(ref long, long)"/> for lock-free thread safety.
 /// </summary>
-public sealed class TrackedDownload
+internal sealed class TrackedDownload
 {
     /// <summary>
     /// Initializes a new TrackedDownload for the specified chunk.
@@ -243,7 +243,7 @@ internal sealed record RestoreFileEvent(RelativePath RelativePath, long FileSize
 /// for thread safety. Registered as a singleton in DI so notification handlers and the
 /// display component share the same instance.
 /// </summary>
-public sealed class ProgressState
+internal sealed class ProgressState
 {
     // ── Archive: per-file state machine ──────────────────────────────────────
 

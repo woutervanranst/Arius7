@@ -1,17 +1,18 @@
-using Arius.Api.AppData;
-using Arius.Api.Contracts;
-using Arius.Api.Downloads;
-using Arius.Api.Jobs;
+using Arius.Api.Features.Archive;
+using Arius.Api.Features.Downloads;
+using Arius.Api.Features.Restore;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Shared.FileSystem;
 
 namespace Arius.Api.FakeTestHost;
 
-/// <summary>Out-of-process control surface for the hermetic Playwright suite — the runtime equivalent of the
-/// in-process AriusApiFactory.SeedRepository + factory.Scenarios.Set*. Only mapped by the Arius.Api.FakeTestHost host,
-/// so production never exposes it. Jobs still START through the real hub (StartArchive/StartRestore) — this only
-/// seeds a repo, picks a named scenario, and releases gated runs. /reset clears the app db, the scenarios and every
-/// download staging folder, so specs start from nothing. The one exception is /start-download, which
-/// bypasses the hub: the scripted Core can't list entries, so the Files tab can't collect files in this suite.</summary>
+/// <summary>Control endpoints for the out-of-process hermetic Playwright suite, the counterpart of
+/// <c>AriusApiFactory</c>'s seeding and scenario setup. Mapped only by this test host. Jobs start through the real
+/// hub; these endpoints seed a repository, select a named scenario, release gated runs, and reset all state between
+/// specs. <c>/start-download</c> is the exception and starts a job directly: the suite scripts no listing, so the
+/// Files tab cannot collect files.</summary>
 public static class TestingControlEndpoints
 {
     public static IEndpointRouteBuilder MapTestingControlEndpoints(this IEndpointRouteBuilder app)

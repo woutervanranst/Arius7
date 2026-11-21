@@ -1,0 +1,32 @@
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
+
+namespace Arius.Api.Features.Accounts;
+
+/// <summary><c>PATCH /accounts/{id}</c></summary>
+internal sealed class UpdateAccount(AppDatabase db, SecretProtector secrets, RepositoryProviderRegistry registry) : IEndpoint
+{
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapPatch("/accounts/{id:long}", (long id, UpdateAccountRequest request, UpdateAccount endpoint) => endpoint.Handle(id, request))
+            .WithSummary("Update a storage account")
+            .WithDescription("Replaces the stored account key. When the key changes, the connections of the repositories that use the account are rebuilt. Returns 404 Not Found if the account does not exist.");
+
+    // Cached providers hold the old key; evict them so they rebuild with the new one.
+    private Results<Ok<AccountDto>, NotFound> Handle(long id, UpdateAccountRequest request)
+    {
+        if (db.GetAccount(id) is null)
+            return TypedResults.NotFound();
+
+        var keyChanged = request.AccountKey is not null;
+
+        db.UpdateAccount(id, secrets.Protect(request.AccountKey));
+
+        if (keyChanged)
+            foreach (var repoId in db.ListRepositoryIdsForAccount(id))
+                registry.Evict(repoId);
+
+        return TypedResults.Ok(AccountEndpoints.ToDto(db, db.GetAccount(id)!));
+    }
+}

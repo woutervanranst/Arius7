@@ -140,5 +140,7 @@ nav:
       - decisions/adr-0024-framework-zstandard-codec.md
       - decisions/adr-0025-archive-restore-defaults-hierarchy.md
       - decisions/adr-0026-browser-downloads-staged-by-a-download-job.md
+      - decisions/adr-0027-api-vertical-slices.md
+      - decisions/adr-0028-resolve-mediator-handlers-per-message.md
   - Glossary: glossary.md
   - History: history/INDEX.md

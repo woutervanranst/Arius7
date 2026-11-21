@@ -1,10 +1,11 @@
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
 using Arius.Api;
-using Arius.Api.Composition;
 using Arius.Core.Shared;
 using Serilog;
 
-// Bootstrap logger — captures any failure during host build; AddAriusApi replaces it with the root logger
-// once the app paths are known.
+// Bootstrap logger for failures during host build; AddAriusApi replaces it with the root logger once the log
+// directory is known.
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Is(AriusLogging.ResolveLevel())
     .WriteTo.Console()
@@ -18,11 +19,6 @@ try
     var app = builder.Build();
     app.MapAriusApi();
 
-    // Any job left "running" by a crash/restart is dead (its in-process run is gone) — reconciled to
-    // "interrupted" inside AppDatabase's schema initializer (which ran when the AppDatabase singleton was
-    // constructed in AddAriusApi), before the ux_jobs_one_active_per_repo unique index is created — so no
-    // explicit call is needed here.
-
     Log.Information("Arius.Api {Version} starting", AriusVersion.Display);
     app.Run();
 }
@@ -35,5 +31,5 @@ finally
     Log.CloseAndFlush();
 }
 
-// Exposed so Arius.Api.Integration.Tests can boot the app with WebApplicationFactory<Program>.
+// Public so the integration tests can boot the app with WebApplicationFactory<Program>.
 public partial class Program { }

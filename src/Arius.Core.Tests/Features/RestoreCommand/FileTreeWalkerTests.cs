@@ -3,6 +3,7 @@ using Arius.Core.Shared.Compression;
 using Arius.Core.Shared.FileTree;
 using Arius.Core.Tests.Fakes;
 using Arius.Tests.Shared;
+using Arius.Tests.Shared.Fixtures;
 
 namespace Arius.Core.Tests.Features.RestoreCommand;
 
@@ -10,6 +11,14 @@ public class FileTreeWalkerTests
 {
     private static readonly DateTimeOffset s_created = new(2024, 6, 15, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset s_modified = new(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+
+    // A cache folder per test: tests run in parallel, and sharing one made concurrent writes of the same filetree
+    // collide on Windows ("the process cannot access the file ... because it is being used by another process").
+    private const string Account = "acct-filetree-walker";
+    private readonly string _container = $"ctr-filetree-walker-{Guid.NewGuid():N}";
+
+    [After(Test)]
+    public void DeleteLocalCache() => RepositoryTestFixture.DeleteLocalCacheDirectory(Account, _container);
 
     [Test]
     public async Task WalkFilesAsync_YieldsFilesBreadthFirst()
@@ -144,13 +153,13 @@ public class FileTreeWalkerTests
         ex.Message.ShouldContain("photos/typo.jpg");
     }
 
-    private static async Task<FileTreeWalker> CreateWalkerAsync(params IReadOnlyList<FileTreeEntry>[] trees)
+    private async Task<FileTreeWalker> CreateWalkerAsync(params IReadOnlyList<FileTreeEntry>[] trees)
     {
         var blobs = new FakeSeededBlobContainerService();
         foreach (var tree in trees)
             await SeedTreeAsync(blobs, tree);
 
-        return new FileTreeWalker(new FileTreeService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, "acct-filetree-walker", "ctr-filetree-walker"));
+        return new FileTreeWalker(new FileTreeService(blobs, IEncryptionService.PlaintextInstance, ICompressionService.ZtdInstance, Account, _container));
     }
 
     private static Task<FileTreeHash> ComputeHashAsync(IReadOnlyList<FileTreeEntry> entries)

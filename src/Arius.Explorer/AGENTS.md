@@ -4,8 +4,7 @@ Cross-cutting rules (think-before-coding, simplicity, testing workflow, code sty
 language, the documentation map) live in the root [`../../AGENTS.md`](../../AGENTS.md) — they
 apply here and are **not** repeated. This file is only what is true of *this* project.
 
-- **How the shell is wired** (startup, DI, the per-repository session, the root placeholder
-  graph): [`../../docs/design/hosts/explorer.md`](../../docs/design/hosts/explorer.md).
+- **How the shell is wired** (startup, DI, the per-repository session, the root mediator): [`../../docs/design/hosts/explorer.md`](../../docs/design/hosts/explorer.md).
 - **Per-repository provider lifetimes / `AddArius`:** [`../../docs/design/cross-cutting/service-lifetimes.md`](../../docs/design/cross-cutting/service-lifetimes.md).
 - **User-facing behaviour:** [`../../docs/guide/explorer.md`](../../docs/guide/explorer.md). Terms: [`../../docs/glossary.md`](../../docs/glossary.md).
 
@@ -27,8 +26,8 @@ exclusively through `IMediator`, and never calls handlers or the Azure SDK direc
 - `Infrastructure/RepositorySession.cs` — the per-repository Core graph (below).
 - `Shared/` — `Services/` (`IDialogService`), `Converters/`, `Extensions/` (DPAPI).
 - `Program.cs` builds the generic `Host`; `App.xaml.cs` is the WPF entry. The host container
-  holds only **shell** services plus a *root* placeholder Core graph (`NullBlobContainerService`)
-  so `ChooseRepository` has a live `IMediator` before any repository is connected.
+  holds only **shell** services plus a root `IMediator` (`AddMediator()` + the blob service factory)
+  so `ChooseRepository` can send `ContainerNamesQuery` before any repository is connected.
 
 ## Project-local invariants — read before editing
 

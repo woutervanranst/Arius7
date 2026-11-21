@@ -1,4 +1,9 @@
 using System.Windows;
+using Mediator;
+using Microsoft.Extensions.DependencyInjection;
+
+// Resolve a handler only when its message is sent, so a provider needs only the services its requests use (ADR-0028).
+[assembly: MediatorOptions(ServiceLifetime = ServiceLifetime.Transient)]
 
 [assembly: ThemeInfo(
     ResourceDictionaryLocation.None,            //where theme specific resource dictionaries are located

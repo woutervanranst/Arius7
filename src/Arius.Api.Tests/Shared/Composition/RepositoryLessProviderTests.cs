@@ -1,0 +1,53 @@
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Core.Features.ContainerNamesQuery;
+using Arius.Core.Shared.Storage;
+using Mediator;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Shouldly;
+
+namespace Arius.Api.Tests.Shared.Composition;
+
+public class RepositoryLessProviderTests
+{
+    [Test]
+    public async Task The_repository_less_provider_lists_an_accounts_containers_through_the_mediator()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"arius-regtest-{Guid.NewGuid():N}", "app.sqlite");
+        var secrets      = new SecretProtector(DataProtectionProvider.Create(nameof(RepositoryLessProviderTests)));
+        var composer     = new AzureRepositoryCoreComposer(new FakeBlobServiceFactory());
+
+        try
+        {
+            await using var registry = new RepositoryProviderRegistry(new AppDatabase(databasePath), secrets, composer, NullLoggerFactory.Instance);
+
+            var mediator = registry.GetRepositoryLessProvider().GetRequiredService<IMediator>();
+            var names    = await mediator.CreateStream(new ContainerNamesQuery("account", "key")).ToListAsync();
+
+            names.ShouldBe(["account/one", "account/two"]);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(Path.GetDirectoryName(databasePath)!, recursive: true);
+        }
+    }
+
+    private sealed class FakeBlobServiceFactory : IBlobServiceFactory
+    {
+        public Task<IBlobService> CreateAsync(string accountName, string? accountKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IBlobService>(new FakeBlobService(accountName));
+    }
+
+    private sealed class FakeBlobService(string accountName) : IBlobService
+    {
+        public IAsyncEnumerable<string> GetContainerNamesAsync(CancellationToken cancellationToken = default) =>
+            new[] { $"{accountName}/one", $"{accountName}/two" }.ToAsyncEnumerable();
+
+        public Task<IBlobContainerService> OpenContainerServiceAsync(string containerName, PreflightMode preflightMode, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+}

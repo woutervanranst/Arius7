@@ -1,0 +1,23 @@
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
+
+namespace Arius.Api.Features.Downloads;
+
+/// <summary><c>PUT /settings/downloads</c></summary>
+internal sealed class UpdateDownloadSettings(AppDatabase db) : IEndpoint
+{
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapPut("/settings/downloads", (DownloadSettings settings, UpdateDownloadSettings endpoint) => endpoint.Handle(settings))
+            .WithSummary("Update the download clean-up settings")
+            .WithDescription("Returns 400 Bad Request unless the clean-up delay is between 1 and 3650 days.");
+
+    private Results<Ok<DownloadSettings>, BadRequest<string>> Handle(DownloadSettings settings)
+    {
+        if (settings.CleanupDays is < 1 or > 3650)
+            return TypedResults.BadRequest("Clean-up days must be between 1 and 3650.");
+
+        db.SaveDownloadSettings(settings);
+        return TypedResults.Ok(settings);
+    }
+}

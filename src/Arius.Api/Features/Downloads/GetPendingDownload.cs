@@ -1,0 +1,31 @@
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
+
+namespace Arius.Api.Features.Downloads;
+
+/// <summary><c>GET /repos/{id}/downloads/pending</c>: returns the repository's newest finished download that still
+/// has staged files not yet fetched.</summary>
+internal sealed class GetPendingDownload(AppDatabase db, DownloadStaging staging) : IEndpoint
+{
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapGet("/repos/{id:long}/downloads/pending", (long id, GetPendingDownload endpoint) => endpoint.Handle(id))
+            .WithSummary("Get a repository's pending download")
+            .WithDescription("Returns the most recent finished download job of the repository that still has staged files not fetched yet, or 204 No Content if there is none.");
+
+    private Results<Ok<PendingDownloadDto>, NoContent> Handle(long id)
+    {
+        foreach (var job in db.ListDownloadJobs(id))
+        {
+            if (DownloadEndpoints.IsCleanedUp(job, staging) || !DownloadEndpoints.IsTerminal(job)) continue;
+
+            var files     = db.ListDownloadFiles(job.Id);
+            var remaining = files.Where(f => f.Ready && !f.Downloaded).ToList();
+            if (remaining.Count == 0) continue;
+
+            return TypedResults.Ok(new PendingDownloadDto(job.Id, files.Count(f => f.Ready), files.Count, remaining.Count, remaining.Sum(f => f.Size)));
+        }
+        return TypedResults.NoContent();
+    }
+}

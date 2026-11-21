@@ -18,13 +18,13 @@ The handler keeps only files in the repository with a content hash, batches one 
 
 ### ContainerNamesQuery
 
-`ContainerNamesQuery(AccountName, AccountKey?)` streams `string` container names for an Azure Blob account — Explorer's account picker uses this to discover Arius repositories. The handler resolves an `IBlobServiceFactory`, opens the account, and forwards `IBlobService.GetContainerNamesAsync`.
+`ContainerNamesQuery(AccountName, AccountKey?)` streams `string` container names for an Azure Blob account — Explorer's account picker uses this to discover Arius repositories. The handler resolves an `IBlobServiceFactory`, opens the account, and forwards `IBlobService.GetContainerNamesAsync`. It needs no repository, so a host can send it through a provider that has only `AddMediator()` and an `IBlobServiceFactory` ([ADR-0028](../../../decisions/adr-0028-resolve-mediator-handlers-per-message.md)).
 
 Arius-container detection lives in `AzureBlobService.GetContainerNamesAsync`: a container is an Arius repository iff it has at least one blob under the `snapshots/` prefix (`BlobPaths.SnapshotsPrefix`). The probe is one listing per container with `pageSizeHint: 1`, and the prefix blob itself is excluded so an empty `snapshots/` marker is not mistaken for a real repository. This filters out non-Arius containers (e.g. `$logs`, `$web`).
 
 ### SnapshotsListQuery
 
-`SnapshotsListQuery()` is an `IStreamQuery<SnapshotInfo>` streaming `SnapshotInfo(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker, the CLI `snapshot list`, and `arius snapshot diff` argument resolution. It streams (one blob per snapshot, resolved oldest→newest) so callers render rows as each manifest resolves. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped.
+`SnapshotsListQuery(Last? = null)` is an `IStreamQuery<SnapshotInfo>` streaming `SnapshotInfo(Version, Timestamp, FileCount)` — the [snapshot](../../../glossary.md#snapshot) list for the time-travel picker, the CLI `snapshot list`, and `arius snapshot diff` argument resolution. It streams (one blob per snapshot, resolved oldest→newest) so callers render rows as each manifest resolves. The handler lists blob names oldest→newest via `ISnapshotService.ListBlobNamesAsync`, then resolves each manifest (disk-cache-first) for its timestamp and file count; unresolvable manifests are logged and skipped. `Last` keeps only the newest N blob names before resolving, so `Last: 1` resolves just the latest manifest — the web host uses it to stamp its [statistics cache](../../hosts/web.md#statistics-cache).
 
 ### SnapshotDiffQuery
 

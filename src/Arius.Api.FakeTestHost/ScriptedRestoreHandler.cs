@@ -1,3 +1,4 @@
+using Arius.Api.Shared.Jobs;
 using Arius.Core.Features.RestoreCommand;
 using Mediator;
 
@@ -19,7 +20,7 @@ public sealed class ScriptedRestoreHandler(IPublisher publisher, RestoreScenario
         {
             var priority = await command.Options.ConfirmRehydration(scenario.CostPrompt, cancellationToken);
             if (priority is null)
-                return scenario.Result;   // declined / timed-out — run stops (mirrors Core exiting with pending)
+                return scenario.Result;   // declined or timed out: the run stops, as Core does
         }
 
         foreach (var evt in scenario.PostApproveEvents)

@@ -1,13 +1,8 @@
-using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.RestoreCommand;
-using Arius.Core.Shared.Cost;
-using Arius.Core.Shared.Storage;
-using Arius.Tests.Shared.Fakes;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NSubstitute;
 
 namespace Arius.Cli.Tests;
 
@@ -27,14 +22,6 @@ public class MediatorEventRoutingIntegrationTests
         // AddMediator() must be called in the outermost (test) assembly so the source
         // generator discovers INotificationHandler<T> implementations in both Core and CLI.
         services.AddMediator();
-
-        // Provide stub Core services so the source-generated Mediator can initialize.
-        services.AddSingleton<IStorageCostEstimator>(new FakeStorageCostEstimator());
-        services.AddArius(
-            blobContainer: Substitute.For<IBlobContainerService>(),
-            passphrase: null,
-            accountName: "test",
-            containerName: "test");
 
         return services.BuildServiceProvider();
     }

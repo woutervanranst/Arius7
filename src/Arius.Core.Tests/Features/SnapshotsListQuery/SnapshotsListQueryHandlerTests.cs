@@ -39,6 +39,22 @@ public class SnapshotsListQueryHandlerTests
     }
 
     [Test]
+    public async Task Handle_Last_StreamsOnlyTheNewestSnapshotsOldestToNewest()
+    {
+        var blobs = new FakeSeededBlobContainerService();
+        await SeedSnapshotAsync(blobs, new DateTimeOffset(2024, 1, 10, 8, 0, 0, TimeSpan.Zero), fileCount: 100);
+        var s3 = await SeedSnapshotAsync(blobs, new DateTimeOffset(2024, 3, 12, 9, 14, 0, TimeSpan.Zero), fileCount: 142);
+        var s2 = await SeedSnapshotAsync(blobs, new DateTimeOffset(2024, 2, 2, 23, 40, 0, TimeSpan.Zero), fileCount: 120);
+
+        await using var fixture = await RepositoryTestFixture.CreateWithEncryptionAsync(blobs, "acct-snap-last", "ctr-snap-last", IEncryptionService.PlaintextInstance);
+        var handler = new SnapshotsListQueryHandler(fixture.Snapshot, new FakeLogger<SnapshotsListQueryHandler>());
+
+        var result = await handler.Handle(new SnapshotsListQueryType(Last: 2), CancellationToken.None).ToListAsync();
+
+        result.Select(s => s.Timestamp).ShouldBe([s2, s3]);
+    }
+
+    [Test]
     public async Task Handle_NoSnapshots_StreamsEmpty()
     {
         var blobs = new FakeSeededBlobContainerService();

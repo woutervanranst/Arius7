@@ -1,8 +1,13 @@
 using System.Text.Json;
-using Arius.Api.AppData;
-using Arius.Api.Composition;
-using Arius.Api.Endpoints;
-using Arius.Api.Hubs;
+using Arius.Api.Features.Downloads;
+using Arius.Api.Features.Restore;
+using Arius.Api.Features.Schedules;
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Hosting;
+using Arius.Api.Shared.Hubs;
+using Arius.Api.Shared.Jobs;
 using Arius.AzureBlob;
 using Arius.Core.Shared;
 using Microsoft.AspNetCore.DataProtection;
@@ -12,10 +17,9 @@ using Serilog;
 
 namespace Arius.Api;
 
-/// <summary>Shared composition for the Arius.Api pipeline, reused by the production host (Program.cs) and the
-/// out-of-process Testing host (Arius.Api.FakeTestHost). The Core seam — <see cref="IRepositoryCoreComposer"/> — is
-/// registered with <c>TryAdd</c>, so a host that pre-registers a scripted composer wins without any environment
-/// branch here (mirrors the CliHarness "inject the factory" pattern).</summary>
+/// <summary>Composes the Arius.Api pipeline for both the production host and the test host (Arius.Api.FakeTestHost).
+/// <see cref="IRepositoryCoreComposer"/> is registered with <c>TryAdd</c>, so a host that registers its own composer
+/// first replaces the Azure one.</summary>
 public static class AriusApiHost
 {
     public static WebApplicationBuilder AddAriusApi(this WebApplicationBuilder builder)
@@ -26,9 +30,8 @@ public static class AriusApiHost
                       ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "keys");
         Directory.CreateDirectory(keysDir);
 
-        // The app-wide root logger for host/startup events (per-repository files are owned by the registry).
-        // Also the static Log.Logger, so Program.cs's Log.Fatal/CloseAndFlush act on it; the host owns its
-        // lifetime and flushes it on shutdown.
+        // Root logger for host events; per-repository logs are owned by the registry. Also assigned to the static
+        // Log.Logger, so Program.cs's Log.Fatal and CloseAndFlush use it.
         var appLogDir  = Path.Combine(Path.GetDirectoryName(dbPath)!, "logs");
         var rootLogger = AriusLogging.BuildRootLogger(appLogDir);
         Log.Logger = rootLogger;
@@ -37,7 +40,7 @@ public static class AriusApiHost
         builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDir));
         builder.Services.AddSingleton(new AppDatabase(dbPath));
         builder.Services.AddSingleton<SecretProtector>();
-        builder.Services.AddSingleton(new Arius.Api.Downloads.DownloadStaging(Path.Combine(Path.GetDirectoryName(dbPath)!, "downloads")));
+        builder.Services.AddSingleton(new DownloadStaging(Path.Combine(Path.GetDirectoryName(dbPath)!, "downloads")));
         builder.Services.AddAzureBlobStorage();
         builder.Services.TryAddSingleton<IRepositoryCoreComposer, AzureRepositoryCoreComposer>();
         builder.Services.AddSingleton(sp => new RepositoryProviderRegistry(
@@ -45,19 +48,19 @@ public static class AriusApiHost
             sp.GetRequiredService<SecretProtector>(),
             sp.GetRequiredService<IRepositoryCoreComposer>(),
             sp.GetRequiredService<ILoggerFactory>()));
-        builder.Services.AddSingleton<Arius.Api.Downloads.DownloadCleaner>();
-        builder.Services.AddSingleton<Arius.Api.Jobs.RestoreApprovalRegistry>();
-        builder.Services.AddSingleton<Arius.Api.Jobs.JobStateRegistry>();
-        builder.Services.AddSingleton<Arius.Api.Jobs.JobRunner>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.SchedulerService>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.RehydrationPollingService>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.StaleApprovalSweepService>();
-        builder.Services.AddHostedService<Arius.Api.Jobs.DownloadCleanupService>();
+        builder.Services.AddSingleton<DownloadCleaner>();
+        builder.Services.AddSingleton<RestoreApprovalRegistry>();
+        builder.Services.AddSingleton<JobStateRegistry>();
+        builder.Services.AddSingleton<JobRunner>();
+        builder.Services.AddFeatures();
+        builder.Services.AddHostedService<SchedulerService>();
+        builder.Services.AddHostedService<RehydrationPollingService>();
+        builder.Services.AddHostedService<StaleApprovalSweepService>();
+        builder.Services.AddHostedService<DownloadCleanupService>();
 
         builder.Services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
-        // OpenAPI document generation — Development only (mapped in MapAriusApi via Scalar).
         if (builder.Environment.IsDevelopment())
             builder.Services.AddOpenApi();
 
@@ -84,19 +87,10 @@ public static class AriusApiHost
             return await next(ctx);
         });
 
-        api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-        api.MapAccountEndpoints();
-        api.MapRepositoryEndpoints();
-        api.MapDefaultsEndpoints();
-        api.MapBrowseEndpoints();
-        api.MapJobEndpoints();
-        api.MapDownloadEndpoints();
-        api.MapCostSettingsEndpoints();
-        api.MapFilesystemEndpoints();
+        api.MapEndpoints();
         app.MapHub<JobsHub>("/hubs/arius");
 
-        // Development-only API docs: raw document at /openapi/v1.json, Scalar UI at /scalar.
-        // Mapped as real routes so they resolve before the SPA fallback below.
+        // Development only: the OpenAPI document at /openapi/v1.json and the Scalar UI at /scalar.
         if (app.Environment.IsDevelopment())
         {
             app.MapOpenApi();

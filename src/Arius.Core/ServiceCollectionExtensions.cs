@@ -29,10 +29,8 @@ namespace Arius.Core;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers Arius core services and mediator handler interfaces into the provided <see cref="IServiceCollection"/>.
+    /// Registers the Arius.Core services and mediator handlers for one repository.
     /// </summary>
-    /// <param name="services">The service collection to configure.</param>
-    /// <param name="blobContainer">The blob storage implementation to use for persisted data.</param>
     /// <param name="passphrase">If non-null, enables passphrase-based encryption; if null, a plaintext passthrough is used.</param>
     /// <param name="accountName">The account name used to scope chunk indexing and handler operations.</param>
     /// <param name="containerName">The container name used to scope chunk indexing and handler operations.</param>
@@ -41,7 +39,6 @@ public static class ServiceCollectionExtensions
     /// <c>Arius:Exclusions</c> section, those values override the central defaults for file/folder exclusions;
     /// otherwise the embedded defaults apply. Pass <c>null</c> (the default) to use the central defaults only.
     /// </param>
-    /// <returns>The same <see cref="IServiceCollection"/> instance for chaining.</returns>
     /// <remarks>
     /// The statistics and restore handlers resolve <see cref="IStorageCostEstimator"/> from the provider, so a
     /// provider's cost estimator must be registered separately (e.g. via <c>AddAzureBlobStorage()</c>) before use.
@@ -54,15 +51,14 @@ public static class ServiceCollectionExtensions
         string                  containerName,
         IConfiguration?         configuration = null)
     {
-        // Storage
         services.AddSingleton(blobContainer);
         if (services.All(service => service.ServiceType != typeof(IBlobServiceFactory)))
         {
             services.AddSingleton<IBlobServiceFactory, NullBlobServiceFactory>();
         }
 
-        // File/folder exclusions (options pattern): Arius.Core's embedded appsettings.json is the central
-        // base layer so every host inherits the same defaults; an optional host configuration overrides them.
+        // File and folder exclusions: Core's embedded appsettings.json is the base layer, so every host shares the
+        // same defaults; the host configuration overrides them.
         var exclusionConfig = new ConfigurationBuilder()
             .AddConfiguration(FileExclusionOptions.EmbeddedDefaultConfiguration())
             .AddConfiguration(configuration ?? new ConfigurationBuilder().Build())
@@ -118,14 +114,11 @@ public static class ServiceCollectionExtensions
                 containerName,
                 sp.GetRequiredService<ILogger<FileTreeService>>()));
 
-        // NOTE: AddMediator() is intentionally NOT called here.
-        // The source generator must run in the outermost assembly (Arius.Cli or test project)
-        // so it can discover INotificationHandler<T> implementations in both Core and CLI.
-        // The caller (CLI startup or test harness) is responsible for calling AddMediator().
+        // AddMediator() is not called here: the source generator must run in the outermost assembly (the host or
+        // test project) to discover the INotificationHandler<T> implementations there, so the caller calls it.
 
-        // Re-register the handler interfaces that Arius resolves through IMediator.
-        // The source generator can see these handlers, but DI cannot supply the per-repository
-        // account/container constructor arguments without explicit factories here.
+        // The source generator discovers these handlers, but DI cannot supply their per-repository account and
+        // container arguments, so they are registered with explicit factories.
         services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>>(sp =>
             new ArchiveCommandHandler(
                 sp.GetRequiredService<IBlobContainerService>(),

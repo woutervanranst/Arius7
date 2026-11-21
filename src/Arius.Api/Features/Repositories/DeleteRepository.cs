@@ -1,0 +1,33 @@
+using Arius.Api.Shared.AppData;
+using Arius.Api.Shared.Composition;
+using Arius.Api.Shared.Downloads;
+using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
+
+namespace Arius.Api.Features.Repositories;
+
+/// <summary><c>DELETE /repos/{id}</c></summary>
+internal sealed class DeleteRepository(AppDatabase db, RepositoryProviderRegistry registry, DownloadStaging staging) : IEndpoint
+{
+    public static void Map(IEndpointRouteBuilder api) =>
+        api.MapDelete("/repos/{id:long}", (long id, DeleteRepository endpoint) => endpoint.Handle(id))
+            .WithSummary("Delete a repository")
+            .WithDescription("Removes the repository from this server, together with its job history, schedules, defaults and staged downloads. The blob container and its data are not deleted. Returns 409 Conflict while a job is active, and 404 Not Found if the repository does not exist.");
+
+    private Results<NoContent, NotFound, Conflict<string>> Handle(long id)
+    {
+        if (db.GetRepository(id) is null)
+            return TypedResults.NotFound();
+
+        // Deleting disposes the repository's logger factory, which a running job's provider still uses.
+        if (db.HasActiveJob(id))
+            return TypedResults.Conflict("Repository has an active job; wait for it to finish or cancel it before deleting.");
+
+        foreach (var job in db.ListDownloadJobs(id))
+            staging.Delete(job.Id);
+
+        db.DeleteRepository(id);
+        registry.Remove(id); // unlike Evict, also disposes the repository's logger factory
+        return TypedResults.NoContent();
+    }
+}
