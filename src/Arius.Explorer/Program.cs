@@ -88,6 +88,5 @@ internal static class Program
                 services.AddTransient<ChooseRepositoryViewModel>();
 
                 services.AddMediator();
-                RepositorySession.AddRootCorePlaceholders(services);
             });
 }
