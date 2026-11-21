@@ -1,6 +1,7 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Downloads;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Downloads;
 
@@ -12,13 +13,13 @@ internal sealed class CleanupDownload(AppDatabase db, DownloadStaging staging) :
             .WithSummary("Clean up a download")
             .WithDescription("Deletes the staging folder of a finished download job. Returns 409 Conflict while the job is still active, and 404 Not Found if the job does not exist or is not a download job.");
 
-    private IResult Handle(string id)
+    private Results<NoContent, NotFound, Conflict> Handle(string id)
     {
         var job = db.GetDownloadJob(id);
-        if (job is null) return Results.NotFound();
-        if (!DownloadEndpoints.IsTerminal(job)) return Results.Conflict();
+        if (job is null) return TypedResults.NotFound();
+        if (!DownloadEndpoints.IsTerminal(job)) return TypedResults.Conflict();
 
         staging.Delete(id);
-        return Results.NoContent();
+        return TypedResults.NoContent();
     }
 }

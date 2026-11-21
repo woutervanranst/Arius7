@@ -1,5 +1,6 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Cost;
 
@@ -10,12 +11,12 @@ internal sealed class UpdateCostSettings(AppDatabase db) : IEndpoint
             .WithSummary("Update the cost confirmation settings")
             .WithDescription("Returns 400 Bad Request unless the threshold is between 0 and 1000 EUR with at most two decimal places.");
 
-    private IResult Handle(CostSettings settings)
+    private Results<Ok<CostSettings>, BadRequest<string>> Handle(CostSettings settings)
     {
         if (settings.AutoAcceptBelow is < 0 or > 1000 || decimal.Round(settings.AutoAcceptBelow, 2) != settings.AutoAcceptBelow)
-            return Results.BadRequest("Enter an amount from 0 to 1000 EUR, to the cent.");
+            return TypedResults.BadRequest("Enter an amount from 0 to 1000 EUR, to the cent.");
 
         db.SaveCostSettings(settings);
-        return Results.Ok(settings);
+        return TypedResults.Ok(settings);
     }
 }

@@ -9,5 +9,5 @@ internal sealed class GetDownloadSettings(AppDatabase db) : IEndpoint
         api.MapGet("/settings/downloads", (GetDownloadSettings endpoint) => endpoint.Handle())
             .WithSummary("Get the download clean-up settings");
 
-    private IResult Handle() => Results.Ok(db.GetDownloadSettings());
+    private DownloadSettings Handle() => db.GetDownloadSettings();
 }

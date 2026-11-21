@@ -1,5 +1,6 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Accounts;
 
@@ -10,9 +11,9 @@ internal sealed class GetAccount(AppDatabase db) : IEndpoint
             .WithSummary("Get a storage account")
             .WithDescription("Returns 404 Not Found if the account does not exist.");
 
-    private IResult Handle(long id)
+    private Results<Ok<AccountDto>, NotFound> Handle(long id)
     {
         var account = db.GetAccount(id);
-        return account is null ? Results.NotFound() : Results.Ok(AccountEndpoints.ToDto(db, account));
+        return account is null ? TypedResults.NotFound() : TypedResults.Ok(AccountEndpoints.ToDto(db, account));
     }
 }

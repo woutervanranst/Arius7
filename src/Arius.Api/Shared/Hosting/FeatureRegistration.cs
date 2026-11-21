@@ -6,6 +6,8 @@ namespace Arius.Api.Shared.Hosting;
 /// feature file is all it takes to register and map it.</summary>
 internal static class FeatureRegistration
 {
+    private const string FeaturesNamespace = "Arius.Api.Features.";
+
     private static readonly Type[] Endpoints   = ConcreteTypesOf(typeof(IEndpoint));
     private static readonly Type[] HubHandlers = ConcreteTypesOf(typeof(IHubHandler));
 
@@ -19,10 +21,16 @@ internal static class FeatureRegistration
         return services;
     }
 
+    /// <summary>Maps every endpoint, tagged with its feature area (the namespace segment after
+    /// <c>Arius.Api.Features</c>) so the OpenAPI document groups operations by area.</summary>
     public static void MapEndpoints(this IEndpointRouteBuilder api)
     {
-        foreach (var endpoint in Endpoints)
-            endpoint.GetMethod(nameof(IEndpoint.Map), BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [api]);
+        foreach (var area in Endpoints.GroupBy(endpoint => endpoint.Namespace![FeaturesNamespace.Length..].Split('.')[0]).OrderBy(area => area.Key, StringComparer.Ordinal))
+        {
+            var group = api.MapGroup("").WithTags(area.Key);
+            foreach (var endpoint in area)
+                endpoint.GetMethod(nameof(IEndpoint.Map), BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [group]);
+        }
     }
 
     private static Type[] ConcreteTypesOf(Type contract) =>

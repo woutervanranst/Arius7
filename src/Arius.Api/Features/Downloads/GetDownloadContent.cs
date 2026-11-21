@@ -16,8 +16,14 @@ internal sealed class GetDownloadContent(AppDatabase db, DownloadStaging staging
                 [Description("`all` for every staged file, or `remaining` for the staged files not fetched yet.")] string? set,
                 HttpContext http,
                 GetDownloadContent endpoint) => endpoint.HandleAsync(id, set, http))
+            .Produces(StatusCodes.Status200OK, typeof(Stream), "application/octet-stream", "application/zip")
+            .Produces(StatusCodes.Status206PartialContent, typeof(Stream), "application/octet-stream")
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status410Gone)
+            .Produces(StatusCodes.Status416RangeNotSatisfiable)
             .WithSummary("Download staged files")
-            .WithDescription("Streams the selected staged files of a download job. A single file is served as itself and supports range requests; several files are streamed as one ZIP archive. Files that are transferred completely are marked as fetched. Returns 400 Bad Request for an invalid `set`, 404 Not Found if the job does not exist, is not a download job or has no matching staged files, and 410 Gone after the staging folder has been cleaned up.");
+            .WithDescription("Streams the selected staged files of a download job. A single file is served as itself and supports range requests; several files are streamed as one ZIP archive. Files that are transferred completely are marked as fetched. Returns 400 Bad Request for an invalid `set`, 404 Not Found if the job does not exist, is not a download job or has no matching staged files, 410 Gone after the staging folder has been cleaned up, and 416 Range Not Satisfiable for a range past the end of the file.");
 
     private async Task<IResult> HandleAsync(string id, string? set, HttpContext http)
     {

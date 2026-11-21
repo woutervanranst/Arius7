@@ -10,5 +10,5 @@ internal sealed class GetDownloadsUsage(DownloadStaging staging) : IEndpoint
             .WithSummary("Get download staging usage")
             .WithDescription("Returns the number of download staging folders on the server disk and their total size.");
 
-    private IResult Handle() => Results.Ok(DownloadEndpoints.Usage(staging));
+    private DownloadUsageDto Handle() => DownloadEndpoints.Usage(staging);
 }

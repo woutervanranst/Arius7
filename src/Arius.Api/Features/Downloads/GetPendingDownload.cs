@@ -1,6 +1,7 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Downloads;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Downloads;
 
@@ -12,7 +13,7 @@ internal sealed class GetPendingDownload(AppDatabase db, DownloadStaging staging
             .WithSummary("Get a repository's pending download")
             .WithDescription("Returns the most recent finished download job of the repository that still has staged files not fetched yet, or 204 No Content if there is none.");
 
-    private IResult Handle(long id)
+    private Results<Ok<PendingDownloadDto>, NoContent> Handle(long id)
     {
         foreach (var job in db.ListDownloadJobs(id))
         {
@@ -22,8 +23,8 @@ internal sealed class GetPendingDownload(AppDatabase db, DownloadStaging staging
             var remaining = files.Where(f => f.Ready && !f.Downloaded).ToList();
             if (remaining.Count == 0) continue;
 
-            return Results.Ok(new PendingDownloadDto(job.Id, files.Count(f => f.Ready), files.Count, remaining.Count, remaining.Sum(f => f.Size)));
+            return TypedResults.Ok(new PendingDownloadDto(job.Id, files.Count(f => f.Ready), files.Count, remaining.Count, remaining.Sum(f => f.Size)));
         }
-        return Results.NoContent();
+        return TypedResults.NoContent();
     }
 }

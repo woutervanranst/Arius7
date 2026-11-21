@@ -1,5 +1,6 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Schedules;
 
@@ -10,9 +11,9 @@ internal sealed class DeleteSchedule(AppDatabase db) : IEndpoint
             .WithSummary("Delete a schedule")
             .WithDescription("Returns 204 No Content, also when the schedule does not exist.");
 
-    private IResult Handle(long id, long scheduleId)
+    private NoContent Handle(long id, long scheduleId)
     {
         db.DeleteSchedule(scheduleId);
-        return Results.NoContent();
+        return TypedResults.NoContent();
     }
 }

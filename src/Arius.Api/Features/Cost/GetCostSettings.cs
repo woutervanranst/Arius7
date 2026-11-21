@@ -9,5 +9,5 @@ internal sealed class GetCostSettings(AppDatabase db) : IEndpoint
         api.MapGet("/settings/cost", (GetCostSettings endpoint) => endpoint.Handle())
             .WithSummary("Get the cost confirmation settings");
 
-    private IResult Handle() => Results.Ok(db.GetCostSettings());
+    private CostSettings Handle() => db.GetCostSettings();
 }

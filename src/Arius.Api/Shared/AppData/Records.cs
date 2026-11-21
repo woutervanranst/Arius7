@@ -86,10 +86,17 @@ public sealed record DefaultValues(string? Tier, string? OnDisk, bool? FastHash,
     public static readonly DefaultValues None = new(null, null, null, null, null);
 }
 
-/// <summary>An effective option value and the level it came from (<c>factory</c> | <c>settings</c> | <c>repository</c>).</summary>
+/// <summary>An effective option value and the level it came from.</summary>
+/// <param name="Value">The effective value.</param>
+/// <param name="Source">The level it comes from: <c>factory</c>, <c>settings</c> or <c>repository</c>.</param>
 public sealed record ResolvedValue<T>(T Value, string Source);
 
 /// <summary>The effective value of each option after resolving repository, then global settings, then factory.</summary>
+/// <param name="Tier">Archive storage tier.</param>
+/// <param name="OnDisk">What an archive does with local files.</param>
+/// <param name="FastHash">Whether archives reuse cached hashes of unchanged files.</param>
+/// <param name="Overwrite">Whether restores overwrite existing local files.</param>
+/// <param name="NoPointers">Whether restores skip writing pointer files.</param>
 public sealed record ResolvedDefaults(
     ResolvedValue<string> Tier,
     ResolvedValue<string> OnDisk,

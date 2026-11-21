@@ -1,6 +1,7 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Downloads;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Downloads;
 
@@ -12,10 +13,10 @@ internal sealed class GetDownload(AppDatabase db, DownloadStaging staging) : IEn
             .WithSummary("Get a download's files")
             .WithDescription("Returns the files a download job collected, whether each is staged and fetched, whether the staging folder has been cleaned up, and when automatic clean-up will delete it. Returns 404 Not Found if the job does not exist or is not a download job.");
 
-    private IResult Handle(string id)
+    private Results<Ok<DownloadStateDto>, NotFound> Handle(string id)
     {
         var job = db.GetDownloadJob(id);
-        if (job is null) return Results.NotFound();
+        if (job is null) return TypedResults.NotFound();
 
         var cleanedUp = DownloadEndpoints.IsCleanedUp(job, staging);
         var settings  = db.GetDownloadSettings();
@@ -24,6 +25,6 @@ internal sealed class GetDownload(AppDatabase db, DownloadStaging staging) : IEn
             : null;
 
         var files = db.ListDownloadFiles(id).Select(f => new DownloadFileDto(f.Path, f.Size, f.Ready, f.Downloaded)).ToList();
-        return Results.Ok(new DownloadStateDto(files, cleanedUp, cleanupAt));
+        return TypedResults.Ok(new DownloadStateDto(files, cleanedUp, cleanupAt));
     }
 }
