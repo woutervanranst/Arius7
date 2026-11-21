@@ -45,13 +45,16 @@ public sealed record JobRecord(
 public sealed record DownloadFile(string Path, long Size, bool Ready = false, bool Downloaded = false);
 
 /// <summary>Server-wide clean-up of downloaded files: whether it runs and how many days after a download job finished.</summary>
+/// <param name="CleanupEnabled">Whether staged files are deleted automatically.</param>
+/// <param name="CleanupDays">Days after a download job finishes before its staged files are deleted, from 1 to 3650.</param>
 public sealed record DownloadSettings(bool CleanupEnabled, int CleanupDays)
 {
     public static readonly DownloadSettings Default = new(true, 7);
 }
 
 /// <summary>Server-wide cost confirmation: a restore or download with every chunk in an online tier and an
-/// estimated cost (EUR) below <see cref="AutoAcceptBelow"/> starts without asking; 0 always asks.</summary>
+/// estimated cost (EUR) below <c>autoAcceptBelow</c> starts without asking; 0 always asks.</summary>
+/// <param name="AutoAcceptBelow">Threshold in EUR, from 0 to 1000 with at most two decimal places.</param>
 public sealed record CostSettings(decimal AutoAcceptBelow)
 {
     public static readonly CostSettings Default = new(0.01m);
@@ -70,6 +73,12 @@ public sealed record ScheduleRecord(
 /// The five archive/restore options as set at one level of the defaults hierarchy (global settings or one
 /// repository's properties). <c>null</c> means "not set at this level" and falls through to the next level.
 /// </summary>
+/// <param name="Tier">Archive: storage tier for uploaded chunks, <c>hot</c>, <c>cool</c>, <c>cold</c> or <c>archive</c>.</param>
+/// <param name="OnDisk">Archive: what happens to local files. <c>keep</c> leaves them as they are, <c>keep-pointers</c> also
+/// writes a pointer file next to each file, and <c>replace</c> writes pointer files and deletes the binary files.</param>
+/// <param name="FastHash">Archive: reuse cached hashes of unchanged files instead of reading every file again.</param>
+/// <param name="Overwrite">Restore: overwrite existing local files.</param>
+/// <param name="NoPointers">Restore: do not write pointer files next to restored files.</param>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record DefaultValues(string? Tier, string? OnDisk, bool? FastHash, bool? Overwrite, bool? NoPointers)
 {

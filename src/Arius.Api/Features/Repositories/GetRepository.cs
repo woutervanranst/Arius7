@@ -7,7 +7,9 @@ namespace Arius.Api.Features.Repositories;
 internal sealed class GetRepository(AppDatabase db, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/repos/{id:long}", (long id, CancellationToken ct, GetRepository endpoint) => endpoint.HandleAsync(id, ct));
+        api.MapGet("/repos/{id:long}", (long id, CancellationToken ct, GetRepository endpoint) => endpoint.HandleAsync(id, ct))
+            .WithSummary("Get a repository")
+            .WithDescription("Returns 404 Not Found if the repository does not exist.");
 
     private async Task<IResult> HandleAsync(long id, CancellationToken ct)
     {

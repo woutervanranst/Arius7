@@ -8,7 +8,9 @@ namespace Arius.Api.Features.Downloads;
 internal sealed class GetPendingDownload(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/repos/{id:long}/downloads/pending", (long id, GetPendingDownload endpoint) => endpoint.Handle(id));
+        api.MapGet("/repos/{id:long}/downloads/pending", (long id, GetPendingDownload endpoint) => endpoint.Handle(id))
+            .WithSummary("Get a repository's pending download")
+            .WithDescription("Returns the most recent finished download job of the repository that still has staged files not fetched yet, or 204 No Content if there is none.");
 
     private IResult Handle(long id)
     {

@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Defaults;
 internal sealed class GetGlobalDefaults(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/settings/defaults", (GetGlobalDefaults endpoint) => endpoint.Handle());
+        api.MapGet("/settings/defaults", (GetGlobalDefaults endpoint) => endpoint.Handle())
+            .WithSummary("Get the global defaults")
+            .WithDescription("Returns the archive and restore option defaults set for the whole server, the factory values that apply when an option is not set, and for each option the repositories that inherit it.");
 
     private IResult Handle() => Results.Ok(DefaultsEndpoints.ToGlobalDto(db));
 }

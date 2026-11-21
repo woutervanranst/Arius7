@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Accounts;
 internal sealed class GetAccount(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/accounts/{id:long}", (long id, GetAccount endpoint) => endpoint.Handle(id));
+        api.MapGet("/accounts/{id:long}", (long id, GetAccount endpoint) => endpoint.Handle(id))
+            .WithSummary("Get a storage account")
+            .WithDescription("Returns 404 Not Found if the account does not exist.");
 
     private IResult Handle(long id)
     {

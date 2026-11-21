@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Downloads;
 internal sealed class UpdateDownloadSettings(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapPut("/settings/downloads", (DownloadSettings settings, UpdateDownloadSettings endpoint) => endpoint.Handle(settings));
+        api.MapPut("/settings/downloads", (DownloadSettings settings, UpdateDownloadSettings endpoint) => endpoint.Handle(settings))
+            .WithSummary("Update the download clean-up settings")
+            .WithDescription("Returns 400 Bad Request unless the clean-up delay is between 1 and 3650 days.");
 
     private IResult Handle(DownloadSettings settings)
     {

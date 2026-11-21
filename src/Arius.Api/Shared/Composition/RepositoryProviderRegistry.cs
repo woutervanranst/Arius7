@@ -7,7 +7,7 @@ using Arius.Core;
 namespace Arius.Api.Shared.Composition;
 
 /// <summary>
-/// Builds and caches service providers. <see cref="ServiceCollectionExtensions.AddArius"/> registers Arius.Core as
+/// Builds and caches service providers. <see cref="Arius.Core.ServiceCollectionExtensions.AddArius"/> registers Arius.Core as
 /// singletons bound to one account, container and passphrase, so each repository gets its own provider with its
 /// own <c>IMediator</c>.
 /// <list type="bullet">

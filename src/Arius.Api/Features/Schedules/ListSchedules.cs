@@ -6,7 +6,8 @@ namespace Arius.Api.Features.Schedules;
 internal sealed class ListSchedules(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/repos/{id:long}/schedules", (long id, ListSchedules endpoint) => endpoint.Handle(id));
+        api.MapGet("/repos/{id:long}/schedules", (long id, ListSchedules endpoint) => endpoint.Handle(id))
+            .WithSummary("List a repository's schedules");
 
     private List<ScheduleDto> Handle(long id) =>
         db.ListSchedules(id).Select(ScheduleEndpoints.ToDto).ToList();

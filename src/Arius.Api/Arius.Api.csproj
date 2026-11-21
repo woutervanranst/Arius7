@@ -4,6 +4,10 @@
     <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- The XML documentation file feeds the OpenAPI document: doc comments on request/response records become
+         schema descriptions. Not every public member needs one, and parameters may be documented selectively. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

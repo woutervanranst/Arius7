@@ -7,7 +7,9 @@ namespace Arius.Api.Features.Accounts;
 internal sealed class UpdateAccount(AppDatabase db, SecretProtector secrets, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapPatch("/accounts/{id:long}", (long id, UpdateAccountRequest request, UpdateAccount endpoint) => endpoint.Handle(id, request));
+        api.MapPatch("/accounts/{id:long}", (long id, UpdateAccountRequest request, UpdateAccount endpoint) => endpoint.Handle(id, request))
+            .WithSummary("Update a storage account")
+            .WithDescription("Replaces the stored account key. When the key changes, the connections of the repositories that use the account are rebuilt. Returns 404 Not Found if the account does not exist.");
 
     // Cached providers hold the old key; evict them so they rebuild with the new one.
     private IResult Handle(long id, UpdateAccountRequest request)

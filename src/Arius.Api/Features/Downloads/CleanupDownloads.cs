@@ -7,7 +7,9 @@ namespace Arius.Api.Features.Downloads;
 internal sealed class CleanupDownloads(DownloadCleaner cleaner, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapPost("/downloads/cleanup", (CleanupDownloads endpoint) => endpoint.Handle());
+        api.MapPost("/downloads/cleanup", (CleanupDownloads endpoint) => endpoint.Handle())
+            .WithSummary("Clean up all finished downloads")
+            .WithDescription("Deletes the staging folders of all finished download jobs, regardless of the clean-up delay, and returns the remaining usage.");
 
     private IResult Handle()
     {

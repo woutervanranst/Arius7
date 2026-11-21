@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
@@ -18,7 +19,14 @@ namespace Arius.Api.Features.Statistics;
 internal sealed class GetStatistics(AppDatabase database, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/repos/{id:long}/stats", (long id, string? version, bool? full, CancellationToken ct, GetStatistics endpoint) => endpoint.HandleAsync(id, version, full, ct));
+        api.MapGet("/repos/{id:long}/stats", (
+                long id,
+                [Description("Snapshot version, or a prefix of it. Omit for the latest snapshot.")] string? version,
+                [Description("Load the whole chunk index first, so the repository-wide figures are complete. Slower. Defaults to false.")] bool? full,
+                CancellationToken ct,
+                GetStatistics endpoint) => endpoint.HandleAsync(id, version, full, ct))
+            .WithSummary("Get repository statistics")
+            .WithDescription("Returns the file count and size of a snapshot, and the repository-wide deduplicated size, stored size, chunk count and estimated monthly storage cost per tier. Without `full=true`, the repository-wide figures cover only the part of the chunk index that is cached locally. Results are cached until the snapshots change. Returns zeros if the container does not exist yet.");
 
     private async Task<StatisticsDto> HandleAsync(long id, string? version, bool? full, CancellationToken ct)
     {
