@@ -1,6 +1,5 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Composition;
-using Arius.Core;
 using Arius.Core.Features.ArchiveCommand;
 using Arius.Core.Features.ChunkHydrationStatusQuery;
 using Arius.Core.Features.ContainerNamesQuery;
@@ -62,17 +61,11 @@ public sealed class ScriptedRepositoryCoreComposer(ScenarioRegistry scenarios, S
         return Task.CompletedTask;
     }
 
-    public void ComposeWithoutRepository(IServiceCollection services)
-    {
-        // Registered after Core's handlers so the scripted container listing replaces the real one.
-        services.AddAriusWithoutRepository();
+    public void ComposeWithoutRepository(IServiceCollection services) =>
         services.AddSingleton<IStreamQueryHandler<ContainerNamesQuery, string>, ScriptedContainerNamesHandler>();
-    }
 
     private static void AddNotConfiguredStandIns(IServiceCollection services)
     {
-        // Mediator resolves every discovered handler on first use, so every request needs a handler, not only the
-        // scripted ones. This list must match the handlers AddArius() registers.
         services.AddSingleton<ICommandHandler<ArchiveCommand, ArchiveResult>, NotConfiguredCommandHandler<ArchiveCommand, ArchiveResult>>();
         services.AddSingleton<ICommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>, NotConfiguredCommandHandler<RepairChunkIndexCommand, RepairChunkIndexResult>>();
         services.AddSingleton<ICommandHandler<RestoreCommand, RestoreResult>, NotConfiguredCommandHandler<RestoreCommand, RestoreResult>>();

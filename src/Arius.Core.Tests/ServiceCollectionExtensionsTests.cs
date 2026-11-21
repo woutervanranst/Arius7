@@ -4,7 +4,6 @@ using Arius.Tests.Shared.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using NSubstitute;
 
 namespace Arius.Core.Tests;
 
@@ -55,41 +54,5 @@ public class ServiceCollectionExtensionsTests
         var filter = sp.GetRequiredService<FileExclusionFilter>();
         filter.ShouldExcludeFile(PathSegment.Parse("custom.junk"), default).ShouldBeTrue();
         filter.ShouldExcludeFile(PathSegment.Parse("x"), FileAttributes.Hidden).ShouldBeTrue();
-    }
-
-    [Test]
-    public void AddAriusWithoutRepository_RegistersEveryMediatorHandlerThatAddAriusRegisters()
-    {
-        var bound = new ServiceCollection();
-        bound.AddArius(new FakeInMemoryBlobContainerService(), passphrase: null, "acct", "ctr");
-        var unbound = new ServiceCollection();
-        unbound.AddAriusWithoutRepository();
-
-        // Mediator resolves every handler on first use, so a missing stand-in breaks the whole provider.
-        HandlerInterfaces(unbound).ShouldBe(HandlerInterfaces(bound), ignoreOrder: true);
-
-        static List<Type> HandlerInterfaces(IServiceCollection services) => services
-            .Select(d => d.ServiceType)
-            .Where(t => t.IsGenericType && t.Namespace == "Mediator")
-            .ToList();
-    }
-
-    [Test]
-    public async Task AddAriusWithoutRepository_ContainerNamesQuery_ListsTheAccountContainers()
-    {
-        var blobService = Substitute.For<IBlobService>();
-        blobService.GetContainerNamesAsync(Arg.Any<CancellationToken>()).Returns(new[] { "one", "two" }.ToAsyncEnumerable());
-        var factory = Substitute.For<IBlobServiceFactory>();
-        factory.CreateAsync("account", "key", Arg.Any<CancellationToken>()).Returns(blobService);
-
-        var services = new ServiceCollection();
-        services.AddSingleton(factory);
-        services.AddAriusWithoutRepository();
-        await using var sp = services.BuildServiceProvider();
-
-        var handler = sp.GetRequiredService<Mediator.IStreamQueryHandler<Arius.Core.Features.ContainerNamesQuery.ContainerNamesQuery, string>>();
-        var names = await handler.Handle(new Arius.Core.Features.ContainerNamesQuery.ContainerNamesQuery("account", "key"), CancellationToken.None).ToListAsync();
-
-        names.ShouldBe(["one", "two"]);
     }
 }
