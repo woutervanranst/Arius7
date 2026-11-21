@@ -6,7 +6,7 @@ namespace Arius.Api.Features.Archive;
 
 // Each forwarder applies one Arius.Core archive event to the job's JobSink.
 
-public sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<ScanCompleteEvent>
+internal sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<ScanCompleteEvent>
 {
     public ValueTask Handle(ScanCompleteEvent n, CancellationToken ct)
     {
@@ -15,36 +15,36 @@ public sealed class ScanCompleteForwarder(JobSink sink) : INotificationHandler<S
     }
 }
 
-public sealed class FileScannedForwarder(JobSink sink) : INotificationHandler<FileScannedEvent>
+internal sealed class FileScannedForwarder(JobSink sink) : INotificationHandler<FileScannedEvent>
 {
     public ValueTask Handle(FileScannedEvent n, CancellationToken ct) { sink.AddScanned(n.FileSize); return ValueTask.CompletedTask; }
 }
 
-public sealed class FileHashingForwarder(JobSink sink) : INotificationHandler<FileHashingEvent>
+internal sealed class FileHashingForwarder(JobSink sink) : INotificationHandler<FileHashingEvent>
 {
     public ValueTask Handle(FileHashingEvent n, CancellationToken ct) { sink.SetPhase("hash-route"); return ValueTask.CompletedTask; }
 }
 
 // Bytes are credited on hash completion, not at hash start, so the hashed total (and the hash rate and ETA
 // derived from it) reflects finished work.
-public sealed class FileHashedForwarder(JobSink sink) : INotificationHandler<FileHashedEvent>
+internal sealed class FileHashedForwarder(JobSink sink) : INotificationHandler<FileHashedEvent>
 {
     public ValueTask Handle(FileHashedEvent n, CancellationToken ct) { sink.AddHashed(n.FileSize); return ValueTask.CompletedTask; }
 }
 
 // Routing has drained, so the new-byte total is final: it replaces the growing queued-bytes estimate as the
 // upload-progress denominator, and the ETA stops being provisional.
-public sealed class RoutingCompleteForwarder(JobSink sink) : INotificationHandler<RoutingCompleteEvent>
+internal sealed class RoutingCompleteForwarder(JobSink sink) : INotificationHandler<RoutingCompleteEvent>
 {
     public ValueTask Handle(RoutingCompleteEvent n, CancellationToken ct) { sink.SetNewByteTotal(n.NewByteTotal); return ValueTask.CompletedTask; }
 }
 
-public sealed class FileDedupedForwarder(JobSink sink) : INotificationHandler<FileDedupedEvent>
+internal sealed class FileDedupedForwarder(JobSink sink) : INotificationHandler<FileDedupedEvent>
 {
     public ValueTask Handle(FileDedupedEvent n, CancellationToken ct) { sink.AddDeduped(n.OriginalSize); return ValueTask.CompletedTask; }
 }
 
-public sealed class TarBundleSealingForwarder(JobSink sink) : INotificationHandler<TarBundleSealingEvent>
+internal sealed class TarBundleSealingForwarder(JobSink sink) : INotificationHandler<TarBundleSealingEvent>
 {
     public ValueTask Handle(TarBundleSealingEvent n, CancellationToken ct)
     {
@@ -53,7 +53,7 @@ public sealed class TarBundleSealingForwarder(JobSink sink) : INotificationHandl
     }
 }
 
-public sealed class TarBundleUploadedForwarder(JobSink sink) : INotificationHandler<TarBundleUploadedEvent>
+internal sealed class TarBundleUploadedForwarder(JobSink sink) : INotificationHandler<TarBundleUploadedEvent>
 {
     public ValueTask Handle(TarBundleUploadedEvent n, CancellationToken ct)
     {
@@ -62,7 +62,7 @@ public sealed class TarBundleUploadedForwarder(JobSink sink) : INotificationHand
     }
 }
 
-public sealed class ChunkUploadedForwarder(JobSink sink) : INotificationHandler<ChunkUploadedEvent>
+internal sealed class ChunkUploadedForwarder(JobSink sink) : INotificationHandler<ChunkUploadedEvent>
 {
     public ValueTask Handle(ChunkUploadedEvent n, CancellationToken ct)
     {
@@ -71,7 +71,7 @@ public sealed class ChunkUploadedForwarder(JobSink sink) : INotificationHandler<
     }
 }
 
-public sealed class ChunkUploadingForwarder(JobSink sink) : INotificationHandler<ChunkUploadingEvent>
+internal sealed class ChunkUploadingForwarder(JobSink sink) : INotificationHandler<ChunkUploadingEvent>
 {
     public ValueTask Handle(ChunkUploadingEvent n, CancellationToken ct)
     {
@@ -81,12 +81,12 @@ public sealed class ChunkUploadingForwarder(JobSink sink) : INotificationHandler
     }
 }
 
-public sealed class SnapshotCreatedForwarder(JobSink sink) : INotificationHandler<SnapshotCreatedEvent>
+internal sealed class SnapshotCreatedForwarder(JobSink sink) : INotificationHandler<SnapshotCreatedEvent>
 {
     public ValueTask Handle(SnapshotCreatedEvent n, CancellationToken ct) => ValueTask.CompletedTask;
 }
 
-public sealed class FinalizingSnapshotForwarder(JobSink sink) : INotificationHandler<FinalizingSnapshotEvent>
+internal sealed class FinalizingSnapshotForwarder(JobSink sink) : INotificationHandler<FinalizingSnapshotEvent>
 {
     public ValueTask Handle(FinalizingSnapshotEvent n, CancellationToken ct) { sink.SetPhase("snapshot"); return ValueTask.CompletedTask; }
 }
