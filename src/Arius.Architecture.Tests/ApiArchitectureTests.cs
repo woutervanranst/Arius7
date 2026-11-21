@@ -5,6 +5,10 @@ using Arius.Api.Shared.Hosting;
 using Arius.Api.Shared.Hubs;
 using Arius.Core.Shared.Snapshot;
 using Arius.Core.Shared.Storage;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Hosting;
 
 namespace Arius.Architecture.Tests;
 
@@ -24,6 +28,8 @@ public class ApiArchitectureTests
     private static readonly ArchUnitNET.Domain.Architecture Architecture = new ArchLoader()
         .LoadAssemblies(ApiAssembly, typeof(Core.AssemblyMarker).Assembly)
         .Build();
+
+    private static readonly Lazy<List<RouteEndpoint>> RestEndpoints = new(MapRestEndpoints);
 
     /// <summary>The types that wire the slices together: the host maps every endpoint, the hub dispatches
     /// every hub method to its feature. They may reference any feature's entry point.</summary>
@@ -130,6 +136,32 @@ public class ApiArchitectureTests
     }
 
     [Test]
+    public void Endpoints_Should_Have_An_OpenApi_Summary()
+    {
+        // The route delegate is a lambda, so XML comments never reach the OpenAPI document; the summary must be set
+        // on the mapping.
+        var missing = RestEndpoints.Value
+            .Where(endpoint => string.IsNullOrWhiteSpace(endpoint.Metadata.GetMetadata<IEndpointSummaryMetadata>()?.Summary))
+            .Select(endpoint => endpoint.DisplayName!)
+            .ToList();
+
+        ShouldBeEmpty(missing, "Chain .WithSummary(...) onto the endpoint mapping:");
+    }
+
+    [Test]
+    public void Endpoints_Should_Declare_Their_Success_Response()
+    {
+        // A handler that returns a plain IResult gives OpenAPI no response schema. Return the DTO or a typed
+        // Results<...> union, or declare the response with .Produces(...).
+        var undeclared = RestEndpoints.Value
+            .Where(endpoint => !endpoint.Metadata.GetOrderedMetadata<IProducesResponseTypeMetadata>().Any(response => response.StatusCode is >= 200 and < 300))
+            .Select(endpoint => endpoint.DisplayName!)
+            .ToList();
+
+        ShouldBeEmpty(undeclared, "Declare a 2xx response so the OpenAPI document has a response schema:");
+    }
+
+    [Test]
     public void Shared_Should_Not_Depend_On_Features()
     {
         var violations = new List<string>();
@@ -161,6 +193,19 @@ public class ApiArchitectureTests
                     violations.Add($"'{consumer.FullName}' depends on '{dependency.Target.FullName}'.");
 
         ShouldBeEmpty(violations, "Arius.Api must reach Core through IMediator, not Core's Shared services:");
+    }
+
+    /// <summary>The REST endpoints as the feature scan maps them, with the metadata the OpenAPI document is built from.</summary>
+    private static List<RouteEndpoint> MapRestEndpoints()
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.Services.AddFeatures();
+        // The endpoints' own dependencies are not registered: only their route metadata is read.
+        builder.Host.UseDefaultServiceProvider(options => options.ValidateOnBuild = false);
+
+        using var app = builder.Build();
+        app.MapEndpoints();
+        return ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().ToList();
     }
 
     private static bool IsCompositionRoot(ArchUnitNET.Domain.IType type) =>

@@ -1,5 +1,6 @@
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Repositories;
 
@@ -10,10 +11,10 @@ internal sealed class CreateRepository(AppDatabase db, SecretProtector secrets) 
             .WithSummary("Add a repository")
             .WithDescription("Registers a blob container of a saved storage account as a repository and returns it with 201 Created. The container does not have to exist yet: the first archive creates it. The passphrase is encrypted at rest. The pricing region in the response is null; it is resolved by the next list request. Returns 400 Bad Request if the account does not exist.");
 
-    private IResult Handle(CreateRepositoryRequest request)
+    private Results<Created<RepositoryDto>, BadRequest<string>> Handle(CreateRepositoryRequest request)
     {
         if (db.GetAccount(request.AccountId) is null)
-            return Results.BadRequest($"Account {request.AccountId} does not exist.");
+            return TypedResults.BadRequest($"Account {request.AccountId} does not exist.");
 
         var id = db.InsertRepository(
             request.Alias,
@@ -24,6 +25,6 @@ internal sealed class CreateRepository(AppDatabase db, SecretProtector secrets) 
 
         // The region stays unresolved because the container may not exist yet; it is resolved and cached when the
         // client refetches the list.
-        return Results.Created($"/repos/{id}", RepositoryEndpoints.ToDto(db, db.GetRepository(id)!, region: null, regionIsDefault: false));
+        return TypedResults.Created($"/repos/{id}", RepositoryEndpoints.ToDto(db, db.GetRepository(id)!, region: null, regionIsDefault: false));
     }
 }

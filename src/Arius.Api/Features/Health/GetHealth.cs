@@ -10,5 +10,5 @@ internal sealed class GetHealth : IEndpoint
             .WithSummary("Check service health")
             .WithDescription("Returns 200 OK while the service is running. Like every `/api` response, it carries the server version in the `X-Arius-Version` header.");
 
-    private IResult Handle() => Results.Ok(new { status = "ok" });
+    private HealthDto Handle() => new("ok");
 }

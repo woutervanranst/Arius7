@@ -11,9 +11,9 @@ internal sealed class CleanupDownloads(DownloadCleaner cleaner, DownloadStaging 
             .WithSummary("Clean up all finished downloads")
             .WithDescription("Deletes the staging folders of all finished download jobs, regardless of the clean-up delay, and returns the remaining usage.");
 
-    private IResult Handle()
+    private DownloadUsageDto Handle()
     {
         cleaner.CleanUpAll();
-        return Results.Ok(DownloadEndpoints.Usage(staging));
+        return DownloadEndpoints.Usage(staging);
     }
 }

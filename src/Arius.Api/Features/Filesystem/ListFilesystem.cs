@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Arius.Api.Shared.Hosting;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Arius.Api.Features.Filesystem;
 
@@ -14,10 +15,11 @@ internal sealed class ListFilesystem : IEndpoint
         api.MapGet("/fs/list", (
                 [Description("Directory on the server. Defaults to the file system root.")] string? path,
                 ListFilesystem endpoint) => endpoint.Handle(path))
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("List server directories")
             .WithDescription("Lists the subdirectories of a directory on the server, for choosing a repository's local path. Paths are as the server sees them; under Docker, these are the mounted volumes. Returns 400 Bad Request for an invalid path, 404 Not Found if the directory does not exist, and 403 Forbidden if it cannot be read.");
 
-    private IResult Handle(string? path)
+    private Results<Ok<FsListDto>, BadRequest<string>, NotFound<string>, ProblemHttpResult> Handle(string? path)
     {
         var target = string.IsNullOrWhiteSpace(path) ? DefaultRoot() : path.Trim();
 
@@ -28,11 +30,11 @@ internal sealed class ListFilesystem : IEndpoint
         }
         catch (Exception ex) when (ex is ArgumentException or PathTooLongException)
         {
-            return Results.BadRequest($"Invalid path: {ex.Message}");
+            return TypedResults.BadRequest($"Invalid path: {ex.Message}");
         }
 
         if (!directory.Exists)
-            return Results.NotFound($"Directory not found: {target}");
+            return TypedResults.NotFound($"Directory not found: {target}");
 
         List<FsEntryDto> entries;
         try
@@ -44,10 +46,10 @@ internal sealed class ListFilesystem : IEndpoint
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            return Results.Problem($"Cannot read directory: {ex.Message}", statusCode: StatusCodes.Status403Forbidden);
+            return TypedResults.Problem($"Cannot read directory: {ex.Message}", statusCode: StatusCodes.Status403Forbidden);
         }
 
-        return Results.Ok(new FsListDto(directory.FullName, directory.Parent?.FullName, entries));
+        return TypedResults.Ok(new FsListDto(directory.FullName, directory.Parent?.FullName, entries));
     }
 
     private static string DefaultRoot()
