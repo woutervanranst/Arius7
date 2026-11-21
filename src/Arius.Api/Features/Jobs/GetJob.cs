@@ -7,7 +7,9 @@ namespace Arius.Api.Features.Jobs;
 internal sealed class GetJob(AppDatabase db, JobStateRegistry jobStates) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/jobs/{id}", (string id, GetJob endpoint) => endpoint.Handle(id));
+        api.MapGet("/jobs/{id}", (string id, GetJob endpoint) => endpoint.Handle(id))
+            .WithSummary("Get a job")
+            .WithDescription("Returns a job with its progress (live while the job runs, otherwise the last saved state), warning count, pending cost estimate and restore resume state. Returns 404 Not Found if the job does not exist.");
 
     private IResult Handle(string id)
     {

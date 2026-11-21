@@ -7,7 +7,9 @@ namespace Arius.Api.Features.Jobs;
 internal sealed class GetJobWarnings(AppDatabase db, JobStateRegistry jobStates) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/jobs/{id}/warnings", (string id, GetJobWarnings endpoint) => endpoint.Handle(id));
+        api.MapGet("/jobs/{id}/warnings", (string id, GetJobWarnings endpoint) => endpoint.Handle(id))
+            .WithSummary("Get a job's warnings")
+            .WithDescription("Returns the warnings a job emitted. Only the most recent warnings are kept. Returns 404 Not Found if the job does not exist.");
 
     private IResult Handle(string id)
     {

@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Accounts;
 internal sealed class DeleteAccount(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapDelete("/accounts/{id:long}", (long id, DeleteAccount endpoint) => endpoint.Handle(id));
+        api.MapDelete("/accounts/{id:long}", (long id, DeleteAccount endpoint) => endpoint.Handle(id))
+            .WithSummary("Delete a storage account")
+            .WithDescription("Returns 409 Conflict while repositories still use the account, and 404 Not Found if it does not exist.");
 
     private IResult Handle(long id)
     {

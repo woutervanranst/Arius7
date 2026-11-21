@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Accounts;
 internal sealed class CreateAccount(AppDatabase db, SecretProtector secrets) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapPost("/accounts/", (CreateAccountRequest request, CreateAccount endpoint) => endpoint.Handle(request));
+        api.MapPost("/accounts/", (CreateAccountRequest request, CreateAccount endpoint) => endpoint.Handle(request))
+            .WithSummary("Add a storage account")
+            .WithDescription("Saves a storage account and returns it with 201 Created. The account key is encrypted at rest.");
 
     private IResult Handle(CreateAccountRequest request)
     {

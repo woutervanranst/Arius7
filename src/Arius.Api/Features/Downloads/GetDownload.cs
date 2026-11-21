@@ -8,7 +8,9 @@ namespace Arius.Api.Features.Downloads;
 internal sealed class GetDownload(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/jobs/{id}/download", (string id, GetDownload endpoint) => endpoint.Handle(id));
+        api.MapGet("/jobs/{id}/download", (string id, GetDownload endpoint) => endpoint.Handle(id))
+            .WithSummary("Get a download's files")
+            .WithDescription("Returns the files a download job collected, whether each is staged and fetched, whether the staging folder has been cleaned up, and when automatic clean-up will delete it. Returns 404 Not Found if the job does not exist or is not a download job.");
 
     private IResult Handle(string id)
     {

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO.Compression;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Downloads;
@@ -10,7 +11,13 @@ namespace Arius.Api.Features.Downloads;
 internal sealed class GetDownloadContent(AppDatabase db, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/jobs/{id}/download/content", (string id, string? set, HttpContext http, GetDownloadContent endpoint) => endpoint.HandleAsync(id, set, http));
+        api.MapGet("/jobs/{id}/download/content", (
+                string id,
+                [Description("`all` for every staged file, or `remaining` for the staged files not fetched yet.")] string? set,
+                HttpContext http,
+                GetDownloadContent endpoint) => endpoint.HandleAsync(id, set, http))
+            .WithSummary("Download staged files")
+            .WithDescription("Streams the selected staged files of a download job. A single file is served as itself and supports range requests; several files are streamed as one ZIP archive. Files that are transferred completely are marked as fetched. Returns 400 Bad Request for an invalid `set`, 404 Not Found if the job does not exist, is not a download job or has no matching staged files, and 410 Gone after the staging folder has been cleaned up.");
 
     private async Task<IResult> HandleAsync(string id, string? set, HttpContext http)
     {

@@ -7,7 +7,9 @@ namespace Arius.Api.Features.Repositories;
 internal sealed class UpdateRepository(AppDatabase db, SecretProtector secrets, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapPatch("/repos/{id:long}", (long id, UpdateRepositoryRequest request, UpdateRepository endpoint) => endpoint.Handle(id, request));
+        api.MapPatch("/repos/{id:long}", (long id, UpdateRepositoryRequest request, UpdateRepository endpoint) => endpoint.Handle(id, request))
+            .WithSummary("Update a repository")
+            .WithDescription("Changes the alias, local path or passphrase; null fields are left unchanged. The cached connection, statistics and pricing region are discarded, so the region in the response is null until the next list request. Returns 404 Not Found if the repository does not exist.");
 
     private IResult Handle(long id, UpdateRepositoryRequest request)
     {

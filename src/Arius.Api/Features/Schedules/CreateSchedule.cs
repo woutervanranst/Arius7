@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Schedules;
 internal sealed class CreateSchedule(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapPost("/repos/{id:long}/schedules", (long id, CreateScheduleRequest request, CreateSchedule endpoint) => endpoint.Handle(id, request));
+        api.MapPost("/repos/{id:long}/schedules", (long id, CreateScheduleRequest request, CreateSchedule endpoint) => endpoint.Handle(id, request))
+            .WithSummary("Create a schedule")
+            .WithDescription("Adds an enabled cron schedule that starts archive jobs for the repository, using the repository's defaults. A run is skipped while the repository has an active job. Returns 201 Created with the schedule, or 404 Not Found if the repository does not exist.");
 
     private IResult Handle(long id, CreateScheduleRequest request)
     {

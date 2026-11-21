@@ -10,7 +10,9 @@ namespace Arius.Api.Features.Snapshots;
 internal sealed class ListSnapshots(RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/repos/{id:long}/snapshots", (long id, CancellationToken ct, ListSnapshots endpoint) => endpoint.HandleAsync(id, ct));
+        api.MapGet("/repos/{id:long}/snapshots", (long id, CancellationToken ct, ListSnapshots endpoint) => endpoint.HandleAsync(id, ct))
+            .WithSummary("List snapshots")
+            .WithDescription("Returns the repository's snapshots, oldest first. Returns an empty list if the container does not exist yet because no archive has run.");
 
     private async Task<List<SnapshotDto>> HandleAsync(long id, CancellationToken ct)
     {

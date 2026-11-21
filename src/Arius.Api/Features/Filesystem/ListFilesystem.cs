@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Arius.Api.Shared.Hosting;
 
 namespace Arius.Api.Features.Filesystem;
@@ -10,7 +11,11 @@ namespace Arius.Api.Features.Filesystem;
 internal sealed class ListFilesystem : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/fs/list", (string? path, ListFilesystem endpoint) => endpoint.Handle(path));
+        api.MapGet("/fs/list", (
+                [Description("Directory on the server. Defaults to the file system root.")] string? path,
+                ListFilesystem endpoint) => endpoint.Handle(path))
+            .WithSummary("List server directories")
+            .WithDescription("Lists the subdirectories of a directory on the server, for choosing a repository's local path. Paths are as the server sees them; under Docker, these are the mounted volumes. Returns 400 Bad Request for an invalid path, 404 Not Found if the directory does not exist, and 403 Forbidden if it cannot be read.");
 
     private IResult Handle(string? path)
     {

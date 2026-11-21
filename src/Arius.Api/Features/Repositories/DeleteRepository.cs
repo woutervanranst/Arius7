@@ -8,7 +8,9 @@ namespace Arius.Api.Features.Repositories;
 internal sealed class DeleteRepository(AppDatabase db, RepositoryProviderRegistry registry, DownloadStaging staging) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapDelete("/repos/{id:long}", (long id, DeleteRepository endpoint) => endpoint.Handle(id));
+        api.MapDelete("/repos/{id:long}", (long id, DeleteRepository endpoint) => endpoint.Handle(id))
+            .WithSummary("Delete a repository")
+            .WithDescription("Removes the repository from this server, together with its job history, schedules, defaults and staged downloads. The blob container and its data are not deleted. Returns 409 Conflict while a job is active, and 404 Not Found if the repository does not exist.");
 
     private IResult Handle(long id)
     {

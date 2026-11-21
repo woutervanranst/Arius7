@@ -7,7 +7,9 @@ namespace Arius.Api.Features.Repositories;
 internal sealed class ListRepositories(AppDatabase db, RepositoryProviderRegistry registry) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/repos/", (CancellationToken ct, ListRepositories endpoint) => endpoint.HandleAsync(ct));
+        api.MapGet("/repos/", (CancellationToken ct, ListRepositories endpoint) => endpoint.HandleAsync(ct))
+            .WithSummary("List repositories")
+            .WithDescription("Returns all repositories. Passphrases and account keys are never returned. The pricing region is read from storage on first request and then cached; it is null when the container cannot be reached.");
 
     private async Task<List<RepositoryDto>> HandleAsync(CancellationToken ct)
     {

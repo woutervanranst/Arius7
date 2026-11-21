@@ -6,7 +6,8 @@ namespace Arius.Api.Features.Cost;
 internal sealed class GetCostSettings(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/settings/cost", (GetCostSettings endpoint) => endpoint.Handle());
+        api.MapGet("/settings/cost", (GetCostSettings endpoint) => endpoint.Handle())
+            .WithSummary("Get the cost confirmation settings");
 
     private IResult Handle() => Results.Ok(db.GetCostSettings());
 }

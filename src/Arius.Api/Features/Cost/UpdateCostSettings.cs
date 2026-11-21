@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Cost;
 internal sealed class UpdateCostSettings(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapPut("/settings/cost", (CostSettings settings, UpdateCostSettings endpoint) => endpoint.Handle(settings));
+        api.MapPut("/settings/cost", (CostSettings settings, UpdateCostSettings endpoint) => endpoint.Handle(settings))
+            .WithSummary("Update the cost confirmation settings")
+            .WithDescription("Returns 400 Bad Request unless the threshold is between 0 and 1000 EUR with at most two decimal places.");
 
     private IResult Handle(CostSettings settings)
     {

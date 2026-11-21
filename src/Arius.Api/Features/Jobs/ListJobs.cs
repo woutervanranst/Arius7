@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Arius.Api.Shared.AppData;
 using Arius.Api.Shared.Hosting;
 
@@ -6,7 +7,12 @@ namespace Arius.Api.Features.Jobs;
 internal sealed class ListJobs(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapGet("/jobs", (long? repositoryId, string? status, ListJobs endpoint) => endpoint.Handle(repositoryId, status));
+        api.MapGet("/jobs", (
+                [Description("Only return jobs of this repository.")] long? repositoryId,
+                [Description("`active` for running, awaiting-cost and rehydrating jobs; `terminal` for completed, failed, cancelled and interrupted jobs; or a single status. Omit for all jobs.")] string? status,
+                ListJobs endpoint) => endpoint.Handle(repositoryId, status))
+            .WithSummary("List jobs")
+            .WithDescription("Returns jobs, newest first. Without `status=active`, only the 100 most recent jobs are considered.");
 
     private List<JobDto> Handle(long? repositoryId, string? status)
     {

@@ -6,7 +6,9 @@ namespace Arius.Api.Features.Schedules;
 internal sealed class DeleteSchedule(AppDatabase db) : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder api) =>
-        api.MapDelete("/repos/{id:long}/schedules/{scheduleId:long}", (long id, long scheduleId, DeleteSchedule endpoint) => endpoint.Handle(id, scheduleId));
+        api.MapDelete("/repos/{id:long}/schedules/{scheduleId:long}", (long id, long scheduleId, DeleteSchedule endpoint) => endpoint.Handle(id, scheduleId))
+            .WithSummary("Delete a schedule")
+            .WithDescription("Returns 204 No Content, also when the schedule does not exist.");
 
     private IResult Handle(long id, long scheduleId)
     {
